@@ -70,14 +70,7 @@ export default async function SettingsPage() {
           icon={<Wrench className="h-5 w-5" />}
           title={name("/settings/treatments", "Treatments")}
           summary={`${formatNumber(config.treatments.length)} treatments in the library`}
-          detail="Costs, condition and risk effects, applicability rules and decision trees."
-        />
-        <SettingCard
-          href="/settings/treatments"
-          icon={<Wrench className="h-5 w-5" />}
-          title="Treatments & Costs"
-          summary="Unit costs and applicable condition ranges"
-          detail="Opens the same treatment library — unit cost, mobilization and annual maintenance are edited per treatment there."
+          detail="Unit costs, mobilization and maintenance, condition and risk effects, applicability rules and decision trees."
         />
         <SettingCard
           href="/settings/configuration"
