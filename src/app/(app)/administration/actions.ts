@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
-import { updateUserRole, setUserActive } from "@/server/admin";
+import { updateUserRole, setUserActive, createUser, resetUserPassword } from "@/server/admin";
+import type { UserActionState } from "./users/state";
 
 /** User administration is Administrator-only, unlike field data entry. */
 async function requireAdministrator() {
@@ -39,4 +40,62 @@ export async function toggleUserActiveAction(formData: FormData) {
 
   await setUserActive(session.user.organizationId, userId, isActive);
   revalidatePath("/administration/users");
+}
+
+function failUser(e: unknown): UserActionState {
+  return {
+    status: "error",
+    message: e instanceof Error ? e.message : "Something went wrong",
+    credential: null,
+  };
+}
+
+export async function createUserAction(
+  _prev: UserActionState,
+  formData: FormData
+): Promise<UserActionState> {
+  try {
+    const session = await requireAdministrator();
+    const created = await createUser(session.user.organizationId, {
+      email: String(formData.get("email") ?? ""),
+      name: String(formData.get("name") ?? ""),
+      roleId: String(formData.get("roleId") ?? ""),
+      password: String(formData.get("password") ?? "") || undefined,
+    });
+
+    revalidatePath("/administration/users");
+    revalidatePath("/administration");
+    return {
+      status: "success",
+      message: `${created.name} can now sign in as ${created.roleName}.`,
+      credential: { email: created.email, password: created.password },
+    };
+  } catch (e) {
+    return failUser(e);
+  }
+}
+
+export async function resetPasswordAction(
+  _prev: UserActionState,
+  formData: FormData
+): Promise<UserActionState> {
+  try {
+    const session = await requireAdministrator();
+    const reset = await resetUserPassword(
+      session.user.organizationId,
+      String(formData.get("userId") ?? ""),
+      String(formData.get("password") ?? "") || undefined
+    );
+
+    revalidatePath("/administration/users");
+    return {
+      status: "success",
+      // A JWT session already issued stays valid until it expires or the user
+      // signs out, so a reset does not by itself kick anyone off.
+      message: `Password reset. ${reset.email} stays signed in on any existing session until they sign out.`,
+      credential: { email: reset.email, password: reset.password },
+    };
+  } catch (e) {
+    return failUser(e);
+  }
 }

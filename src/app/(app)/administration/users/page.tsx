@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatNumber } from "@/lib/format";
 import { updateUserRoleAction, toggleUserActiveAction } from "../actions";
 import { getPageName } from "@/server/navigation";
+import { AddUserForm, ResetPasswordForm } from "./user-forms";
 
 export default async function UsersPage() {
   const session = await auth();
@@ -32,6 +33,8 @@ export default async function UsersPage() {
           </CardContent>
         </Card>
       )}
+
+      {isAdmin && <AddUserForm roles={roles} />}
 
       <Card className="mb-4">
         <CardHeader>
@@ -73,11 +76,14 @@ export default async function UsersPage() {
                     {isAdmin && (
                       <TableCell>
                         {isSelf ? (
-                          <span className="text-xs text-muted-foreground">
-                            Cannot change your own role or status
-                          </span>
+                          <div className="space-y-2">
+                            <span className="text-xs text-muted-foreground">
+                              Cannot change your own role or status
+                            </span>
+                            <ResetPasswordForm userId={u.id} email={u.email} />
+                          </div>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-start gap-2">
                             <form action={updateUserRoleAction} className="flex items-center gap-1">
                               <input type="hidden" name="userId" value={u.id} />
                               <select
@@ -102,6 +108,7 @@ export default async function UsersPage() {
                                 {u.isActive ? "Deactivate" : "Activate"}
                               </Button>
                             </form>
+                            <ResetPasswordForm userId={u.id} email={u.email} />
                           </div>
                         )}
                       </TableCell>
