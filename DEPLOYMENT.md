@@ -45,14 +45,25 @@ PostGIS does not need enabling by hand: the initial migration runs
 ## 3. Load the schema and demo data
 
 Run these from your machine, pointing at Neon for just these commands. This
-does **not** touch your local database.
+does **not** touch your local database — the variable is set for that one
+command only.
 
-```bash
-DATABASE_URL="<neon-pooled-url>" npx prisma migrate deploy
+You are on Windows, so set it the PowerShell way. Open a **new** PowerShell
+window in the project folder, and paste the connection string once:
+
+```powershell
+$env:DATABASE_URL = "<neon-pooled-url>"
 ```
 
-```bash
-DATABASE_URL="<neon-pooled-url>" npm run db:seed
+Everything in this section then runs against Neon. **Close that window when you
+are done** so later commands go back to your local database.
+
+```powershell
+npx prisma migrate deploy
+```
+
+```powershell
+npm run db:seed
 ```
 
 The seed creates the organization, roles, 260 waterline assets, inspections,
@@ -76,7 +87,7 @@ condition scores, risk assessments, treatments and baseline scenarios.
 
    Generate the secret:
 
-   ```bash
+   ```powershell
    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    ```
 
@@ -93,8 +104,8 @@ The seeded accounts (`admin@carnac.local` and friends) share a password that is
 **committed to this repo**. Do not hand that out for a public URL. Create a
 fresh account instead:
 
-```bash
-DATABASE_URL="<neon-pooled-url>" npm run user:password -- reviewer@example.com --name "Their Name" --role AssetManager
+```powershell
+$env:DATABASE_URL = "<neon-pooled-url>"; npm run user:password -- reviewer@example.com --name "Their Name" --role AssetManager
 ```
 
 It prints a strong generated password once. Roles:
@@ -111,8 +122,8 @@ without being able to reconfigure the models underneath it.
 
 While you are there, rotate the seeded admin account too:
 
-```bash
-DATABASE_URL="<neon-pooled-url>" npm run user:password -- admin@carnac.local
+```powershell
+$env:DATABASE_URL = "<neon-pooled-url>"; npm run user:password -- admin@carnac.local
 ```
 
 ---
@@ -153,6 +164,10 @@ against Neon is the destructive one: it would discard anything they had changed.
 ---
 
 ## Notes and gotchas
+
+- **Setting `DATABASE_URL` inline (`DATABASE_URL="..." npm run ...`) does not
+  work in PowerShell** — that is bash syntax. Use `$env:DATABASE_URL = "..."`
+  first, in a window you then close.
 
 - **Cold starts.** Neon's free tier suspends after inactivity; the first
   request can take a few seconds. Not a fault — worth warning your coworker.
