@@ -4,6 +4,11 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Behind a proxy — which is how Vercel serves every deployment — Auth.js
+  // refuses to infer its own origin unless told the Host header is
+  // trustworthy, and sign-in fails with UntrustedHost. Local dev is
+  // unaffected because localhost is trusted anyway.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [
