@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isDerivedMetric } from "@/server/metrics-shared";
 import {
   WCI_COMPONENT_WEIGHTS,
   WCI_BANDS,
@@ -72,10 +73,24 @@ function parseBands(bands: unknown): ConditionBand[] {
   return parsed.length > 0 ? parsed : WCI_BANDS;
 }
 
-async function requireModel(organizationId: string) {
-  const model = await prisma.conditionModel.findFirst({
+/**
+ * The condition index model, as opposed to a derived metric.
+ *
+ * Metrics added in Settings are stored as ConditionModel rows too, so a bare
+ * findFirst here could return a metric and silently swap the weights behind
+ * every condition score. Derived metrics are marked by metricSource in their
+ * formula; the index is the row without one.
+ */
+async function findIndexModel(organizationId: string) {
+  const models = await prisma.conditionModel.findMany({
     where: { assetType: { code: "WATERLINE", organizationId } },
+    orderBy: { id: "asc" },
   });
+  return models.find((m) => !isDerivedMetric(m.formula)) ?? null;
+}
+
+async function requireModel(organizationId: string) {
+  const model = await findIndexModel(organizationId);
   if (!model) throw new Error("Condition index is not configured for this organization");
   return model;
 }
@@ -83,10 +98,7 @@ async function requireModel(organizationId: string) {
 /** Live weights for scoring. Used by inspection creation so a new inspection
  * is always scored with the currently configured index. */
 export async function getIndexWeights(organizationId: string): Promise<Record<string, number>> {
-  const model = await prisma.conditionModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
-    select: { formula: true },
-  });
+  const model = await findIndexModel(organizationId);
   return parseWeights(model?.formula);
 }
 

@@ -14,7 +14,7 @@ import { MATERIAL_CURVES, DEFAULT_CURVE, type CurveParams } from "@/domain/water
  * otherwise these screens would be editors over values nothing consults.
  */
 
-async function requireAssetType(organizationId: string) {
+export async function requireAssetType(organizationId: string) {
   const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
   if (!assetType) throw new Error("WATERLINE asset type is not configured for this organization");
   return assetType;
@@ -33,7 +33,7 @@ export type ConditionModelConfig = {
   measurementCount: number;
 };
 
-function parseBands(value: unknown): ConditionBand[] {
+export function parseBands(value: unknown): ConditionBand[] {
   if (!Array.isArray(value)) return WCI_BANDS;
   const bands = value.filter(
     (b): b is ConditionBand =>

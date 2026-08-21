@@ -25,7 +25,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "condition-index": "Condition Index",
   treatments: "Treatments",
   configuration: "Configuration",
-  "condition-models": "Condition Models",
+  "condition-models": "Metrics",
   "risk-models": "Risk Models",
   "failure-types": "Failure Types",
   navigation: "Navigation",

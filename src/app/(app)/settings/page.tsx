@@ -60,9 +60,9 @@ export default async function SettingsPage() {
         <SettingCard
           href="/settings/condition-models"
           icon={<Gauge className="h-5 w-5" />}
-          title={name("/settings/condition-models", "Condition Models")}
+          title={name("/settings/condition-models", "Metrics")}
           summary={`Scale ${conditionModel.scaleMin}–${conditionModel.scaleMax} · ${conditionModel.bands.length} bands`}
-          detail="The bands that turn a numeric score into a grade, and the colour each one shows."
+          detail="The condition scale and its bands, plus metrics banding any numeric inspection or inventory field."
           swatches={conditionModel.bands.map((b) => b.color)}
         />
         <SettingCard

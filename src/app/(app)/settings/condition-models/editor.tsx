@@ -38,12 +38,12 @@ export function ConditionModelEditor({ config }: { config: ConditionModelConfig 
     <form action={action}>
       <Card>
         <CardHeader>
-          <CardTitle>Model</CardTitle>
+          <CardTitle>Metric</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="name">Model Name</Label>
+              <Label htmlFor="name">Metric Name</Label>
               <input id="name" name="name" defaultValue={config.name} className={input} required />
             </div>
             <div className="space-y-1.5">
@@ -144,7 +144,7 @@ export function ConditionModelEditor({ config }: { config: ConditionModelConfig 
             existing measurements will be re-graded against them immediately.
           </p>
 
-          <SaveBar state={state} label="Save model" hint="Changes take effect across the system as soon as you save." />
+          <SaveBar state={state} label="Save metric" hint="Changes take effect across the system as soon as you save." />
         </CardContent>
       </Card>
     </form>
