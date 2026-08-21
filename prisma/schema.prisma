@@ -1,0 +1,724 @@
+// ============================================================================
+// CARNAC — Universal Asset Management & Decision Support Platform
+// Phase 1 Schema Draft: Asset-Type-Agnostic Core + Waterline as first AssetType
+// ============================================================================
+// Design principle: nothing below is named "Waterline*". Waterline-specific
+// data lives in the extensible attribute/measure/model tables, scoped by
+// AssetType. A future asset type (e.g. "Bridge", "Pavement") is added by
+// inserting a new AssetType row and its attribute/condition/deterioration/
+// risk/treatment definitions — not by adding tables or changing this schema.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// ----------------------------------------------------------------------------
+// Organizations, Users, Roles
+// ----------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      User[]
+  assetTypes AssetType[]
+  assets     Asset[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  email          String       @unique
+  name           String
+  passwordHash   String
+  roleId         String
+  role           Role         @relation(fields: [roleId], references: [id])
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  inspectionsPerformed Inspection[] @relation("InspectedBy")
+
+  @@map("users")
+}
+
+model Role {
+  id          String @id @default(cuid())
+  name        String @unique // Administrator, AssetManager, Inspector, Executive
+  permissions Json // array of permission strings; keeps RBAC config-driven
+  users       User[]
+
+  @@map("roles")
+}
+
+// ----------------------------------------------------------------------------
+// Core Asset Framework (asset-type agnostic)
+// ----------------------------------------------------------------------------
+
+model AssetType {
+  id          String  @id @default(cuid())
+  code        String  @unique // e.g. "WATERLINE"
+  name        String // e.g. "Waterline"
+  description String?
+
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  attributeDefinitions AssetAttributeDefinition[]
+  assets               Asset[]
+  inspectionTemplates  InspectionTemplate[]
+  conditionModels      ConditionModel[]
+  deteriorationModels  DeteriorationModel[]
+  riskModels           RiskModel[]
+  treatments           Treatment[]
+  failureTypes         FailureType[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("asset_types")
+}
+
+// Defines the *shape* of extensible attributes per asset type
+// (e.g. Waterline: Material, Diameter, Pressure Class...)
+model AssetAttributeDefinition {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+
+  code       String // e.g. "MATERIAL"
+  label      String // e.g. "Material"
+  dataType   AttributeDataType
+  unit       String?
+  isRequired Boolean           @default(false)
+  sortOrder  Int               @default(0)
+  // for ENUM dataType: allowed values, min/max for NUMBER, etc.
+  config     Json?
+
+  values AssetAttributeValue[]
+
+  @@unique([assetTypeId, code])
+  @@map("asset_attribute_definitions")
+}
+
+enum AttributeDataType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  ENUM
+}
+
+model Asset {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+
+  assetCode     String // human-facing ID, e.g. "WL-001"
+  name          String?
+  parentAssetId String?
+  parentAsset   Asset?  @relation("AssetHierarchy", fields: [parentAssetId], references: [id])
+  childAssets   Asset[] @relation("AssetHierarchy")
+
+  status             AssetStatus @default(ACTIVE)
+  ownerDepartment    String?
+  installationDate   DateTime?
+  expectedUsefulLife Int? // years
+
+  attributeValues AssetAttributeValue[]
+  location        AssetLocation?
+  relationshipsA  AssetRelationship[]   @relation("AssetA")
+  relationshipsB  AssetRelationship[]   @relation("AssetB")
+
+  inspections              Inspection[]
+  conditionMeasurements    ConditionMeasurement[]
+  failureEvents            FailureEvent[]
+  deteriorationPredictions DeteriorationPrediction[]
+  riskAssessments          RiskAssessment[]
+  criticalityScores        CriticalityScore[]
+  workPlanItems            WorkPlanItem[]
+  documents                Document[]
+
+  createdAt DateTime  @default(now())
+  createdBy String?
+  updatedAt DateTime  @updatedAt
+  updatedBy String?
+  deletedAt DateTime? // soft delete
+
+  @@unique([organizationId, assetCode])
+  @@index([assetTypeId])
+  @@map("assets")
+}
+
+enum AssetStatus {
+  ACTIVE
+  INACTIVE
+  ABANDONED
+  PLANNED
+  REMOVED
+}
+
+model AssetAttributeValue {
+  id           String                   @id @default(cuid())
+  assetId      String
+  asset        Asset                    @relation(fields: [assetId], references: [id])
+  definitionId String
+  definition   AssetAttributeDefinition @relation(fields: [definitionId], references: [id])
+
+  textValue    String?
+  numberValue  Float?
+  dateValue    DateTime?
+  booleanValue Boolean?
+
+  @@unique([assetId, definitionId])
+  @@map("asset_attribute_values")
+}
+
+// Generic connectivity graph: junctions, valves, hydrants, pump stations,
+// or any future asset-to-asset relationship (parent/child covers hierarchy;
+// this table covers network topology).
+model AssetRelationship {
+  id               String @id @default(cuid())
+  assetAId         String
+  assetA           Asset  @relation("AssetA", fields: [assetAId], references: [id])
+  assetBId         String
+  assetB           Asset  @relation("AssetB", fields: [assetBId], references: [id])
+  relationshipType String // e.g. "CONNECTS_TO", "ISOLATED_BY_VALVE", "SERVED_BY"
+  metadata         Json?
+
+  @@index([assetAId])
+  @@index([assetBId])
+  @@map("asset_relationships")
+}
+
+model AssetLocation {
+  id      String @id @default(cuid())
+  assetId String @unique
+  asset   Asset  @relation(fields: [assetId], references: [id])
+
+  // Line for waterline segments; future asset types may use Point/Polygon.
+  geometry     Unsupported("geometry(Geometry,4326)")
+  startLat     Float?
+  startLng     Float?
+  endLat       Float?
+  endLng       Float?
+  depth        Float?
+  serviceArea  String?
+  pressureZone String?
+
+  @@map("asset_locations")
+}
+
+// ----------------------------------------------------------------------------
+// Inspections (configurable templates, not hardcoded fields)
+// ----------------------------------------------------------------------------
+
+model InspectionTemplate {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+
+  name        String
+  description String?
+  isActive    Boolean @default(true)
+
+  fields      InspectionTemplateField[]
+  inspections Inspection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("inspection_templates")
+}
+
+model InspectionTemplateField {
+  id         String             @id @default(cuid())
+  templateId String
+  template   InspectionTemplate @relation(fields: [templateId], references: [id])
+
+  code       String // e.g. "CORROSION", "LEAKAGE", "JOINT_DETERIORATION"
+  label      String
+  dataType   AttributeDataType
+  unit       String?
+  isRequired Boolean           @default(false)
+  sortOrder  Int               @default(0)
+  config     Json? // enum options, min/max, help text
+
+  results InspectionResult[]
+
+  @@unique([templateId, code])
+  @@map("inspection_template_fields")
+}
+
+model Inspection {
+  id         String             @id @default(cuid())
+  assetId    String
+  asset      Asset              @relation(fields: [assetId], references: [id])
+  templateId String
+  template   InspectionTemplate @relation(fields: [templateId], references: [id])
+
+  inspectionDate   DateTime
+  inspectorId      String
+  inspector        User     @relation("InspectedBy", fields: [inspectorId], references: [id])
+  inspectionType   String // e.g. "Routine", "Condition Assessment", "Post-Failure"
+  qualityScore     Float? // confidence in the data collected
+  requiresFollowUp Boolean  @default(false)
+  gpsLat           Float?
+  gpsLng           Float?
+  notes            String?
+
+  results               InspectionResult[]
+  attachments           InspectionAttachment[]
+  conditionMeasurements ConditionMeasurement[]
+
+  createdAt DateTime @default(now())
+
+  @@index([assetId])
+  @@map("inspections")
+}
+
+model InspectionResult {
+  id           String                  @id @default(cuid())
+  inspectionId String
+  inspection   Inspection              @relation(fields: [inspectionId], references: [id])
+  fieldId      String
+  field        InspectionTemplateField @relation(fields: [fieldId], references: [id])
+
+  textValue    String?
+  numberValue  Float?
+  dateValue    DateTime?
+  booleanValue Boolean?
+
+  @@unique([inspectionId, fieldId])
+  @@map("inspection_results")
+}
+
+model InspectionAttachment {
+  id           String     @id @default(cuid())
+  inspectionId String
+  inspection   Inspection @relation(fields: [inspectionId], references: [id])
+  fileUrl      String
+  fileType     String
+  uploadedAt   DateTime   @default(now())
+
+  @@map("inspection_attachments")
+}
+
+// ----------------------------------------------------------------------------
+// Condition
+// ----------------------------------------------------------------------------
+
+model ConditionModel {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+
+  name     String // e.g. "Waterline Condition Index (WCI)"
+  scaleMin Float   @default(0)
+  scaleMax Float   @default(100)
+  // configurable bands: [{ "label": "Excellent", "min": 85, "max": 100 }, ...]
+  bands    Json
+  formula  Json? // component weighting definition, kept transparent/explainable
+  isActive Boolean @default(true)
+
+  measurements ConditionMeasurement[]
+
+  @@map("condition_models")
+}
+
+model ConditionMeasurement {
+  id               String         @id @default(cuid())
+  assetId          String
+  asset            Asset          @relation(fields: [assetId], references: [id])
+  conditionModelId String
+  conditionModel   ConditionModel @relation(fields: [conditionModelId], references: [id])
+  inspectionId     String?
+  inspection       Inspection?    @relation(fields: [inspectionId], references: [id])
+
+  score           Float
+  measurementDate DateTime
+  confidence      Float?
+  source          String // "Inspection", "Predicted", "Manual Override"
+
+  @@index([assetId])
+  @@map("condition_measurements")
+}
+
+// ----------------------------------------------------------------------------
+// Failures
+// ----------------------------------------------------------------------------
+
+model FailureType {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+  code        String // "BREAK", "LEAK", "CORROSION", "JOINT_FAILURE"
+  label       String
+
+  events FailureEvent[]
+
+  @@unique([assetTypeId, code])
+  @@map("failure_types")
+}
+
+model FailureEvent {
+  id            String      @id @default(cuid())
+  assetId       String
+  asset         Asset       @relation(fields: [assetId], references: [id])
+  failureTypeId String
+  failureType   FailureType @relation(fields: [failureTypeId], references: [id])
+
+  failureDate       DateTime
+  severity          String?
+  cause             String?
+  repairCost        Float?
+  downtimeHours     Float?
+  customersAffected Int?
+  restorationTime   Float?
+  consequenceNotes  String?
+
+  @@index([assetId])
+  @@map("failure_events")
+}
+
+// ----------------------------------------------------------------------------
+// Deterioration Modeling
+// ----------------------------------------------------------------------------
+
+model DeteriorationModel {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+
+  name          String
+  modelType     DeteriorationModelType
+  // curve coefficients OR Markov transition matrix, kept generic
+  parameters    DeteriorationParameter[]
+  applicability Json // e.g. { "material": "Cast Iron", "diameterRange": [4,12] }
+  validFrom     DateTime?
+  validTo       DateTime?
+  isActive      Boolean                  @default(true)
+
+  predictions DeteriorationPrediction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("deterioration_models")
+}
+
+enum DeteriorationModelType {
+  LINEAR
+  POLYNOMIAL
+  EXPONENTIAL
+  LOGISTIC
+  MARKOV
+  EMPIRICAL
+  REGRESSION
+}
+
+model DeteriorationParameter {
+  id      String             @id @default(cuid())
+  modelId String
+  model   DeteriorationModel @relation(fields: [modelId], references: [id])
+  key     String // e.g. "initialCondition", "rate", "stateTransitionMatrix"
+  value   Json
+
+  @@map("deterioration_parameters")
+}
+
+model DeteriorationPrediction {
+  id      String             @id @default(cuid())
+  assetId String
+  asset   Asset              @relation(fields: [assetId], references: [id])
+  modelId String
+  model   DeteriorationModel @relation(fields: [modelId], references: [id])
+
+  forecastYear       Int
+  predictedCondition Float
+  scenario           String? // "current", "treatment", "funding-constrained", "target"
+  // calibration tracking
+  observedCondition  Float?
+  predictionError    Float?
+  modelVersion       String?
+  calibrationDate    DateTime?
+
+  @@index([assetId])
+  @@map("deterioration_predictions")
+}
+
+// ----------------------------------------------------------------------------
+// Risk & Criticality
+// ----------------------------------------------------------------------------
+
+model RiskModel {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+
+  name              String
+  probabilityConfig Json // configurable scoring inputs/weights
+  consequenceConfig Json
+  isActive          Boolean @default(true)
+
+  assessments RiskAssessment[]
+
+  @@map("risk_models")
+}
+
+model RiskAssessment {
+  id          String    @id @default(cuid())
+  assetId     String
+  asset       Asset     @relation(fields: [assetId], references: [id])
+  riskModelId String
+  riskModel   RiskModel @relation(fields: [riskModelId], references: [id])
+
+  probabilityScore Float
+  consequenceScore Float
+  riskScore        Float // typically probability * consequence
+  assessmentDate   DateTime
+  factors          RiskFactor[]
+
+  @@index([assetId])
+  @@map("risk_assessments")
+}
+
+model RiskFactor {
+  id               String         @id @default(cuid())
+  riskAssessmentId String
+  riskAssessment   RiskAssessment @relation(fields: [riskAssessmentId], references: [id])
+  factorName       String // e.g. "Age", "Failure History", "Customers Affected"
+  factorValue      Float
+  weight           Float
+
+  @@map("risk_factors")
+}
+
+model CriticalityScore {
+  id      String @id @default(cuid())
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id])
+
+  score        Float
+  factors      Json // customersServed, criticalFacilities, redundancy, etc.
+  calculatedAt DateTime @default(now())
+
+  @@index([assetId])
+  @@map("criticality_scores")
+}
+
+// ----------------------------------------------------------------------------
+// Treatments & Costs
+// ----------------------------------------------------------------------------
+
+model Treatment {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+
+  name                   String // "Replacement", "Relining", "Spot Repair"
+  description            String?
+  applicableConditionMin Float?
+  applicableConditionMax Float?
+  applicability          Json? // material/diameter constraints etc.
+  expectedLifeExtension  Int? // years
+  effectOnCondition      Float? // condition improvement, e.g. reset to 95
+  effectOnFailureProb    Float? // multiplier/reduction
+  unitCost               Float?
+  costUnit               String? // "per LF", "per each"
+  mobilizationCost       Float?
+  annualMaintenanceCost  Float?
+  usefulLife             Int?
+
+  costs         TreatmentCost[]
+  workPlanItems WorkPlanItem[]
+  rules         TreatmentRule[]
+
+  @@map("treatments")
+}
+
+model TreatmentRule {
+  id          String    @id @default(cuid())
+  treatmentId String
+  treatment   Treatment @relation(fields: [treatmentId], references: [id])
+  ruleType    String // "condition-triggered", "risk-triggered", "age-triggered"
+  condition   Json // expressible rule definition, transparent not black-box
+
+  @@map("treatment_rules")
+}
+
+model TreatmentCost {
+  id            String    @id @default(cuid())
+  treatmentId   String
+  treatment     Treatment @relation(fields: [treatmentId], references: [id])
+  costType      String // "Initial", "Maintenance", "Emergency"
+  amount        Float
+  effectiveDate DateTime?
+
+  @@map("treatment_costs")
+}
+
+// ----------------------------------------------------------------------------
+// Scenarios, Work Plans, Projects, Budgets
+// ----------------------------------------------------------------------------
+
+model Scenario {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  assumptions ScenarioAssumption[]
+  results     ScenarioResult[]
+  workPlans   WorkPlan[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("scenarios")
+}
+
+model ScenarioAssumption {
+  id         String   @id @default(cuid())
+  scenarioId String
+  scenario   Scenario @relation(fields: [scenarioId], references: [id])
+  key        String // "annualBudget", "discountRate", "conditionTarget", "riskThreshold"
+  value      Json
+
+  @@map("scenario_assumptions")
+}
+
+model ScenarioResult {
+  id          String   @id @default(cuid())
+  scenarioId  String
+  scenario    Scenario @relation(fields: [scenarioId], references: [id])
+  year        Int
+  metricKey   String // "recommendedSpend", "backlog", "avgCondition", "avgRisk", "failureCount"
+  metricValue Float
+
+  @@map("scenario_results")
+}
+
+model WorkPlan {
+  id         String    @id @default(cuid())
+  scenarioId String?
+  scenario   Scenario? @relation(fields: [scenarioId], references: [id])
+  name       String
+  startYear  Int
+  endYear    Int
+
+  items WorkPlanItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("work_plans")
+}
+
+model WorkPlanItem {
+  id          String    @id @default(cuid())
+  workPlanId  String
+  workPlan    WorkPlan  @relation(fields: [workPlanId], references: [id])
+  assetId     String
+  asset       Asset     @relation(fields: [assetId], references: [id])
+  treatmentId String
+  treatment   Treatment @relation(fields: [treatmentId], references: [id])
+
+  year              Int
+  estimatedCost     Float
+  expectedBenefit   Json? // { riskReduction: 0.65, conditionImprovement: 33 }
+  reasonExplanation String? // human-readable "why" — see explainability requirement
+  fundingSource     String?
+  status            WorkPlanItemStatus @default(PLANNED)
+
+  @@map("work_plan_items")
+}
+
+enum WorkPlanItemStatus {
+  PLANNED
+  APPROVED
+  IN_PROGRESS
+  COMPLETE
+  DEFERRED
+  CANCELLED
+}
+
+model Project {
+  id       String  @id @default(cuid())
+  name     String
+  budgetId String?
+  budget   Budget? @relation(fields: [budgetId], references: [id])
+  costs    Cost[]
+
+  @@map("projects")
+}
+
+model Budget {
+  id             String @id @default(cuid())
+  name           String
+  fiscalYear     Int
+  amount         Float
+  organizationId String
+
+  projects Project[]
+
+  @@map("budgets")
+}
+
+model Cost {
+  id         String    @id @default(cuid())
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id])
+  category   String
+  amount     Float
+  incurredAt DateTime?
+
+  @@map("costs")
+}
+
+// ----------------------------------------------------------------------------
+// Documents
+// ----------------------------------------------------------------------------
+
+model Document {
+  id         String   @id @default(cuid())
+  assetId    String?
+  asset      Asset?   @relation(fields: [assetId], references: [id])
+  fileUrl    String
+  fileType   String
+  title      String?
+  uploadedAt DateTime @default(now())
+
+  @@map("documents")
+}
+
+/// Per-organization overrides for navigation and page names. Only renamed
+/// entries get a row; anything absent falls back to the label in config/nav.ts,
+/// so the defaults stay in code and the database records only the exceptions.
+model NavigationLabel {
+  id             String @id @default(cuid())
+  organizationId String
+  href           String
+  label          String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, href])
+  @@map("navigation_labels")
+}

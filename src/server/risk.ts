@@ -1,0 +1,244 @@
+import { prisma } from "@/lib/prisma";
+import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
+import { getConditionBand } from "@/domain/waterline/condition";
+import {
+  RISK_MODEL_NAME,
+  POF_WEIGHTS,
+  COF_WEIGHTS,
+  computePofFactors,
+  computeCofFactors,
+  combineFactors,
+  computeCriticalityScore,
+  getRiskBand,
+  type FactorRating,
+} from "@/domain/waterline/risk";
+import { ageInYears } from "@/lib/format";
+import { getRiskWeights, getConditionBands } from "@/server/settings";
+
+async function getRiskModel(organizationId: string) {
+  const model = await prisma.riskModel.findFirst({
+    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true },
+  });
+  if (!model) throw new Error("Waterline risk model is not configured");
+  return model;
+}
+
+export async function ensureRiskModel(organizationId: string) {
+  const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
+  if (!assetType) throw new Error("WATERLINE asset type not found");
+  const existing = await prisma.riskModel.findFirst({ where: { assetTypeId: assetType.id, isActive: true } });
+  if (existing) return existing;
+  return prisma.riskModel.create({
+    data: {
+      assetTypeId: assetType.id,
+      name: RISK_MODEL_NAME,
+      probabilityConfig: { weights: POF_WEIGHTS, scale: "1-5" },
+      consequenceConfig: { weights: COF_WEIGHTS, scale: "1-5" },
+    },
+  });
+}
+
+/** Recompute POF/COF/risk + criticality for every waterline in the org from
+ * current data (latest condition, failures, attributes). Each run appends new
+ * RiskAssessment/CriticalityScore rows, preserving assessment history. */
+export async function recomputeRiskForOrganization(organizationId: string): Promise<number> {
+  const model = await ensureRiskModel(organizationId);
+  // Scoring runs with the weights configured in Settings, not the seeded
+  // constants, so a reweight changes the next recompute.
+  const { pof: pofWeights, cof: cofWeights } = await getRiskWeights(organizationId);
+  const tenYearsAgo = new Date(Date.now() - 10 * 365.25 * 24 * 60 * 60 * 1000);
+
+  const assets = await prisma.asset.findMany({
+    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null },
+    include: {
+      attributeValues: { include: { definition: true } },
+      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
+      failureEvents: { where: { failureDate: { gte: tenYearsAgo } }, select: { id: true } },
+    },
+  });
+
+  const now = new Date();
+  for (const asset of assets) {
+    const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
+
+    const pofFactors = computePofFactors({
+      conditionScore: asset.conditionMeasurements[0]?.score ?? null,
+      ageYears: ageInYears(asset.installationDate),
+      expectedUsefulLife: asset.expectedUsefulLife ?? 75,
+      failuresLast10Years: asset.failureEvents.length,
+      material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
+    }, pofWeights);
+    const cofInputs = {
+      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
+      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
+      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+    };
+    const cofFactors = computeCofFactors(cofInputs, cofWeights);
+
+    const pof = combineFactors(pofFactors);
+    const cof = combineFactors(cofFactors);
+    const riskScore = Math.round(pof * cof * 10) / 10;
+
+    const factorRows = [
+      ...pofFactors.map((f) => ({ factorName: `POF: ${f.name} (${f.observed})`, factorValue: f.rating, weight: f.weight })),
+      ...cofFactors.map((f) => ({ factorName: `COF: ${f.name} (${f.observed})`, factorValue: f.rating, weight: f.weight })),
+    ];
+
+    const criticality = computeCriticalityScore(cofInputs, cofWeights);
+
+    await prisma.riskAssessment.create({
+      data: {
+        assetId: asset.id,
+        riskModelId: model.id,
+        probabilityScore: pof,
+        consequenceScore: cof,
+        riskScore,
+        assessmentDate: now,
+        factors: { create: factorRows },
+      },
+    });
+    await prisma.criticalityScore.create({
+      data: {
+        assetId: asset.id,
+        score: criticality.score,
+        factors: Object.fromEntries(criticality.factors.map((f) => [f.name, { observed: f.observed, rating: f.rating, weight: f.weight }])),
+        calculatedAt: now,
+      },
+    });
+  }
+
+  return assets.length;
+}
+
+export type AssetRisk = {
+  assetId: string;
+  pof: number;
+  cof: number;
+  riskScore: number;
+  band: ReturnType<typeof getRiskBand>;
+  assessmentDate: Date;
+};
+
+export async function getLatestRiskByAsset(organizationId: string): Promise<Map<string, AssetRisk>> {
+  const model = await getRiskModel(organizationId);
+  const rows = await prisma.riskAssessment.findMany({
+    where: { riskModelId: model.id, asset: { organizationId, deletedAt: null } },
+    orderBy: [{ assetId: "asc" }, { assessmentDate: "desc" }],
+    distinct: ["assetId"],
+    select: { assetId: true, probabilityScore: true, consequenceScore: true, riskScore: true, assessmentDate: true },
+  });
+  return new Map(
+    rows.map((r) => [
+      r.assetId,
+      {
+        assetId: r.assetId,
+        pof: r.probabilityScore,
+        cof: r.consequenceScore,
+        riskScore: r.riskScore,
+        band: getRiskBand(r.riskScore),
+        assessmentDate: r.assessmentDate,
+      },
+    ])
+  );
+}
+
+export async function getRiskForAsset(organizationId: string, assetId: string) {
+  const model = await getRiskModel(organizationId);
+  const assessment = await prisma.riskAssessment.findFirst({
+    where: { riskModelId: model.id, assetId, asset: { organizationId } },
+    orderBy: { assessmentDate: "desc" },
+    include: { factors: true },
+  });
+  if (!assessment) return null;
+
+  const criticality = await prisma.criticalityScore.findFirst({
+    where: { assetId },
+    orderBy: { calculatedAt: "desc" },
+  });
+
+  // Non-greedy name group: observed values may themselves contain parentheses
+  // ("69 yr (86% of expected life)"), so split at the FIRST " (" not the last.
+  const parseFactors = (prefix: string): FactorRating[] =>
+    assessment.factors
+      .filter((f) => f.factorName.startsWith(prefix))
+      .map((f) => {
+        const m = f.factorName.match(/^[A-Z]+: (.+?) \((.+)\)$/);
+        return { name: m?.[1] ?? f.factorName, observed: m?.[2] ?? "", rating: f.factorValue, weight: f.weight };
+      });
+
+  return {
+    pof: assessment.probabilityScore,
+    cof: assessment.consequenceScore,
+    riskScore: assessment.riskScore,
+    band: getRiskBand(assessment.riskScore),
+    assessmentDate: assessment.assessmentDate,
+    pofFactors: parseFactors("POF:"),
+    cofFactors: parseFactors("COF:"),
+    criticalityScore: criticality?.score ?? null,
+  };
+}
+
+export type RiskSummary = {
+  assessedAssets: number;
+  averageRisk: number | null;
+  byBand: Array<{ label: string; count: number; color: string }>;
+  /** matrix[pofRounded-1][cofRounded-1] = asset count */
+  matrix: number[][];
+};
+
+export async function getRiskSummary(organizationId: string): Promise<RiskSummary> {
+  const latest = await getLatestRiskByAsset(organizationId);
+
+  const byBandMap = new Map<string, { count: number; color: string }>();
+  const matrix: number[][] = Array.from({ length: 5 }, () => Array(5).fill(0));
+  let sum = 0;
+  for (const risk of latest.values()) {
+    sum += risk.riskScore;
+    const entry = byBandMap.get(risk.band.label) ?? { count: 0, color: risk.band.color };
+    entry.count += 1;
+    byBandMap.set(risk.band.label, entry);
+    const p = Math.min(4, Math.max(0, Math.round(risk.pof) - 1));
+    const c = Math.min(4, Math.max(0, Math.round(risk.cof) - 1));
+    matrix[p][c] += 1;
+  }
+
+  return {
+    assessedAssets: latest.size,
+    averageRisk: latest.size ? Math.round((sum / latest.size) * 10) / 10 : null,
+    byBand: [...byBandMap.entries()].map(([label, v]) => ({ label, ...v })),
+    matrix,
+  };
+}
+
+export async function getTopRiskAssets(organizationId: string, limit = 10) {
+  const model = await getRiskModel(organizationId);
+  const bands = await getConditionBands(organizationId);
+  const rows = await prisma.riskAssessment.findMany({
+    where: { riskModelId: model.id, asset: { organizationId, deletedAt: null } },
+    orderBy: [{ assetId: "asc" }, { assessmentDate: "desc" }],
+    distinct: ["assetId"],
+    include: {
+      asset: {
+        select: {
+          id: true,
+          assetCode: true,
+          conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
+        },
+      },
+    },
+  });
+
+  return rows
+    .sort((a, b) => b.riskScore - a.riskScore)
+    .slice(0, limit)
+    .map((r) => ({
+      asset: { id: r.asset.id, assetCode: r.asset.assetCode },
+      conditionScore: r.asset.conditionMeasurements[0]?.score ?? null,
+      conditionBand: r.asset.conditionMeasurements[0] ? getConditionBand(r.asset.conditionMeasurements[0].score, bands) : null,
+      pof: r.probabilityScore,
+      cof: r.consequenceScore,
+      riskScore: r.riskScore,
+      band: getRiskBand(r.riskScore),
+    }));
+}
