@@ -49,7 +49,22 @@ does **not** touch your local database — the variable is set for that one
 command only.
 
 You are on Windows, so set it the PowerShell way. Open a **new** PowerShell
-window in the project folder, and paste the connection string once:
+window, then **cd into the project first** — every command below depends on it:
+
+```powershell
+cd C:UsersKevinMurataDesktopcarnac
+```
+
+This matters more than it looks. Run `npx prisma` from anywhere else and npm
+downloads the *latest* Prisma (7.x) instead of the 6.19.3 this project pins,
+and it fails with "Could not find Prisma Schema". Confirm you have the right
+one — it must print 6.19.3:
+
+```powershell
+npx prisma --version
+```
+
+Then paste the connection string once:
 
 ```powershell
 $env:DATABASE_URL = "<neon-pooled-url>"
@@ -164,6 +179,9 @@ against Neon is the destructive one: it would discard anything they had changed.
 ---
 
 ## Notes and gotchas
+
+- **Run every command from the project folder.** `npx prisma` outside it
+  downloads Prisma 7 rather than the pinned 6.19.3 and cannot find the schema.
 
 - **Setting `DATABASE_URL` inline (`DATABASE_URL="..." npm run ...`) does not
   work in PowerShell** — that is bash syntax. Use `$env:DATABASE_URL = "..."`
