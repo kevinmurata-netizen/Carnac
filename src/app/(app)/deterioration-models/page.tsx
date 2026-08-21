@@ -2,10 +2,9 @@ import { auth } from "@/lib/auth";
 import {
   getNetworkForecast,
   listDeteriorationModels,
-  getMaterialCurveSeries,
 } from "@/server/deterioration";
 import { getConditionSummary } from "@/server/condition";
-import { NETWORK_CONDITION_TARGET, MATERIAL_CURVES } from "@/domain/waterline/deterioration";
+import { NETWORK_CONDITION_TARGET } from "@/domain/waterline/deterioration";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +15,8 @@ import { formatNumber } from "@/lib/format";
 import { Gauge, LineChart, Target, TrendingDown } from "lucide-react";
 import { ASSET_LABEL } from "@/config/labels";
 import { getPageName } from "@/server/navigation";
+import { listDeteriorationModels as listConfiguredCurves } from "@/server/settings";
+import { CurveExplorer } from "./curve-explorer";
 
 const MATERIAL_COLORS: Record<string, string> = {
   PVC: "#2563eb",
@@ -27,16 +28,37 @@ const MATERIAL_COLORS: Record<string, string> = {
   "Asbestos Cement": "#dc2626",
 };
 
+/** For a material added later that has no assigned colour. */
+const FALLBACK_COLORS = ["#0ea5e9", "#8b5cf6", "#f59e0b", "#10b981", "#ef4444"];
+
 export default async function DeteriorationModelsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/deterioration-models", "Deterioration Models");
 
-  const [forecast, models, condition] = await Promise.all([
+  const [forecast, models, condition, configured] = await Promise.all([
     getNetworkForecast(organizationId),
     listDeteriorationModels(organizationId),
     getConditionSummary(organizationId),
+    listConfiguredCurves(organizationId),
   ]);
+
+  // Plot what is configured in Settings, not the seeded constants — otherwise
+  // an edited service life would not show up on the chart that exists to
+  // compare service lives.
+  // Markov models carry a state-transition matrix, not curve coefficients, so
+  // they have no single curve to draw — plotting one would invent a default
+  // curve and label it with its "*" wildcard material.
+  const curveModels = configured
+    .filter((m) => m.modelType !== "MARKOV" && m.material && m.material !== "*")
+    .map((m, i) => ({
+      id: m.id,
+      name: m.name,
+      material: m.material,
+      isActive: m.isActive,
+      curve: m.curve,
+      color: MATERIAL_COLORS[m.material ?? ""] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
+    }));
 
   const markovByYear = new Map(forecast.markov.map((p) => [p.year, p.avgCondition]));
   const forecastData = forecast.curve.map((p) => ({
@@ -48,8 +70,6 @@ export default async function DeteriorationModelsPage() {
   const current = forecast.curve[0]?.avgCondition ?? condition.averageScore ?? null;
   const in5 = forecast.curve.find((p) => p.year === forecast.startYear + 5)?.avgCondition ?? null;
   const in10 = forecast.curve.find((p) => p.year === forecast.startYear + 10)?.avgCondition ?? null;
-
-  const curveSeries = getMaterialCurveSeries();
 
   return (
     <div>
@@ -117,24 +137,7 @@ export default async function DeteriorationModelsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Deterioration Curves by Material</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <SimpleLineChart
-              data={curveSeries}
-              xKey="age"
-              yDomain={[0, 100]}
-              series={Object.keys(MATERIAL_CURVES).map((material) => ({
-                key: material,
-                label: material,
-                color: MATERIAL_COLORS[material] ?? "var(--color-chart-1)",
-              }))}
-            />
-            <p className="mt-2 text-xs text-muted-foreground">WCI vs. age in years for a new pipe of each material.</p>
-          </CardContent>
-        </Card>
+        <CurveExplorer models={curveModels} conditionTarget={NETWORK_CONDITION_TARGET} />
       </div>
 
       <Card className="mt-4">

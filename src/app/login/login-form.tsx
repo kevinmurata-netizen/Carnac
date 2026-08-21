@@ -53,7 +53,25 @@ export function LoginForm({ callbackUrl, error }: { callbackUrl?: string; error?
   return (
     <Card>
       <CardContent className="pt-6">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {/* Enter in a text field should submit, but the Base UI Input wrapper
+            does not reliably produce the browser's implicit submission. This
+            submits explicitly instead.
+
+            Capture phase on purpose: it runs before any handler inside the
+            input could stop propagation. preventDefault also means that if
+            implicit submission *does* work in a given browser, it is cancelled
+            here rather than firing a second time. Activating the Sign in button
+            by keyboard is left alone — that is a click, not an INPUT. */}
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          onKeyDownCapture={(e) => {
+            if (e.key !== "Enter" || isSubmitting) return;
+            if ((e.target as HTMLElement).tagName !== "INPUT") return;
+            e.preventDefault();
+            void handleSubmit(onSubmit)();
+          }}
+          className="space-y-4"
+        >
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" autoComplete="email" {...register("email")} />
