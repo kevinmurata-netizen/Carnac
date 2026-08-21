@@ -94,7 +94,7 @@ The seeded accounts (`admin@carnac.local` and friends) share a password that is
 fresh account instead:
 
 ```bash
-DATABASE_URL="<neon-pooled-url>" npm run user:password -- reviewer@example.com --name "Their Name" --role "Asset Manager"
+DATABASE_URL="<neon-pooled-url>" npm run user:password -- reviewer@example.com --name "Their Name" --role AssetManager
 ```
 
 It prints a strong generated password once. Roles:
@@ -102,11 +102,11 @@ It prints a strong generated password once. Roles:
 | Role | Can do |
 | --- | --- |
 | `Administrator` | Everything, including Settings and Administration |
-| `Asset Manager` | Record data, run scenarios, generate work plans |
+| `AssetManager` | Record data, run scenarios, generate work plans |
 | `Inspector` | Record inspections and failures |
 | `Executive` | Read-only — dashboards and reports |
 
-`Asset Manager` is the useful default for feedback: they can exercise the app
+`AssetManager` is the useful default for feedback: they can exercise the app
 without being able to reconfigure the models underneath it.
 
 While you are there, rotate the seeded admin account too:
