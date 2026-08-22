@@ -1,16 +1,14 @@
-import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { getRiskSummary, getTopRiskAssets, getLatestRiskByAsset } from "@/server/risk";
+import { getRiskSummary, getRiskMatrixAssets, getLatestRiskByAsset } from "@/server/risk";
+import { getRiskBand } from "@/domain/waterline/risk";
 import { getNetworkGeoJSON } from "@/server/geo";
 import { RISK_BANDS } from "@/domain/waterline/risk";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NetworkMap } from "@/components/map/network-map";
 import { MapLegend } from "@/components/map/map-legend";
-import { RiskMatrix } from "@/components/risk/risk-matrix";
+import { RiskMatrixExplorer } from "@/components/risk/risk-matrix-explorer";
 import { formatNumber } from "@/lib/format";
 import { AlertTriangle, Crosshair, Gauge, ShieldAlert } from "lucide-react";
 import { ASSET_LABEL } from "@/config/labels";
@@ -21,12 +19,21 @@ export default async function RiskPage() {
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/risk", "Risk");
 
-  const [summary, top, riskByAsset, geojson] = await Promise.all([
+  const [summary, matrixAssets, riskByAsset, geojson] = await Promise.all([
     getRiskSummary(organizationId),
-    getTopRiskAssets(organizationId, 10),
+    getRiskMatrixAssets(organizationId),
     getLatestRiskByAsset(organizationId),
     getNetworkGeoJSON(organizationId),
   ]);
+
+  // Band per cell resolved here so the client component never imports the
+  // domain module. Rows are POF 1..5, columns COF 1..5, matching summary.matrix.
+  const bandFor = Array.from({ length: 5 }, (_, p) =>
+    Array.from({ length: 5 }, (_, c) => {
+      const band = getRiskBand((p + 1) * (c + 1));
+      return { label: band.label, color: band.color };
+    })
+  );
 
   // Color the network by risk band; hover shows "Risk 14.2 · High".
   for (const feature of geojson.features) {
@@ -95,73 +102,13 @@ export default async function RiskPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Risk Matrix</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <RiskMatrix matrix={summary.matrix} />
-          </CardContent>
-        </Card>
+        <RiskMatrixExplorer
+          matrix={summary.matrix}
+          assets={matrixAssets}
+          bandFor={bandFor}
+          assetLabel={ASSET_LABEL.singular}
+        />
       </div>
-
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Highest-Risk Segments</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{ASSET_LABEL.singular}</TableHead>
-                <TableHead>Condition</TableHead>
-                <TableHead>Probability (1–5)</TableHead>
-                <TableHead>Consequence (1–5)</TableHead>
-                <TableHead>Risk Score</TableHead>
-                <TableHead>Band</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {top.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
-                    No risk assessments yet.
-                  </TableCell>
-                </TableRow>
-              )}
-              {top.map((row) => (
-                <TableRow key={row.asset.id}>
-                  <TableCell>
-                    <Link
-                      href={`/assets/${row.asset.id}?tab=risk`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {row.asset.assetCode}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    {row.conditionScore != null && row.conditionBand ? (
-                      <span style={{ color: row.conditionBand.color }}>
-                        {row.conditionScore} · {row.conditionBand.label}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell>{row.pof}</TableCell>
-                  <TableCell>{row.cof}</TableCell>
-                  <TableCell className="font-medium" style={{ color: row.band.color }}>
-                    {row.riskScore}
-                  </TableCell>
-                  <TableCell>
-                    <Badge style={{ backgroundColor: row.band.color, color: "white" }}>{row.band.label}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   );
 }

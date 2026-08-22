@@ -187,6 +187,20 @@ export type RiskSummary = {
   matrix: number[][];
 };
 
+/**
+ * Bucket a POF/COF pair into 0-indexed matrix coordinates.
+ *
+ * Exported so the cell counts and the per-cell asset lists are produced by the
+ * same rule — if they were computed separately, a cell could show a count that
+ * its own list disagrees with.
+ */
+export function riskMatrixCell(pof: number, cof: number): [number, number] {
+  return [
+    Math.min(4, Math.max(0, Math.round(pof) - 1)),
+    Math.min(4, Math.max(0, Math.round(cof) - 1)),
+  ];
+}
+
 export async function getRiskSummary(organizationId: string): Promise<RiskSummary> {
   const latest = await getLatestRiskByAsset(organizationId);
 
@@ -198,8 +212,7 @@ export async function getRiskSummary(organizationId: string): Promise<RiskSummar
     const entry = byBandMap.get(risk.band.label) ?? { count: 0, color: risk.band.color };
     entry.count += 1;
     byBandMap.set(risk.band.label, entry);
-    const p = Math.min(4, Math.max(0, Math.round(risk.pof) - 1));
-    const c = Math.min(4, Math.max(0, Math.round(risk.cof) - 1));
+    const [p, c] = riskMatrixCell(risk.pof, risk.cof);
     matrix[p][c] += 1;
   }
 
@@ -241,4 +254,62 @@ export async function getTopRiskAssets(organizationId: string, limit = 10) {
       riskScore: r.riskScore,
       band: getRiskBand(r.riskScore),
     }));
+}
+
+export type RiskMatrixAsset = {
+  assetId: string;
+  assetCode: string;
+  serviceArea: string | null;
+  conditionScore: number | null;
+  conditionBand: { label: string; color: string } | null;
+  pof: number;
+  cof: number;
+  riskScore: number;
+  band: { label: string; color: string };
+  /** 0-indexed matrix coordinates, assigned by riskMatrixCell. */
+  cellP: number;
+  cellC: number;
+};
+
+/**
+ * Every assessed asset with the matrix cell it falls in, so clicking a cell can
+ * list exactly the assets counted there. Each row carries its own cell rather
+ * than the client re-deriving it, which keeps the bucketing rule in one place.
+ */
+export async function getRiskMatrixAssets(organizationId: string): Promise<RiskMatrixAsset[]> {
+  const [latest, bands] = await Promise.all([
+    getLatestRiskByAsset(organizationId),
+    getConditionBands(organizationId),
+  ]);
+
+  const assets = await prisma.asset.findMany({
+    where: { id: { in: [...latest.keys()] }, deletedAt: null },
+    select: {
+      id: true,
+      assetCode: true,
+      location: { select: { serviceArea: true } },
+      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
+    },
+  });
+
+  return assets
+    .map((a) => {
+      const risk = latest.get(a.id)!;
+      const [cellP, cellC] = riskMatrixCell(risk.pof, risk.cof);
+      const score = a.conditionMeasurements[0]?.score ?? null;
+      return {
+        assetId: a.id,
+        assetCode: a.assetCode,
+        serviceArea: a.location?.serviceArea ?? null,
+        conditionScore: score != null ? Math.round(score * 10) / 10 : null,
+        conditionBand: score != null ? getConditionBand(score, bands) : null,
+        pof: risk.pof,
+        cof: risk.cof,
+        riskScore: risk.riskScore,
+        band: risk.band,
+        cellP,
+        cellC,
+      };
+    })
+    .sort((a, b) => b.riskScore - a.riskScore);
 }
