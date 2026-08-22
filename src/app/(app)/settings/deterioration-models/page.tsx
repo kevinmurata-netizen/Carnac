@@ -31,7 +31,13 @@ export default async function DeteriorationModelSettingsPage() {
       {isAdmin ? (
         <div className="space-y-4">
           {models.map((m) => (
-            <DeteriorationModelEditor key={m.id} model={m} />
+            /* Keyed on the saved values, not just the id: the editor holds the
+               in-progress curve in state, and React would keep that state across
+               a save — leaving it marked "Unsaved" against values it just wrote. */
+            <DeteriorationModelEditor
+              key={[m.id, m.name, m.isActive, m.curve.serviceLife, m.curve.shape, m.curve.initialCondition, m.curve.minCondition].join("|")}
+              model={m}
+            />
           ))}
         </div>
       ) : (
