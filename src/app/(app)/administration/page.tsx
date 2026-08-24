@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatNumber } from "@/lib/format";
-import { Database, FileUp, ListChecks, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
+import { Database, FileUp, ListChecks, ListTodo, ShieldCheck, SlidersHorizontal, Users } from "lucide-react";
 import { getPageName } from "@/server/navigation";
+import { getWishlistSummary } from "@/server/wishlist";
 
 /**
  * Operational administration — people, field definitions, data loading, the
@@ -21,10 +22,11 @@ export default async function AdministrationPage() {
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/administration", "Administration");
 
-  const [users, activity, db] = await Promise.all([
+  const [users, activity, db, wishlist] = await Promise.all([
     listUsers(organizationId),
     getRecentActivity(organizationId, 15),
     getDatabaseInfo(),
+    getWishlistSummary(organizationId),
   ]);
 
   return (
@@ -34,7 +36,7 @@ export default async function AdministrationPage() {
         description="Users and roles, field definitions, data import, audit trail and database status"
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <LinkCard
           href="/administration/users"
           icon={<Users className="h-5 w-5" />}
@@ -53,6 +55,18 @@ export default async function AdministrationPage() {
           title="Data Import"
           detail={canRecordFieldData(session) ? "Load inventory from CSV" : "Requires write access"}
         />
+        <LinkCard
+          href="/administration/wishlist"
+          icon={<ListTodo className="h-5 w-5" />}
+          title="Wishlist"
+          detail={
+            wishlist.total === 0
+              ? "Requests and ideas from the team"
+              : `${formatNumber(wishlist.open)} open${wishlist.highOpen > 0 ? `, ${wishlist.highOpen} high priority` : ""}`
+          }
+
+        />
+
         <LinkCard
           href="/administration/activity"
           icon={<ShieldCheck className="h-5 w-5" />}
