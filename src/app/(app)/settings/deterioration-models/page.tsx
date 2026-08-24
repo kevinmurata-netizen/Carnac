@@ -2,10 +2,11 @@ import { auth } from "@/lib/auth";
 import { listDeteriorationModels } from "@/server/settings";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { DeteriorationModelList } from "./model-list";
 import { formatNumber } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
+import { ActiveToggle } from "@/components/settings/active-toggle";
+import { toggleDeteriorationActiveAction } from "../actions";
 
 export default async function DeteriorationModelSettingsPage() {
   const session = await auth();
@@ -39,7 +40,7 @@ export default async function DeteriorationModelSettingsPage() {
             {models.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-2 border-t pt-3">
                 <span className="font-medium text-foreground">{m.name}</span>
-                <Badge variant={m.isActive ? "default" : "secondary"}>{m.isActive ? "Active" : "Inactive"}</Badge>
+                <ActiveToggle id={m.id} isActive={m.isActive} action={toggleDeteriorationActiveAction} readOnly />
                 <span className="text-xs text-muted-foreground">
                   {m.curve.serviceLife} yr life · shape {m.curve.shape} · {formatNumber(m.predictionCount)} predictions
                 </span>

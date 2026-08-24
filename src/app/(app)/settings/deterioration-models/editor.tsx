@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import type { DeteriorationModelConfig } from "@/server/settings";
 import { evaluateCurve, type CurveParams } from "@/domain/waterline/deterioration";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
-import { saveDeteriorationModelAction } from "../actions";
+import { saveDeteriorationModelAction, toggleDeteriorationActiveAction } from "../actions";
+import { ActiveToggle } from "@/components/settings/active-toggle";
 import { EMPTY_SETTINGS_STATE } from "../state";
 import { SaveBar } from "../save-bar";
 import { formatNumber } from "@/lib/format";
@@ -86,9 +87,13 @@ export function DeteriorationModelEditor({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {changed && <Badge variant="secondary">Unsaved</Badge>}
-            <Badge variant={model.isActive ? "default" : "secondary"}>
-              {model.isActive ? "Active" : "Inactive"}
-            </Badge>
+            <ActiveToggle
+              id={model.id}
+              isActive={model.isActive}
+              action={toggleDeteriorationActiveAction}
+              activeHint="Click to deactivate — this material falls back to the default curve in every forecast and scenario run"
+              inactiveHint="Click to activate — this curve shapes forecasts again"
+            />
             <Button type="button" size="sm" variant="outline" onClick={() => onShowGraphChange(!showGraph)}>
               <LineChart className="mr-1 h-3.5 w-3.5" />
               {showGraph ? "Hide curve" : "Show curve"}
@@ -126,17 +131,6 @@ export function DeteriorationModelEditor({
                 onChange={(e) => set({ shape: Number(e.target.value) })}
                 className={input}
               />
-            </div>
-            <div className="flex items-end pb-1">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="isActive"
-                  defaultChecked={model.isActive}
-                  className="h-4 w-4 accent-primary"
-                />
-                Active
-              </label>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`init-${model.id}`}>Initial Condition</Label>
