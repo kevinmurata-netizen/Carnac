@@ -40,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Treatment Planning", href: "/treatment-planning", phase: 5, live: true },
       { label: "Scenario Planning", href: "/scenario-planning", phase: 6, live: true },
       { label: "Work Plan", href: "/work-plan", phase: 7, live: true },
+      { label: "Model Results", href: "/model-results", phase: 8, live: true },
     ],
   },
   {
