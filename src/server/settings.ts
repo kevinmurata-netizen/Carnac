@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { WCI_BANDS, type ConditionBand } from "@/domain/waterline/condition";
 import { POF_WEIGHTS, COF_WEIGHTS, type PofWeightMap, type CofWeightMap } from "@/domain/waterline/risk";
-import { MATERIAL_CURVES, DEFAULT_CURVE, type CurveParams } from "@/domain/waterline/deterioration";
+import {
+  MATERIAL_CURVES,
+  DEFAULT_CURVE,
+  DEFAULT_TRANSITION_MATRIX,
+  MARKOV_STATES,
+  type CurveParams,
+} from "@/domain/waterline/deterioration";
 
 /**
  * Settings are the modelling configuration behind every number the system
@@ -493,4 +499,111 @@ export async function setInspectionTemplateActive(organizationId: string, id: st
   if (!template) throw new Error("Inspection template not found");
   await prisma.inspectionTemplate.update({ where: { id }, data: { isActive } });
   return template.name;
+}
+
+// ---------------------------------------------------------------------------
+// Markov model — state-transition matrix
+// ---------------------------------------------------------------------------
+
+export type MarkovConfig = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  predictionCount: number;
+  states: string[];
+  /** Row i = from-state, column j = to-state. Each row sums to 1. */
+  matrix: number[][];
+};
+
+function parseMatrix(value: unknown, size: number): number[][] | null {
+  if (!Array.isArray(value) || value.length !== size) return null;
+  const rows: number[][] = [];
+  for (const row of value) {
+    if (!Array.isArray(row) || row.length !== size) return null;
+    if (!row.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) return null;
+    rows.push(row as number[]);
+  }
+  return rows;
+}
+
+/**
+ * The transition matrix the network forecast actually steps with.
+ *
+ * Falls back to the seeded matrix only when the stored one is missing or
+ * malformed — a half-valid matrix would produce a forecast nobody could
+ * explain, so it is rejected wholesale rather than patched.
+ */
+export async function getTransitionMatrix(organizationId: string): Promise<number[][]> {
+  const model = await prisma.deteriorationModel.findFirst({
+    where: { assetType: { code: "WATERLINE", organizationId }, modelType: "MARKOV", isActive: true },
+    include: { parameters: true },
+  });
+  if (!model) return DEFAULT_TRANSITION_MATRIX;
+
+  const stored = model.parameters.find((p) => p.key === "transitionMatrix")?.value;
+  return parseMatrix(stored, DEFAULT_TRANSITION_MATRIX.length) ?? DEFAULT_TRANSITION_MATRIX;
+}
+
+export async function getMarkovConfig(organizationId: string): Promise<MarkovConfig | null> {
+  const model = await prisma.deteriorationModel.findFirst({
+    where: { assetType: { code: "WATERLINE", organizationId }, modelType: "MARKOV" },
+    include: { parameters: true, _count: { select: { predictions: true } } },
+  });
+  if (!model) return null;
+
+  const storedStates = model.parameters.find((p) => p.key === "states")?.value;
+  const states =
+    Array.isArray(storedStates) && storedStates.every((s) => typeof s === "string")
+      ? (storedStates as string[])
+      : MARKOV_STATES;
+
+  return {
+    id: model.id,
+    name: model.name,
+    isActive: model.isActive,
+    predictionCount: model._count.predictions,
+    states,
+    matrix:
+      parseMatrix(model.parameters.find((p) => p.key === "transitionMatrix")?.value, states.length) ??
+      DEFAULT_TRANSITION_MATRIX,
+  };
+}
+
+export async function updateMarkovModel(
+  organizationId: string,
+  id: string,
+  input: { name: string; matrix: number[][] }
+) {
+  if (!input.name.trim()) throw new Error("Model name is required");
+
+  const model = await prisma.deteriorationModel.findFirst({
+    where: { id, assetType: { code: "WATERLINE", organizationId }, modelType: "MARKOV" },
+    include: { parameters: true },
+  });
+  if (!model) throw new Error("Markov model not found");
+
+  const size = input.matrix.length;
+  for (const [i, row] of input.matrix.entries()) {
+    if (row.length !== size) throw new Error("The matrix must be square");
+    if (row.some((n) => !Number.isFinite(n) || n < 0)) {
+      throw new Error("Every probability must be zero or greater");
+    }
+    // Each row is the full set of outcomes for a state, so it has to account
+    // for all of them. Rows that do not sum to 1 leak or invent assets on every
+    // step, and the forecast drifts for reasons no one can trace.
+    const sum = row.reduce((s, n) => s + n, 0);
+    if (Math.abs(sum - 1) > 0.005) {
+      throw new Error(`Row ${i + 1} sums to ${sum.toFixed(3)} — each row must sum to 1`);
+    }
+  }
+
+  const existing = model.parameters.find((p) => p.key === "transitionMatrix");
+  await prisma.$transaction([
+    prisma.deteriorationModel.update({ where: { id }, data: { name: input.name.trim() } }),
+    existing
+      ? prisma.deteriorationParameter.update({ where: { id: existing.id }, data: { value: input.matrix } })
+      : prisma.deteriorationParameter.create({
+          data: { modelId: id, key: "transitionMatrix", value: input.matrix },
+        }),
+  ]);
 }

@@ -14,6 +14,7 @@ import {
   deleteFailureType,
   setDeteriorationModelActive,
   setInspectionTemplateActive,
+  updateMarkovModel,
 } from "@/server/settings";
 import { updateNavLabels, resetNavLabels } from "@/server/navigation";
 import { createMetric, updateMetric, deleteMetric } from "@/server/metrics";
@@ -405,4 +406,30 @@ export async function toggleTemplateActiveAction(id: string, isActive: boolean) 
   const name = await setInspectionTemplateActive(session.user.organizationId, id, isActive);
   revalidateAll("/settings/configuration", "/inspections");
   return isActive ? `${name} is active.` : `${name} is inactive and will not be offered for new inspections.`;
+}
+
+export async function saveMarkovModelAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireAdministrator();
+
+    let matrix: number[][];
+    try {
+      matrix = JSON.parse(String(formData.get("matrix") ?? "[]"));
+    } catch {
+      return { status: "error", message: "The matrix could not be read." };
+    }
+
+    await updateMarkovModel(session.user.organizationId, String(formData.get("id") ?? ""), {
+      name: String(formData.get("name") ?? ""),
+      matrix,
+    });
+
+    revalidateAll("/settings/deterioration-models");
+    return { status: "success", message: "Saved — the network forecast steps with this matrix now." };
+  } catch (e) {
+    return fail(e);
+  }
 }
