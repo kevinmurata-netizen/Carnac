@@ -3,7 +3,7 @@ import { listDeteriorationModels } from "@/server/settings";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DeteriorationModelEditor } from "./editor";
+import { DeteriorationModelList } from "./model-list";
 import { formatNumber } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
 
@@ -29,17 +29,7 @@ export default async function DeteriorationModelSettingsPage() {
       </div>
 
       {isAdmin ? (
-        <div className="space-y-4">
-          {models.map((m) => (
-            /* Keyed on the saved values, not just the id: the editor holds the
-               in-progress curve in state, and React would keep that state across
-               a save — leaving it marked "Unsaved" against values it just wrote. */
-            <DeteriorationModelEditor
-              key={[m.id, m.name, m.isActive, m.curve.serviceLife, m.curve.shape, m.curve.initialCondition, m.curve.minCondition].join("|")}
-              model={m}
-            />
-          ))}
-        </div>
+        <DeteriorationModelList models={models} />
       ) : (
         <Card>
           <CardContent className="space-y-3 py-6 text-sm">
