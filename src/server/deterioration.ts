@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getTransitionMatrix } from "@/server/settings";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import {
   MATERIAL_CURVES,
@@ -162,6 +163,10 @@ export type NetworkForecast = {
 };
 
 export async function getNetworkForecast(organizationId: string): Promise<NetworkForecast> {
+  // The matrix configured in Settings, not the seeded constant — otherwise
+  // the stored one is shown to administrators while a different one drives
+  // the forecast.
+  const transitionMatrix = await getTransitionMatrix(organizationId);
   const startYear = new Date().getFullYear();
 
   const rows = await prisma.deteriorationPrediction.groupBy({
@@ -191,7 +196,7 @@ export async function getNetworkForecast(organizationId: string): Promise<Networ
       .map((s) => s / measurements.length);
     for (let i = 0; i <= FORECAST_HORIZON_YEARS; i++) {
       markov.push({ year: startYear + i, avgCondition: expectedCondition(aggregate) });
-      aggregate = stepStateVector(aggregate, DEFAULT_TRANSITION_MATRIX);
+      aggregate = stepStateVector(aggregate, transitionMatrix);
     }
   }
 

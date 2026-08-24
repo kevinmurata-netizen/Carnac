@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { listDeteriorationModels } from "@/server/settings";
+import { listDeteriorationModels, getMarkovConfig } from "@/server/settings";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { DeteriorationModelList } from "./model-list";
@@ -14,7 +14,10 @@ export default async function DeteriorationModelSettingsPage() {
   const pageTitle = await getPageName(organizationId, "/settings/deterioration-models", "Deterioration Models");
   const isAdmin = session!.user.roleName === "Administrator";
 
-  const models = await listDeteriorationModels(organizationId);
+  const [models, markov] = await Promise.all([
+    listDeteriorationModels(organizationId),
+    getMarkovConfig(organizationId),
+  ]);
 
   return (
     <div>
@@ -30,7 +33,7 @@ export default async function DeteriorationModelSettingsPage() {
       </div>
 
       {isAdmin ? (
-        <DeteriorationModelList models={models} />
+        <DeteriorationModelList models={models} markov={markov} />
       ) : (
         <Card>
           <CardContent className="space-y-3 py-6 text-sm">
