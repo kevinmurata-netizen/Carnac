@@ -20,17 +20,25 @@ const input =
 /** Ages at which the two curves are compared in the readout. */
 const COMPARE_FRACTIONS = [0.25, 0.5, 0.75, 1];
 
-export function DeteriorationModelEditor({ model }: { model: DeteriorationModelConfig }) {
+export function DeteriorationModelEditor({
+  model,
+  showGraph,
+  onShowGraphChange,
+}: {
+  model: DeteriorationModelConfig;
+  /** Controlled by the list so one button can toggle every curve. */
+  showGraph: boolean;
+  onShowGraphChange: (next: boolean) => void;
+}) {
   const [state, action] = useActionState(saveDeteriorationModelAction, EMPTY_SETTINGS_STATE);
 
   const [draft, setDraft] = useState<CurveParams>(model.curve);
-  const [showGraph, setShowGraph] = useState(false);
 
   const set = (patch: Partial<CurveParams>) => {
     setDraft((prev) => ({ ...prev, ...patch }));
     // Opening the graph on the first edit is the whole point of the preview —
     // otherwise you would change a number and see nothing.
-    setShowGraph(true);
+    onShowGraphChange(true);
   };
 
   const changed = (["initialCondition", "minCondition", "serviceLife", "shape"] as const).some(
@@ -81,7 +89,7 @@ export function DeteriorationModelEditor({ model }: { model: DeteriorationModelC
             <Badge variant={model.isActive ? "default" : "secondary"}>
               {model.isActive ? "Active" : "Inactive"}
             </Badge>
-            <Button type="button" size="sm" variant="outline" onClick={() => setShowGraph((v) => !v)}>
+            <Button type="button" size="sm" variant="outline" onClick={() => onShowGraphChange(!showGraph)}>
               <LineChart className="mr-1 h-3.5 w-3.5" />
               {showGraph ? "Hide curve" : "Show curve"}
             </Button>
