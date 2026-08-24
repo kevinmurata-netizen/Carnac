@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import type { ConfigurationSettings } from "@/server/settings";
-import { saveAssetTypeAction, createAssetTypeAction, saveTemplateAction } from "../actions";
+import { saveAssetTypeAction, createAssetTypeAction, saveTemplateAction, toggleTemplateActiveAction } from "../actions";
+import { ActiveToggle } from "@/components/settings/active-toggle";
 import { EMPTY_SETTINGS_STATE } from "../state";
 import { SaveBar } from "../save-bar";
 import { formatNumber } from "@/lib/format";
@@ -72,9 +73,13 @@ export function TemplateEditor({ template }: { template: Template }) {
       <Card>
         <CardHeader className="flex-row items-start justify-between space-y-0">
           <CardTitle className="text-base">{template.name}</CardTitle>
-          <Badge variant={template.isActive ? "default" : "secondary"}>
-            {template.isActive ? "Active" : "Inactive"}
-          </Badge>
+          <ActiveToggle
+            id={template.id}
+            isActive={template.isActive}
+            action={toggleTemplateActiveAction}
+            activeHint="Click to deactivate — this form stops being offered for new inspections"
+            inactiveHint="Click to activate — this form can be used for new inspections again"
+          />
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
@@ -90,17 +95,6 @@ export function TemplateEditor({ template }: { template: Template }) {
                 defaultValue={template.description ?? ""}
                 className={input}
               />
-            </div>
-            <div className="flex items-end pb-1">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="isActive"
-                  defaultChecked={template.isActive}
-                  className="h-4 w-4 accent-primary"
-                />
-                Active
-              </label>
             </div>
           </div>
           <p className="text-xs text-muted-foreground">

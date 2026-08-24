@@ -12,6 +12,8 @@ import {
   createFailureType,
   updateFailureType,
   deleteFailureType,
+  setDeteriorationModelActive,
+  setInspectionTemplateActive,
 } from "@/server/settings";
 import { updateNavLabels, resetNavLabels } from "@/server/navigation";
 import { createMetric, updateMetric, deleteMetric } from "@/server/metrics";
@@ -135,7 +137,6 @@ export async function saveDeteriorationModelAction(
 
     await updateDeteriorationModel(session.user.organizationId, id, {
       name: String(formData.get("name") ?? ""),
-      isActive: formData.get("isActive") === "on",
       curve: {
         initialCondition: num(formData, "initialCondition"),
         minCondition: num(formData, "minCondition"),
@@ -198,7 +199,6 @@ export async function saveTemplateAction(
     await updateInspectionTemplate(session.user.organizationId, String(formData.get("id") ?? ""), {
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
-      isActive: formData.get("isActive") === "on",
     });
     revalidateAll("/settings/configuration");
     return { status: "success", message: "Inspection template updated." };
@@ -380,4 +380,29 @@ export async function deleteMetricAction(
   } catch (e) {
     return fail(e);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Active toggles
+// ---------------------------------------------------------------------------
+
+/**
+ * These take the desired state as an argument rather than reading a form, so
+ * the badge can be a plain button. A nested <form> inside the curve editor's
+ * form would be invalid HTML and would submit the wrong one.
+ */
+export async function toggleDeteriorationActiveAction(id: string, isActive: boolean) {
+  const session = await requireAdministrator();
+  const name = await setDeteriorationModelActive(session.user.organizationId, id, isActive);
+  revalidateAll("/settings/deterioration-models");
+  return isActive
+    ? `${name} is active again and will shape the next forecast.`
+    : `${name} is inactive — its material now falls back to the default curve.`;
+}
+
+export async function toggleTemplateActiveAction(id: string, isActive: boolean) {
+  const session = await requireAdministrator();
+  const name = await setInspectionTemplateActive(session.user.organizationId, id, isActive);
+  revalidateAll("/settings/configuration", "/inspections");
+  return isActive ? `${name} is active.` : `${name} is inactive and will not be offered for new inspections.`;
 }

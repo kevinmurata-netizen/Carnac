@@ -8,13 +8,14 @@ import { NETWORK_CONDITION_TARGET } from "@/domain/waterline/deterioration";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { formatNumber } from "@/lib/format";
 import { Gauge, LineChart, Target, TrendingDown } from "lucide-react";
 import { ASSET_LABEL } from "@/config/labels";
 import { getPageName } from "@/server/navigation";
+import { ActiveToggle } from "@/components/settings/active-toggle";
+import { toggleDeteriorationActiveAction } from "@/app/(app)/settings/actions";
 import { listDeteriorationModels as listConfiguredCurves } from "@/server/settings";
 import { CurveExplorer } from "./curve-explorer";
 
@@ -35,6 +36,7 @@ export default async function DeteriorationModelsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/deterioration-models", "Deterioration Models");
+  const isAdmin = session!.user.roleName === "Administrator";
 
   const [forecast, models, condition, configured] = await Promise.all([
     getNetworkForecast(organizationId),
@@ -171,7 +173,14 @@ export default async function DeteriorationModelsPage() {
                   </TableCell>
                   <TableCell>{formatNumber(m.predictionCount)}</TableCell>
                   <TableCell>
-                    <Badge variant={m.isActive ? "default" : "secondary"}>{m.isActive ? "Active" : "Inactive"}</Badge>
+                    <ActiveToggle
+                        id={m.id}
+                        isActive={m.isActive}
+                        action={toggleDeteriorationActiveAction}
+                        readOnly={!isAdmin}
+                        activeHint="Click to deactivate — this material falls back to the default curve in every forecast and scenario run"
+                        inactiveHint="Click to activate — this curve shapes forecasts again"
+                      />
                   </TableCell>
                 </TableRow>
               ))}

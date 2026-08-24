@@ -269,7 +269,9 @@ export async function listDeteriorationModels(organizationId: string): Promise<D
 export async function updateDeteriorationModel(
   organizationId: string,
   id: string,
-  input: { name: string; isActive: boolean; curve: CurveParams }
+  // isActive is optional: the badge owns it, so saving the curve form must not
+  // write a stale value back over a toggle made moments earlier.
+  input: { name: string; isActive?: boolean; curve: CurveParams }
 ) {
   if (!input.name.trim()) throw new Error("Model name is required");
   const { initialCondition, minCondition, serviceLife, shape } = input.curve;
@@ -288,7 +290,10 @@ export async function updateDeteriorationModel(
   await prisma.$transaction([
     prisma.deteriorationModel.update({
       where: { id },
-      data: { name: input.name.trim(), isActive: input.isActive },
+      data: {
+        name: input.name.trim(),
+        ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
+      },
     }),
     prisma.deteriorationParameter.deleteMany({ where: { modelId: id } }),
     prisma.deteriorationParameter.createMany({
@@ -386,7 +391,7 @@ export async function createAssetType(
 export async function updateInspectionTemplate(
   organizationId: string,
   id: string,
-  input: { name: string; description: string | null; isActive: boolean }
+  input: { name: string; description: string | null; isActive?: boolean }
 ) {
   if (!input.name.trim()) throw new Error("Template name is required");
   const existing = await prisma.inspectionTemplate.findFirst({
@@ -399,7 +404,7 @@ export async function updateInspectionTemplate(
     data: {
       name: input.name.trim(),
       description: input.description?.trim() || null,
-      isActive: input.isActive,
+      ...(input.isActive === undefined ? {} : { isActive: input.isActive }),
     },
   });
 }
@@ -460,4 +465,32 @@ export async function deleteFailureType(organizationId: string, id: string) {
   }
 
   await prisma.failureType.delete({ where: { id } });
+}
+
+/**
+ * Flip a deterioration model's active flag on its own, without going through
+ * the whole curve form.
+ *
+ * Deactivating takes the model out of every forecast, work plan and scenario
+ * run — getMaterialCurves only reads active models, so its material falls back
+ * to the default curve rather than continuing to shape results invisibly.
+ */
+export async function setDeteriorationModelActive(organizationId: string, id: string, isActive: boolean) {
+  const model = await prisma.deteriorationModel.findFirst({
+    where: { id, assetType: { code: "WATERLINE", organizationId } },
+  });
+  if (!model) throw new Error("Deterioration model not found");
+  await prisma.deteriorationModel.update({ where: { id }, data: { isActive } });
+  return model.name;
+}
+
+/** Flip an inspection template's active flag on its own. Inactive templates are
+ * not offered for new inspections; recorded ones keep their answers. */
+export async function setInspectionTemplateActive(organizationId: string, id: string, isActive: boolean) {
+  const template = await prisma.inspectionTemplate.findFirst({
+    where: { id, assetType: { organizationId } },
+  });
+  if (!template) throw new Error("Inspection template not found");
+  await prisma.inspectionTemplate.update({ where: { id }, data: { isActive } });
+  return template.name;
 }

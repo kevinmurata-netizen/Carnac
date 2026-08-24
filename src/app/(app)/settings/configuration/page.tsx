@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { AssetTypeEditor, TemplateEditor, NewAssetTypeForm } from "./editor";
 import { formatNumber } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
+import { ActiveToggle } from "@/components/settings/active-toggle";
+import { toggleTemplateActiveAction } from "../actions";
 
 export default async function ConfigurationPage() {
   const session = await auth();
@@ -63,7 +65,7 @@ export default async function ConfigurationPage() {
             <Card key={t.id}>
               <CardContent className="flex flex-wrap items-center gap-3 py-4 text-sm">
                 <span className="font-medium text-foreground">{t.name}</span>
-                <Badge variant={t.isActive ? "default" : "secondary"}>{t.isActive ? "Active" : "Inactive"}</Badge>
+                <ActiveToggle id={t.id} isActive={t.isActive} action={toggleTemplateActiveAction} readOnly />
                 <span className="text-xs text-muted-foreground">
                   {formatNumber(t.fieldCount)} fields · {formatNumber(t.inspectionCount)} inspections
                 </span>
