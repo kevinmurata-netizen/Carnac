@@ -84,6 +84,7 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
       ["/administration/fields", "fields"],
       ["/administration/import", "import"],
       ["/administration/activity", "activity"],
+      ["/administration/wishlist", "wishlist"],
     ].map(([href, segment]) => resolve(href, SEGMENT_LABELS[segment] ?? segment)),
   });
 

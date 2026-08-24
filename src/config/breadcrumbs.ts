@@ -36,6 +36,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   fields: "Fields",
   import: "Data Import",
   activity: "Activity & Audit",
+  wishlist: "Wishlist",
 
   failures: "Failures",
   new: "New",
