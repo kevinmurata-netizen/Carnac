@@ -7,14 +7,26 @@ import { NAV_GROUPS } from "@/config/nav";
 import { PRODUCT_TAGLINE } from "@/config/labels";
 import { Droplets } from "lucide-react";
 
-/** `overrides` maps href -> renamed label, from Settings -> Navigation. The
- * sidebar is a client component, so the server layout passes them in. */
-export function SidebarNav({ overrides = {} }: { overrides?: Record<string, string> }) {
+/**
+ * The navigation itself, with no opinion about how it is displayed. The app
+ * shell renders it inside the fixed sidebar on wide screens and inside the
+ * slide-over drawer on narrow ones, so both stay in step from one definition.
+ *
+ * `overrides` maps href -> renamed label, from Settings → Navigation.
+ * `onNavigate` lets the drawer close itself when a link is followed.
+ */
+export function SidebarNav({
+  overrides = {},
+  onNavigate,
+}: {
+  overrides?: Record<string, string>;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
-      <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-5">
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+      <div className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-5">
         <Droplets className="h-6 w-6 text-sidebar-primary" />
         <span className="text-lg font-semibold tracking-tight">CARNAC</span>
       </div>
@@ -32,10 +44,11 @@ export function SidebarNav({ overrides = {} }: { overrides?: Record<string, stri
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      onClick={onNavigate}
                       className={cn(
                         "flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors",
                         active
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                          ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
                           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                       )}
                     >
@@ -57,6 +70,6 @@ export function SidebarNav({ overrides = {} }: { overrides?: Record<string, stri
       <div className="border-t border-sidebar-border px-5 py-3 text-[11px] text-sidebar-foreground/40">
         {PRODUCT_TAGLINE}
       </div>
-    </aside>
+    </div>
   );
 }
