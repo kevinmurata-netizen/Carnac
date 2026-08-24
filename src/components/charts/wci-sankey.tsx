@@ -105,6 +105,12 @@ export function WciSankey({ nodes, links }: { nodes: WciFlowNode[]; links: WciFl
       <Sankey
         data={data}
         nodePadding={26}
+        // Recharts relaxes node positions to minimise ribbon crossings, which
+        // reshuffles the bands into different orders on each side. Zero
+        // iterations keeps them in the order supplied — best band at the top,
+        // worst at the bottom, identically on both sides — so a band lines up
+        // with itself and the eye can read movement as vertical travel.
+        iterations={0}
         nodeWidth={14}
         margin={{ top: 10, right: 150, bottom: 10, left: 110 }}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
