@@ -90,8 +90,8 @@ condition scores, risk assessments, treatments and baseline scenarios.
 
 1. **Add New → Project**, import the GitHub repo. Vercel detects Next.js; leave
    the build settings alone. The `vercel-build` script in `package.json` is
-   picked up automatically and runs `prisma generate && prisma migrate deploy &&
-   next build`, so schema changes apply themselves on every deploy.
+   picked up automatically and runs `prisma generate && next build`. It does **not**
+   touch the database — see Schema changes below for why.
 2. Add three **Environment Variables**:
 
    | Name | Value |
@@ -143,6 +143,32 @@ $env:DATABASE_URL = "<neon-pooled-url>"; npm run user:password -- admin@carnac.l
 
 ---
 
+## Schema changes
+
+Builds deliberately do **not** run migrations. They used to, and it broke:
+when a preview and a production build overlap, both run `prisma migrate
+deploy` against the same database, the second waits on the first's advisory
+lock and fails with `P1002` after 10 seconds. A deploy should not be able to
+fail because another deploy was in flight, or because Neon was waking up.
+
+So when you change `schema.prisma`, apply it yourself **before** pushing:
+
+```powershell
+cd C:\Users\KevinMurata\Desktop\carnac
+```
+
+```powershell
+$env:DATABASE_URL = "<neon-pooled-url>"; npm run db:deploy
+```
+
+Then push. Order matters: the new code expects the new columns, so migrating
+after deploying leaves a window where the live site queries columns that do
+not exist yet.
+
+Code-only changes — the vast majority — need none of this. Just push.
+
+---
+
 ## Continuing to develop
 
 Keep working locally as usual. To publish:
@@ -151,7 +177,7 @@ Keep working locally as usual. To publish:
 git push
 ```
 
-Vercel rebuilds and migrates automatically.
+Vercel rebuilds and redeploys. It does not migrate — see Schema changes above.
 
 **To avoid disrupting a review in progress**, work on a branch:
 
@@ -173,8 +199,8 @@ URL your coworker uses; merge when you want them to see the change.
 | Used by | `npm run dev` | the deployed site |
 | Safe to wipe | yes | **no** — holds your coworker's session and any changes they make |
 
-Schema migrations apply to Neon automatically on deploy. Re-running the **seed**
-against Neon is the destructive one: it would discard anything they had changed.
+Re-running the **seed** against Neon is the destructive one: it would discard
+anything they had changed.
 
 ---
 
