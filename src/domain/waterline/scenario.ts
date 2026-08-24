@@ -120,6 +120,19 @@ export type ScenarioRunResult = {
   finalAvgCondition: number;
   finalBacklog: number;
   totalFailures: number;
+  /** Where each asset started and ended, so a run can be shown as a flow
+   * between condition bands rather than only as yearly averages. */
+  assetOutcomes: AssetOutcome[];
+};
+
+export type AssetOutcome = {
+  assetId: string;
+  assetCode: string;
+  material: string | null;
+  startCondition: number;
+  endCondition: number;
+  /** How many times this asset was treated over the period. */
+  treatments: number;
 };
 
 /** `curves` is injected so forecasts run against the deterioration models
@@ -270,6 +283,8 @@ export function runScenario(
 ): ScenarioRunResult {
   // Work on copies so a scenario run never mutates caller state.
   const state: SimAsset[] = assets.map((a) => ({ ...a }));
+  const startCondition = new Map(assets.map((a) => [a.id, a.condition]));
+  const treatmentCount = new Map<string, number>();
   const startYear = new Date().getFullYear();
   const years: ScenarioYearResult[] = [];
 
@@ -300,6 +315,7 @@ export function runScenario(
       if (spend + candidate.cost > budget) continue; // skip; may fit a cheaper one
       spend += candidate.cost;
       treatedCount++;
+      treatmentCount.set(candidate.asset.id, (treatmentCount.get(candidate.asset.id) ?? 0) + 1);
       treated.add(candidate.asset.id);
       selected.push({
         assetId: candidate.asset.id,
@@ -374,6 +390,14 @@ export function runScenario(
     finalAvgCondition: last?.avgCondition ?? 0,
     finalBacklog: last?.backlog ?? 0,
     totalFailures: Math.round(totalFailures),
+    assetOutcomes: state.map((a) => ({
+      assetId: a.id,
+      assetCode: a.assetCode,
+      material: a.material,
+      startCondition: Math.round((startCondition.get(a.id) ?? a.condition) * 10) / 10,
+      endCondition: Math.round(a.condition * 10) / 10,
+      treatments: treatmentCount.get(a.id) ?? 0,
+    })),
   };
 }
 
