@@ -21,6 +21,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "work-plan": "Work Plan",
   "model-results": "Model Results",
   reports: "Reports",
+  filters: "Filters",
 
   settings: "Settings",
   "condition-index": "Condition Index",
