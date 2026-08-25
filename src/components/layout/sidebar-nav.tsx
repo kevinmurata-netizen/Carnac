@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS } from "@/config/nav";
+import { groupKey } from "@/config/nav-groups";
 import { PRODUCT_TAGLINE } from "@/config/labels";
 import { Droplets } from "lucide-react";
 
@@ -35,9 +36,9 @@ export function SidebarNav({
         {NAV_GROUPS.map((group) => (
           <div key={group.label} className="mb-5">
             <div className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
-              {group.label}
+              {overrides[groupKey(group.label)] ?? group.label}
             </div>
-            <ul className="space-y-0.5">
+            <ul className="ml-3 space-y-0.5 border-l border-sidebar-border/60 pl-2">
               {group.items.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(item.href + "/");
                 return (

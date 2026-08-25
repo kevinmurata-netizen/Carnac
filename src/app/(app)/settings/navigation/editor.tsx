@@ -45,7 +45,9 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
                   <div key={item.href} className="grid grid-cols-12 items-center gap-3">
                     <div className="col-span-12 min-w-0 sm:col-span-5">
                       <div className="truncate text-sm text-foreground">{item.defaultLabel}</div>
-                      <div className="truncate font-mono text-xs text-muted-foreground">{item.href}</div>
+                      <div className="truncate font-mono text-xs text-muted-foreground">
+                        {item.href.startsWith("group:") ? "sidebar section" : item.href}
+                      </div>
                     </div>
                     <div className="col-span-9 sm:col-span-5">
                       <input

@@ -20,7 +20,7 @@ const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
 export default async function TreatmentsAdminPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const pageTitle = await getPageName(organizationId, "/settings/treatments", "Treatments");
+  const pageTitle = await getPageName(organizationId, "/settings/treatments", "Treatments and Costs");
   const isAdmin = session!.user.roleName === "Administrator";
 
   const treatments = await listTreatmentsForAdmin(organizationId);
