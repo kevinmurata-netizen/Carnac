@@ -26,6 +26,7 @@ export const TAB_FOR_PATH: Record<string, SettingsTab> = {
 
   "/administration/users": ADMINISTRATION,
   "/administration/wishlist": ADMINISTRATION,
+  "/settings/build-log": ADMINISTRATION,
 
   "/settings/database": DATABASE,
   "/administration/fields": DATABASE,
@@ -36,6 +37,7 @@ export const TAB_FOR_PATH: Record<string, SettingsTab> = {
   "/settings/treatments": MODELING,
   "/settings/deterioration-models": MODELING,
   "/settings/risk-models": MODELING,
+  "/settings/decision-trees": MODELING,
   "/settings/failure-types": MODELING,
 };
 

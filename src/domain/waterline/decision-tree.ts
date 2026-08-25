@@ -1,5 +1,5 @@
 /**
- * Decision trees for treatment applicability.
+ * Decision trees for treatment qualification.
  *
  * A treatment's condition/material/diameter window says whether it is
  * *technically* possible. A decision tree says whether it should be
@@ -7,10 +7,12 @@
  * enough customers to justify the bypass", "never upsize unless there is a
  * capacity trigger".
  *
- * The tree is a plain binary tree so evaluation is deterministic and the path
- * taken can be replayed back to the user. That matters: §32 requires every
- * recommendation be explainable, and a rule that silently excluded a
- * treatment would be exactly the kind of hidden reasoning that forbids.
+ * A tree is a group of conditions joined by AND or OR, and a group may hold
+ * further groups, so precedence is explicit in the structure rather than
+ * implied by an operator ranking nobody can see. Evaluation is deterministic
+ * and returns a trace of every test taken: §32 requires every recommendation
+ * be explainable, and a rule that silently excluded a treatment would be
+ * exactly the kind of hidden reasoning that forbids.
  */
 
 export type DecisionField =
@@ -26,10 +28,6 @@ export type DecisionField =
   | "failuresLast10Years"
   | "material"
   | "criticality";
-
-export type NumericOperator = "<" | "<=" | ">" | ">=" | "==" | "!=";
-export type SetOperator = "in" | "not in";
-export type DecisionOperator = NumericOperator | SetOperator;
 
 export const NUMERIC_FIELDS: DecisionField[] = [
   "condition",
@@ -61,25 +59,9 @@ export const FIELD_LABELS: Record<DecisionField, string> = {
   criticality: "Criticality",
 };
 
-export type DecisionLeaf = {
-  kind: "leaf";
-  id: string;
-  /** Whether the treatment should be considered when evaluation lands here. */
-  consider: boolean;
-  note?: string;
-};
-
-export type DecisionBranch = {
-  kind: "branch";
-  id: string;
-  field: DecisionField;
-  operator: DecisionOperator;
-  value: number | string | string[];
-  whenTrue: DecisionNode;
-  whenFalse: DecisionNode;
-};
-
-export type DecisionNode = DecisionLeaf | DecisionBranch;
+export function fieldType(field: DecisionField): "number" | "text" {
+  return NUMERIC_FIELDS.includes(field) ? "number" : "text";
+}
 
 /** Inputs a tree can test. Mirrors AssetTreatmentContext, flattened. */
 export type DecisionInput = {
@@ -97,149 +79,427 @@ export type DecisionInput = {
   criticality: string | null;
 };
 
-export type DecisionOutcome = {
-  consider: boolean;
-  /** Human-readable trace of every test taken, for explainability. */
-  path: string[];
-  /** Note from the leaf that decided it, when present. */
-  note?: string;
+// ---------------------------------------------------------------------------
+// Operators
+// ---------------------------------------------------------------------------
+
+export type Comparator =
+  | "eq"
+  | "ne"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "in"
+  | "notIn"
+  | "isEmpty"
+  | "notEmpty";
+
+export type OperatorDef = {
+  key: Comparator;
+  label: string;
+  types: Array<"number" | "text">;
+  /** How many value inputs the condition needs. */
+  values: 0 | 1 | 2;
 };
 
-export function newLeafId(): string {
+export const OPERATORS: OperatorDef[] = [
+  { key: "eq", label: "is", types: ["number", "text"], values: 1 },
+  { key: "ne", label: "is not", types: ["number", "text"], values: 1 },
+  { key: "gt", label: "is greater than", types: ["number"], values: 1 },
+  { key: "gte", label: "is at least", types: ["number"], values: 1 },
+  { key: "lt", label: "is less than", types: ["number"], values: 1 },
+  { key: "lte", label: "is at most", types: ["number"], values: 1 },
+  { key: "between", label: "is between", types: ["number"], values: 2 },
+  { key: "in", label: "is one of", types: ["number", "text"], values: 1 },
+  { key: "notIn", label: "is not one of", types: ["number", "text"], values: 1 },
+  { key: "isEmpty", label: "has no value", types: ["number", "text"], values: 0 },
+  { key: "notEmpty", label: "has a value", types: ["number", "text"], values: 0 },
+];
+
+export function operatorsFor(field: DecisionField): OperatorDef[] {
+  const type = fieldType(field);
+  return OPERATORS.filter((o) => o.types.includes(type));
+}
+
+export function operatorDef(key: Comparator): OperatorDef | undefined {
+  return OPERATORS.find((o) => o.key === key);
+}
+
+// ---------------------------------------------------------------------------
+// The tree
+// ---------------------------------------------------------------------------
+
+export type Join = "AND" | "OR";
+
+export type Condition = {
+  kind: "condition";
+  id: string;
+  field: DecisionField;
+  operator: Comparator;
+  /** Kept as entered. Coerced at evaluation according to the field's type, so
+   * the stored rule reads the way it was written. */
+  value?: string;
+  /** Upper bound, for `between`. */
+  value2?: string;
+};
+
+export type Group = {
+  kind: "group";
+  id: string;
+  join: Join;
+  children: TreeNode[];
+};
+
+export type TreeNode = Condition | Group;
+
+export type DecisionTree = {
+  id: string;
+  name: string;
+  description?: string;
+  /** A disabled tree is kept but takes no part in qualification, so a rule can
+   * be parked without being lost. */
+  enabled: boolean;
+  root: Group;
+};
+
+/** How a treatment's trees combine. "any" reads each tree as an alternative
+ * route to qualifying; "all" reads each as a separate gate every asset must
+ * clear. */
+export type QualifyMode = "any" | "all";
+
+export function newId(): string {
   return `n${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function defaultTree(): DecisionNode {
-  return { kind: "leaf", id: newLeafId(), consider: true };
+export function emptyGroup(join: Join = "AND"): Group {
+  return { kind: "group", id: newId(), join, children: [] };
 }
 
-function describeValue(value: number | string | string[]): string {
-  return Array.isArray(value) ? value.join(", ") : String(value);
+export function newCondition(field: DecisionField = "condition"): Condition {
+  return { kind: "condition", id: newId(), field, operator: fieldType(field) === "number" ? "lt" : "eq", value: "" };
 }
 
-export function describeTest(node: DecisionBranch): string {
-  return `${FIELD_LABELS[node.field]} ${node.operator} ${describeValue(node.value)}`;
+export function newTree(name: string): DecisionTree {
+  return { id: newId(), name, enabled: true, root: emptyGroup("AND") };
 }
 
-function compare(actual: number | string | null, operator: DecisionOperator, value: number | string | string[]): boolean {
-  if (operator === "in" || operator === "not in") {
-    const list = (Array.isArray(value) ? value : String(value).split(",")).map((v) => String(v).trim());
-    const hit = actual != null && list.includes(String(actual));
-    return operator === "in" ? hit : !hit;
+// ---------------------------------------------------------------------------
+// Evaluation
+// ---------------------------------------------------------------------------
+
+export type Trace = {
+  label: string;
+  pass: boolean;
+  /** Present on conditions: what the asset actually held. */
+  observed?: string;
+  children?: Trace[];
+};
+
+export type TreeOutcome = { pass: boolean; trace: Trace };
+
+function describeValue(condition: Condition): string {
+  const def = operatorDef(condition.operator);
+  if (!def || def.values === 0) return "";
+  if (def.values === 2) return `${condition.value ?? "?"} and ${condition.value2 ?? "?"}`;
+  return condition.value ?? "";
+}
+
+export function describeCondition(condition: Condition): string {
+  const label = FIELD_LABELS[condition.field] ?? condition.field;
+  const op = operatorDef(condition.operator)?.label ?? condition.operator;
+  const value = describeValue(condition);
+  return value ? `${label} ${op} ${value}` : `${label} ${op}`;
+}
+
+/** Human-readable rendering of a whole tree, for summaries and traces. */
+export function describeNode(node: TreeNode): string {
+  if (node.kind === "condition") return describeCondition(node);
+  if (node.children.length === 0) return "no conditions";
+  const parts = node.children.map((c) => (c.kind === "group" && c.children.length > 1 ? `(${describeNode(c)})` : describeNode(c)));
+  return parts.join(node.join === "AND" ? " and " : " or ");
+}
+
+function observedOf(input: DecisionInput, field: DecisionField): number | string | null {
+  const value = input[field];
+  return value == null || value === "" ? null : (value as number | string);
+}
+
+function evaluateCondition(condition: Condition, input: DecisionInput): Trace {
+  const observed = observedOf(input, condition.field);
+  const type = fieldType(condition.field);
+  const shown = observed == null ? "no value" : String(observed);
+
+  const done = (pass: boolean): Trace => ({ label: describeCondition(condition), pass, observed: shown });
+
+  if (condition.operator === "isEmpty") return done(observed == null);
+  if (condition.operator === "notEmpty") return done(observed != null);
+
+  // A segment with no recorded value fails every remaining test. Treating a
+  // missing value as zero would make "condition is less than 25" true for
+  // every never-inspected segment, quietly recommending capital work off data
+  // that does not exist.
+  if (observed == null) return done(false);
+
+  if (condition.operator === "in" || condition.operator === "notIn") {
+    const list = String(condition.value ?? "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    const hit = list.some((v) => (type === "number" ? Number(v) === Number(observed) : v === String(observed)));
+    return done(condition.operator === "in" ? hit : !hit);
   }
 
-  // An unknown input cannot satisfy a numeric comparison. Treating null as 0
-  // would silently make "condition < 25" true for never-inspected assets.
-  if (actual == null) return false;
-
-  const a = typeof actual === "number" ? actual : String(actual);
-  const b = typeof actual === "number" ? Number(value) : String(value);
-  if (typeof a === "number" && Number.isNaN(b as number)) return false;
-
-  switch (operator) {
-    case "<":
-      return a < b;
-    case "<=":
-      return a <= b;
-    case ">":
-      return a > b;
-    case ">=":
-      return a >= b;
-    case "==":
-      return a === b;
-    case "!=":
-      return a !== b;
-    default:
-      return false;
-  }
-}
-
-export function evaluateTree(node: DecisionNode | null | undefined, input: DecisionInput): DecisionOutcome {
-  // No tree means no extra policy gate — the treatment is considered.
-  if (!node) return { consider: true, path: [] };
-
-  const path: string[] = [];
-  let current: DecisionNode = node;
-  // Depth guard: a hand-edited tree could in principle be malformed.
-  for (let depth = 0; depth < 64; depth++) {
-    if (current.kind === "leaf") {
-      return { consider: current.consider, path, note: current.note };
+  if (type === "text") {
+    const a = String(observed);
+    const b = String(condition.value ?? "");
+    switch (condition.operator) {
+      case "eq":
+        return done(a === b);
+      case "ne":
+        return done(a !== b);
+      default:
+        return done(false);
     }
-    const actual = input[current.field] as number | string | null;
-    const result = compare(actual, current.operator, current.value);
-    path.push(
-      `${describeTest(current)} → ${result ? "yes" : "no"} (observed ${actual ?? "unknown"})`
-    );
-    current = result ? current.whenTrue : current.whenFalse;
   }
-  return { consider: true, path: [...path, "stopped: tree nested too deeply"] };
-}
 
-/** Split a leaf into a branch, keeping the old leaf on the true side. */
-export function splitLeaf(tree: DecisionNode, leafId: string, test: Omit<DecisionBranch, "kind" | "id" | "whenTrue" | "whenFalse">): DecisionNode {
-  return mapNode(tree, (node) => {
-    if (node.id !== leafId || node.kind !== "leaf") return node;
-    return {
-      kind: "branch",
-      id: newLeafId(),
-      ...test,
-      whenTrue: { ...node, id: newLeafId() },
-      whenFalse: { kind: "leaf", id: newLeafId(), consider: !node.consider },
-    };
-  });
-}
+  const a = Number(observed);
+  const b = Number(condition.value);
+  if (Number.isNaN(b)) return done(false);
 
-/** Collapse a branch back to a single leaf, discarding both subtrees. */
-export function collapseBranch(tree: DecisionNode, branchId: string): DecisionNode {
-  if (tree.kind === "branch" && tree.id === branchId) {
-    return { kind: "leaf", id: newLeafId(), consider: true };
+  switch (condition.operator) {
+    case "eq":
+      return done(a === b);
+    case "ne":
+      return done(a !== b);
+    case "gt":
+      return done(a > b);
+    case "gte":
+      return done(a >= b);
+    case "lt":
+      return done(a < b);
+    case "lte":
+      return done(a <= b);
+    case "between": {
+      const c = Number(condition.value2);
+      if (Number.isNaN(c)) return done(false);
+      // Written either way round: "between 20 and 5" means the same window.
+      const [lo, hi] = b <= c ? [b, c] : [c, b];
+      return done(a >= lo && a <= hi);
+    }
+    default:
+      return done(false);
   }
-  return mapNode(tree, (node) => {
-    if (node.id !== branchId || node.kind !== "branch") return node;
-    return { kind: "leaf", id: newLeafId(), consider: true };
-  });
 }
 
-export function updateNode(
-  tree: DecisionNode,
-  nodeId: string,
-  patch: Partial<DecisionBranch> & Partial<DecisionLeaf>
-): DecisionNode {
-  return mapNode(tree, (node) =>
-    node.id === nodeId ? ({ ...node, ...(patch as object) } as DecisionNode) : node
-  );
+function evaluateNode(node: TreeNode, input: DecisionInput, depth = 0): Trace {
+  if (depth > 32) return { label: "stopped: nested too deeply", pass: true };
+  if (node.kind === "condition") return evaluateCondition(node, input);
+
+  const children = node.children.map((c) => evaluateNode(c, input, depth + 1));
+
+  // A group with nothing in it constrains nothing, so it passes. That makes a
+  // half-built rule permissive rather than silently excluding every asset.
+  const pass =
+    children.length === 0 ? true : node.join === "AND" ? children.every((c) => c.pass) : children.some((c) => c.pass);
+
+  return { label: node.join === "AND" ? "All of" : "Any of", pass, children };
 }
 
-function mapNode(node: DecisionNode, fn: (n: DecisionNode) => DecisionNode): DecisionNode {
+export function evaluateTree(tree: DecisionTree, input: DecisionInput): TreeOutcome {
+  const trace = evaluateNode(tree.root, input);
+  return { pass: trace.pass, trace };
+}
+
+/**
+ * Whether an asset qualifies under a treatment's trees.
+ *
+ * No trees, or none enabled, means no policy gate at all — the treatment is
+ * considered on its technical window alone.
+ */
+export function qualifies(
+  trees: DecisionTree[],
+  mode: QualifyMode,
+  input: DecisionInput
+): { pass: boolean; results: Array<{ tree: DecisionTree; outcome: TreeOutcome }> } {
+  const active = trees.filter((t) => t.enabled);
+  if (active.length === 0) return { pass: true, results: [] };
+
+  const results = active.map((tree) => ({ tree, outcome: evaluateTree(tree, input) }));
+  const pass = mode === "all" ? results.every((r) => r.outcome.pass) : results.some((r) => r.outcome.pass);
+  return { pass, results };
+}
+
+export function countConditions(node: TreeNode): number {
+  if (node.kind === "condition") return 1;
+  return node.children.reduce((sum, c) => sum + countConditions(c), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Structural editing. Every operation returns a new tree.
+// ---------------------------------------------------------------------------
+
+function mapGroup(node: TreeNode, fn: (g: Group) => Group): TreeNode {
+  if (node.kind === "condition") return node;
   const mapped = fn(node);
-  if (mapped.kind === "branch") {
-    return {
-      ...mapped,
-      whenTrue: mapNode(mapped.whenTrue, fn),
-      whenFalse: mapNode(mapped.whenFalse, fn),
-    };
-  }
-  return mapped;
+  return { ...mapped, children: mapped.children.map((c) => mapGroup(c, fn)) };
 }
 
-export function countLeaves(node: DecisionNode): number {
-  return node.kind === "leaf" ? 1 : countLeaves(node.whenTrue) + countLeaves(node.whenFalse);
+export function addToGroup(root: Group, groupId: string, child: TreeNode): Group {
+  return mapGroup(root, (g) => (g.id === groupId ? { ...g, children: [...g.children, child] } : g)) as Group;
 }
 
-/** Structural validation of a tree parsed from stored JSON. */
-export function isValidTree(value: unknown, depth = 0): value is DecisionNode {
-  if (depth > 64 || !value || typeof value !== "object") return false;
+export function removeNode(root: Group, nodeId: string): Group {
+  return mapGroup(root, (g) => ({ ...g, children: g.children.filter((c) => c.id !== nodeId) })) as Group;
+}
+
+export function updateCondition(root: Group, conditionId: string, patch: Partial<Condition>): Group {
+  const walk = (node: TreeNode): TreeNode => {
+    if (node.kind === "condition") return node.id === conditionId ? { ...node, ...patch } : node;
+    return { ...node, children: node.children.map(walk) };
+  };
+  return walk(root) as Group;
+}
+
+export function setGroupJoin(root: Group, groupId: string, join: Join): Group {
+  return mapGroup(root, (g) => (g.id === groupId ? { ...g, join } : g)) as Group;
+}
+
+// ---------------------------------------------------------------------------
+// Validation of anything parsed from stored JSON
+// ---------------------------------------------------------------------------
+
+const COMPARATORS = new Set<string>(OPERATORS.map((o) => o.key));
+const FIELDS = new Set<string>(Object.keys(FIELD_LABELS));
+
+export function isValidNode(value: unknown, depth = 0): value is TreeNode {
+  if (depth > 32 || !value || typeof value !== "object") return false;
   const node = value as Record<string, unknown>;
-  if (node.kind === "leaf") return typeof node.consider === "boolean" && typeof node.id === "string";
-  if (node.kind === "branch") {
+
+  if (node.kind === "condition") {
     return (
       typeof node.id === "string" &&
       typeof node.field === "string" &&
+      FIELDS.has(node.field) &&
       typeof node.operator === "string" &&
-      node.value !== undefined &&
-      isValidTree(node.whenTrue, depth + 1) &&
-      isValidTree(node.whenFalse, depth + 1)
+      COMPARATORS.has(node.operator)
     );
   }
+
+  if (node.kind === "group") {
+    return (
+      typeof node.id === "string" &&
+      (node.join === "AND" || node.join === "OR") &&
+      Array.isArray(node.children) &&
+      node.children.every((c) => isValidNode(c, depth + 1))
+    );
+  }
+
   return false;
+}
+
+export function isValidTree(value: unknown): value is DecisionTree {
+  if (!value || typeof value !== "object") return false;
+  const tree = value as Record<string, unknown>;
+  return (
+    typeof tree.id === "string" &&
+    typeof tree.name === "string" &&
+    tree.name.trim().length > 0 &&
+    typeof tree.enabled === "boolean" &&
+    isValidNode(tree.root) &&
+    (tree.root as Record<string, unknown>).kind === "group"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Migration from the original binary decision tree
+// ---------------------------------------------------------------------------
+
+type LegacyNode =
+  | { kind: "leaf"; consider: boolean; note?: string }
+  | { kind: "branch"; field: string; operator: string; value: unknown; whenTrue: LegacyNode; whenFalse: LegacyNode };
+
+const LEGACY_OPERATORS: Record<string, Comparator> = {
+  "<": "lt",
+  "<=": "lte",
+  ">": "gt",
+  ">=": "gte",
+  "==": "eq",
+  "!=": "ne",
+  in: "in",
+  "not in": "notIn",
+};
+
+/** The negation of a comparator, for the branch a legacy tree took when its
+ * test was false. */
+const NEGATED: Partial<Record<Comparator, Comparator>> = {
+  lt: "gte",
+  lte: "gt",
+  gt: "lte",
+  gte: "lt",
+  eq: "ne",
+  ne: "eq",
+  in: "notIn",
+  notIn: "in",
+};
+
+/**
+ * Converts a binary decision tree into the grouped form.
+ *
+ * Every root-to-leaf path ending in "consider" becomes one AND group, and
+ * those groups are OR'd together — the tree's disjunctive normal form, which
+ * is exact rather than approximate. A test taken down the false branch is
+ * recorded as its negation, so the converted rule accepts precisely the assets
+ * the original did.
+ */
+export function fromLegacyTree(value: unknown, name: string): DecisionTree | null {
+  if (!value || typeof value !== "object") return null;
+
+  const paths: Condition[][] = [];
+
+  const walk = (node: LegacyNode, taken: Condition[]): void => {
+    if (node.kind === "leaf") {
+      if (node.consider) paths.push(taken);
+      return;
+    }
+    const base = LEGACY_OPERATORS[node.operator];
+    if (!base || !FIELDS.has(node.field)) return;
+
+    const raw = Array.isArray(node.value) ? node.value.join(", ") : String(node.value);
+    const field = node.field as DecisionField;
+
+    walk(node.whenTrue, [...taken, { kind: "condition", id: newId(), field, operator: base, value: raw }]);
+
+    const inverse = NEGATED[base];
+    if (inverse) {
+      walk(node.whenFalse, [...taken, { kind: "condition", id: newId(), field, operator: inverse, value: raw }]);
+    }
+  };
+
+  try {
+    walk(value as LegacyNode, []);
+  } catch {
+    return null;
+  }
+
+  if (paths.length === 0) return null;
+
+  // A single path needs no wrapping OR; its conditions sit straight in the root.
+  const root: Group =
+    paths.length === 1
+      ? { kind: "group", id: newId(), join: "AND", children: paths[0] }
+      : {
+          kind: "group",
+          id: newId(),
+          join: "OR",
+          children: paths.map((conditions) => ({
+            kind: "group" as const,
+            id: newId(),
+            join: "AND" as const,
+            children: conditions,
+          })),
+        };
+
+  return { id: newId(), name, description: "Converted from the original decision tree", enabled: true, root };
 }

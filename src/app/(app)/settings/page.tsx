@@ -6,6 +6,8 @@ import { getConditionModelConfig, getRiskModelConfig, listDeteriorationModels } 
 import { listRenameablePages, getPageName } from "@/server/navigation";
 import { getWishlistSummary } from "@/server/wishlist";
 import { listSavedFilters } from "@/server/saved-filters";
+import { listTreatmentTrees } from "@/server/decision-trees";
+import { ENTRIES, latestEntry } from "@/content/build-log";
 import { ASSET_LABEL } from "@/config/labels";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,12 +19,14 @@ import {
   Database,
   FileUp,
   Filter,
+  GitBranch,
   Gauge,
   Layers,
   Palette,
   ListChecks,
   ListTodo,
   ShieldAlert,
+  ScrollText,
   ShieldCheck,
   TrendingDown,
   Users,
@@ -57,7 +61,7 @@ export default async function SettingsPage({
 
   const active: TabKey = TABS.some((t) => t.key === tab) ? (tab as TabKey) : "general";
 
-  const [config, conditionModel, riskModel, deterioration, navSections, title, users, wishlist, filters] =
+  const [config, conditionModel, riskModel, deterioration, navSections, title, users, wishlist, filters, trees] =
     await Promise.all([
       getConfigSummary(organizationId),
       getConditionModelConfig(organizationId),
@@ -68,12 +72,16 @@ export default async function SettingsPage({
       listUsers(organizationId),
       getWishlistSummary(organizationId),
       listSavedFilters(organizationId),
+      listTreatmentTrees(organizationId),
     ]);
 
   const navItems = navSections.flatMap((s) => s.items);
   const renamedCount = navItems.filter((i) => i.renamed).length;
   const name = (href: string, fallback: string) => navItems.find((i) => i.href === href)?.label ?? fallback;
   const activeCurves = deterioration.filter((d) => d.isActive).length;
+  const treatmentsWithTrees = trees.filter((t) => t.trees.some((tree) => tree.enabled)).length;
+  const buildEntries = ENTRIES.length;
+  const latest = latestEntry();
 
   return (
     <div>
@@ -180,6 +188,17 @@ export default async function SettingsPage({
               }
               detail="A shared list anyone signed in can add to, tick off or edit."
             />
+            <SettingCard
+              href="/settings/build-log"
+              icon={<ScrollText className="h-5 w-5" />}
+              title={name("/settings/build-log", "Build Log")}
+              summary={
+                latest
+                  ? `${formatNumber(buildEntries)} entries · latest ${latest.title.toLowerCase()}`
+                  : "What has changed and when"
+              }
+              detail="Written alongside each change, so it never drifts from what is actually deployed."
+            />
           </>
         )}
 
@@ -233,7 +252,18 @@ export default async function SettingsPage({
               icon={<Wrench className="h-5 w-5" />}
               title={name("/settings/treatments", "Treatments and Costs")}
               summary={`${formatNumber(config.treatments.length)} treatments in the library`}
-              detail="Unit costs, mobilization and maintenance, condition and risk effects, applicability rules and decision trees."
+              detail="Unit costs, mobilization and maintenance, condition and risk effects, and applicability rules."
+            />
+            <SettingCard
+              href="/settings/decision-trees"
+              icon={<GitBranch className="h-5 w-5" />}
+              title={name("/settings/decision-trees", "Decision Trees")}
+              summary={
+                treatmentsWithTrees === 0
+                  ? "No qualification rules configured"
+                  : `${treatmentsWithTrees} of ${formatNumber(config.treatments.length)} treatments gated`
+              }
+              detail="Grouped AND/OR rules deciding whether an asset qualifies for a treatment, on top of its technical window."
             />
             <SettingCard
               href="/settings/deterioration-models"
