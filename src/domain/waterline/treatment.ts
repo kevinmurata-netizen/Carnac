@@ -10,7 +10,7 @@
 // administrators can retune applicability/cost/effects without code changes.
 
 import { ASSET_LABEL } from "@/config/labels";
-import { evaluateTree, type DecisionNode, type DecisionInput } from "./decision-tree";
+import { qualifies, type DecisionTree, type QualifyMode, type DecisionInput } from "./decision-tree";
 
 export type TreatmentCategory = "Assess" | "Repair" | "Rehabilitate" | "Renew" | "Retire";
 
@@ -40,7 +40,10 @@ export type TreatmentDef = {
   implementationConstraints?: string;
   /** Optional policy gate on top of the technical window. When present, the
    * treatment is only considered if the tree evaluates to "consider". */
-  decisionTree?: DecisionNode | null;
+  /** Policy gates on top of the technical window. Empty means no gate. */
+  decisionTrees?: DecisionTree[];
+  /** Whether an asset must clear any one tree or all of them. */
+  qualifyMode?: QualifyMode;
   /** Set for treatments loaded from the database. */
   id?: string;
 };
@@ -317,7 +320,9 @@ export function isApplicable(def: TreatmentDef, ctx: AssetTreatmentContext): boo
   if (def.name === "Emergency Repair" && ctx.failuresLast10Years === 0) return false;
 
   // Finally the configured policy gate, if the administrator built one.
-  if (def.decisionTree && !evaluateTree(def.decisionTree, toDecisionInput(ctx)).consider) return false;
+  if (def.decisionTrees?.length && !qualifies(def.decisionTrees, def.qualifyMode ?? "any", toDecisionInput(ctx)).pass) {
+    return false;
+  }
 
   return true;
 }

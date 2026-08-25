@@ -24,7 +24,7 @@ export default async function TreatmentsAdminPage() {
   const isAdmin = session!.user.roleName === "Administrator";
 
   const treatments = await listTreatmentsForAdmin(organizationId);
-  const withTrees = treatments.filter((t) => t.decisionTree).length;
+  const withTrees = treatments.filter((t) => t.treeCount > 0).length;
 
   return (
     <div>
@@ -96,8 +96,11 @@ export default async function TreatmentsAdminPage() {
                       <span className="text-muted-foreground"> · ×{t.failureProbMultiplier}</span>
                     </TableCell>
                     <TableCell>
-                      {t.decisionTree ? (
-                        <Badge variant="default">{t.treeLeafCount} outcomes</Badge>
+                      {t.treeCount > 0 ? (
+                        <Badge variant="default">
+                          {t.treeCount} tree{t.treeCount === 1 ? "" : "s"} · {t.treeConditionCount} condition
+                          {t.treeConditionCount === 1 ? "" : "s"}
+                        </Badge>
                       ) : (
                         <span className="text-xs text-muted-foreground">none</span>
                       )}

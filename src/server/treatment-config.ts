@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { WATERLINE_TREATMENTS, type TreatmentDef, type TreatmentCategory } from "@/domain/waterline/treatment";
-import { isValidTree, countLeaves, type DecisionNode } from "@/domain/waterline/decision-tree";
+import { countConditions } from "@/domain/waterline/decision-tree";
+import { parseTrees, parseQualifyMode } from "@/server/decision-trees";
 
 /**
  * The treatment library is configuration. These loaders map Treatment rows
@@ -8,8 +9,6 @@ import { isValidTree, countLeaves, type DecisionNode } from "@/domain/waterline/
  * recommendations, LCCA, work plans and scenarios all run against what an
  * administrator configured rather than the seed constant.
  */
-
-const DECISION_TREE_RULE = "decision-tree";
 
 type TreatmentWithRules = Awaited<ReturnType<typeof fetchTreatments>>[number];
 
@@ -19,13 +18,6 @@ function fetchTreatments(organizationId: string) {
     include: { rules: true },
     orderBy: { applicableConditionMin: "asc" },
   });
-}
-
-function parseTree(row: TreatmentWithRules): DecisionNode | null {
-  const rule = row.rules.find((r) => r.ruleType === DECISION_TREE_RULE);
-  if (!rule) return null;
-  const tree = (rule.condition as { tree?: unknown } | null)?.tree;
-  return isValidTree(tree) ? tree : null;
 }
 
 function toDef(row: TreatmentWithRules): TreatmentDef {
@@ -74,7 +66,8 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
     annualMaintenanceCost: row.annualMaintenanceCost ?? 0,
     usefulLife: row.usefulLife ?? 0,
     implementationConstraints: applicability.constraints ?? undefined,
-    decisionTree: parseTree(row),
+    decisionTrees: parseTrees(row.rules),
+    qualifyMode: parseQualifyMode(row.applicability),
   };
 }
 
@@ -88,7 +81,9 @@ export async function loadTreatmentDefs(organizationId: string): Promise<Treatme
 
 export type TreatmentAdminRow = TreatmentDef & {
   id: string;
-  treeLeafCount: number;
+  /** Conditions across every tree gating this treatment. */
+  treeConditionCount: number;
+  treeCount: number;
   workPlanItemCount: number;
 };
 
@@ -104,7 +99,8 @@ export async function listTreatmentsForAdmin(organizationId: string): Promise<Tr
     return {
       ...def,
       id: row.id,
-      treeLeafCount: def.decisionTree ? countLeaves(def.decisionTree) : 0,
+      treeConditionCount: (def.decisionTrees ?? []).reduce((n, t) => n + countConditions(t.root), 0),
+      treeCount: (def.decisionTrees ?? []).length,
       workPlanItemCount: row._count.workPlanItems,
     };
   });
@@ -123,7 +119,8 @@ export async function getTreatmentForAdmin(
   return {
     ...def,
     id: row.id,
-    treeLeafCount: def.decisionTree ? countLeaves(def.decisionTree) : 0,
+    treeConditionCount: (def.decisionTrees ?? []).reduce((n, t) => n + countConditions(t.root), 0),
+    treeCount: (def.decisionTrees ?? []).length,
     workPlanItemCount: row._count.workPlanItems,
   };
 }
@@ -256,33 +253,4 @@ export async function deleteTreatment(organizationId: string, id: string) {
   await prisma.treatmentRule.deleteMany({ where: { treatmentId: id } });
   await prisma.treatmentCost.deleteMany({ where: { treatmentId: id } });
   await prisma.treatment.delete({ where: { id } });
-}
-
-// ---------------------------------------------------------------------------
-// Decision trees
-// ---------------------------------------------------------------------------
-
-export async function saveDecisionTree(organizationId: string, treatmentId: string, tree: DecisionNode | null) {
-  const treatment = await prisma.treatment.findFirst({
-    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
-  });
-  if (!treatment) throw new Error("Treatment not found");
-  if (tree && !isValidTree(tree)) throw new Error("Decision tree is malformed");
-
-  const existing = await prisma.treatmentRule.findFirst({
-    where: { treatmentId, ruleType: DECISION_TREE_RULE },
-  });
-
-  if (!tree) {
-    if (existing) await prisma.treatmentRule.delete({ where: { id: existing.id } });
-    return;
-  }
-
-  if (existing) {
-    await prisma.treatmentRule.update({ where: { id: existing.id }, data: { condition: { tree } } });
-  } else {
-    await prisma.treatmentRule.create({
-      data: { treatmentId, ruleType: DECISION_TREE_RULE, condition: { tree } },
-    });
-  }
 }

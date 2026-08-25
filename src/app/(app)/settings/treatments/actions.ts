@@ -7,10 +7,8 @@ import {
   createTreatment,
   updateTreatment,
   deleteTreatment,
-  saveDecisionTree,
   type TreatmentInput,
 } from "@/server/treatment-config";
-import { isValidTree, type DecisionNode } from "@/domain/waterline/decision-tree";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 import type { TreatmentActionState } from "./state";
 
@@ -122,36 +120,6 @@ export async function deleteTreatmentAction(
     return { status: "success", message: "Treatment deleted." };
   } catch (err) {
     return { status: "error", message: err instanceof Error ? err.message : "Could not delete treatment" };
-  }
-}
-
-export async function saveDecisionTreeAction(
-  _prev: TreatmentActionState,
-  formData: FormData
-): Promise<TreatmentActionState> {
-  try {
-    const session = await requireAdministrator();
-    const treatmentId = String(formData.get("treatmentId") ?? "");
-    const raw = String(formData.get("tree") ?? "").trim();
-
-    let tree: DecisionNode | null = null;
-    if (raw && raw !== "null") {
-      const parsed: unknown = JSON.parse(raw);
-      if (!isValidTree(parsed)) throw new Error("Decision tree is malformed");
-      tree = parsed;
-    }
-
-    await saveDecisionTree(session.user.organizationId, treatmentId, tree);
-    revalidateAffected();
-    revalidatePath(`/settings/treatments/${treatmentId}`);
-    return {
-      status: "success",
-      message: tree
-        ? "Decision tree saved. It now gates when this treatment is considered."
-        : "Decision tree removed. Only the technical window applies.",
-    };
-  } catch (err) {
-    return { status: "error", message: err instanceof Error ? err.message : "Could not save decision tree" };
   }
 }
 
