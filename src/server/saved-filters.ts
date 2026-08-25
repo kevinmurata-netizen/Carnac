@@ -5,6 +5,7 @@ import {
   getFilterSchema,
   loadFilterRows,
   OPERATORS,
+  ROW_ASSET_ID,
   type Criterion,
   type FilterRow,
 } from "@/server/filter-schema";
@@ -191,4 +192,33 @@ export function toCsv(result: FilterResult): string {
     result.columns.map((c) => escape(c.label)).join(","),
     ...result.rows.map((r) => result.columns.map((c) => escape(r[c.key])).join(",")),
   ].join("\n");
+}
+
+/**
+ * The asset ids a saved filter matches, for narrowing a grid.
+ *
+ * Saved filters are defined over the asset-centric schema, so this is what
+ * applying one to any grid means — including Inspections, where it selects
+ * inspections belonging to matching segments rather than filtering
+ * inspections directly.
+ *
+ * Returns null when the filter has no criteria, which means "everything" and
+ * lets callers skip narrowing rather than intersecting with a full id list.
+ */
+export async function matchingAssetIds(organizationId: string, filterId: string): Promise<string[] | null> {
+  const filter = await prisma.savedFilter.findFirst({ where: { id: filterId, organizationId } });
+  if (!filter) return null;
+
+  const criteria = parseCriteria(filter.criteria);
+  if (criteria.length === 0) return null;
+
+  const [schema, rows] = await Promise.all([
+    getFilterSchema(organizationId),
+    loadFilterRows(organizationId),
+  ]);
+  const typeByField = new Map([...fieldIndex(schema)].map(([k, f]) => [k, f.type]));
+
+  return applyCriteria(rows, criteria, filter.matchAll, typeByField)
+    .map((r) => String(r[ROW_ASSET_ID]))
+    .filter(Boolean);
 }

@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { listAssets, listMaterials, listServiceAreas, listCriticalities, listCustomerTypes, listPressureZones, flattenAttributes } from "@/server/assets";
+import { listSavedFilters, matchingAssetIds } from "@/server/saved-filters";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetFilterBar } from "@/components/filters/asset-filter-bar";
+import { SavedFilterSelect } from "@/components/filters/saved-filter-select";
+import { ColumnHeader } from "@/components/grid/column-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { ageInYears, formatInches, formatNumber, formatStatus } from "@/lib/format";
 import { AssetStatus } from "@prisma/client";
 import { ASSET_LABEL } from "@/config/labels";
@@ -19,6 +22,8 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   REMOVED: "outline",
 };
 
+const STATUS_OPTIONS = Object.values(AssetStatus);
+
 export default async function AssetsPage({
   searchParams,
 }: {
@@ -27,6 +32,14 @@ export default async function AssetsPage({
   const params = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+
+  // A saved filter narrows the grid to the segments it matches, on top of
+  // whatever the filter bar and column filters already say. null means the
+  // filter has no criteria, so it narrows nothing.
+  const savedFilterId = params.savedFilter || undefined;
+  const assetIds = savedFilterId
+    ? ((await matchingAssetIds(organizationId, savedFilterId)) ?? undefined)
+    : undefined;
 
   const filters = {
     search: params.search || undefined,
@@ -42,16 +55,21 @@ export default async function AssetsPage({
     maxCustomers: params.maxCustomers ? Number(params.maxCustomers) : undefined,
     installedAfter: params.installedAfter ? Number(params.installedAfter) : undefined,
     installedBefore: params.installedBefore ? Number(params.installedBefore) : undefined,
+    assetIds,
+    sort: params.sort || undefined,
+    dir: params.dir === "desc" ? ("desc" as const) : ("asc" as const),
   };
 
-  const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones] = await Promise.all([
-    listAssets(organizationId, filters),
-    listMaterials(organizationId),
-    listServiceAreas(organizationId),
-    listCriticalities(organizationId),
-    listCustomerTypes(organizationId),
-    listPressureZones(organizationId),
-  ]);
+  const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones, savedFilters] =
+    await Promise.all([
+      listAssets(organizationId, filters),
+      listMaterials(organizationId),
+      listServiceAreas(organizationId),
+      listCriticalities(organizationId),
+      listCustomerTypes(organizationId),
+      listPressureZones(organizationId),
+      listSavedFilters(organizationId),
+    ]);
 
   return (
     <div>
@@ -60,30 +78,46 @@ export default async function AssetsPage({
         description={`${formatNumber(assets.length)} waterline segment${assets.length === 1 ? "" : "s"} matching current filters`}
       />
 
+      <div className="mb-4 flex flex-wrap items-end gap-4">
+        <SavedFilterSelect
+          filters={savedFilters.map((f) => ({ id: f.id, name: f.name, criteriaCount: f.criteria.length }))}
+        />
+      </div>
+
       <AssetFilterBar
-                materials={materials}
-              serviceAreas={serviceAreas}
-              criticalities={criticalities}
-              customerTypes={customerTypes}
-              pressureZones={pressureZones}
-              values={params}
-              action="/assets"
-            />
+        materials={materials}
+        serviceAreas={serviceAreas}
+        criticalities={criticalities}
+        customerTypes={customerTypes}
+        pressureZones={pressureZones}
+        values={params}
+        action="/assets"
+      />
 
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{ASSET_LABEL.singular} ID</TableHead>
-                <TableHead>Material</TableHead>
-                <TableHead>Diameter</TableHead>
-                <TableHead>Length (ft)</TableHead>
-                <TableHead>Install Year</TableHead>
-                <TableHead>Age</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Service Area</TableHead>
-                <TableHead>Customers</TableHead>
+                <ColumnHeader label={`${ASSET_LABEL.singular} ID`} sortKey="assetCode" />
+                <ColumnHeader label="Material" sortKey="material" filterParam="material" options={materials} />
+                <ColumnHeader label="Diameter" sortKey="diameter" />
+                <ColumnHeader label="Length (ft)" sortKey="length" />
+                <ColumnHeader label="Install Year" sortKey="installationDate" />
+                <ColumnHeader label="Age" />
+                <ColumnHeader
+                  label="Status"
+                  sortKey="status"
+                  filterParam="status"
+                  options={STATUS_OPTIONS}
+                />
+                <ColumnHeader
+                  label="Service Area"
+                  sortKey="serviceArea"
+                  filterParam="serviceArea"
+                  options={serviceAreas}
+                />
+                <ColumnHeader label="Customers" sortKey="customers" />
               </TableRow>
             </TableHeader>
             <TableBody>

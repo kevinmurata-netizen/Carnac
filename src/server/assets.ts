@@ -1,6 +1,7 @@
 import { Prisma, AssetStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
+import { sameCalendarDay } from "@/lib/format";
 
 const attributeValueInclude = {
   attributeValues: { include: { definition: true } },
@@ -39,6 +40,10 @@ export type AssetFilters = {
   maxDiameter?: number;
   installedBefore?: number; // year
   installedAfter?: number; // year
+  /** Restrict to these ids, e.g. the result of a saved filter. */
+  assetIds?: string[];
+  sort?: string;
+  dir?: "asc" | "desc";
   criticality?: string;
   customerType?: string;
   pressureZone?: string;
@@ -54,6 +59,10 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
   };
 
   if (filters.status) where.status = filters.status;
+
+  // An empty list means a saved filter matched nothing, which must show no
+  // rows rather than being ignored as "no constraint".
+  if (filters.assetIds) where.id = { in: filters.assetIds };
 
   if (filters.search) {
     where.OR = [
@@ -103,13 +112,51 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
     where.location = { is: { ...existing, pressureZone: filters.pressureZone } };
   }
 
-  const assets = await prisma.asset.findMany({
-    where,
-    include: attributeValueInclude,
-    orderBy: { assetCode: "asc" },
-  });
+  const DB_SORTS: Record<string, Prisma.AssetOrderByWithRelationInput> = {
+    assetCode: { assetCode: "asc" },
+    status: { status: "asc" },
+    installationDate: { installationDate: "asc" },
+  };
 
-  return assets;
+  const dir = filters.dir === "desc" ? "desc" : "asc";
+  const dbSort = filters.sort ? DB_SORTS[filters.sort] : undefined;
+  const orderBy: Prisma.AssetOrderByWithRelationInput = dbSort
+    ? Object.fromEntries(Object.keys(dbSort).map((k) => [k, dir]))
+    : { assetCode: "asc" };
+
+  const assets = await prisma.asset.findMany({ where, include: attributeValueInclude, orderBy });
+
+  if (!filters.sort || dbSort) return assets;
+
+  // Attribute-backed and derived columns cannot be ordered by in the query,
+  // so they are sorted here. Nulls always sort last regardless of direction —
+  // a column of blanks at the top is never what someone wanted.
+  const valueOf = (a: (typeof assets)[number]): string | number | null => {
+    switch (filters.sort) {
+      case "material":
+        return a.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null;
+      case "diameter":
+        return a.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null;
+      case "length":
+        return a.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null;
+      case "customers":
+        return a.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null;
+      case "serviceArea":
+        return a.location?.serviceArea ?? null;
+      default:
+        return null;
+    }
+  };
+
+  return [...assets].sort((a, b) => {
+    const av = valueOf(a);
+    const bv = valueOf(b);
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
+    return dir === "desc" ? -cmp : cmp;
+  });
 }
 
 export async function getAssetById(organizationId: string, id: string) {
@@ -117,6 +164,134 @@ export async function getAssetById(organizationId: string, id: string) {
     where: { id, organizationId, deletedAt: null },
     include: attributeValueInclude,
   });
+}
+
+/**
+ * Saves edits made on an asset's detail page.
+ *
+ * Only the fields the form actually sends are written, so a form rendered with
+ * one card unlocked cannot blank out the cards it never showed. Attribute
+ * values are keyed by definition code and coerced according to the definition's
+ * dataType — the form has no say in how a value is stored.
+ */
+export type AssetEdit = {
+  name?: string | null;
+  status?: AssetStatus;
+  ownerDepartment?: string | null;
+  installationDate?: Date | null;
+  expectedUsefulLife?: number | null;
+  /** Attribute code → raw string from the form. "" clears the value. */
+  attributes?: Record<string, string>;
+  location?: { serviceArea?: string | null; pressureZone?: string | null; depth?: number | null };
+};
+
+export async function updateAsset(
+  organizationId: string,
+  id: string,
+  edit: AssetEdit,
+  updatedBy?: string | null
+) {
+  const asset = await prisma.asset.findFirst({
+    where: { id, organizationId, deletedAt: null },
+    select: { id: true, assetTypeId: true, installationDate: true },
+  });
+  if (!asset) throw new Error("That segment no longer exists");
+
+  const data: Prisma.AssetUpdateInput = { updatedBy: updatedBy ?? null };
+  if (edit.name !== undefined) data.name = edit.name;
+  if (edit.status !== undefined) data.status = edit.status;
+  if (edit.ownerDepartment !== undefined) data.ownerDepartment = edit.ownerDepartment;
+  // A date input carries no time of day, so re-submitting the same day must
+  // not truncate the recorded instant to midnight.
+  if (
+    edit.installationDate !== undefined &&
+    !(edit.installationDate && asset.installationDate && sameCalendarDay(edit.installationDate, asset.installationDate))
+  ) {
+    data.installationDate = edit.installationDate;
+  }
+  if (edit.expectedUsefulLife !== undefined) data.expectedUsefulLife = edit.expectedUsefulLife;
+
+  const writes: Prisma.PrismaPromise<unknown>[] = [prisma.asset.update({ where: { id }, data })];
+
+  if (edit.attributes && Object.keys(edit.attributes).length > 0) {
+    const definitions = await prisma.assetAttributeDefinition.findMany({
+      where: { assetTypeId: asset.assetTypeId, code: { in: Object.keys(edit.attributes) } },
+    });
+
+    for (const definition of definitions) {
+      const raw = edit.attributes[definition.code].trim();
+      const value = coerceAttribute(definition.dataType, raw);
+
+      if (raw === "") {
+        if (definition.isRequired) throw new Error(`${definition.label} is required`);
+        // Clearing removes the row rather than storing four nulls, so the
+        // attribute reads as genuinely unset everywhere it is loaded.
+        writes.push(
+          prisma.assetAttributeValue.deleteMany({ where: { assetId: id, definitionId: definition.id } })
+        );
+        continue;
+      }
+      if (value === null) throw new Error(`"${raw}" is not a valid ${definition.label}`);
+
+      // An ENUM's allowed values are configuration, so they are enforced here
+      // rather than trusted to whatever the form happened to render.
+      if (definition.dataType === "ENUM") {
+        const options = (definition.config as { options?: string[] } | null)?.options;
+        if (options?.length && !options.includes(raw)) {
+          throw new Error(`"${raw}" is not one of the configured ${definition.label} values`);
+        }
+      }
+
+      writes.push(
+        prisma.assetAttributeValue.upsert({
+          where: { assetId_definitionId: { assetId: id, definitionId: definition.id } },
+          create: { assetId: id, definitionId: definition.id, ...value },
+          update: { textValue: null, numberValue: null, dateValue: null, booleanValue: null, ...value },
+        })
+      );
+    }
+  }
+
+  if (edit.location) {
+    const { serviceArea, pressureZone, depth } = edit.location;
+    const locationData: Prisma.AssetLocationUpdateInput = {};
+    if (serviceArea !== undefined) locationData.serviceArea = serviceArea;
+    if (pressureZone !== undefined) locationData.pressureZone = pressureZone;
+    if (depth !== undefined) locationData.depth = depth;
+
+    // Only ever an update: AssetLocation carries a non-null PostGIS geometry
+    // that this form has no way to supply, so a segment with no location row
+    // keeps having none rather than failing the save.
+    if (Object.keys(locationData).length > 0) {
+      writes.push(prisma.assetLocation.updateMany({ where: { assetId: id }, data: locationData }));
+    }
+  }
+
+  await prisma.$transaction(writes);
+}
+
+type AttributeWrite = Pick<
+  Prisma.AssetAttributeValueCreateInput,
+  "textValue" | "numberValue" | "dateValue" | "booleanValue"
+>;
+
+/** null means the string is not valid for that type, which is an error rather
+ * than a silent no-op. */
+function coerceAttribute(dataType: string, raw: string): AttributeWrite | null {
+  switch (dataType) {
+    case "NUMBER": {
+      const n = Number(raw);
+      return Number.isFinite(n) ? { numberValue: n } : null;
+    }
+    case "DATE": {
+      const d = new Date(raw);
+      return Number.isNaN(d.getTime()) ? null : { dateValue: d };
+    }
+    case "BOOLEAN":
+      return { booleanValue: raw === "true" || raw === "on" || raw === "Yes" };
+    default:
+      return { textValue: raw };
+  }
 }
 
 export async function listAssetOptions(organizationId: string): Promise<Array<{ id: string; assetCode: string }>> {

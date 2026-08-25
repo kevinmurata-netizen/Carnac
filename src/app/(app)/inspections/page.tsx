@@ -1,14 +1,18 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
-import { listInspections, summarizeInspectionScore } from "@/server/inspections";
+import { listInspections, listInspectors, summarizeInspectionScore } from "@/server/inspections";
+import { listSavedFilters, matchingAssetIds } from "@/server/saved-filters";
 import { INSPECTION_TYPES } from "@/domain/waterline/inspection";
 import { PageHeader } from "@/components/layout/page-header";
+import { InspectionFilterBar } from "@/components/filters/inspection-filter-bar";
+import { SavedFilterSelect } from "@/components/filters/saved-filter-select";
+import { ColumnHeader } from "@/components/grid/column-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate, formatNumber } from "@/lib/format";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
+import { formatDate, formatNumber, parseDateInput } from "@/lib/format";
 import { ASSET_LABEL } from "@/config/labels";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
@@ -16,7 +20,7 @@ import { getPageName } from "@/server/navigation";
 export default async function InspectionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; inspectionType?: string; requiresFollowUp?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
   const session = await auth();
@@ -24,17 +28,53 @@ export default async function InspectionsPage({
   const pageTitle = await getPageName(organizationId, "/inspections", "Inspections");
   const conditionBands = await getConditionBands(organizationId);
 
-  const inspections = await listInspections(organizationId, {
-    search: params.search || undefined,
-    inspectionType: params.inspectionType || undefined,
-    requiresFollowUp: params.requiresFollowUp === "on",
-  });
+  // Saved filters are defined over segments, so on this grid one means "the
+  // inspections belonging to the segments it matches".
+  const savedFilterId = params.savedFilter || undefined;
+  const assetIds = savedFilterId
+    ? ((await matchingAssetIds(organizationId, savedFilterId)) ?? undefined)
+    : undefined;
+
+  const minQuality = params.minQuality ? Number(params.minQuality) / 100 : undefined;
+
+  const [inspections, inspectors, savedFilters] = await Promise.all([
+    listInspections(organizationId, {
+      search: params.search || undefined,
+      inspectionType: params.inspectionType || undefined,
+      inspector: params.inspector || undefined,
+      requiresFollowUp: params.requiresFollowUp === "on",
+      after: params.after ? (parseDateInput(params.after) ?? undefined) : undefined,
+      before: params.before ? (parseDateInput(params.before) ?? undefined) : undefined,
+      minQuality: Number.isFinite(minQuality) ? minQuality : undefined,
+      assetIds,
+      sort: params.sort || undefined,
+      dir: params.dir === "desc" ? "desc" : "asc",
+    }),
+    listInspectors(organizationId),
+    listSavedFilters(organizationId),
+  ]);
+
+  // WCI is derived from measurements and the organization's condition bands,
+  // so the query cannot order by it. Sorting it here keeps that knowledge on
+  // the page that already computes the score. Unscored rows sort last in both
+  // directions — a column of dashes on top is never what was wanted.
+  const rows =
+    params.sort === "wci"
+      ? [...inspections].sort((a, b) => {
+          const av = summarizeInspectionScore(a, conditionBands)?.score ?? null;
+          const bv = summarizeInspectionScore(b, conditionBands)?.score ?? null;
+          if (av === null && bv === null) return 0;
+          if (av === null) return 1;
+          if (bv === null) return -1;
+          return params.dir === "desc" ? bv - av : av - bv;
+        })
+      : inspections;
 
   return (
     <div>
       <PageHeader
         title={pageTitle}
-        description={`${formatNumber(inspections.length)} inspection${inspections.length === 1 ? "" : "s"} matching current filters`}
+        description={`${formatNumber(rows.length)} inspection${rows.length === 1 ? "" : "s"} matching current filters`}
         actions={
           canRecordFieldData(session) ? (
             <Button render={<Link href="/inspections/new">New Inspection</Link>} nativeButton={false} />
@@ -42,80 +82,47 @@ export default async function InspectionsPage({
         }
       />
 
-      <form method="get" action="/inspections" className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor="search">
-            {ASSET_LABEL.singular} ID
-          </label>
-          <input
-            id="search"
-            name="search"
-            defaultValue={params.search}
-            placeholder="WL-0001"
-            className="h-9 w-40 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor="inspectionType">
-            Type
-          </label>
-          <select
-            id="inspectionType"
-            name="inspectionType"
-            defaultValue={params.inspectionType ?? ""}
-            className="h-9 w-44 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="">All types</option>
-            {INSPECTION_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-end gap-2 pb-1.5">
-          <input
-            id="requiresFollowUp"
-            name="requiresFollowUp"
-            type="checkbox"
-            defaultChecked={params.requiresFollowUp === "on"}
-            className="h-4 w-4"
-          />
-          <label htmlFor="requiresFollowUp" className="text-sm text-muted-foreground">
-            Follow-up required only
-          </label>
-        </div>
-        <div className="flex gap-2">
-          <Button type="submit" size="sm">
-            Apply
-          </Button>
-          <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/inspections">Reset</Link>} />
-        </div>
-      </form>
+      <div className="mb-4 flex flex-wrap items-end gap-4">
+        <SavedFilterSelect
+          filters={savedFilters.map((f) => ({ id: f.id, name: f.name, criteriaCount: f.criteria.length }))}
+        />
+      </div>
+
+      <InspectionFilterBar
+        inspectionTypes={INSPECTION_TYPES}
+        inspectors={inspectors}
+        values={params}
+        action="/inspections"
+      />
 
       <Card>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{ASSET_LABEL.singular}</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Inspector</TableHead>
-                <TableHead>WCI Score</TableHead>
-                <TableHead>Quality</TableHead>
-                <TableHead>Follow-up</TableHead>
+                <ColumnHeader label={ASSET_LABEL.singular} sortKey="assetCode" />
+                <ColumnHeader label="Date" sortKey="inspectionDate" />
+                <ColumnHeader
+                  label="Type"
+                  sortKey="inspectionType"
+                  filterParam="inspectionType"
+                  options={[...INSPECTION_TYPES]}
+                />
+                <ColumnHeader label="Inspector" sortKey="inspector" filterParam="inspector" options={inspectors} />
+                <ColumnHeader label="WCI Score" sortKey="wci" />
+                <ColumnHeader label="Quality" sortKey="qualityScore" />
+                <ColumnHeader label="Follow-up" sortKey="requiresFollowUp" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {inspections.length === 0 && (
+              {rows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
                     No inspections match the current filters.
                   </TableCell>
                 </TableRow>
               )}
-              {inspections.map((inspection) => {
+              {rows.map((inspection) => {
                 const condition = summarizeInspectionScore(inspection, conditionBands);
                 return (
                   <TableRow key={inspection.id}>
