@@ -22,11 +22,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AttributeGrid } from "@/components/assets/attribute-grid";
+import { AssetStatus } from "@prisma/client";
+import { RecordEditor, type EditableSection } from "@/components/records/record-editor";
+import { saveAssetAction } from "./actions";
 import { NetworkMap } from "@/components/map/network-map";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { PhaseComingSoon } from "@/components/phase-coming-soon";
-import { ageInYears, formatDate, formatInches, formatNumber, formatStatus } from "@/lib/format";
+import { ageInYears, formatDate, formatInches, formatNumber, formatStatus, toDateInputValue } from "@/lib/format";
 import { ASSET_LABEL } from "@/config/labels";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
@@ -92,6 +94,100 @@ export default async function AssetDetailPage({
   const currentCondition = conditionHistory[conditionHistory.length - 1];
   const canEdit = canRecordFieldData(session);
 
+  // The overview is built from the same values it saves, so what you see
+  // locked is exactly what the inputs hold once unlocked.
+  const identification: EditableSection = {
+    title: "Identification",
+    fields: [
+      { name: "assetCode", label: `${ASSET_LABEL.singular} ID`, display: asset.assetCode, value: asset.assetCode, readOnly: true },
+      { name: "ownerDepartment", label: "Responsible Department", display: asset.ownerDepartment ?? "—", value: asset.ownerDepartment ?? "" },
+      {
+        name: "status",
+        label: "Status",
+        display: formatStatus(asset.status),
+        value: asset.status,
+        type: "select" as const,
+        options: Object.values(AssetStatus).map((v) => ({ value: v, label: formatStatus(v) })),
+      },
+      { name: "installationDate", label: "Installed", display: formatDate(asset.installationDate), value: toDateInputValue(asset.installationDate), type: "date" as const },
+      {
+        name: "expectedUsefulLife",
+        label: "Expected Useful Life",
+        display: asset.expectedUsefulLife ? `${asset.expectedUsefulLife} yr` : "—",
+        value: asset.expectedUsefulLife != null ? String(asset.expectedUsefulLife) : "",
+        type: "number" as const,
+      },
+    ],
+  };
+
+  const characteristics: EditableSection = {
+    title: "Physical Characteristics",
+    fields: [...asset.attributeValues]
+      .sort((a, b) => a.definition.sortOrder - b.definition.sortOrder)
+      .map((av) => {
+        const raw = av.textValue ?? av.numberValue ?? av.dateValue ?? av.booleanValue ?? null;
+        const options = (av.definition.config as { options?: string[] } | null)?.options ?? [];
+        const type =
+          av.definition.dataType === "NUMBER"
+            ? ("number" as const)
+            : av.definition.dataType === "DATE"
+              ? ("date" as const)
+              : av.definition.dataType === "BOOLEAN"
+                ? ("boolean" as const)
+                : av.definition.dataType === "ENUM" && options.length > 0
+                  ? ("select" as const)
+                  : ("text" as const);
+
+        const display =
+          raw == null
+            ? "—"
+            : raw instanceof Date
+              ? formatDate(raw)
+              : typeof raw === "boolean"
+                ? raw
+                  ? "Yes"
+                  : "No"
+                : `${raw}${av.definition.unit ? ` ${av.definition.unit}` : ""}`;
+
+        const value =
+          raw == null ? "" : raw instanceof Date ? toDateInputValue(raw) : typeof raw === "boolean" ? String(raw) : String(raw);
+
+        return {
+          name: `attr:${av.definition.code}`,
+          label: av.definition.unit ? `${av.definition.label} (${av.definition.unit})` : av.definition.label,
+          display,
+          value,
+          type,
+          options: options.map((o) => ({ value: o, label: o })),
+          step: av.definition.dataType === "NUMBER" ? "any" : undefined,
+        };
+      }),
+  };
+
+  const endpoints = asset.location
+    ? `${asset.location.startLat?.toFixed(4)}, ${asset.location.startLng?.toFixed(4)} → ${asset.location.endLat?.toFixed(4)}, ${asset.location.endLng?.toFixed(4)}`
+    : "—";
+
+  const locationSection: EditableSection = {
+    title: "Location",
+    columns: 4,
+    fields: [
+      { name: "serviceArea", label: "Service Area", display: asset.location?.serviceArea ?? "—", value: asset.location?.serviceArea ?? "" },
+      { name: "pressureZone", label: "Pressure Zone", display: asset.location?.pressureZone ?? "—", value: asset.location?.pressureZone ?? "" },
+      {
+        name: "depth",
+        label: "Depth (ft)",
+        display: asset.location?.depth ? `${asset.location.depth} ft` : "—",
+        value: asset.location?.depth != null ? String(asset.location.depth) : "",
+        type: "number" as const,
+        step: "any",
+      },
+      // Geometry comes from the imported network, so the endpoints are shown
+      // but not editable here — moving a segment is a map operation.
+      { name: "endpoints", label: "Endpoints", display: endpoints, value: endpoints, readOnly: true },
+    ],
+  };
+
   return (
     <div>
       <SetBreadcrumb segment={id} label={asset.assetCode} />
@@ -137,47 +233,13 @@ export default async function AssetDetailPage({
         </TabsList>
 
         <TabsContent value="overview" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Identification</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-              <Field label={`${ASSET_LABEL.singular} ID`} value={asset.assetCode} />
-              <Field label="Facility / Network ID" value={(attrs[WATERLINE_ATTRIBUTES.FACILITY_ID] as string) ?? "—"} />
-              <Field label="Owner" value={(attrs[WATERLINE_ATTRIBUTES.OWNER] as string) ?? "—"} />
-              <Field label="Responsible Department" value={asset.ownerDepartment ?? "—"} />
-              <Field label="Status" value={formatStatus(asset.status)} />
-              <Field label="Expected Useful Life" value={asset.expectedUsefulLife ? `${asset.expectedUsefulLife} yr` : "—"} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Physical Characteristics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <AttributeGrid asset={asset} />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Location</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-              <Field label="Service Area" value={asset.location?.serviceArea ?? "—"} />
-              <Field label="Pressure Zone" value={asset.location?.pressureZone ?? "—"} />
-              <Field label="Depth" value={asset.location?.depth ? `${asset.location.depth} ft` : "—"} />
-              <Field
-                label="Endpoints"
-                value={
-                  asset.location
-                    ? `${asset.location.startLat?.toFixed(4)}, ${asset.location.startLng?.toFixed(4)} → ${asset.location.endLat?.toFixed(4)}, ${asset.location.endLng?.toFixed(4)}`
-                    : "—"
-                }
-              />
-            </CardContent>
-          </Card>
+          <RecordEditor
+            sections={[identification, characteristics, locationSection]}
+            action={saveAssetAction}
+            hiddenFields={{ assetId: asset.id }}
+            canEdit={canEdit}
+            lockedNote="Executives have read-only access"
+          />
         </TabsContent>
 
         <TabsContent value="map" className="mt-4">
@@ -484,14 +546,5 @@ function FactorCard({ title, factors }: { title: string; factors: FactorRating[]
         </Table>
       </CardContent>
     </Card>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 text-sm font-medium text-foreground">{value}</dd>
-    </div>
   );
 }

@@ -1,8 +1,10 @@
 import { auth } from "@/lib/auth";
 import { listAssets, listMaterials, listServiceAreas, listCriticalities, listCustomerTypes, listPressureZones } from "@/server/assets";
 import { getNetworkGeoJSON } from "@/server/geo";
+import { listSavedFilters, matchingAssetIds } from "@/server/saved-filters";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetFilterBar } from "@/components/filters/asset-filter-bar";
+import { SavedFilterSelect } from "@/components/filters/saved-filter-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { NetworkMap } from "@/components/map/network-map";
 import { StatusMapLegend } from "@/components/map/map-legend";
@@ -21,6 +23,14 @@ export default async function NetworkPage({
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/network", "Network");
 
+  // A saved filter narrows the map to the segments it matches, on top of
+  // whatever the filter bar already says. null means the filter has no
+  // criteria, so it narrows nothing.
+  const savedFilterId = params.savedFilter || undefined;
+  const assetIds = savedFilterId
+    ? ((await matchingAssetIds(organizationId, savedFilterId)) ?? undefined)
+    : undefined;
+
   const filters = {
     search: params.search || undefined,
     material: params.material || undefined,
@@ -35,16 +45,19 @@ export default async function NetworkPage({
     maxCustomers: params.maxCustomers ? Number(params.maxCustomers) : undefined,
     installedAfter: params.installedAfter ? Number(params.installedAfter) : undefined,
     installedBefore: params.installedBefore ? Number(params.installedBefore) : undefined,
+    assetIds,
   };
 
-  const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones] = await Promise.all([
-    listAssets(organizationId, filters),
-    listMaterials(organizationId),
-    listServiceAreas(organizationId),
-    listCriticalities(organizationId),
-    listCustomerTypes(organizationId),
-    listPressureZones(organizationId),
-  ]);
+  const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones, savedFilters] =
+    await Promise.all([
+      listAssets(organizationId, filters),
+      listMaterials(organizationId),
+      listServiceAreas(organizationId),
+      listCriticalities(organizationId),
+      listCustomerTypes(organizationId),
+      listPressureZones(organizationId),
+      listSavedFilters(organizationId),
+    ]);
 
   const geojson = await getNetworkGeoJSON(
     organizationId,
@@ -63,15 +76,21 @@ export default async function NetworkPage({
         description={`${formatNumber(assets.length)} segments · ${formatFeetAsMiles(totalLengthFt)} shown`}
       />
 
+      <div className="mb-4 flex flex-wrap items-end gap-4">
+        <SavedFilterSelect
+          filters={savedFilters.map((f) => ({ id: f.id, name: f.name, criteriaCount: f.criteria.length }))}
+        />
+      </div>
+
       <AssetFilterBar
-                materials={materials}
-              serviceAreas={serviceAreas}
-              criticalities={criticalities}
-              customerTypes={customerTypes}
-              pressureZones={pressureZones}
-              values={params}
-              action="/network"
-            />
+        materials={materials}
+        serviceAreas={serviceAreas}
+        criticalities={criticalities}
+        customerTypes={customerTypes}
+        pressureZones={pressureZones}
+        values={params}
+        action="/network"
+      />
 
       <Card>
         <CardContent className="p-0">

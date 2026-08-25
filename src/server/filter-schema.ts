@@ -41,6 +41,11 @@ export type FilterTable = {
 
 export type FilterRow = Record<string, string | number | boolean | null>;
 
+/** Internal key holding the asset id on every row. Deliberately outside the
+ * schema, so it cannot be selected as a column or reach a CSV export, but
+ * available for turning a saved filter into a set of ids for a grid. */
+export const ROW_ASSET_ID = "__assetId";
+
 export const OPERATORS = [
   { key: "eq", label: "equals", types: ["text", "number", "date", "boolean"], values: 1 },
   { key: "ne", label: "does not equal", types: ["text", "number", "date", "boolean"], values: 1 },
@@ -218,6 +223,7 @@ export async function loadFilterRows(organizationId: string): Promise<FilterRow[
 
   return assets.map((a) => {
     const row: FilterRow = {};
+    row[ROW_ASSET_ID] = a.id;
     const age = ageInYears(a.installationDate);
     const life = a.expectedUsefulLife ?? 75;
 
