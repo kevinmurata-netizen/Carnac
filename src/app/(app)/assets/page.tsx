@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { listAssets, listMaterials, listServiceAreas, flattenAttributes } from "@/server/assets";
+import { listAssets, listMaterials, listServiceAreas, listCriticalities, listCustomerTypes, listPressureZones, flattenAttributes } from "@/server/assets";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetFilterBar } from "@/components/filters/asset-filter-bar";
@@ -22,7 +22,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; material?: string; status?: string; serviceArea?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
   const session = await auth();
@@ -33,12 +33,24 @@ export default async function AssetsPage({
     material: params.material || undefined,
     status: (params.status as AssetStatus) || undefined,
     serviceArea: params.serviceArea || undefined,
+    criticality: params.criticality || undefined,
+    customerType: params.customerType || undefined,
+    pressureZone: params.pressureZone || undefined,
+    minDiameter: params.minDiameter ? Number(params.minDiameter) : undefined,
+    maxDiameter: params.maxDiameter ? Number(params.maxDiameter) : undefined,
+    minCustomers: params.minCustomers ? Number(params.minCustomers) : undefined,
+    maxCustomers: params.maxCustomers ? Number(params.maxCustomers) : undefined,
+    installedAfter: params.installedAfter ? Number(params.installedAfter) : undefined,
+    installedBefore: params.installedBefore ? Number(params.installedBefore) : undefined,
   };
 
-  const [assets, materials, serviceAreas] = await Promise.all([
+  const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones] = await Promise.all([
     listAssets(organizationId, filters),
     listMaterials(organizationId),
     listServiceAreas(organizationId),
+    listCriticalities(organizationId),
+    listCustomerTypes(organizationId),
+    listPressureZones(organizationId),
   ]);
 
   return (
@@ -48,7 +60,15 @@ export default async function AssetsPage({
         description={`${formatNumber(assets.length)} waterline segment${assets.length === 1 ? "" : "s"} matching current filters`}
       />
 
-      <AssetFilterBar materials={materials} serviceAreas={serviceAreas} values={params} action="/assets" />
+      <AssetFilterBar
+                materials={materials}
+              serviceAreas={serviceAreas}
+              criticalities={criticalities}
+              customerTypes={customerTypes}
+              pressureZones={pressureZones}
+              values={params}
+              action="/assets"
+            />
 
       <Card>
         <CardContent className="p-0">

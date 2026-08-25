@@ -31,6 +31,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "risk-models": "Risk Models",
   "failure-types": "Failure Types",
   navigation: "Navigation",
+  theme: "Theme",
   database: "Database Connection",
 
   administration: "Administration",

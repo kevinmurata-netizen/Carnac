@@ -39,6 +39,11 @@ export type AssetFilters = {
   maxDiameter?: number;
   installedBefore?: number; // year
   installedAfter?: number; // year
+  criticality?: string;
+  customerType?: string;
+  pressureZone?: string;
+  minCustomers?: number;
+  maxCustomers?: number;
 };
 
 export async function listAssets(organizationId: string, filters: AssetFilters = {}) {
@@ -67,23 +72,35 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
     where.location = { is: { serviceArea: filters.serviceArea } };
   }
 
-  if (filters.material) {
-    where.attributeValues = {
-      some: { definition: { code: WATERLINE_ATTRIBUTES.MATERIAL }, textValue: filters.material },
-    };
-  }
+  const attributeConditions: Prisma.AssetWhereInput[] = [];
 
-  if (filters.minDiameter != null || filters.maxDiameter != null) {
-    where.attributeValues = {
-      ...where.attributeValues,
-      some: {
-        definition: { code: WATERLINE_ATTRIBUTES.DIAMETER },
-        numberValue: {
-          gte: filters.minDiameter ?? undefined,
-          lte: filters.maxDiameter ?? undefined,
-        },
+  const textAttribute = (code: string, value?: string) => {
+    if (!value) return;
+    attributeConditions.push({ attributeValues: { some: { definition: { code }, textValue: value } } });
+  };
+
+  const numberAttribute = (code: string, min?: number, max?: number) => {
+    if (min == null && max == null) return;
+    attributeConditions.push({
+      attributeValues: {
+        some: { definition: { code }, numberValue: { gte: min ?? undefined, lte: max ?? undefined } },
       },
-    };
+    });
+  };
+
+  textAttribute(WATERLINE_ATTRIBUTES.MATERIAL, filters.material);
+  textAttribute(WATERLINE_ATTRIBUTES.CRITICALITY, filters.criticality);
+  textAttribute(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE, filters.customerType);
+  numberAttribute(WATERLINE_ATTRIBUTES.DIAMETER, filters.minDiameter, filters.maxDiameter);
+  numberAttribute(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED, filters.minCustomers, filters.maxCustomers);
+
+  if (attributeConditions.length > 0) where.AND = attributeConditions;
+
+  if (filters.pressureZone) {
+    // Merge into the existing `is` rather than spreading the wrapper, or a
+    // service-area filter set above would be replaced instead of combined.
+    const existing = (where.location as { is?: object } | undefined)?.is ?? {};
+    where.location = { is: { ...existing, pressureZone: filters.pressureZone } };
   }
 
   const assets = await prisma.asset.findMany({
@@ -186,4 +203,31 @@ export async function getNetworkSummary(organizationId: string): Promise<Network
       .sort((a, b) => b.count - a.count),
     byDecade: [...byDecadeMap.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([decade, count]) => ({ decade, count })),
   };
+}
+
+/** Distinct values for a text attribute, for filter dropdowns. */
+async function distinctAttribute(organizationId: string, code: string): Promise<string[]> {
+  const rows = await prisma.assetAttributeValue.findMany({
+    where: { definition: { code }, asset: { organizationId, deletedAt: null }, textValue: { not: null } },
+    select: { textValue: true },
+    distinct: ["textValue"],
+  });
+  return rows.map((r) => r.textValue!).filter(Boolean).sort();
+}
+
+export async function listCriticalities(organizationId: string) {
+  return distinctAttribute(organizationId, WATERLINE_ATTRIBUTES.CRITICALITY);
+}
+
+export async function listCustomerTypes(organizationId: string) {
+  return distinctAttribute(organizationId, WATERLINE_ATTRIBUTES.CUSTOMER_TYPE);
+}
+
+export async function listPressureZones(organizationId: string): Promise<string[]> {
+  const rows = await prisma.assetLocation.findMany({
+    where: { asset: { organizationId, deletedAt: null }, pressureZone: { not: null } },
+    select: { pressureZone: true },
+    distinct: ["pressureZone"],
+  });
+  return rows.map((r) => r.pressureZone!).filter(Boolean).sort();
 }
