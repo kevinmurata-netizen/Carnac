@@ -748,3 +748,25 @@ model WishlistItem {
   @@index([organizationId, isDone])
   @@map("wishlist_items")
 }
+
+/// A named, reusable selection: which fields to show, in what order, and the
+/// criteria rows must meet. Stored per organization so a team shares them.
+model SavedFilter {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  /// Field keys in display order, e.g. ["asset.assetCode", "condition.score"].
+  fields         Json
+  /// Criterion objects: { field, operator, value, value2 }.
+  criteria       Json
+  /// true = every criterion must match, false = any one of them.
+  matchAll       Boolean @default(true)
+  createdByName  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("saved_filters")
+}
