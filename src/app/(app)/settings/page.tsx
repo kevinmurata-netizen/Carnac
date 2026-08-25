@@ -19,6 +19,7 @@ import {
   Filter,
   Gauge,
   Layers,
+  Palette,
   ListChecks,
   ListTodo,
   ShieldAlert,
@@ -141,6 +142,13 @@ export default async function SettingsPage({
                   : `${formatNumber(filters.length)} saved filter${filters.length === 1 ? "" : "s"}`
               }
               detail="Pick columns from the schema, set criteria, and save the result as a named filter the team can reuse."
+            />
+            <SettingCard
+              href="/settings/theme"
+              icon={<Palette className="h-5 w-5" />}
+              title={name("/settings/theme", "Theme")}
+              summary="Light or dark, and accent colour"
+              detail="Set how the app looks on this device. Follows your operating system unless you choose otherwise."
             />
             <SettingCard
               href="/administration/activity"

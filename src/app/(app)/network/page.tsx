@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { listAssets, listMaterials, listServiceAreas } from "@/server/assets";
+import { listAssets, listMaterials, listServiceAreas, listCriticalities, listCustomerTypes, listPressureZones } from "@/server/assets";
 import { getNetworkGeoJSON } from "@/server/geo";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetFilterBar } from "@/components/filters/asset-filter-bar";
@@ -14,7 +14,7 @@ import { getPageName } from "@/server/navigation";
 export default async function NetworkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; material?: string; status?: string; serviceArea?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
   const session = await auth();
@@ -26,12 +26,24 @@ export default async function NetworkPage({
     material: params.material || undefined,
     status: (params.status as AssetStatus) || undefined,
     serviceArea: params.serviceArea || undefined,
+    criticality: params.criticality || undefined,
+    customerType: params.customerType || undefined,
+    pressureZone: params.pressureZone || undefined,
+    minDiameter: params.minDiameter ? Number(params.minDiameter) : undefined,
+    maxDiameter: params.maxDiameter ? Number(params.maxDiameter) : undefined,
+    minCustomers: params.minCustomers ? Number(params.minCustomers) : undefined,
+    maxCustomers: params.maxCustomers ? Number(params.maxCustomers) : undefined,
+    installedAfter: params.installedAfter ? Number(params.installedAfter) : undefined,
+    installedBefore: params.installedBefore ? Number(params.installedBefore) : undefined,
   };
 
-  const [assets, materials, serviceAreas] = await Promise.all([
+  const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones] = await Promise.all([
     listAssets(organizationId, filters),
     listMaterials(organizationId),
     listServiceAreas(organizationId),
+    listCriticalities(organizationId),
+    listCustomerTypes(organizationId),
+    listPressureZones(organizationId),
   ]);
 
   const geojson = await getNetworkGeoJSON(
@@ -51,7 +63,15 @@ export default async function NetworkPage({
         description={`${formatNumber(assets.length)} segments · ${formatFeetAsMiles(totalLengthFt)} shown`}
       />
 
-      <AssetFilterBar materials={materials} serviceAreas={serviceAreas} values={params} action="/network" />
+      <AssetFilterBar
+                materials={materials}
+              serviceAreas={serviceAreas}
+              criticalities={criticalities}
+              customerTypes={customerTypes}
+              pressureZones={pressureZones}
+              values={params}
+              action="/network"
+            />
 
       <Card>
         <CardContent className="p-0">
