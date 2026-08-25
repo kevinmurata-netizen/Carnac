@@ -46,10 +46,8 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "System",
     items: [
-      { label: "Filters", href: "/filters", phase: 8, live: true },
       { label: "Reports", href: "/reports", phase: 8, live: true },
       { label: "Settings", href: "/settings", phase: 8, live: true },
-      { label: "Administration", href: "/administration", phase: 8, live: true },
     ],
   },
 ];

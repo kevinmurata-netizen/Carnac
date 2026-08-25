@@ -1,6 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { NAV_GROUPS } from "@/config/nav";
 import { SEGMENT_LABELS } from "@/config/breadcrumbs";
+import { groupKey } from "@/config/nav-groups";
+
+export { groupKey };
 
 /**
  * Page names are configuration. NAV_GROUPS and SEGMENT_LABELS remain the
@@ -58,22 +61,30 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
     renamed: overrides[href] != null && overrides[href] !== defaultLabel,
   });
 
-  const sections: RenameableSection[] = NAV_GROUPS.map((g) => ({
-    group: g.label,
-    items: g.items.map((i) => resolve(i.href, i.label)),
-  }));
+  const sections: RenameableSection[] = [
+    {
+      group: "Sidebar Sections",
+      items: NAV_GROUPS.map((g) => resolve(groupKey(g.label), g.label)),
+    },
+    ...NAV_GROUPS.map((g) => ({
+      group: overrides[groupKey(g.label)] ?? g.label,
+      items: g.items.map((i) => resolve(i.href, i.label)),
+    })),
+  ];
 
   sections.push({
     group: "Settings Pages",
     items: [
+      ["/settings/configuration", "configuration"],
+      ["/settings/navigation", "navigation"],
+      ["/settings/database", "database"],
       ["/settings/condition-index", "condition-index"],
       ["/settings/condition-models", "condition-models"],
       ["/settings/treatments", "treatments"],
-      ["/settings/configuration", "configuration"],
       ["/settings/deterioration-models", "deterioration-models"],
       ["/settings/risk-models", "risk-models"],
       ["/settings/failure-types", "failure-types"],
-      ["/settings/navigation", "navigation"],
+      ["/filters", "filters"],
     ].map(([href, segment]) => resolve(href, SEGMENT_LABELS[segment] ?? segment)),
   });
 
@@ -81,13 +92,12 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
     group: "Administration Pages",
     items: [
       ["/administration/users", "users"],
+      ["/administration/wishlist", "wishlist"],
       ["/administration/fields", "fields"],
       ["/administration/import", "import"],
       ["/administration/activity", "activity"],
-      ["/administration/wishlist", "wishlist"],
     ].map(([href, segment]) => resolve(href, SEGMENT_LABELS[segment] ?? segment)),
   });
-
   return sections;
 }
 
