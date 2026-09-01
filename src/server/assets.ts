@@ -112,17 +112,21 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
     where.location = { is: { ...existing, pressureZone: filters.pressureZone } };
   }
 
-  const DB_SORTS: Record<string, Prisma.AssetOrderByWithRelationInput> = {
-    assetCode: { assetCode: "asc" },
-    status: { status: "asc" },
-    installationDate: { installationDate: "asc" },
+  // Columns backed by a real column, so they sort in the query. Age is not
+  // stored — it is today minus the installation date — so sorting by age is
+  // exactly sorting by installation date the other way round. Segments with no
+  // installation date have no age, and sort last in both directions rather
+  // than bunching at the top as if they were brand new.
+  const DB_SORTS: Record<string, (dir: "asc" | "desc") => Prisma.AssetOrderByWithRelationInput> = {
+    assetCode: (dir) => ({ assetCode: dir }),
+    status: (dir) => ({ status: dir }),
+    installationDate: (dir) => ({ installationDate: { sort: dir, nulls: "last" } }),
+    age: (dir) => ({ installationDate: { sort: dir === "asc" ? "desc" : "asc", nulls: "last" } }),
   };
 
   const dir = filters.dir === "desc" ? "desc" : "asc";
   const dbSort = filters.sort ? DB_SORTS[filters.sort] : undefined;
-  const orderBy: Prisma.AssetOrderByWithRelationInput = dbSort
-    ? Object.fromEntries(Object.keys(dbSort).map((k) => [k, dir]))
-    : { assetCode: "asc" };
+  const orderBy: Prisma.AssetOrderByWithRelationInput = dbSort ? dbSort(dir) : { assetCode: "asc" };
 
   const assets = await prisma.asset.findMany({ where, include: attributeValueInclude, orderBy });
 
