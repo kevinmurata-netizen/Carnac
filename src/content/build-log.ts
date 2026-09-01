@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-08-25",
+    title: "Ask — questions about the network in plain English",
+    pr: 15,
+    summary:
+      "A new Ask page under Overview. Type a question, get the matching segments back in a grid with clickable Water IDs.",
+    changes: [
+      "Ask things like 'all 12\" waterlines in Highland Park' or 'cast iron in poor condition serving more than 200 customers'.",
+      "Results come back as a grid; the Water ID on each row opens that segment.",
+      "The criteria it used are shown above the results, so you can see how it read your question and correct it if it read it wrong.",
+      "Questions that are not about segment data get a plain answer instead of a contorted search.",
+    ],
+    note: "Needs an ANTHROPIC_API_KEY in the environment. Until one is set the page explains what it needs rather than erroring. The assistant never writes database queries — it fills in the same criteria the Filters page produces, over the same curated schema, so it can only reach fields already made filterable.",
+  },
+  {
+    date: "2026-08-25",
     title: "Age is sortable on Water Inventory",
     pr: 14,
     summary: "The Age column now sorts, and shows a plain number rather than \"81 yr\".",
