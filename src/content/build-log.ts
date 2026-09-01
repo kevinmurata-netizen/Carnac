@@ -39,6 +39,7 @@ export const ENTRIES: BuildEntry[] = [
       "Editing a record marks each changed field with an amber dot and an amber border, and the footer counts them. Changing a value back to what was stored clears the marker.",
       "Save, Cancel and the lock state now sit in a bar pinned to the bottom of the window, so a change made at the top of a long record can be saved without scrolling to find the button.",
       "Save is disabled until something actually changes, and Cancel becomes Discard changes when there is something to discard.",
+      "The Navigation page gets the same pinned bar, and the same unsaved-change count — useful there because the list of pages is long.",
       "On Model Results, clicking a transition row opens the segments behind it — worst final condition first, with start and end WCI, the change, treatments applied, and a link through to each segment.",
     ],
     fixes: [

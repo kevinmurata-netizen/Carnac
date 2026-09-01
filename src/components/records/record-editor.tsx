@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StickyActionBar } from "@/components/layout/sticky-action-bar";
 import { Lock, LockOpen, CircleDot } from "lucide-react";
 
 export type EditState = { status: "idle" | "success" | "error"; message?: string };
@@ -123,12 +124,10 @@ export function RecordEditor({
         </Card>
       ))}
 
-      {/* Pinned to the bottom of the viewport so a change made at the top of a
-          long record can be saved without hunting for the button. It stays
-          inside the form, so Save still submits it. */}
-      <div className="sticky bottom-0 z-20 border-t bg-card/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-card/75">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+      {/* Stays inside the form, so Save still submits it. */}
+      <StickyActionBar
+        status={
+          <>
             {unlocked ? (
               <LockOpen className="h-4 w-4 shrink-0 text-primary" />
             ) : (
@@ -149,29 +148,27 @@ export function RecordEditor({
             {state.status === "success" && !unlocked && (
               <span className="text-xs text-emerald-600">{state.message}</span>
             )}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-2">
-            {canEdit ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={unlocked ? "outline" : "secondary"}
-                  onClick={() => (unlocked ? cancel() : setUnlocked(true))}
-                >
-                  {unlocked ? (dirty ? "Discard changes" : "Cancel") : "Unlock to edit"}
-                </Button>
-                {unlocked && <SaveButton dirty={dirty} />}
-              </>
-            ) : (
-              <span className="text-xs text-muted-foreground">
-                {lockedNote ?? "Your role cannot edit this record"}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      >
+        {canEdit ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant={unlocked ? "outline" : "secondary"}
+              onClick={() => (unlocked ? cancel() : setUnlocked(true))}
+            >
+              {unlocked ? (dirty ? "Discard changes" : "Cancel") : "Unlock to edit"}
+            </Button>
+            {unlocked && <SaveButton dirty={dirty} />}
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {lockedNote ?? "Your role cannot edit this record"}
+          </span>
+        )}
+      </StickyActionBar>
     </form>
   );
 }

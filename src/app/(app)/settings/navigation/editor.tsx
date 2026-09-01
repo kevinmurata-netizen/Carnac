@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import type { RenameableSection } from "@/server/navigation";
 import { saveNavLabelsAction, resetNavLabelsAction } from "../actions";
 import { EMPTY_SETTINGS_STATE } from "../state";
-import { RotateCcw, Eye, EyeOff } from "lucide-react";
+import { RotateCcw, Eye, EyeOff, CircleDot } from "lucide-react";
+import { StickyActionBar } from "@/components/layout/sticky-action-bar";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -27,6 +28,18 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
   const [hidden, setHidden] = useState<Set<string>>(
     () => new Set(sections.flatMap((s) => s.items).filter((i) => i.hidden).map((i) => i.href))
   );
+
+  // Measured against what the server sent, not against the code defaults —
+  // "differs from the original name" and "not yet saved" are different
+  // questions, and the footer answers the second one.
+  const stored = Object.fromEntries(sections.flatMap((s) => s.items.map((i) => [i.href, i.label])));
+  const storedHidden = new Set(sections.flatMap((s) => s.items).filter((i) => i.hidden).map((i) => i.href));
+
+  const unsavedNames = Object.entries(values).filter(([href, v]) => v !== stored[href]).length;
+  const unsavedVisibility =
+    [...hidden].filter((h) => !storedHidden.has(h)).length +
+    [...storedHidden].filter((h) => !hidden.has(h)).length;
+  const unsaved = unsavedNames + unsavedVisibility;
 
   const defaults = Object.fromEntries(sections.flatMap((s) => s.items.map((i) => [i.href, i.defaultLabel])));
   const changedCount = Object.entries(values).filter(([href, v]) => v.trim() !== defaults[href]).length;
@@ -131,7 +144,7 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
       </div>
 
       <Card className="mt-4">
-        <CardContent className="space-y-4 pt-6">
+        <CardContent className="space-y-4 pt-6 pb-2">
           <p className="text-xs text-muted-foreground">
             A rename applies in three places at once — the sidebar, the breadcrumb trail and the page&apos;s own
             heading — so they never disagree. URLs are unchanged, which keeps existing links and bookmarks working.
@@ -146,29 +159,41 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
             page follows the default again.
           </p>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-            <div className="min-w-0 text-xs">
-              {saveState.status === "error" && <span className="text-destructive">{saveState.message}</span>}
-              {saveState.status === "success" && <span className="text-emerald-600">{saveState.message}</span>}
-              {resetState.status === "success" && <span className="text-emerald-600">{resetState.message}</span>}
-              {saveState.status === "idle" && resetState.status === "idle" && (
-                <span className="text-muted-foreground">
-                  {[
-                    changedCount === 0 ? "All pages use their default names." : `${changedCount} renamed.`,
-                    hidden.size === 0 ? "None hidden." : `${hidden.size} hidden.`,
-                  ].join(" ")}
-                </span>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <ResetButton action={resetAction} />
-              <Button type="submit" form={RENAME_FORM_ID}>
-                Save changes
-              </Button>
-            </div>
-          </div>
         </CardContent>
       </Card>
+
+      <StickyActionBar
+        status={
+          <>
+            <span className="text-muted-foreground">
+              {[
+                changedCount === 0 ? "All pages use their default names." : `${changedCount} renamed.`,
+                hidden.size === 0 ? "None hidden." : `${hidden.size} hidden.`,
+              ].join(" ")}
+            </span>
+
+            {unsaved > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+                <CircleDot className="h-3 w-3" />
+                {unsaved} unsaved change{unsaved === 1 ? "" : "s"}
+              </span>
+            )}
+
+            {saveState.status === "error" && <span className="text-xs text-destructive">{saveState.message}</span>}
+            {saveState.status === "success" && unsaved === 0 && (
+              <span className="text-xs text-emerald-600">{saveState.message}</span>
+            )}
+            {resetState.status === "success" && (
+              <span className="text-xs text-emerald-600">{resetState.message}</span>
+            )}
+          </>
+        }
+      >
+        <ResetButton action={resetAction} />
+        <Button type="submit" form={RENAME_FORM_ID} disabled={unsaved === 0}>
+          {unsaved === 0 ? "No changes" : "Save changes"}
+        </Button>
+      </StickyActionBar>
     </>
   );
 }
@@ -176,7 +201,7 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
 function ResetButton({ action }: { action: (formData: FormData) => void }) {
   return (
     <form action={action}>
-      <Button type="submit" variant="outline">
+      <Button type="submit" size="sm" variant="outline">
         Reset all to defaults
       </Button>
     </form>
