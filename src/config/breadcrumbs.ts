@@ -10,6 +10,7 @@ import { ASSET_LABEL } from "@/config/labels";
  */
 export const SEGMENT_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
+  ask: "Ask",
   network: "Network",
   assets: ASSET_LABEL.plural,
   inspections: "Inspections",
