@@ -216,7 +216,7 @@ export async function askAssistant(organizationId: string, question: string): Pr
   if (!assistantConfigured()) {
     return {
       kind: "unavailable",
-      text: "Ask is not switched on yet — an ANTHROPIC_API_KEY needs adding to the environment.",
+      text: "The assistant is not switched on yet — an ANTHROPIC_API_KEY needs adding to the environment.",
     };
   }
 

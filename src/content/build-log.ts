@@ -40,6 +40,7 @@ export const ENTRIES: BuildEntry[] = [
       "Save, Cancel and the lock state now sit in a bar pinned to the bottom of the window, so a change made at the top of a long record can be saved without scrolling to find the button.",
       "Save is disabled until something actually changes, and Cancel becomes Discard changes when there is something to discard.",
       "The Navigation page gets the same pinned bar and unsaved-change count, and marks the rows you changed — an amber dot beside the page name, an outline round the field or the Showing/Hidden toggle, whichever you touched.",
+      "Ask is now called AI Assistant. Its address is unchanged, so existing links still work.",
       "On Model Results, clicking a transition row opens the segments behind it — worst final condition first, with start and end WCI, the change, treatments applied, and a link through to each segment.",
     ],
     fixes: [
