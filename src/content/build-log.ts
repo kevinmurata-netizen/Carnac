@@ -29,7 +29,7 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
-    date: "2026-08-25",
+    date: "2026-09-01",
     title: "Ask — questions about the network in plain English",
     pr: 15,
     summary:
@@ -43,7 +43,7 @@ export const ENTRIES: BuildEntry[] = [
     note: "Needs an ANTHROPIC_API_KEY in the environment. Until one is set the page explains what it needs rather than erroring. The assistant never writes database queries — it fills in the same criteria the Filters page produces, over the same curated schema, so it can only reach fields already made filterable.",
   },
   {
-    date: "2026-08-25",
+    date: "2026-09-01",
     title: "Age is sortable on Water Inventory",
     pr: 14,
     summary: "The Age column now sorts, and shows a plain number rather than \"81 yr\".",
