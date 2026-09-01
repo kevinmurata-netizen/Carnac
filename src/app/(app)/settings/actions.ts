@@ -16,7 +16,7 @@ import {
   setInspectionTemplateActive,
   updateMarkovModel,
 } from "@/server/settings";
-import { updateNavLabels, resetNavLabels } from "@/server/navigation";
+import { updateNavLabels, updateNavVisibility, resetNavLabels } from "@/server/navigation";
 import { createMetric, updateMetric, deleteMetric } from "@/server/metrics";
 import type { ConditionBand } from "@/domain/waterline/condition";
 import type { SettingsActionState } from "./state";
@@ -275,10 +275,23 @@ export async function saveNavLabelsAction(
 
     await updateNavLabels(session.user.organizationId, labels);
 
+    // Visibility travels in the same form. Checkboxes only submit when
+    // checked, so the absent ones are exactly the pages to show again.
+    const hiddenHrefs = formData
+      .getAll("hidden")
+      .map((v) => String(v))
+      .filter(Boolean);
+    await updateNavVisibility(session.user.organizationId, hiddenHrefs);
+
     // Page names appear in the sidebar and breadcrumbs, which the app layout
     // renders — so the whole tree has to revalidate, not just this page.
     revalidatePath("/", "layout");
-    return { status: "success", message: "Page names saved." };
+    return {
+      status: "success",
+      message: hiddenHrefs.length === 0
+        ? "Saved. Every page is showing."
+        : `Saved. ${hiddenHrefs.length} page${hiddenHrefs.length === 1 ? "" : "s"} hidden from the sidebar.`,
+    };
   } catch (e) {
     return fail(e);
   }

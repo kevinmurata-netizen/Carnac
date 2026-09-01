@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Lock, LockOpen } from "lucide-react";
+import { StickyActionBar } from "@/components/layout/sticky-action-bar";
+import { Lock, LockOpen, CircleDot } from "lucide-react";
 
 export type EditState = { status: "idle" | "success" | "error"; message?: string };
 
@@ -26,7 +27,7 @@ export type EditableField = {
 
 export type EditableSection = { title: string; fields: EditableField[]; columns?: number };
 
-const control =
+const controlBase =
   "h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
@@ -57,55 +58,48 @@ export function RecordEditor({
   const [unlocked, setUnlocked] = useState(false);
   const [seen, setSeen] = useState(state);
 
+  // Which fields differ from what is stored. Compared by value rather than
+  // "something was typed", so editing a field and putting it back reads as
+  // clean again — a warning that cries wolf stops being believed.
+  const saved = useMemo(
+    () => new Map(sections.flatMap((sec) => sec.fields.map((f) => [f.name, f.value]))),
+    [sections]
+  );
+  const [changed, setChanged] = useState<Set<string>>(new Set());
+  const dirty = changed.size > 0;
+
+  const noteChange = (name: string, value: string) =>
+    setChanged((prev) => {
+      const isDifferent = (saved.get(name) ?? "") !== value;
+      if (isDifferent === prev.has(name)) return prev;
+      const next = new Set(prev);
+      if (isDifferent) next.add(name);
+      else next.delete(name);
+      return next;
+    });
+
   // A successful save returns the record to its locked, read-only state, so
   // the page you are left looking at is the one that was actually stored.
   // Adjusted during render rather than in an effect: React discards this pass
   // and re-renders immediately, so the unlocked form is never painted.
   if (seen !== state) {
     setSeen(state);
-    if (state.status === "success") setUnlocked(false);
+    if (state.status === "success") {
+      setUnlocked(false);
+      setChanged(new Set());
+    }
   }
+
+  const cancel = () => {
+    setUnlocked(false);
+    setChanged(new Set());
+  };
 
   return (
     <form action={formAction} className="space-y-4">
       {Object.entries(hiddenFields).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}
-
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3">
-        <div className="flex items-center gap-2 text-sm">
-          {unlocked ? (
-            <LockOpen className="h-4 w-4 text-primary" />
-          ) : (
-            <Lock className="h-4 w-4 text-muted-foreground" />
-          )}
-          <span className={unlocked ? "font-medium text-foreground" : "text-muted-foreground"}>
-            {unlocked ? "Editing — fields are unlocked" : "Locked — fields are read-only"}
-          </span>
-          {state.status === "error" && <span className="text-xs text-destructive">{state.message}</span>}
-          {state.status === "success" && !unlocked && (
-            <span className="text-xs text-emerald-600">{state.message}</span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {canEdit ? (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                variant={unlocked ? "outline" : "secondary"}
-                onClick={() => setUnlocked((v) => !v)}
-              >
-                {unlocked ? "Cancel" : "Unlock to edit"}
-              </Button>
-              {unlocked && <SaveButton />}
-            </>
-          ) : (
-            <span className="text-xs text-muted-foreground">{lockedNote ?? "Your role cannot edit this record"}</span>
-          )}
-        </div>
-      </div>
 
       {sections.map((section) => (
         <Card key={section.title}>
@@ -118,34 +112,99 @@ export function RecordEditor({
             }`}
           >
             {section.fields.map((field) => (
-              <FieldCell key={field.name} field={field} unlocked={unlocked} />
+              <FieldCell
+                key={field.name}
+                field={field}
+                unlocked={unlocked}
+                changed={changed.has(field.name)}
+                onChange={noteChange}
+              />
             ))}
           </CardContent>
         </Card>
       ))}
+
+      {/* Stays inside the form, so Save still submits it. */}
+      <StickyActionBar
+        status={
+          <>
+            {unlocked ? (
+              <LockOpen className="h-4 w-4 shrink-0 text-primary" />
+            ) : (
+              <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+            <span className={unlocked ? "font-medium text-foreground" : "text-muted-foreground"}>
+              {unlocked ? "Editing — fields are unlocked" : "Locked — fields are read-only"}
+            </span>
+
+            {dirty && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+                <CircleDot className="h-3 w-3" />
+                {changed.size} unsaved change{changed.size === 1 ? "" : "s"}
+              </span>
+            )}
+
+            {state.status === "error" && <span className="text-xs text-destructive">{state.message}</span>}
+            {state.status === "success" && !unlocked && (
+              <span className="text-xs text-emerald-600">{state.message}</span>
+            )}
+          </>
+        }
+      >
+        {canEdit ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant={unlocked ? "outline" : "secondary"}
+              onClick={() => (unlocked ? cancel() : setUnlocked(true))}
+            >
+              {unlocked ? (dirty ? "Discard changes" : "Cancel") : "Unlock to edit"}
+            </Button>
+            {unlocked && <SaveButton dirty={dirty} />}
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {lockedNote ?? "Your role cannot edit this record"}
+          </span>
+        )}
+      </StickyActionBar>
     </form>
   );
 }
 
-function SaveButton() {
+function SaveButton({ dirty }: { dirty: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" size="sm" disabled={pending}>
-      {pending ? "Saving…" : "Save changes"}
+    <Button type="submit" size="sm" disabled={pending || !dirty}>
+      {pending ? "Saving…" : dirty ? "Save changes" : "No changes"}
     </Button>
   );
 }
 
-function FieldCell({ field, unlocked }: { field: EditableField; unlocked: boolean }) {
+function FieldCell({
+  field,
+  unlocked,
+  changed,
+  onChange,
+}: {
+  field: EditableField;
+  unlocked: boolean;
+  changed: boolean;
+  onChange: (name: string, value: string) => void;
+}) {
   const editing = unlocked && !field.readOnly;
 
   return (
     <div className={field.type === "textarea" ? "col-span-2 sm:col-span-3" : undefined}>
       <label
         htmlFor={editing ? field.name : undefined}
-        className="text-xs font-medium text-muted-foreground"
+        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
       >
         {field.label}
+        {changed && (
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title="Edited, not yet saved" aria-label="Edited, not yet saved" />
+        )}
       </label>
 
       {!editing ? (
@@ -154,17 +213,28 @@ function FieldCell({ field, unlocked }: { field: EditableField; unlocked: boolea
         // Keyed on the lock so cancelling an edit re-mounts the input with the
         // saved value rather than keeping whatever was typed.
         <div className="mt-1" key={`${field.name}-unlocked`}>
-          <Input field={field} />
+          <Input field={field} changed={changed} onChange={onChange} />
         </div>
       )}
     </div>
   );
 }
 
-function Input({ field }: { field: EditableField }) {
+function Input({
+  field,
+  changed,
+  onChange,
+}: {
+  field: EditableField;
+  changed: boolean;
+  onChange: (name: string, value: string) => void;
+}) {
+  const control = changed ? controlBase + " border-amber-500" : controlBase;
+  const report = (e: { target: { value: string } }) => onChange(field.name, e.target.value);
+
   if (field.type === "select") {
     return (
-      <select id={field.name} name={field.name} defaultValue={field.value} className={control}>
+      <select id={field.name} name={field.name} defaultValue={field.value} onChange={report} className={control}>
         <option value="">—</option>
         {(field.options ?? []).map((o) => (
           <option key={o.value} value={o.value}>
@@ -177,7 +247,7 @@ function Input({ field }: { field: EditableField }) {
 
   if (field.type === "boolean") {
     return (
-      <select id={field.name} name={field.name} defaultValue={field.value} className={control}>
+      <select id={field.name} name={field.name} defaultValue={field.value} onChange={report} className={control}>
         <option value="">—</option>
         <option value="true">Yes</option>
         <option value="false">No</option>
@@ -191,6 +261,7 @@ function Input({ field }: { field: EditableField }) {
         id={field.name}
         name={field.name}
         defaultValue={field.value}
+        onChange={report}
         rows={3}
         className={`${control} h-auto py-2`}
       />
@@ -204,6 +275,7 @@ function Input({ field }: { field: EditableField }) {
       type={field.type ?? "text"}
       step={field.step}
       defaultValue={field.value}
+      onChange={report}
       className={control}
     />
   );

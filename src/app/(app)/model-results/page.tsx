@@ -6,9 +6,8 @@ import { ASSET_LABEL } from "@/config/labels";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { WciSankey } from "@/components/charts/wci-sankey";
+import { FlowTable } from "./flow-table";
 import { formatNumber } from "@/lib/format";
 import { ArrowDownRight, ArrowUpRight, Gauge, Minus } from "lucide-react";
 
@@ -120,48 +119,13 @@ export default async function ModelResultsPage({
                 <CardHeader>
                   <CardTitle>
                     Transitions{" "}
-                    <span className="text-sm font-normal text-muted-foreground">({flow.links.length})</span>
+                    <span className="text-sm font-normal text-muted-foreground">
+                      ({flow.links.length}) — click a row for the segments behind it
+                    </span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>From</TableHead>
-                          <TableHead>To</TableHead>
-                          <TableHead>Segments</TableHead>
-                          <TableHead>Share</TableHead>
-                          <TableHead>Direction</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {flow.links.map((l) => (
-                          <TableRow key={`${l.fromBand}-${l.toBand}`}>
-                            <TableCell>{l.fromBand}</TableCell>
-                            <TableCell>{l.toBand}</TableCell>
-                            <TableCell className="font-medium">{formatNumber(l.value)}</TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {Math.round((l.value / flow.assetCount) * 1000) / 10}%
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  l.direction === "improved"
-                                    ? "default"
-                                    : l.direction === "declined"
-                                      ? "destructive"
-                                      : "secondary"
-                                }
-                              >
-                                {l.direction}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  <FlowTable links={flow.links} total={flow.assetCount} />
                 </CardContent>
               </Card>
 

@@ -30,6 +30,26 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-01",
+    title: "Hide pages, unsaved-change markers, a pinned save bar, and drillable model results",
+    pr: 17,
+    summary:
+      "Four changes: tidy the sidebar, see at a glance what you have edited, save without scrolling, and open a model-results row into the segments behind it.",
+    changes: [
+      "Settings -> Navigation now has a Showing/Hidden toggle per page. Hiding removes it from the sidebar only — the page keeps working and its URL keeps resolving, and a page you are currently on stays visible so you cannot strand yourself.",
+      "Editing a record marks each changed field with an amber dot and an amber border, and the footer counts them. Changing a value back to what was stored clears the marker.",
+      "Save, Cancel and the lock state now sit in a bar pinned to the bottom of the window, so a change made at the top of a long record can be saved without scrolling to find the button.",
+      "Save is disabled until something actually changes, and Cancel becomes Discard changes when there is something to discard.",
+      "The Navigation page gets the same pinned bar and unsaved-change count, and marks the rows you changed — an amber dot beside the page name, an outline round the field or the Showing/Hidden toggle, whichever you touched.",
+      "Ask is now called AI Assistant. Its address is unchanged, so existing links still work.",
+      "On Model Results, clicking a transition row opens the segments behind it — worst final condition first, with start and end WCI, the change, treatments applied, and a link through to each segment.",
+    ],
+    fixes: [
+      "The ten tabs on a segment page wrapped onto three rows but the row kept a one-line height, so on a phone they overlapped the card beneath. Found while checking the new footer on a narrow screen.",
+    ],
+    note: "Adds a hidden column to navigation_labels, so this one needs a migration before deploying.",
+  },
+  {
+    date: "2026-09-01",
     title: "Ask — questions about the network in plain English",
     pr: 15,
     summary:

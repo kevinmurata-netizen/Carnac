@@ -8,7 +8,7 @@ import { askAction } from "./actions";
 export default async function AskPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const pageTitle = await getPageName(organizationId, "/ask", "Ask");
+  const pageTitle = await getPageName(organizationId, "/ask", "AI Assistant");
   const configured = assistantConfigured();
 
   return (
@@ -20,7 +20,7 @@ export default async function AskPage() {
 
       {!configured && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          Ask needs an <code className="rounded bg-muted px-1 py-0.5 text-xs">ANTHROPIC_API_KEY</code> in the
+          The assistant needs an <code className="rounded bg-muted px-1 py-0.5 text-xs">ANTHROPIC_API_KEY</code> in the
           environment before it can answer. Everything else on this page works as soon as one is set — no other
           configuration.
         </div>

@@ -25,6 +25,25 @@ export async function getNavOverrides(organizationId: string): Promise<NavOverri
   return Object.fromEntries(rows.map((r) => [r.href, r.label]));
 }
 
+/**
+ * Hrefs hidden from the sidebar.
+ *
+ * Hiding is presentational only — the page keeps working and its URL keeps
+ * resolving, so a bookmark or a link from elsewhere in the app still lands.
+ * This is tidying a crowded sidebar, not access control; roles do that.
+ */
+export async function getHiddenHrefs(organizationId: string): Promise<Set<string>> {
+  const rows = await prisma.navigationLabel.findMany({
+    where: { organizationId, hidden: true },
+    select: { href: true },
+  });
+  return new Set(rows.map((r) => r.href));
+}
+
+/** Settings is how you get back to this page, so it can never be hidden —
+ * hiding it would leave no route to unhide anything. */
+export const ALWAYS_VISIBLE = new Set<string>(["/settings"]);
+
 /** Resolve one page's name, for a heading. `fallback` is the name in code. */
 export async function getPageName(
   organizationId: string,
@@ -45,6 +64,9 @@ export type RenameableSection = {
     defaultLabel: string;
     label: string;
     renamed: boolean;
+    hidden: boolean;
+    /** False for the few entries that must stay reachable. */
+    canHide: boolean;
   }>;
 };
 
@@ -52,13 +74,18 @@ export type RenameableSection = {
  * settings and administration sub-pages that are reachable but not in the
  * sidebar. */
 export async function listRenameablePages(organizationId: string): Promise<RenameableSection[]> {
-  const overrides = await getNavOverrides(organizationId);
+  const [overrides, hidden] = await Promise.all([
+    getNavOverrides(organizationId),
+    getHiddenHrefs(organizationId),
+  ]);
 
   const resolve = (href: string, defaultLabel: string) => ({
     href,
     defaultLabel,
     label: overrides[href] ?? defaultLabel,
     renamed: overrides[href] != null && overrides[href] !== defaultLabel,
+    hidden: hidden.has(href),
+    canHide: !ALWAYS_VISIBLE.has(href),
   });
 
   const sections: RenameableSection[] = [
@@ -111,6 +138,45 @@ async function renameableHrefs(organizationId: string): Promise<Map<string, stri
   return new Map(sections.flatMap((s) => s.items.map((i) => [i.href, i.defaultLabel])));
 }
 
+/**
+ * Sets which hrefs are hidden, as a whole set.
+ *
+ * A page keeps its row when hidden so a rename survives being hidden and shown
+ * again — which means a row no longer implies "renamed", and the tidy-up below
+ * only deletes rows that are neither renamed nor hidden.
+ */
+export async function updateNavVisibility(organizationId: string, hiddenHrefs: string[]) {
+  const allowed = await renameableHrefs(organizationId);
+  const wanted = new Set(hiddenHrefs.filter((h) => allowed.has(h) && !ALWAYS_VISIBLE.has(h)));
+
+  for (const [href, defaultLabel] of allowed) {
+    const shouldHide = wanted.has(href);
+    const existing = await prisma.navigationLabel.findUnique({
+      where: { organizationId_href: { organizationId, href } },
+    });
+
+    if (!existing) {
+      if (shouldHide) {
+        await prisma.navigationLabel.create({
+          data: { organizationId, href, label: defaultLabel, hidden: true },
+        });
+      }
+      continue;
+    }
+
+    if (existing.hidden === shouldHide) continue;
+
+    // A row that is neither renamed nor hidden carries no information, so it
+    // goes rather than lingering as a no-op override.
+    if (!shouldHide && existing.label === defaultLabel) {
+      await prisma.navigationLabel.delete({ where: { id: existing.id } });
+      continue;
+    }
+
+    await prisma.navigationLabel.update({ where: { id: existing.id }, data: { hidden: shouldHide } });
+  }
+}
+
 export async function updateNavLabels(organizationId: string, labels: Record<string, string>) {
   const allowed = await renameableHrefs(organizationId);
 
@@ -125,7 +191,16 @@ export async function updateNavLabels(organizationId: string, labels: Record<str
     // A name matching the default is stored as no override at all, so the page
     // keeps following the code default if that ever changes.
     if (label === defaultLabel) {
-      await prisma.navigationLabel.deleteMany({ where: { organizationId, href } });
+      // Only drop the row if it is not also carrying a hidden flag, or
+      // renaming back to the default would silently unhide the page.
+      const existing = await prisma.navigationLabel.findUnique({
+        where: { organizationId_href: { organizationId, href } },
+      });
+      if (existing && !existing.hidden) {
+        await prisma.navigationLabel.delete({ where: { id: existing.id } });
+      } else if (existing) {
+        await prisma.navigationLabel.update({ where: { id: existing.id }, data: { label } });
+      }
       continue;
     }
 

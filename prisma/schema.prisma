@@ -715,6 +715,9 @@ model NavigationLabel {
   organizationId String
   href           String
   label          String
+  // Hidden pages keep their row so the name survives being hidden and shown
+  // again. A row therefore no longer implies "renamed" — check both fields.
+  hidden         Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

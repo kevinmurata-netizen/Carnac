@@ -21,7 +21,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Overview",
     items: [
       { label: "Dashboard", href: "/dashboard", phase: 1, live: true },
-      { label: "Ask", href: "/ask", phase: 8, live: true },
+      { label: "AI Assistant", href: "/ask", phase: 8, live: true },
       { label: "Network", href: "/network", phase: 1, live: true },
       { label: ASSET_LABEL.plural, href: "/assets", phase: 1, live: true },
     ],
