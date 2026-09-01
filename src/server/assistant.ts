@@ -186,6 +186,30 @@ function formatCell(value: string | number | boolean | null): string {
   return value;
 }
 
+/** API failures reach a water engineer, not a developer, so they are
+ * translated. The distinction that matters to them is whether this is
+ * something they can fix (billing, a bad key) or something to wait out. */
+function explainApiError(e: unknown): string {
+  if (e instanceof Anthropic.AuthenticationError) {
+    return "The Anthropic API key was rejected. Check ANTHROPIC_API_KEY is current and has not been revoked.";
+  }
+  if (e instanceof Anthropic.RateLimitError) {
+    return "Too many questions at once. Wait a moment and ask again.";
+  }
+  if (e instanceof Anthropic.APIError) {
+    // Billing arrives as a 400, not a dedicated class, so it is matched on the
+    // server's own wording rather than guessed at from the status code.
+    if (/credit balance is too low/i.test(e.message)) {
+      return "The Anthropic account has no credits left. Add credits under Plans & Billing at console.anthropic.com, and this page starts working again — nothing here needs changing.";
+    }
+    if (e.status && e.status >= 500) {
+      return "The Anthropic API is having trouble right now. Try again shortly.";
+    }
+    return `The Anthropic API refused that request (${e.status ?? "unknown"}). Everything else in CARNAC is unaffected.`;
+  }
+  return "Could not reach the Anthropic API. Check the connection and try again.";
+}
+
 export async function askAssistant(organizationId: string, question: string): Promise<AssistantResult> {
   if (!assistantConfigured()) {
     return {
@@ -202,20 +226,25 @@ export async function askAssistant(organizationId: string, question: string): Pr
 
   const client = new Anthropic();
 
-  const response = await client.messages.create({
-    model: MODEL,
-    // A tool call carrying a handful of criteria is a deliberately short
-    // output; this is not a case of lowballing a long answer.
-    max_tokens: 4096,
-    // The schema is the bulk of the prompt and changes only when an
-    // administrator adds a field, so it caches across every question asked.
-    system: [{ type: "text", text: systemPrompt(schema), cache_control: { type: "ephemeral" } }],
-    // Left on auto rather than forced: a question that is not about segment
-    // data should come back as words, not a contorted search.
-    tools: [SEARCH_TOOL],
-    output_config: { effort: "low" },
-    messages: [{ role: "user", content: trimmed }],
-  });
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      model: MODEL,
+      // A tool call carrying a handful of criteria is a deliberately short
+      // output; this is not a case of lowballing a long answer.
+      max_tokens: 4096,
+      // The schema is the bulk of the prompt and changes only when an
+      // administrator adds a field, so it caches across every question asked.
+      system: [{ type: "text", text: systemPrompt(schema), cache_control: { type: "ephemeral" } }],
+      // Left on auto rather than forced: a question that is not about segment
+      // data should come back as words, not a contorted search.
+      tools: [SEARCH_TOOL],
+      output_config: { effort: "low" },
+      messages: [{ role: "user", content: trimmed }],
+    });
+  } catch (e) {
+    return { kind: "unavailable", text: explainApiError(e) };
+  }
 
   const toolUse = response.content.find(
     (block): block is Anthropic.ToolUseBlock => block.type === "tool_use" && block.name === "search_segments"
