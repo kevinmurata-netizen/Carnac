@@ -219,7 +219,10 @@ export default async function AssetDetailPage({
       </div>
 
       <Tabs defaultValue={tab ?? "overview"}>
-        <TabsList className="flex-wrap">
+        {/* h-auto because the list wraps: the component's fixed height would
+            clip the second row and overlap the card beneath it on narrow
+            screens, where ten tabs never fit on one line. */}
+        <TabsList className="group-data-horizontal/tabs:h-auto flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="map">Map</TabsTrigger>
           <TabsTrigger value="inspections">Inspection History</TabsTrigger>

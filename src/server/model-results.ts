@@ -36,6 +36,19 @@ export type WciFlowLink = {
   toBand: string;
   /** Whether this flow improved, held, or lost ground. */
   direction: "improved" | "unchanged" | "declined";
+  /** The segments taking this path, so a band-to-band figure can be opened up
+   * into the assets behind it rather than staying an unexplained number. */
+  assets: WciFlowAsset[];
+};
+
+export type WciFlowAsset = {
+  assetId: string;
+  assetCode: string;
+  startCondition: number;
+  endCondition: number;
+  material: string | null;
+  /** How many times it was treated over the period. */
+  treatments: number;
 };
 
 export type WciFlow = {
@@ -112,17 +125,27 @@ export async function getWciFlow(organizationId: string, scenarioId: string): Pr
   ];
   const indexOf = new Map(nodes.map((n, i) => [n.id, i]));
 
-  const pairs = new Map<string, number>();
+  const pairs = new Map<string, WciFlowAsset[]>();
   for (const o of outcomes) {
     const from = getConditionBand(o.startCondition, bands).label;
     const to = getConditionBand(o.endCondition, bands).label;
-    pairs.set(`${from}→${to}`, (pairs.get(`${from}→${to}`) ?? 0) + 1);
+    const key = `${from}→${to}`;
+    const list = pairs.get(key) ?? [];
+    list.push({
+      assetId: o.assetId,
+      assetCode: o.assetCode,
+      startCondition: o.startCondition,
+      endCondition: o.endCondition,
+      material: o.material,
+      treatments: o.treatments,
+    });
+    pairs.set(key, list);
     nodes[indexOf.get(`start:${from}`)!].count++;
     nodes[indexOf.get(`end:${to}`)!].count++;
   }
 
   const links: WciFlowLink[] = [...pairs.entries()]
-    .map(([key, value]) => {
+    .map(([key, assets]) => {
       const [fromBand, toBand] = key.split("→");
       // A lower rank index is a better band, so moving to a smaller index is an
       // improvement.
@@ -130,7 +153,10 @@ export async function getWciFlow(organizationId: string, scenarioId: string): Pr
       return {
         source: indexOf.get(`start:${fromBand}`)!,
         target: indexOf.get(`end:${toBand}`)!,
-        value,
+        value: assets.length,
+        // Worst-first, so opening a row leads with the segments that most
+        // need looking at.
+        assets: [...assets].sort((a, b) => a.endCondition - b.endCondition),
         fromBand,
         toBand,
         direction: delta > 0 ? ("improved" as const) : delta < 0 ? ("declined" as const) : ("unchanged" as const),

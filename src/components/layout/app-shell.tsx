@@ -62,11 +62,13 @@ function setSidebarOpen(next: boolean) {
  */
 export function AppShell({
   overrides,
+  hidden,
   userName,
   roleName,
   children,
 }: {
   overrides: Record<string, string>;
+  hidden: string[];
   userName: string;
   roleName: string;
   children: React.ReactNode;
@@ -91,13 +93,17 @@ export function AppShell({
     };
   }, [drawerOpen]);
 
+  // The shell is fixed to the viewport and <main> does the scrolling, so the
+  // sidebar and header stay put and a page can pin its own footer to the bottom
+  // of the window. Under min-h-screen the page itself scrolled and main's
+  // overflow rule never took effect, leaving sticky nothing to hold on to.
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex h-screen w-full overflow-hidden">
       {/* Wide screens: an in-flow column that can be collapsed away. */}
       {sidebarOpen && (
         <aside className="hidden w-64 shrink-0 md:block">
           <div className="sticky top-0 h-screen">
-            <SidebarNav overrides={overrides} />
+            <SidebarNav overrides={overrides} hidden={hidden} />
           </div>
         </aside>
       )}
@@ -112,7 +118,7 @@ export function AppShell({
             className="absolute inset-0 bg-black/50"
           />
           <div className="absolute inset-y-0 left-0 w-64 max-w-[85vw] shadow-xl">
-            <SidebarNav overrides={overrides} onNavigate={() => setDrawerOpen(false)} />
+            <SidebarNav overrides={overrides} hidden={hidden} onNavigate={() => setDrawerOpen(false)} />
             <button
               type="button"
               aria-label="Close navigation"
