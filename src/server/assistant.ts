@@ -123,7 +123,7 @@ const SEARCH_TOOL: Anthropic.Tool = {
   strict: true,
 };
 
-function systemPrompt(schema: FilterTable[]): string {
+function systemPrompt(schema: FilterTable[], today: string): string {
   return `You help staff at a water utility ask questions about their waterline network in CARNAC, an asset management system.
 
 When the question asks which segments, how many, or for a list, call search_segments. Translate the question into criteria over the schema below.
@@ -134,8 +134,10 @@ Rules that matter:
 - Where a field lists its allowed values, match one of them. If the user's wording is close but not exact ("cast iron"), use the schema's spelling ("Cast Iron").
 - "Old", "aging" or "near end of life" is asset.ageYears or asset.agePercentOfLife, not a guess at an install year.
 - "Poor condition" or "bad" is condition.score, where lower is worse.
+- Today is ${today}. Work relative dates out from that — "the last 10 years" means on or after ${Number(today.slice(0, 4)) - 10}${today.slice(4)}, not a round number you picked.
+- There is no sorting. A question like "the oldest" or "the largest" cannot be ordered, so filter to a sensible range instead and include the field in question as a column, and say in your note that this is what you did.
 - If the question is about the network but you genuinely cannot map it to these fields, say so in plain words instead of guessing at a close-but-wrong field.
-- If the question is not about segment data at all, answer it briefly in plain words.
+- If the question is not about this water network, do not answer it. Say that you only answer questions about the water network, in one sentence. This applies to general knowledge, current events, and anything else outside this utility — being helpful about them is not what this tool is for.
 
 Schema:
 
@@ -221,6 +223,10 @@ export async function askAssistant(organizationId: string, question: string): Pr
   const trimmed = question.trim();
   if (!trimmed) return { kind: "message", text: "Ask me something about the network." };
 
+  // The model has no clock. Without this, "the last ten years" becomes a
+  // guess, and a wrong date range looks exactly like a right one.
+  const today = new Date().toISOString().slice(0, 10);
+
   const schema = await getFilterSchema(organizationId);
   const byKey = fieldIndex(schema);
 
@@ -235,7 +241,12 @@ export async function askAssistant(organizationId: string, question: string): Pr
       max_tokens: 4096,
       // The schema is the bulk of the prompt and changes only when an
       // administrator adds a field, so it caches across every question asked.
-      system: [{ type: "text", text: systemPrompt(schema), cache_control: { type: "ephemeral" } }],
+      // The date changes daily and the schema rarely, but both sit in the same
+    // cached block: a prompt cache lasts minutes, so a once-a-day change costs
+    // nothing, and splitting them would complicate the prefix for no gain.
+    system: [
+      { type: "text", text: systemPrompt(schema, today), cache_control: { type: "ephemeral" } },
+    ],
       // Left on auto rather than forced: a question that is not about segment
       // data should come back as words, not a contorted search.
       tools: [SEARCH_TOOL],
