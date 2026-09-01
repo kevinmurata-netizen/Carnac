@@ -29,7 +29,7 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
-    date: "2026-08-25",
+    date: "2026-09-01",
     title: "Age is sortable on Water Inventory",
     pr: 14,
     summary: "The Age column now sorts, and shows a plain number rather than \"81 yr\".",
