@@ -67,14 +67,28 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
                 const value = values[item.href] ?? item.label;
                 const isChanged = value.trim() !== item.defaultLabel;
                 const isHidden = hidden.has(item.href);
+                const nameUnsaved = value !== stored[item.href];
+                const visibilityUnsaved = isHidden !== storedHidden.has(item.href);
+                const rowUnsaved = nameUnsaved || visibilityUnsaved;
                 return (
                   <div key={item.href} className="grid grid-cols-12 items-center gap-3">
                     {/* Only checked boxes submit, so the unchecked ones are
                         exactly the pages to show again. */}
                     {isHidden && <input type="hidden" name="hidden" value={item.href} form={RENAME_FORM_ID} />}
                     <div className="col-span-12 min-w-0 sm:col-span-4">
-                      <div className={`truncate text-sm ${isHidden ? "text-muted-foreground line-through" : "text-foreground"}`}>
-                        {item.defaultLabel}
+                      <div className="flex items-center gap-1.5">
+                        {rowUnsaved && (
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+                            title="Changed, not yet saved"
+                            aria-label="Changed, not yet saved"
+                          />
+                        )}
+                        <span
+                          className={`truncate text-sm ${isHidden ? "text-muted-foreground line-through" : "text-foreground"}`}
+                        >
+                          {item.defaultLabel}
+                        </span>
                       </div>
                       <div className="truncate font-mono text-xs text-muted-foreground">
                         {item.href.startsWith("group:") ? "sidebar section" : item.href}
@@ -87,7 +101,7 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
                         value={value}
                         maxLength={40}
                         onChange={(e) => setValues((p) => ({ ...p, [item.href]: e.target.value }))}
-                        className={input}
+                        className={nameUnsaved ? `${input} border-amber-500` : input}
                         aria-label={`Name for ${item.defaultLabel}`}
                       />
                     </div>
@@ -98,6 +112,7 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
                           size="sm"
                           variant={isHidden ? "secondary" : "ghost"}
                           onClick={() => toggleHidden(item.href)}
+                          className={visibilityUnsaved ? "border border-amber-500" : undefined}
                           title={isHidden ? `Show ${item.defaultLabel} in the sidebar` : `Hide ${item.defaultLabel} from the sidebar`}
                         >
                           {isHidden ? (
