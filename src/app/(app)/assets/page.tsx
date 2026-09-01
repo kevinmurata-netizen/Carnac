@@ -104,7 +104,7 @@ export default async function AssetsPage({
                 <ColumnHeader label="Diameter" sortKey="diameter" />
                 <ColumnHeader label="Length (ft)" sortKey="length" />
                 <ColumnHeader label="Install Year" sortKey="installationDate" />
-                <ColumnHeader label="Age" />
+                <ColumnHeader label="Age" sortKey="age" />
                 <ColumnHeader
                   label="Status"
                   sortKey="status"
@@ -142,7 +142,7 @@ export default async function AssetsPage({
                     <TableCell>{formatInches(attrs[WATERLINE_ATTRIBUTES.DIAMETER] as number)}</TableCell>
                     <TableCell>{formatNumber(Math.round((attrs[WATERLINE_ATTRIBUTES.LENGTH] as number) ?? 0))}</TableCell>
                     <TableCell>{asset.installationDate ? asset.installationDate.getFullYear() : "—"}</TableCell>
-                    <TableCell>{age != null ? `${age} yr` : "—"}</TableCell>
+                    <TableCell>{age ?? "—"}</TableCell>
                     <TableCell>
                       <Badge variant={STATUS_VARIANT[asset.status]}>{formatStatus(asset.status)}</Badge>
                     </TableCell>

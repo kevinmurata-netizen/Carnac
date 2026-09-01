@@ -30,6 +30,17 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-08-25",
+    title: "Age is sortable on Water Inventory",
+    pr: 14,
+    summary: "The Age column now sorts, and shows a plain number rather than \"81 yr\".",
+    changes: [
+      "Click Age to sort youngest or oldest first, the same as any other column.",
+      "The unit is dropped from each cell — the column heading already says Age.",
+    ],
+    note: "Age is not stored anywhere; it is today minus the installation date. Sorting by age is therefore the exact inverse of sorting by install date, which is how it is done rather than by adding a column that would go stale.",
+  },
+  {
+    date: "2026-08-25",
     title: "Decision trees moved out of Treatments, and this build log",
     pr: 13,
     summary:
