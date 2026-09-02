@@ -2,17 +2,19 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { listInspections, listInspectors, summarizeInspectionScore } from "@/server/inspections";
-import { listSavedFilters, matchingAssetIds } from "@/server/saved-filters";
+import { listSavedFilters } from "@/server/saved-filters";
+import { inspectionFiltersFromParams } from "@/server/grid-params";
 import { INSPECTION_TYPES } from "@/domain/waterline/inspection";
 import { PageHeader } from "@/components/layout/page-header";
 import { InspectionFilterBar } from "@/components/filters/inspection-filter-bar";
 import { SavedFilterSelect } from "@/components/filters/saved-filter-select";
 import { ColumnHeader } from "@/components/grid/column-header";
+import { ExportButton } from "@/components/grid/export-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDate, formatNumber, parseDateInput } from "@/lib/format";
+import { formatDate, formatNumber } from "@/lib/format";
 import { ASSET_LABEL } from "@/config/labels";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
@@ -28,28 +30,12 @@ export default async function InspectionsPage({
   const pageTitle = await getPageName(organizationId, "/inspections", "Inspections");
   const conditionBands = await getConditionBands(organizationId);
 
-  // Saved filters are defined over segments, so on this grid one means "the
-  // inspections belonging to the segments it matches".
-  const savedFilterId = params.savedFilter || undefined;
-  const assetIds = savedFilterId
-    ? ((await matchingAssetIds(organizationId, savedFilterId)) ?? undefined)
-    : undefined;
-
-  const minQuality = params.minQuality ? Number(params.minQuality) / 100 : undefined;
+  // Parsed by the same code the export route uses, so the spreadsheet can
+  // never disagree with the screen.
+  const filters = await inspectionFiltersFromParams(organizationId, params);
 
   const [inspections, inspectors, savedFilters] = await Promise.all([
-    listInspections(organizationId, {
-      search: params.search || undefined,
-      inspectionType: params.inspectionType || undefined,
-      inspector: params.inspector || undefined,
-      requiresFollowUp: params.requiresFollowUp === "on",
-      after: params.after ? (parseDateInput(params.after) ?? undefined) : undefined,
-      before: params.before ? (parseDateInput(params.before) ?? undefined) : undefined,
-      minQuality: Number.isFinite(minQuality) ? minQuality : undefined,
-      assetIds,
-      sort: params.sort || undefined,
-      dir: params.dir === "desc" ? "desc" : "asc",
-    }),
+    listInspections(organizationId, filters),
     listInspectors(organizationId),
     listSavedFilters(organizationId),
   ]);
@@ -76,9 +62,12 @@ export default async function InspectionsPage({
         title={pageTitle}
         description={`${formatNumber(rows.length)} inspection${rows.length === 1 ? "" : "s"} matching current filters`}
         actions={
-          canRecordFieldData(session) ? (
-            <Button render={<Link href="/inspections/new">New Inspection</Link>} nativeButton={false} />
-          ) : undefined
+          <div className="flex items-center gap-2">
+            <ExportButton href="/inspections/export" count={rows.length} />
+            {canRecordFieldData(session) && (
+              <Button render={<Link href="/inspections/new">New Inspection</Link>} nativeButton={false} />
+            )}
+          </div>
         }
       />
 

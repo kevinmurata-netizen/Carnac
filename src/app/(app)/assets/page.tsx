@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { listAssets, listMaterials, listServiceAreas, listCriticalities, listCustomerTypes, listPressureZones, flattenAttributes } from "@/server/assets";
-import { listSavedFilters, matchingAssetIds } from "@/server/saved-filters";
+import { listSavedFilters } from "@/server/saved-filters";
+import { assetFiltersFromParams } from "@/server/grid-params";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetFilterBar } from "@/components/filters/asset-filter-bar";
 import { SavedFilterSelect } from "@/components/filters/saved-filter-select";
 import { ColumnHeader } from "@/components/grid/column-header";
+import { ExportButton } from "@/components/grid/export-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
@@ -33,32 +35,9 @@ export default async function AssetsPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
 
-  // A saved filter narrows the grid to the segments it matches, on top of
-  // whatever the filter bar and column filters already say. null means the
-  // filter has no criteria, so it narrows nothing.
-  const savedFilterId = params.savedFilter || undefined;
-  const assetIds = savedFilterId
-    ? ((await matchingAssetIds(organizationId, savedFilterId)) ?? undefined)
-    : undefined;
-
-  const filters = {
-    search: params.search || undefined,
-    material: params.material || undefined,
-    status: (params.status as AssetStatus) || undefined,
-    serviceArea: params.serviceArea || undefined,
-    criticality: params.criticality || undefined,
-    customerType: params.customerType || undefined,
-    pressureZone: params.pressureZone || undefined,
-    minDiameter: params.minDiameter ? Number(params.minDiameter) : undefined,
-    maxDiameter: params.maxDiameter ? Number(params.maxDiameter) : undefined,
-    minCustomers: params.minCustomers ? Number(params.minCustomers) : undefined,
-    maxCustomers: params.maxCustomers ? Number(params.maxCustomers) : undefined,
-    installedAfter: params.installedAfter ? Number(params.installedAfter) : undefined,
-    installedBefore: params.installedBefore ? Number(params.installedBefore) : undefined,
-    assetIds,
-    sort: params.sort || undefined,
-    dir: params.dir === "desc" ? ("desc" as const) : ("asc" as const),
-  };
+  // Parsed by the same code the export route uses, so the spreadsheet can
+  // never disagree with the screen.
+  const filters = await assetFiltersFromParams(organizationId, params);
 
   const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones, savedFilters] =
     await Promise.all([
@@ -76,6 +55,7 @@ export default async function AssetsPage({
       <PageHeader
         title={`${ASSET_LABEL.plural} Inventory`}
         description={`${formatNumber(assets.length)} waterline segment${assets.length === 1 ? "" : "s"} matching current filters`}
+        actions={<ExportButton href="/assets/export" count={assets.length} />}
       />
 
       <div className="mb-4 flex flex-wrap items-end gap-4">
