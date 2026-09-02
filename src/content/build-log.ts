@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-02",
+    title: "Stop promising a development phase that already shipped",
+    pr: 18,
+    summary:
+      "The Documents tab said document management would arrive in Phase 8. Phase 8 — reporting and administration — shipped some time ago, and document management was never part of it.",
+    changes: [
+      "The Documents tab on a segment now says what it will hold and that nothing is stored yet, without naming a phase or a date.",
+      "Sidebar entries no longer carry a development phase. Every page is live, so the field fed a badge that never appeared.",
+    ],
+    note: "No schema change. The documents table still exists and is still unused — this is wording and dead configuration, not the feature itself.",
+  },
+  {
     date: "2026-09-01",
     title: "Hide pages, unsaved-change markers, a pinned save bar, and drillable model results",
     pr: 17,

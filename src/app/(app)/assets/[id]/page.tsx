@@ -27,7 +27,7 @@ import { RecordEditor, type EditableSection } from "@/components/records/record-
 import { saveAssetAction } from "./actions";
 import { NetworkMap } from "@/components/map/network-map";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
-import { PhaseComingSoon } from "@/components/phase-coming-soon";
+import { NotBuiltYet } from "@/components/not-built-yet";
 import { ageInYears, formatDate, formatInches, formatNumber, formatStatus, toDateInputValue } from "@/lib/format";
 import { ASSET_LABEL } from "@/config/labels";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
@@ -502,7 +502,10 @@ export default async function AssetDetailPage({
           )}
         </TabsContent>
         <TabsContent value="documents" className="mt-4">
-          <PhaseComingSoon feature="Document management" phase={8} />
+          <NotBuiltYet
+            feature="Document management"
+            note="Drawings, photos and reports will attach to a segment here. Nothing is stored against segments yet."
+          />
         </TabsContent>
       </Tabs>
     </div>
