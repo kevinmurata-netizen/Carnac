@@ -8,6 +8,7 @@ import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { WciSankey } from "@/components/charts/wci-sankey";
 import { FlowTable } from "./flow-table";
+import { ExportButton } from "@/components/grid/export-button";
 import { formatNumber } from "@/lib/format";
 import { ArrowDownRight, ArrowUpRight, Gauge, Minus } from "lucide-react";
 
@@ -31,6 +32,9 @@ export default async function ModelResultsPage({
       <PageHeader
         title={pageTitle}
         description={`Where a scenario actually leaves the network — every ${ASSET_LABEL.lower} segment traced from its starting condition band to its ending one`}
+        actions={
+          flow ? <ExportButton href="/model-results/export" count={flow.assetCount} /> : undefined
+        }
       />
 
       {runnable.length === 0 ? (
