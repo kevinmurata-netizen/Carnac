@@ -40,6 +40,8 @@ export const ENTRIES: BuildEntry[] = [
       "The sheet says what it is and which filters produced it, so an extract is never mistaken for the whole network.",
       "The spreadsheet carries more columns than the grid does — pressure class, joint type, manufacturer and the rest, which you would otherwise look up one segment at a time.",
       "Inspections export every numeric rating as its own column, discovered from the template, so adding a question to the form adds a column here.",
+      "Model Results exports two sheets in one file: the transition summary, and every segment behind it — so a figure in the summary can be traced to its rows.",
+      "The Filters page exports to Excel as well as CSV, including a filter you have built but not saved.",
     ],
     note: "The export button is disabled when the filters match nothing. Reports keep their existing CSV download.",
   },

@@ -17,7 +17,7 @@ export type ExcelColumn = {
   width?: number;
 };
 
-export type ExcelRow = Record<string, string | number | Date | null | undefined>;
+export type ExcelRow = Record<string, string | number | boolean | Date | null | undefined>;
 
 const FORMATS: Record<string, string | undefined> = {
   number: "#,##0.0",
@@ -26,13 +26,7 @@ const FORMATS: Record<string, string | undefined> = {
   date: "yyyy-mm-dd",
 };
 
-export async function buildWorkbook({
-  sheetName,
-  columns,
-  rows,
-  title,
-  note,
-}: {
+export type ExcelSheet = {
   sheetName: string;
   columns: ExcelColumn[];
   rows: ExcelRow[];
@@ -40,13 +34,36 @@ export async function buildWorkbook({
   title: string;
   /** What was filtered, so an exported extract is not mistaken for everything. */
   note?: string;
-}): Promise<Buffer> {
+};
+
+/** One grid, one sheet — the common case. */
+export function buildWorkbook(sheet: ExcelSheet): Promise<Buffer> {
+  return buildWorkbookSheets([sheet]);
+}
+
+/**
+ * Several grids in one file.
+ *
+ * For a page that shows a summary over a detail table: keeping both in one
+ * workbook means a figure in the summary can be traced to the rows behind it
+ * without opening a second file.
+ */
+export async function buildWorkbookSheets(sheets: ExcelSheet[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "CARNAC";
   workbook.created = new Date();
 
+  for (const sheet of sheets) addSheet(workbook, sheet);
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
+function addSheet(workbook: ExcelJS.Workbook, spec: ExcelSheet): void {
+  const { columns, rows, title, note } = spec;
+
   // Excel rejects : \ / ? * [ ] in sheet names and caps them at 31 characters.
-  const sheet = workbook.addWorksheet(sheetName.replace(/[:\\/?*[\]]/g, " ").slice(0, 31));
+  const sheet = workbook.addWorksheet(spec.sheetName.replace(/[:\\/?*[\]]/g, " ").slice(0, 31));
 
   const titleRow = sheet.addRow([title]);
   titleRow.font = { bold: true, size: 14 };
@@ -70,6 +87,9 @@ export async function buildWorkbook({
       columns.map((column) => {
         const value = row[column.key];
         if (value == null || value === "") return null;
+        // Excel has a boolean type, but a column reading TRUE/FALSE is harder
+        // to scan than Yes/No and worse to filter on.
+        if (typeof value === "boolean") return value ? "Yes" : "No";
         if (column.type === "date") return value instanceof Date ? value : new Date(String(value));
         if (column.type && column.type !== "text") {
           const n = typeof value === "number" ? value : Number(value);
@@ -99,9 +119,6 @@ export async function buildWorkbook({
     from: { row: headerRowNumber, column: 1 },
     to: { row: headerRowNumber + rows.length, column: Math.max(columns.length, 1) },
   };
-
-  const buffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(buffer);
 }
 
 /** A filename that sorts chronologically and survives every filesystem. */

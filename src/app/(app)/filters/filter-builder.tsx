@@ -13,7 +13,7 @@ import { SchemaTree } from "./schema-tree";
 import { SelectedFields } from "./selected-fields";
 import { CriteriaBuilder } from "./criteria-builder";
 import { formatNumber } from "@/lib/format";
-import { Play, Save, Trash2 } from "lucide-react";
+import { FileSpreadsheet, Play, Save, Trash2 } from "lucide-react";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -114,22 +114,33 @@ export function FilterBuilder({
       }
     });
 
-  const downloadCsv = () => {
+  /**
+   * Both downloads post the definition and let the server re-run it.
+   *
+   * The preview above is capped at 500 rows; building the file here from those
+   * rows exported the cap rather than the result, while the page promised
+   * "export for the rest". Re-running server-side exports every match.
+   */
+  const download = (format: "xlsx" | "csv") => {
     if (!result) return;
-    const escape = (v: unknown) => {
-      const s = v === null || v === undefined ? "" : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/filters/export";
+
+    const add = (key: string, value: string) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = key;
+      input.value = value;
+      form.appendChild(input);
     };
-    const csv = [
-      result.columns.map((c) => escape(c.label)).join(","),
-      ...result.rows.map((r) => result.columns.map((c) => escape(r[c.key])).join(",")),
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(name || "filter").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+
+    add("format", format);
+    add("definition", JSON.stringify({ name: name || "Filter", fields: selected, criteria, matchAll }));
+
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
   };
 
   return (
@@ -295,13 +306,20 @@ export function FilterBuilder({
               </CardTitle>
               {result.rows.length < result.matched && (
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Showing the first {formatNumber(result.rows.length)} — export for the rest.
+                  Showing the first {formatNumber(result.rows.length)} — an export contains all{" "}
+                  {formatNumber(result.matched)}.
                 </p>
               )}
             </div>
-            <Button type="button" size="sm" variant="outline" onClick={downloadCsv}>
-              Export CSV
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => download("csv")}>
+                Export CSV
+              </Button>
+              <Button type="button" size="sm" onClick={() => download("xlsx")}>
+                <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                Export to Excel
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
             {result.matched === 0 ? (
