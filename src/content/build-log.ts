@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-02",
+    title: "The network on the map now looks like a water system",
+    pr: 20,
+    summary:
+      "Segments were scattered as unconnected lines at random angles over farmland. They now run along streets, joined into one network.",
+    changes: [
+      "Mains follow a street grid and share junctions, with a heavy backbone through the middle of town and smaller pipe out on the blocks.",
+      "The largest diameters sit on the trunk mains, so the map reads the way a system diagram should.",
+      "Service areas are contiguous parts of town rather than overlapping circles.",
+      "Each segment's recorded length is the length of the run it occupies, so the mileage on the dashboard matches what is drawn.",
+    ],
+    note: "The data is still invented — no real utility's layout is reproduced. Run npm run db:reshape to re-lay an existing database; it changes geometry only and leaves inspections, wishlist items and users alone.",
+  },
+  {
+    date: "2026-09-02",
     title: "Map filters actually redraw the map, plus wishlist tags and a hover-card setting",
     pr: 19,
     summary:
