@@ -11,6 +11,7 @@ import { WATERLINE_INSPECTION_FIELDS, WATERLINE_TEMPLATE_NAME, INSPECTION_TYPES 
 import { WCI_MODEL_NAME, WCI_BANDS, WCI_COMPONENT_WEIGHTS, computeWCI } from "../src/domain/waterline/condition";
 import { WATERLINE_FAILURE_TYPES, FAILURE_SEVERITIES } from "../src/domain/waterline/failure";
 import { insertAssetLineLocation } from "../src/server/geo";
+import { buildNetworkLayout, type NetworkEdge } from "../src/domain/waterline/network-layout";
 import { recomputeRiskForOrganization } from "../src/server/risk";
 import { generatePredictions } from "../src/server/deterioration";
 import { ensureTreatments } from "../src/server/treatments";
@@ -110,17 +111,6 @@ const STATUS_WEIGHTS: Array<[AssetStatus, number]> = [
   [AssetStatus.PLANNED, 2],
 ];
 
-// Service-area clusters as offsets (degrees) from a fictional-town origin.
-// Coordinates are synthetic — not tied to any real water system.
-const SERVICE_AREAS: Array<{ name: string; pressureZone: string; lat: number; lng: number; radius: number }> = [
-  { name: "Downtown", pressureZone: "Zone B - Mid", lat: 39.52, lng: -98.35, radius: 0.012 },
-  { name: "Riverside", pressureZone: "Zone A - Low", lat: 39.505, lng: -98.372, radius: 0.014 },
-  { name: "Highland Park", pressureZone: "Zone C - High", lat: 39.541, lng: -98.328, radius: 0.013 },
-  { name: "Eastgate", pressureZone: "Zone B - Mid", lat: 39.523, lng: -98.301, radius: 0.011 },
-  { name: "Southport", pressureZone: "Zone A - Low", lat: 39.489, lng: -98.339, radius: 0.015 },
-  { name: "Millbrook", pressureZone: "Zone C - High", lat: 39.534, lng: -98.386, radius: 0.012 },
-];
-
 const CUSTOMER_TYPE_WEIGHTS: Array<[string, number]> = [
   ["Residential", 55],
   ["Commercial", 20],
@@ -139,7 +129,6 @@ const FAILURE_CAUSES = [
   "Manufacturing defect",
 ];
 
-const FT_PER_DEGREE_LAT = 364_000;
 const NOW = new Date();
 
 async function main() {
@@ -337,17 +326,32 @@ async function main() {
   const ASSET_COUNT = 260;
   const CHUNK_SIZE = 15;
 
+  // One connected network laid out over the street grid up front; each segment
+  // then takes the run at its own index. Runs come back trunk-first, so the
+  // lowest-numbered segments sit on the backbone.
+  const layout = buildNetworkLayout(ASSET_COUNT);
+  if (layout.length < ASSET_COUNT) {
+    throw new Error(`Layout produced ${layout.length} runs for ${ASSET_COUNT} segments`);
+  }
+
   for (let batchStart = 0; batchStart < ASSET_COUNT; batchStart += CHUNK_SIZE) {
     const batchEnd = Math.min(batchStart + CHUNK_SIZE, ASSET_COUNT);
     await Promise.all(
       Array.from({ length: batchEnd - batchStart }, (_, i) => batchStart + i + 1).map((n) =>
-        createWaterlineAsset(n, org.id, assetType.id, defByCode, {
-          conditionModelId: conditionModel.id,
-          templateId: template.id,
-          fieldByCode,
-          inspectorPool,
-          failureTypes,
-        })
+        createWaterlineAsset(
+          n,
+          org.id,
+          assetType.id,
+          defByCode,
+          {
+            conditionModelId: conditionModel.id,
+            templateId: template.id,
+            fieldByCode,
+            inspectorPool,
+            failureTypes,
+          },
+          layout[n - 1]
+        )
       )
     );
     console.log(`  seeded ${batchEnd}/${ASSET_COUNT} waterline segments`);
@@ -531,13 +535,18 @@ async function createWaterlineAsset(
     fieldByCode: Map<string, FieldRow>;
     inspectorPool: UserRow[];
     failureTypes: FailureTypeRow[];
-  }
+  },
+  edge: NetworkEdge
 ) {
   const assetCode = `WL-${String(n).padStart(4, "0")}`;
-  const area = pick(SERVICE_AREAS);
+  // The run this segment occupies, assigned by the caller so the whole system
+  // forms one connected network rather than 260 unrelated sticks.
+  const area = { name: edge.serviceArea, pressureZone: edge.pressureZone, lat: edge.startLat };
   const material = weightedPick(MATERIAL_WEIGHTS);
   const diameter = weightedPick(DIAMETER_WEIGHTS);
-  const lengthFt = randInt(100, 3000);
+  // Length is the length of the run it actually occupies, so the mileage on
+  // the dashboard describes the network drawn on the map.
+  const lengthFt = edge.lengthFt;
   const installYear = randInt(1945, 2024);
   const installationDate = new Date(Date.UTC(installYear, randInt(0, 11), randInt(1, 28)));
   const status = weightedPick(STATUS_WEIGHTS);
@@ -580,20 +589,13 @@ async function createWaterlineAsset(
     },
   });
 
-  const angle = rand() * Math.PI * 2;
-  const ftPerDegreeLng = FT_PER_DEGREE_LAT * Math.cos((area.lat * Math.PI) / 180);
-  const halfLat = (lengthFt / 2 / FT_PER_DEGREE_LAT) * Math.sin(angle);
-  const halfLng = (lengthFt / 2 / ftPerDegreeLng) * Math.cos(angle);
-  const clusterLat = area.lat + (rand() - 0.5) * 2 * area.radius;
-  const clusterLng = area.lng + (rand() - 0.5) * 2 * area.radius;
-
   await insertAssetLineLocation(
     asset.id,
     {
-      startLat: clusterLat - halfLat,
-      startLng: clusterLng - halfLng,
-      endLat: clusterLat + halfLat,
-      endLng: clusterLng + halfLng,
+      startLat: edge.startLat,
+      startLng: edge.startLng,
+      endLat: edge.endLat,
+      endLng: edge.endLng,
     },
     {
       depth: Math.round((randInt(30, 96) / 10) * 10) / 10,
