@@ -68,11 +68,6 @@ export function SidebarNav({
                       )}
                     >
                       <span>{overrides[item.href] ?? item.label}</span>
-                      {!item.live && (
-                        <span className="rounded border border-sidebar-foreground/20 px-1.5 py-0.5 text-[10px] font-medium text-sidebar-foreground/50">
-                          Phase {item.phase}
-                        </span>
-                      )}
                     </Link>
                   </li>
                 );
