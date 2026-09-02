@@ -1,12 +1,13 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import type { WishlistRow } from "@/server/wishlist";
+import { UNTAGGED, type WishlistRow } from "@/server/wishlist";
 import {
   addWishlistItemAction,
   saveWishlistItemAction,
@@ -14,7 +15,7 @@ import {
   removeWishlistItemAction,
 } from "./actions";
 import { EMPTY_WISHLIST_STATE } from "./state";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -28,6 +29,35 @@ const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
 };
 
 const PRIORITY_LABEL: Record<string, string> = { HIGH: "High", MEDIUM: "Medium", LOW: "Low" };
+
+/** Grouped the way the sidebar groups pages, so a long list stays scannable. */
+function LocationSelect({
+  name,
+  defaultValue,
+  locations,
+}: {
+  name: string;
+  defaultValue: string;
+  locations: WishlistLocation[];
+}) {
+  const groups = [...new Set(locations.map((l) => l.group))];
+  return (
+    <select name={name} defaultValue={defaultValue} className={input} aria-label="Where in the app">
+      <option value="">No particular page</option>
+      {groups.map((group) => (
+        <optgroup key={group} label={group}>
+          {locations
+            .filter((l) => l.group === group)
+            .map((l) => (
+              <option key={l.href} value={l.href}>
+                {l.label}
+              </option>
+            ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
 
 function PrioritySelect({ name, defaultValue }: { name: string; defaultValue: string }) {
   return (
@@ -48,7 +78,7 @@ function Submit({ label }: { label: string }) {
   );
 }
 
-function AddForm() {
+function AddForm({ locations }: { locations: WishlistLocation[] }) {
   const [state, action] = useActionState(addWishlistItemAction, EMPTY_WISHLIST_STATE);
   const [showDetail, setShowDetail] = useState(false);
 
@@ -76,6 +106,10 @@ function AddForm() {
             <div className="space-y-1.5">
               <Label htmlFor="wl-priority">Priority</Label>
               <PrioritySelect name="priority" defaultValue="MEDIUM" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="wl-location">Where</Label>
+              <LocationSelect name="location" defaultValue="" locations={locations} />
             </div>
           </div>
 
@@ -107,7 +141,7 @@ function AddForm() {
   );
 }
 
-function Row({ item }: { item: WishlistRow }) {
+function Row({ item, locations }: { item: WishlistRow; locations: WishlistLocation[] }) {
   const [editing, setEditing] = useState(false);
   const [state, action] = useActionState(saveWishlistItemAction, EMPTY_WISHLIST_STATE);
   const [pending, startTransition] = useTransition();
@@ -140,6 +174,10 @@ function Row({ item }: { item: WishlistRow }) {
             <div className="space-y-1.5">
               <Label htmlFor={`p-${item.id}`}>Priority</Label>
               <PrioritySelect name="priority" defaultValue={item.priority} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`l-${item.id}`}>Where</Label>
+              <LocationSelect name="location" defaultValue={item.location ?? ""} locations={locations} />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -188,6 +226,12 @@ function Row({ item }: { item: WishlistRow }) {
           <Badge variant={PRIORITY_VARIANT[item.priority]} className="text-[10px]">
             {PRIORITY_LABEL[item.priority]}
           </Badge>
+          {item.locationLabel && (
+            <Badge variant="outline" className="gap-1 text-[10px] font-normal">
+              <MapPin className="h-2.5 w-2.5" />
+              {item.locationLabel}
+            </Badge>
+          )}
           {item.createdByName && <span>added by {item.createdByName}</span>}
           <span>{item.createdAt.toLocaleDateString("en-US")}</span>
           {error && <span className="text-destructive">{error}</span>}
@@ -213,13 +257,71 @@ function Row({ item }: { item: WishlistRow }) {
   );
 }
 
-export function WishlistEditor({ items }: { items: WishlistRow[] }) {
+export type WishlistLocation = { href: string; label: string; group: string };
+
+/** The filter lives in the URL so a filtered list is a link — "here is
+ * everything outstanding on the map" is a thing worth sending someone. */
+function LocationFilter({
+  locations,
+  counts,
+  active,
+}: {
+  locations: WishlistLocation[];
+  counts: { byHref: Record<string, number>; untagged: number };
+  active: string;
+}) {
+  const router = useRouter();
+  const tagged = locations.filter((l) => (counts.byHref[l.href] ?? 0) > 0);
+
+  return (
+    <div className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="wl-filter" className="text-xs font-medium text-muted-foreground">
+          Show ideas about
+        </label>
+        <select
+          id="wl-filter"
+          value={active}
+          onChange={(e) => router.push(e.target.value ? `/administration/wishlist?location=${encodeURIComponent(e.target.value)}` : "/administration/wishlist")}
+          className={`${input} w-64`}
+        >
+          <option value="">Everywhere</option>
+          {counts.untagged > 0 && <option value={UNTAGGED}>Not tagged yet ({counts.untagged})</option>}
+          {tagged.map((l) => (
+            <option key={l.href} value={l.href}>
+              {l.label} ({counts.byHref[l.href]})
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="pb-1.5 text-xs text-muted-foreground">
+        {tagged.length === 0
+          ? "Tag an idea with a page and it becomes filterable here."
+          : `Open ideas across ${tagged.length} page${tagged.length === 1 ? "" : "s"}. Counts exclude anything ticked off.`}
+      </p>
+    </div>
+  );
+}
+
+export function WishlistEditor({
+  items,
+  locations,
+  counts,
+  activeLocation,
+}: {
+  items: WishlistRow[];
+  locations: WishlistLocation[];
+  counts: { byHref: Record<string, number>; untagged: number };
+  activeLocation: string;
+}) {
   const open = items.filter((i) => !i.isDone);
   const done = items.filter((i) => i.isDone);
 
   return (
     <>
-      <AddForm />
+      <LocationFilter locations={locations} counts={counts} active={activeLocation} />
+
+      <AddForm locations={locations} />
 
       <Card>
         <CardHeader>
@@ -236,7 +338,7 @@ export function WishlistEditor({ items }: { items: WishlistRow[] }) {
           ) : (
             <ul className="space-y-2">
               {open.map((i) => (
-                <Row key={i.id} item={i} />
+                <Row key={i.id} item={i} locations={locations} />
               ))}
             </ul>
           )}
@@ -253,7 +355,7 @@ export function WishlistEditor({ items }: { items: WishlistRow[] }) {
           <CardContent>
             <ul className="space-y-2">
               {done.map((i) => (
-                <Row key={i.id} item={i} />
+                <Row key={i.id} item={i} locations={locations} />
               ))}
             </ul>
           </CardContent>

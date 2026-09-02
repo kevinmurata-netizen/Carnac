@@ -21,6 +21,7 @@ export const TAB_FOR_PATH: Record<string, SettingsTab> = {
   "/settings/configuration": GENERAL_TAB,
   "/settings/navigation": GENERAL_TAB,
   "/settings/theme": GENERAL_TAB,
+  "/settings/map": GENERAL_TAB,
   "/filters": GENERAL_TAB,
   "/administration/activity": GENERAL_TAB,
 

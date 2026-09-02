@@ -106,6 +106,7 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
       ["/settings/navigation", "navigation"],
       ["/settings/build-log", "build-log"],
       ["/settings/theme", "theme"],
+      ["/settings/map", "map"],
       ["/settings/database", "database"],
       ["/settings/condition-index", "condition-index"],
       ["/settings/condition-models", "condition-models"],

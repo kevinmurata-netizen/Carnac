@@ -742,6 +742,9 @@ model WishlistItem {
   description    String?
   priority       WishlistPriority @default(MEDIUM)
   isDone         Boolean          @default(false)
+  /// Where in the app the idea is about, stored as the page's href so it
+  /// survives that page being renamed. Null means it is not about one place.
+  location       String?
   /// Display name of whoever added it, so a shared list stays attributable.
   createdByName  String?
 
@@ -749,7 +752,24 @@ model WishlistItem {
   updatedAt DateTime @updatedAt
 
   @@index([organizationId, isDone])
+  @@index([organizationId, location])
   @@map("wishlist_items")
+}
+
+/// Small per-organization settings that have no richer home of their own.
+/// Values are JSON so a setting can grow a shape without a migration; the
+/// loaders in server/ are what give each key its meaning and validation.
+model OrganizationSetting {
+  id             String   @id @default(cuid())
+  organizationId String
+  key            String
+  value          Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("organization_settings")
 }
 
 /// A named, reusable selection: which fields to show, in what order, and the

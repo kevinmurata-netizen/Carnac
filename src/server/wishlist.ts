@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { listRenameablePages } from "@/server/navigation";
 import { WishlistPriority } from "@prisma/client";
 
 /**
@@ -19,24 +20,92 @@ export type WishlistRow = {
   isDone: boolean;
   createdByName: string | null;
   createdAt: Date;
+  /** Page href this idea is about, or null when it is not about one place. */
+  location: string | null;
+  /** That page's current name, resolved at read time. */
+  locationLabel: string | null;
 };
+
+/**
+ * Where in the app an idea applies.
+ *
+ * Stored as the page's href rather than its name, so tagging survives that
+ * page being renamed — the label is resolved when the list is read. The
+ * options are the same set the Navigation page can rename, so a page can never
+ * be tagged that does not exist.
+ */
+export async function listWishlistLocations(
+  organizationId: string
+): Promise<Array<{ href: string; label: string; group: string }>> {
+  const sections = await listRenameablePages(organizationId);
+  return sections
+    .filter((section) => section.group !== "Sidebar Sections")
+    .flatMap((section) => section.items.map((i) => ({ href: i.href, label: i.label, group: section.group })));
+}
 
 const PRIORITY_RANK: Record<WishlistPriority, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
 
-export async function listWishlist(organizationId: string): Promise<WishlistRow[]> {
-  const items = await prisma.wishlistItem.findMany({
-    where: { organizationId },
-    orderBy: { createdAt: "desc" },
-  });
+export async function listWishlist(
+  organizationId: string,
+  filters: { location?: string } = {}
+): Promise<WishlistRow[]> {
+  const [items, locations] = await Promise.all([
+    prisma.wishlistItem.findMany({
+      where: {
+        organizationId,
+        // "untagged" is a real choice, not the absence of one — it is how you
+        // find the ideas nobody has placed yet.
+        ...(filters.location === UNTAGGED
+          ? { location: null }
+          : filters.location
+            ? { location: filters.location }
+            : {}),
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    listWishlistLocations(organizationId),
+  ]);
+
+  const labelFor = new Map(locations.map((l) => [l.href, l.label]));
 
   // Outstanding work first, highest priority at the top; done items sink to the
   // bottom in the order they were added.
-  return items.sort((a, b) => {
-    if (a.isDone !== b.isDone) return a.isDone ? 1 : -1;
-    const rank = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
-    if (rank !== 0) return rank;
-    return b.createdAt.getTime() - a.createdAt.getTime();
+  return items
+    .sort((a, b) => {
+      if (a.isDone !== b.isDone) return a.isDone ? 1 : -1;
+      const rank = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
+      if (rank !== 0) return rank;
+      return b.createdAt.getTime() - a.createdAt.getTime();
+    })
+    .map((item) => ({
+      ...item,
+      // A tag pointing at a page that no longer exists still shows its href,
+      // rather than silently reading as untagged.
+      locationLabel: item.location ? (labelFor.get(item.location) ?? item.location) : null,
+    }));
+}
+
+/** Sentinel for "has no location", so the filter can express it in a URL. */
+export const UNTAGGED = "__untagged";
+
+/** How many open ideas sit against each page, so the filter can show where the
+ * requests are actually piling up. */
+export async function countWishlistByLocation(
+  organizationId: string
+): Promise<{ byHref: Map<string, number>; untagged: number }> {
+  const rows = await prisma.wishlistItem.groupBy({
+    by: ["location"],
+    where: { organizationId, isDone: false },
+    _count: { _all: true },
   });
+
+  const byHref = new Map<string, number>();
+  let untagged = 0;
+  for (const row of rows) {
+    if (row.location) byHref.set(row.location, row._count._all);
+    else untagged += row._count._all;
+  }
+  return { byHref, untagged };
 }
 
 export function parsePriority(value: unknown): WishlistPriority {
@@ -47,7 +116,13 @@ export function parsePriority(value: unknown): WishlistPriority {
 
 export async function createWishlistItem(
   organizationId: string,
-  input: { title: string; description: string | null; priority: WishlistPriority; createdByName: string | null }
+  input: {
+    title: string;
+    description: string | null;
+    priority: WishlistPriority;
+    location: string | null;
+    createdByName: string | null;
+  }
 ) {
   const title = input.title.trim();
   if (!title) throw new Error("Give the item a title");
@@ -59,15 +134,24 @@ export async function createWishlistItem(
       title,
       description: input.description?.trim() || null,
       priority: input.priority,
+      location: await validLocation(organizationId, input.location),
       createdByName: input.createdByName,
     },
   });
 }
 
+/** Only hrefs the app actually has are stored, so a crafted form cannot tag an
+ * item with arbitrary text that would then appear in the filter. */
+async function validLocation(organizationId: string, href: string | null): Promise<string | null> {
+  if (!href) return null;
+  const allowed = await listWishlistLocations(organizationId);
+  return allowed.some((l) => l.href === href) ? href : null;
+}
+
 export async function updateWishlistItem(
   organizationId: string,
   id: string,
-  input: { title: string; description: string | null; priority: WishlistPriority }
+  input: { title: string; description: string | null; priority: WishlistPriority; location: string | null }
 ) {
   const title = input.title.trim();
   if (!title) throw new Error("Give the item a title");
@@ -78,7 +162,12 @@ export async function updateWishlistItem(
 
   await prisma.wishlistItem.update({
     where: { id },
-    data: { title, description: input.description?.trim() || null, priority: input.priority },
+    data: {
+      title,
+      description: input.description?.trim() || null,
+      priority: input.priority,
+      location: await validLocation(organizationId, input.location),
+    },
   });
 }
 

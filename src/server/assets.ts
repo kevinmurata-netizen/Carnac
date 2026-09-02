@@ -49,6 +49,11 @@ export type AssetFilters = {
   pressureZone?: string;
   minCustomers?: number;
   maxCustomers?: number;
+  /** Latest condition score. Segments never inspected have no score and are
+   * excluded by either bound, since "worse than 40" cannot be true of a
+   * segment whose condition is unknown. */
+  minCondition?: number;
+  maxCondition?: number;
 };
 
 export async function listAssets(organizationId: string, filters: AssetFilters = {}) {
@@ -117,6 +122,30 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
   // exactly sorting by installation date the other way round. Segments with no
   // installation date have no age, and sort last in both directions rather
   // than bunching at the top as if they were brand new.
+  // Condition is the score on the newest measurement, which Prisma cannot
+  // express directly — `some` would match a segment that was poor last year
+  // and is fine now. DISTINCT ON picks the latest row per asset first, so the
+  // range is applied to the score that is actually current.
+  if (filters.minCondition != null || filters.maxCondition != null) {
+    const matching = await prisma.$queryRaw<Array<{ assetId: string }>>(Prisma.sql`
+      SELECT "assetId" FROM (
+        SELECT DISTINCT ON (cm."assetId") cm."assetId", cm.score
+        FROM condition_measurements cm
+        JOIN assets a ON a.id = cm."assetId"
+        WHERE a."organizationId" = ${organizationId} AND a."deletedAt" IS NULL
+        ORDER BY cm."assetId", cm."measurementDate" DESC
+      ) latest
+      WHERE ${filters.minCondition != null ? Prisma.sql`latest.score >= ${filters.minCondition}` : Prisma.sql`TRUE`}
+        AND ${filters.maxCondition != null ? Prisma.sql`latest.score <= ${filters.maxCondition}` : Prisma.sql`TRUE`}
+    `);
+
+    const ids = matching.map((r) => r.assetId);
+    // Intersect rather than overwrite: a saved filter may already have narrowed
+    // this to a set of ids, and both constraints have to hold.
+    const existing = (where.id as { in?: string[] } | undefined)?.in;
+    where.id = { in: existing ? ids.filter((id) => existing.includes(id)) : ids };
+  }
+
   const DB_SORTS: Record<string, (dir: "asc" | "desc") => Prisma.AssetOrderByWithRelationInput> = {
     assetCode: (dir) => ({ assetCode: dir }),
     status: (dir) => ({ status: dir }),

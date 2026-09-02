@@ -37,6 +37,7 @@ export async function addWishlistItemAction(
       title: String(formData.get("title") ?? ""),
       description: String(formData.get("description") ?? "") || null,
       priority: parsePriority(formData.get("priority")),
+      location: String(formData.get("location") ?? "") || null,
       createdByName: session.user.name ?? session.user.email ?? null,
     });
     refresh();
@@ -56,6 +57,7 @@ export async function saveWishlistItemAction(
       title: String(formData.get("title") ?? ""),
       description: String(formData.get("description") ?? "") || null,
       priority: parsePriority(formData.get("priority")),
+      location: String(formData.get("location") ?? "") || null,
     });
     refresh();
     return { status: "success", message: "Saved." };
