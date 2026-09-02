@@ -35,6 +35,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   navigation: "Navigation",
   "build-log": "Build Log",
   theme: "Theme",
+  map: "Map",
   database: "Database Connection",
 
   administration: "Administration",

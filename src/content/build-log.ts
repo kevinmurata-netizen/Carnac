@@ -30,6 +30,24 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-02",
+    title: "Map filters actually redraw the map, plus wishlist tags and a hover-card setting",
+    pr: 19,
+    summary:
+      "The map was ignoring your filters. That is fixed, the basemap no longer says API KEY REQUIRED across it, and the map and wishlist each gained a setting you asked for.",
+    changes: [
+      "Network Map has Condition as a standing filter, using your configured bands.",
+      "Settings -> General -> Map chooses what the hover card shows, with a live preview built from a real segment. Only ticked fields are fetched, so a shorter card is also a smaller page.",
+      "Wishlist items can be tagged with the page they are about, and filtered by it — the dropdown counts open ideas per page so you can see where requests are piling up.",
+      "A tag stores the page address rather than its name, so renaming a page keeps every tag pointing at it.",
+    ],
+    fixes: [
+      "Filtering the Network Map changed the count in the heading but not the map. Choosing a filter is a client-side navigation, which re-renders the page without rebuilding the map, and the map only ever read the data it was given on first load. It now redraws and re-frames on what is left.",
+      "The basemap was stamped API KEY REQUIRED across every tile. CARTO began requiring a key after this was built; the map now uses OpenStreetMap's own tiles, which need none.",
+    ],
+    note: "Adds a location column to wishlist_items and a small organization_settings table, so this one needs a migration before deploying.",
+  },
+  {
+    date: "2026-09-02",
     title: "Stop promising a development phase that already shipped",
     pr: 18,
     summary:

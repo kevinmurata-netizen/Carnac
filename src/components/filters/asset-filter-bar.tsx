@@ -12,8 +12,12 @@ const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "ABANDONED", "PLANNED", "REMOVED"]
 const control =
   "h-9 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+export type ConditionBandOption = { label: string; min: number; max: number };
+
 export type AssetFilterValues = {
   search?: string;
+  minCondition?: string;
+  maxCondition?: string;
   material?: string;
   status?: string;
   serviceArea?: string;
@@ -38,6 +42,7 @@ type OptionalFilter = {
 };
 
 const OPTIONAL_FILTERS: OptionalFilter[] = [
+  { key: "condition", label: "Condition band", params: ["minCondition", "maxCondition"] },
   { key: "criticality", label: "Criticality", params: ["criticality"] },
   { key: "customerType", label: "Customer Type", params: ["customerType"] },
   { key: "pressureZone", label: "Pressure Zone", params: ["pressureZone"] },
@@ -52,6 +57,8 @@ export function AssetFilterBar({
   criticalities,
   customerTypes,
   pressureZones,
+  conditionBands = [],
+  alwaysShowCondition = false,
   values,
   action,
 }: {
@@ -60,6 +67,12 @@ export function AssetFilterBar({
   criticalities: string[];
   customerTypes: string[];
   pressureZones: string[];
+  /** The organization's configured bands, so the choices here are the same
+   * ones every other screen grades against. */
+  conditionBands?: ConditionBandOption[];
+  /** The map is read as "where is the bad pipe", so condition is a standing
+   * control there rather than one you have to go and add. */
+  alwaysShowCondition?: boolean;
   values: AssetFilterValues;
   action: string;
 }) {
@@ -69,7 +82,43 @@ export function AssetFilterBar({
     OPTIONAL_FILTERS.filter((f) => f.params.some((p) => values[p as keyof AssetFilterValues])).map((f) => f.key)
   );
 
-  const available = OPTIONAL_FILTERS.filter((f) => !shown.includes(f.key));
+  // The select shows band names; these hidden inputs carry the score range it
+  // stands for, which is what the server filters on.
+  const [band, setBand] = useState<{ min: string; max: string }>({
+    min: values.minCondition ?? "",
+    max: values.maxCondition ?? "",
+  });
+
+  const available = OPTIONAL_FILTERS.filter(
+    (f) => !shown.includes(f.key) && !(f.key === "condition" && alwaysShowCondition)
+  );
+
+  // A band is submitted as the score range it covers, so the server keeps a
+  // single numeric filter rather than needing to know about band names.
+  const activeBand =
+    conditionBands.find(
+      (b) => String(b.min) === (values.minCondition ?? "") && String(b.max) === (values.maxCondition ?? "")
+    )?.label ?? "";
+
+  const conditionControl = (
+    <select
+      id="conditionBand"
+      aria-label="Condition band"
+      defaultValue={activeBand}
+      onChange={(e) => {
+        const band = conditionBands.find((b) => b.label === e.target.value);
+        setBand(band ? { min: String(band.min), max: String(band.max) } : { min: "", max: "" });
+      }}
+      className={`${control} w-40`}
+    >
+      <option value="">Any condition</option>
+      {conditionBands.map((b) => (
+        <option key={b.label} value={b.label}>
+          {b.label} ({b.min}–{b.max})
+        </option>
+      ))}
+    </select>
+  );
   const hasAny = Object.values(values).some(Boolean);
 
   return (
@@ -109,6 +158,18 @@ export function AssetFilterBar({
             options={serviceAreas}
           />
         </Field>
+
+        {alwaysShowCondition && (
+          <Field label="Condition" htmlFor="conditionBand">
+            {conditionControl}
+          </Field>
+        )}
+
+        {shown.includes("condition") && !alwaysShowCondition && (
+          <Removable label="Condition" onRemove={() => setShown((s) => s.filter((k) => k !== "condition"))}>
+            {conditionControl}
+          </Removable>
+        )}
 
         {shown.includes("criticality") && (
           <Removable label="Criticality" onRemove={() => setShown((s) => s.filter((k) => k !== "criticality"))}>
@@ -166,6 +227,9 @@ export function AssetFilterBar({
             </select>
           </div>
         )}
+
+        <input type="hidden" name="minCondition" value={band.min} />
+        <input type="hidden" name="maxCondition" value={band.max} />
 
         <div className="flex items-center gap-2">
           <Button type="submit" size="sm">

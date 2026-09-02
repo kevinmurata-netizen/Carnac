@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { listAssets, listMaterials, listServiceAreas, listCriticalities, listCustomerTypes, listPressureZones } from "@/server/assets";
 import { getNetworkGeoJSON } from "@/server/geo";
+import { getPopupFieldsWithLabels } from "@/server/map-settings";
+import { getConditionBands } from "@/server/settings";
 import { listSavedFilters, matchingAssetIds } from "@/server/saved-filters";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetFilterBar } from "@/components/filters/asset-filter-bar";
@@ -45,6 +47,8 @@ export default async function NetworkPage({
     maxCustomers: params.maxCustomers ? Number(params.maxCustomers) : undefined,
     installedAfter: params.installedAfter ? Number(params.installedAfter) : undefined,
     installedBefore: params.installedBefore ? Number(params.installedBefore) : undefined,
+    minCondition: params.minCondition ? Number(params.minCondition) : undefined,
+    maxCondition: params.maxCondition ? Number(params.maxCondition) : undefined,
     assetIds,
   };
 
@@ -59,9 +63,15 @@ export default async function NetworkPage({
       listSavedFilters(organizationId),
     ]);
 
+  const [popupFields, conditionBands] = await Promise.all([
+    getPopupFieldsWithLabels(organizationId),
+    getConditionBands(organizationId),
+  ]);
+
   const geojson = await getNetworkGeoJSON(
     organizationId,
-    assets.map((a) => a.id)
+    assets.map((a) => a.id),
+    popupFields.map((f) => f.key)
   );
 
   const totalLengthFt = assets.reduce((sum, asset) => {
@@ -88,6 +98,8 @@ export default async function NetworkPage({
         criticalities={criticalities}
         customerTypes={customerTypes}
         pressureZones={pressureZones}
+        conditionBands={conditionBands.map((b) => ({ label: b.label, min: b.min, max: b.max }))}
+        alwaysShowCondition
         values={params}
         action="/network"
       />
@@ -95,7 +107,7 @@ export default async function NetworkPage({
       <Card>
         <CardContent className="p-0">
           <div className="relative h-[calc(100vh-19rem)] min-h-[420px] overflow-hidden rounded-lg">
-            <NetworkMap geojson={geojson} className="h-full w-full" />
+            <NetworkMap geojson={geojson} popupFields={popupFields} className="h-full w-full" />
             <StatusMapLegend />
           </div>
         </CardContent>
