@@ -1,15 +1,22 @@
 import { auth } from "@/lib/auth";
 import { assistantConfigured } from "@/server/assistant";
+import { getConsoleSchema } from "@/server/sql-console";
 import { PageHeader } from "@/components/layout/page-header";
 import { getPageName } from "@/server/navigation";
 import { AskPanel } from "./ask-panel";
 import { askAction } from "./actions";
+import { runSqlAction, translateToSqlAction } from "./sql-actions";
 
 export default async function AskPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/ask", "AI Assistant");
   const configured = assistantConfigured();
+  const isAdmin = session!.user.roleName === "Administrator";
+
+  // Only fetched for the role that can use it — no reason to run an
+  // information_schema query for every visitor to this page.
+  const schema = isAdmin ? await getConsoleSchema() : null;
 
   return (
     <div>
@@ -26,7 +33,13 @@ export default async function AskPage() {
         </div>
       )}
 
-      <AskPanel ask={askAction} configured={configured} />
+      <AskPanel
+        ask={askAction}
+        configured={configured}
+        sqlConsole={
+          schema ? { schema, runSql: runSqlAction, translate: translateToSqlAction } : undefined
+        }
+      />
     </div>
   );
 }

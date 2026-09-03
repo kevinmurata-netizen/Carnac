@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sparkles, CornerDownLeft } from "lucide-react";
-import { OPERATORS } from "@/server/filter-schema";
+import { Sparkles, CornerDownLeft, Database } from "lucide-react";
+import { OPERATORS, type Criterion } from "@/server/filter-schema";
 import type { AssistantResult } from "@/server/assistant";
+import type { ConsoleTable } from "@/server/sql-console";
+import { SqlConsole, type EquivalentQuery } from "./sql-console";
+import type { SqlRunResult, TranslateResult } from "./sql-actions";
 
 const OPERATOR_LABELS = new Map<string, string>(OPERATORS.map((o) => [o.key, o.label]));
 
@@ -30,14 +33,25 @@ const EXAMPLES = [
 export function AskPanel({
   ask,
   configured,
+  sqlConsole,
 }: {
   ask: (question: string) => Promise<AssistantResult>;
   configured: boolean;
+  /** Present only for Administrators — the console reads the database
+   * directly, so it carries the same trust bar as Decision Trees or the map
+   * settings, not the general "every role may ask" rule above. */
+  sqlConsole?: {
+    schema: ConsoleTable[];
+    runSql: (sql: string) => Promise<SqlRunResult>;
+    translate: (columns: string[], criteria: Criterion[], matchAll: boolean) => Promise<TranslateResult>;
+  };
 }) {
   const [question, setQuestion] = useState("");
   const [asked, setAsked] = useState("");
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<AssistantResult | null>(null);
+  const [sqlOpen, setSqlOpen] = useState(false);
+  const [equivalent, setEquivalent] = useState<EquivalentQuery>(null);
 
   const submit = async (text: string) => {
     const q = text.trim();
@@ -45,8 +59,23 @@ export function AskPanel({
     setPending(true);
     setAsked(q);
     setResult(null);
-    setResult(await ask(q));
+    const r = await ask(q);
+    setResult(r);
     setPending(false);
+
+    // Translated eagerly but quietly: this is a cheap, read-only lookup of
+    // configuration (not another model call), so the console has something to
+    // show the moment it is opened rather than making that its own wait.
+    if (sqlConsole && r.kind === "segments") {
+      const t = await sqlConsole.translate(
+        r.columns.map((c) => c.key),
+        r.criteria,
+        r.matchAll
+      );
+      setEquivalent("error" in t ? null : { sql: t.sql, unsupported: t.unsupported, forQuestion: q });
+    } else {
+      setEquivalent(null);
+    }
   };
 
   return (
@@ -75,6 +104,17 @@ export function AskPanel({
               {pending ? "Looking…" : "Ask"}
               {!pending && <CornerDownLeft className="ml-1.5 h-3.5 w-3.5" />}
             </Button>
+            {sqlConsole && (
+              <Button
+                type="button"
+                variant={sqlOpen ? "secondary" : "outline"}
+                onClick={() => setSqlOpen((v) => !v)}
+                title="A real SQL console — schema browser, editor, and the query the AI's last answer is equivalent to"
+              >
+                <Database className="mr-1.5 h-4 w-4" />
+                SQL
+              </Button>
+            )}
           </form>
 
           {configured && (
@@ -97,6 +137,15 @@ export function AskPanel({
           )}
         </CardContent>
       </Card>
+
+      {sqlConsole && sqlOpen && (
+        <SqlConsole
+          schema={sqlConsole.schema}
+          equivalent={equivalent}
+          runSql={sqlConsole.runSql}
+          onClose={() => setSqlOpen(false)}
+        />
+      )}
 
       {pending && (
         <Card>
@@ -124,11 +173,25 @@ export function AskPanel({
       {result?.kind === "segments" && (
         <Card>
           <CardHeader className="space-y-2">
-            <CardTitle className="text-base">
-              {result.total === 0
-                ? "No segments match"
-                : `${result.total.toLocaleString()} segment${result.total === 1 ? "" : "s"}`}
-            </CardTitle>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <CardTitle className="text-base">
+                {result.total === 0
+                  ? "No segments match"
+                  : `${result.total.toLocaleString()} segment${result.total === 1 ? "" : "s"}`}
+              </CardTitle>
+              {sqlConsole && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setSqlOpen(true)}
+                  className="text-muted-foreground"
+                >
+                  <Database className="mr-1.5 h-3.5 w-3.5" />
+                  View as SQL
+                </Button>
+              )}
+            </div>
             {result.note && <p className="text-sm text-muted-foreground">{result.note}</p>}
 
             {/* Showing the criteria is the point: a misread question is
