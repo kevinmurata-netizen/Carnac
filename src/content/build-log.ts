@@ -29,6 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-03",
+    title: "A SQL console on the AI Assistant page",
+    pr: 22,
+    summary:
+      "The AI Assistant now has a SQL toggle: see the query an answer is equivalent to, or write your own against a live schema browser.",
+    changes: [
+      "The AI never ran SQL to begin with — it fills in a filter (the same kind the Filters page builds), which is evaluated in memory. That was true before this change and still is; it is what keeps the AI from ever reaching a column it shouldn't.",
+      "\"View as SQL\" on an answer opens a console showing the query that filter is equivalent to — labeled as an equivalence, not a transcript, since the AI itself never produced or ran it.",
+      "\"Write your own\" clears the editor for a real query: a schema tree on the left lists every allowed table and column (read live from the database, so it can't go stale), and clicking one inserts it at the cursor.",
+      "Run query executes against the actual database and shows results in a grid below — row count, elapsed time, and a note if a 500-row cap cut anything off.",
+      "Available to Administrators only, the same bar as Decision Trees and the map settings, because this reads the database directly rather than through a curated grid.",
+    ],
+    note: "Read-only in a way enforced by Postgres itself, not just application code: every query runs inside a SET TRANSACTION READ ONLY block with an 8-second timeout, must be a single SELECT/WITH statement, and can only reference an allow-list of tables that excludes users entirely — asking for it, directly or through a join, is rejected before the database ever sees it. This is real protection against a mistaken or malicious query, not against a signed-in Administrator misusing credentials they already hold — that trust boundary is unchanged from before. No schema migration — new server logic and UI only.",
+  },
+  {
     date: "2026-09-02",
     title: "Export a grid to Excel",
     pr: 21,
