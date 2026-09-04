@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-04",
+    title: "Model Results: exports where the data is, and rows in the graph's order",
+    pr: 23,
+    summary:
+      "The Export to Excel button moved into the Transitions section, each opened transition can be exported on its own, and the table now reads in the same order as the diagram above it.",
+    changes: [
+      "Export to Excel sits at the top of the Transitions section rather than the page header, so what a download contains is clear from where the button is.",
+      "Opening a transition gives that grid its own Export these button — a file of just those segments, named for the path (for example current-funding-poor-to-excellent.xlsx).",
+      "Transitions are sorted the way the diagram stacks them: From runs best band to worst, top to bottom, with To breaking the tie. A ribbon in the chart and a row in the table are now found in the same place.",
+    ],
+    note: "The whole-scenario export is unchanged — still two sheets, the transition summary and every segment behind it. No schema migration.",
+  },
+  {
     date: "2026-09-03",
     title: "A SQL console on the AI Assistant page",
     pr: 22,

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatNumber } from "@/lib/format";
 import { ArrowDownRight, ArrowUpRight, ChevronRight, Minus } from "lucide-react";
+import { ExportButton } from "@/components/grid/export-button";
 import type { WciFlowLink } from "@/server/model-results";
 
 /**
@@ -119,11 +120,23 @@ function FlowRows({
         <TableRow className="hover:bg-transparent">
           <TableCell colSpan={6} className="bg-muted/30 p-0">
             <div className="px-4 py-3">
-              <p className="mb-2 text-xs text-muted-foreground">
-                {formatNumber(link.assets.length)} segment{link.assets.length === 1 ? "" : "s"} went from{" "}
-                <span className="font-medium text-foreground">{link.fromBand}</span> to{" "}
-                <span className="font-medium text-foreground">{link.toBand}</span>, worst final condition first.
-              </p>
+              {/* This grid gets its own export: the button that scopes the
+                  download to one transition belongs with that transition's
+                  rows, not with the whole-scenario button up in the heading. */}
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  {formatNumber(link.assets.length)} segment{link.assets.length === 1 ? "" : "s"} went from{" "}
+                  <span className="font-medium text-foreground">{link.fromBand}</span> to{" "}
+                  <span className="font-medium text-foreground">{link.toBand}</span>, worst final condition first.
+                </p>
+                <ExportButton
+                  href="/model-results/export"
+                  count={link.assets.length}
+                  params={{ from: link.fromBand, to: link.toBand }}
+                  label="Export these"
+                  title={`Download just these ${link.assets.length.toLocaleString()} ${link.fromBand} → ${link.toBand} segments as an .xlsx file`}
+                />
+              </div>
               <div className="overflow-x-auto rounded-md border bg-card">
                 <Table>
                   <TableHeader>

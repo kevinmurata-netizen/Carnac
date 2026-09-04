@@ -16,15 +16,25 @@ export function ExportButton({
   href,
   count,
   label = "Export to Excel",
+  params: extra,
+  title,
 }: {
   /** Route that builds the workbook, e.g. "/assets/export". */
   href: string;
   /** Rows that will be exported, so the button says what it will produce. */
   count: number;
   label?: string;
+  /** Narrows the export further than the page's own query string — a single
+   * transition's segments, say. Merged over the page params rather than
+   * appended to `href`, so the two can never produce two `?` in one URL. */
+  params?: Record<string, string>;
+  /** Overrides the hover text when the default undersells what is exported. */
+  title?: string;
 }) {
-  const params = useSearchParams();
-  const query = params.toString();
+  const pageParams = useSearchParams();
+  const merged = new URLSearchParams(pageParams.toString());
+  for (const [key, value] of Object.entries(extra ?? {})) merged.set(key, value);
+  const query = merged.toString();
 
   return (
     <Button
@@ -35,7 +45,7 @@ export function ExportButton({
       title={
         count === 0
           ? "Nothing to export with the current filters"
-          : `Download these ${count.toLocaleString()} rows as an .xlsx file`
+          : (title ?? `Download these ${count.toLocaleString()} rows as an .xlsx file`)
       }
       render={
         <a href={query ? `${href}?${query}` : href} download>
