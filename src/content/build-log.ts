@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-04",
+    title: "Stop retyping your email and password at sign-in",
+    pr: 26,
+    summary:
+      "The sign-in page now remembers your email if you ask it to, and your browser will finally offer to save your password.",
+    changes: [
+      "A \"Remember my email on this device\" tick box. Your email comes back next time; unticking it forgets the address immediately.",
+      "Your password is never stored by this application. Remembering it is the browser's password manager's job, which can encrypt it against your device's keychain and put a fingerprint or PIN in front of it — none of which anything this app saved could do.",
+    ],
+    fixes: [
+      "The browser never offered to save your password, which is the actual reason you were typing it every time. Two causes: the email field was labelled as a contact address rather than as an account name, so password managers did not recognise the pair; and signing in navigated within the page rather than properly, which is the moment a browser decides whether to ask. Both fixed.",
+    ],
+    note: "Sessions already last 30 days and always did — you were not being signed out, only asked to type the password again because the browser had never been given the chance to remember it. No schema migration.",
+  },
+  {
+    date: "2026-09-04",
     title: "Write your own criticality formula",
     pr: 25,
     summary:
