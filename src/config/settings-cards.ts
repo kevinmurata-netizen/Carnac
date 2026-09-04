@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   ScrollText,
   ShieldCheck,
+  Target,
   TrendingDown,
   Users,
   Wrench,
@@ -214,6 +215,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     title: "Deterioration Models",
     icon: TrendingDown,
     detail: "Service life and curve shape per material, and the Markov transition matrix.",
+  },
+  {
+    key: "criticality",
+    href: "/settings/criticality",
+    tab: "modeling",
+    title: "Criticality",
+    icon: Target,
+    detail:
+      "Formulas that work out how much each asset matters, from its own fields and basic maths. Criticality is what ranks the projects a work plan funds first.",
   },
   {
     key: "risk-models",

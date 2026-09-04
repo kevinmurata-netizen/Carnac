@@ -40,6 +40,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
 
   administration: "Administration",
   users: "Users",
+  criticality: "Criticality",
   roles: "Roles & Permissions",
   fields: "Fields",
   import: "Data Import",

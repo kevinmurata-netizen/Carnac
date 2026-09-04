@@ -1,4 +1,7 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getActiveFormula, loadAssetValues } from "@/server/criticality";
+import { evaluate, fieldsUsed, toCriticalityScore } from "@/domain/waterline/criticality-formula";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { getConditionBand } from "@/domain/waterline/condition";
 import {
@@ -57,6 +60,17 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
     },
   });
 
+  // A configured criticality formula defines criticality for its asset type.
+  // Without one, criticality stays what it has always been here — a rescale of
+  // the consequence-of-failure rating — so this changes nothing until used.
+  const assetTypeId = assets[0]?.assetTypeId;
+  const formula = assetTypeId ? await getActiveFormula(assetTypeId) : null;
+  const formulaValues = formula
+    ? new Map(
+        (await loadAssetValues(organizationId, assetTypeId!, formula.valueMaps)).map((a) => [a.assetId, a])
+      )
+    : null;
+
   const now = new Date();
   for (const asset of assets) {
     const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
@@ -85,7 +99,31 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
       ...cofFactors.map((f) => ({ factorName: `COF: ${f.name} (${f.observed})`, factorValue: f.rating, weight: f.weight })),
     ];
 
-    const criticality = computeCriticalityScore(cofInputs, cofWeights);
+    const derived = computeCriticalityScore(cofInputs, cofWeights);
+    const viaFormula = formula && formulaValues ? formulaValues.get(asset.id) : null;
+
+    // Recorded either way so a stored score can always be explained by what
+    // produced it, rather than leaving two possible derivations and no way to
+    // tell which one a number came from.
+    const criticality = viaFormula
+      ? (() => {
+          const result = evaluate(formula!.tree, viaFormula.values);
+          return {
+            score: toCriticalityScore(result.ok ? result.value : 0),
+            factors: {
+              formula: formula!.name,
+              inputs: Object.fromEntries(
+                fieldsUsed(formula!.tree).map((f) => [f, viaFormula.values[f] ?? null])
+              ),
+            } as Prisma.InputJsonObject,
+          };
+        })()
+      : {
+          score: derived.score,
+          factors: Object.fromEntries(
+            derived.factors.map((f) => [f.name, { observed: f.observed, rating: f.rating, weight: f.weight }])
+          ) as Prisma.InputJsonObject,
+        };
 
     await prisma.riskAssessment.create({
       data: {
@@ -102,7 +140,7 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
       data: {
         assetId: asset.id,
         score: criticality.score,
-        factors: Object.fromEntries(criticality.factors.map((f) => [f.name, { observed: f.observed, rating: f.rating, weight: f.weight }])),
+        factors: criticality.factors,
         calculatedAt: now,
       },
     });

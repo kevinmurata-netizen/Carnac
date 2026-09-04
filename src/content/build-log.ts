@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-04",
+    title: "Write your own criticality formula",
+    pr: 25,
+    summary:
+      "Settings → Modeling → Criticality is a new screen for defining how much an asset matters, using that asset type's own fields and basic maths. Criticality is what ranks which projects a work plan funds first.",
+    changes: [
+      "Write a formula like clamp((CUSTOMERS_SERVED / 20) + CRITICALITY * 8, 0, 100). Click any field on the left to drop it in; brackets, + − × ÷ and min, max, clamp and round are all available.",
+      "Dropdowns can be used too. Say what each value is worth — Institutional 6, Residential 1 — and only the dropdowns your formula actually mentions ask to be filled in.",
+      "Try it on every asset before saving. You get the spread of scores, which segments would rank first and last, and a warning if any asset is missing a value the formula reads, which is how you catch a dropdown value nobody gave a number to.",
+      "Formulas are per asset type, so pipes and pumps can be scored on entirely different things. Several can exist side by side and one is active — an alternative can be written and tried out without disturbing the one in use.",
+      "Every score records which formula produced it and what went in, so a number on an asset can always be explained.",
+    ],
+    note: "Needs a migration before deploying — it adds a criticality_models table. Nothing changes until a formula is made active: an asset type without one keeps the previous behaviour, where criticality is a rescale of the risk model's consequence-of-failure rating. Scores are worked out when the model next runs, not when the formula is saved.",
+  },
+  {
+    date: "2026-09-04",
     title: "Set what each role can open, change and see",
     pr: 24,
     summary:
