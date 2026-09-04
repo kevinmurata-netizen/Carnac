@@ -51,7 +51,20 @@ export const ENTRIES: BuildEntry[] = [
       "The breadcrumb's page-to-tab list was a second hand-maintained copy of the same information; it now derives from the card list, so a page can no longer be breadcrumbed into one tab while its card sits on another.",
       "Two roles whose names differed only in capitalisation could both be created — \"Field Supervisor\" and \"field supervisor\" would sit in the list looking like the same role twice. Names are now compared without regard to case.",
     ],
-    note: "Needs a migration before deploying — it adds a role_permissions table and gives roles a code. Nothing else changes: the table starts empty, and an empty table means exactly the behaviour that was there before (everyone can read everything, only an Administrator changes settings, and everyone except Executive can still record field data). Permissions are stored only where they differ from that default, so unticking one box stores one row.",
+    note: "Needs a migration before deploying — it adds a role_permissions table and gives roles a code. The migration must run before this code goes live: every page reads the new role code, so deploying first would leave the site erroring until the column exists. Permissions themselves start empty, and empty means exactly the behaviour that was there before (everyone can read everything, only an Administrator changes settings, and everyone except Executive can still record field data). Permissions are stored only where they differ from that default, so unticking one box stores one row.",
+  },
+  {
+    date: "2026-09-04",
+    title: "Model Results: exports where the data is, and rows in the graph's order",
+    pr: 23,
+    summary:
+      "The Export to Excel button moved into the Transitions section, each opened transition can be exported on its own, and the table now reads in the same order as the diagram above it.",
+    changes: [
+      "Export to Excel sits at the top of the Transitions section rather than the page header, so what a download contains is clear from where the button is.",
+      "Opening a transition gives that grid its own Export these button — a file of just those segments, named for the path (for example current-funding-poor-to-excellent.xlsx).",
+      "Transitions are sorted the way the diagram stacks them: From runs best band to worst, top to bottom, with To breaking the tie. A ribbon in the chart and a row in the table are now found in the same place.",
+    ],
+    note: "The whole-scenario export is unchanged — still two sheets, the transition summary and every segment behind it. No schema migration.",
   },
   {
     date: "2026-09-03",

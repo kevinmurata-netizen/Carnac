@@ -32,9 +32,6 @@ export default async function ModelResultsPage({
       <PageHeader
         title={pageTitle}
         description={`Where a scenario actually leaves the network — every ${ASSET_LABEL.lower} segment traced from its starting condition band to its ending one`}
-        actions={
-          flow ? <ExportButton href="/model-results/export" count={flow.assetCount} /> : undefined
-        }
       />
 
       {runnable.length === 0 ? (
@@ -120,13 +117,23 @@ export default async function ModelResultsPage({
               </Card>
 
               <Card className="mt-4">
-                <CardHeader>
-                  <CardTitle>
-                    Transitions{" "}
-                    <span className="text-sm font-normal text-muted-foreground">
-                      ({flow.links.length}) — click a row for the segments behind it
-                    </span>
-                  </CardTitle>
+                {/* The export button sits with the Transitions grid rather than
+                    in the page header, so what a download will contain is
+                    obvious from where the button is. */}
+                <CardHeader className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <ExportButton
+                      href="/model-results/export"
+                      count={flow.assetCount}
+                      title={`Download all ${flow.links.length} transitions and every segment behind them as an .xlsx file`}
+                    />
+                    <CardTitle>
+                      Transitions{" "}
+                      <span className="text-sm font-normal text-muted-foreground">
+                        ({flow.links.length}) — click a row for the segments behind it
+                      </span>
+                    </CardTitle>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <FlowTable links={flow.links} total={flow.assetCount} />
