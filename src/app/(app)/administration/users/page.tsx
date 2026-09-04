@@ -65,7 +65,7 @@ export default async function UsersPage() {
                     </TableCell>
                     <TableCell className="text-xs">{u.email}</TableCell>
                     <TableCell>
-                      <Badge variant={u.roleName === "Administrator" ? "default" : "secondary"}>{u.roleName}</Badge>
+                      <Badge variant={u.roleCode === "ADMINISTRATOR" ? "default" : "secondary"}>{u.roleName}</Badge>
                     </TableCell>
                     <TableCell>{formatNumber(u.inspectionCount)}</TableCell>
                     <TableCell>

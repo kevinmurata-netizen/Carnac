@@ -1,14 +1,22 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { listRoles } from "@/server/admin";
 import { getNavOverrides, getPageName } from "@/server/navigation";
-import { ADMINISTRATOR, countOverrides, getRoleMatrix } from "@/server/permissions";
+import { ADMINISTRATOR_CODE, countOverrides, getRoleMatrix } from "@/server/permissions";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber } from "@/lib/format";
 import { PermissionMatrix } from "./permission-matrix";
-import { saveRolePermissionsAction, resetRolePermissionsAction } from "./actions";
+import { RoleManager } from "./role-manager";
+import {
+  saveRolePermissionsAction,
+  resetRolePermissionsAction,
+  createRoleAction,
+  renameRoleAction,
+  deleteRoleAction,
+} from "./actions";
 
 /**
  * Roles, and exactly what each one may reach.
@@ -25,7 +33,7 @@ export default async function RolesPage({
   const { role: requested } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const isAdmin = session!.user.roleName === ADMINISTRATOR;
+  const { canWrite: canEdit } = await requireCard("/administration/roles");
 
   const [roles, overrides, counts, title] = await Promise.all([
     listRoles(),
@@ -34,14 +42,15 @@ export default async function RolesPage({
     getPageName(organizationId, "/administration/roles", "Roles & Permissions"),
   ]);
 
-  const selected = roles.find((r) => r.id === requested) ?? roles.find((r) => r.name !== ADMINISTRATOR) ?? roles[0];
+  const selected =
+    roles.find((r) => r.id === requested) ?? roles.find((r) => r.code !== ADMINISTRATOR_CODE) ?? roles[0];
 
   // The same names the sidebar and breadcrumbs use, so a renamed page is not
   // called something different on the one screen that grants access to it.
   const navLabel = (href: string, fallback: string) => overrides[href] ?? fallback;
 
   const matrix = selected
-    ? await getRoleMatrix(organizationId, selected.id, selected.name, navLabel)
+    ? await getRoleMatrix(organizationId, selected.id, selected.code, navLabel)
     : null;
 
   return (
@@ -51,11 +60,11 @@ export default async function RolesPage({
         description="What each role can open, change, and see in the navigation — page by page and card by card"
       />
 
-      {!isAdmin && (
+      {!canEdit && (
         <Card className="mb-4 border-dashed bg-muted/40">
           <CardContent className="py-3 text-sm text-muted-foreground">
-            You are signed in as {session!.user.roleName}. Only an Administrator can change permissions; below is what
-            each role is currently allowed.
+            You are signed in as {session!.user.roleName}. Your role cannot change permissions; below is what each
+            role is currently allowed.
           </CardContent>
         </Card>
       )}
@@ -77,7 +86,7 @@ export default async function RolesPage({
             >
               {r.name}
               <span className="ml-1.5 opacity-70">{formatNumber(r.userCount)}</span>
-              {r.name === ADMINISTRATOR ? (
+              {r.code === ADMINISTRATOR_CODE ? (
                 <span className="ml-1.5 opacity-70">· full</span>
               ) : changed > 0 ? (
                 <span className="ml-1.5 opacity-70">· {changed} changed</span>
@@ -87,9 +96,19 @@ export default async function RolesPage({
         })}
       </div>
 
+      {canEdit && selected && (
+        <RoleManager
+          role={selected}
+          roles={roles}
+          create={createRoleAction}
+          rename={renameRoleAction}
+          remove={deleteRoleAction}
+        />
+      )}
+
       {matrix && (
         <>
-          {!isAdmin ? (
+          {!canEdit ? (
             <ReadOnlyMatrix matrix={matrix} />
           ) : (
             <PermissionMatrix

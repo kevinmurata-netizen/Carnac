@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getSessionPermissions } from "@/server/permissions";
 import { assistantConfigured } from "@/server/assistant";
 import { getConsoleSchema } from "@/server/sql-console";
 import { PageHeader } from "@/components/layout/page-header";
@@ -12,7 +13,7 @@ export default async function AskPage() {
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/ask", "AI Assistant");
   const configured = assistantConfigured();
-  const isAdmin = session!.user.roleName === "Administrator";
+  const isAdmin = (await getSessionPermissions(session!)).isAdministrator;
 
   // Only fetched for the role that can use it — no reason to run an
   // information_schema query for every visitor to this page.

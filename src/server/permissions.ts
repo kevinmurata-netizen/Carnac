@@ -23,7 +23,17 @@ import { SETTINGS_CARDS, SETTINGS_TABS } from "@/config/settings-cards";
 
 export type ResourceAccess = { read: boolean; write: boolean; visible: boolean };
 
-export const ADMINISTRATOR = "Administrator";
+/**
+ * Roles are identified by code, never by display name.
+ *
+ * The name is renameable, so keying anything on it would mean calling the
+ * Administrator role something else silently removed everyone's admin access.
+ * These codes are assigned once and never change.
+ */
+export const ADMINISTRATOR_CODE = "ADMINISTRATOR";
+
+/** The role that has always been read-only, per docs/SPEC.md §34. */
+export const READ_ONLY_CODE = "EXECUTIVE";
 
 /** Full access, the Administrator's fixed answer for every resource. */
 const FULL: ResourceAccess = { read: true, write: true, visible: true };
@@ -49,12 +59,9 @@ const FULL: ResourceAccess = { read: true, write: true, visible: true };
  */
 export const DEFAULT_ACCESS: ResourceAccess = { read: true, write: false, visible: true };
 
-/** The role that has always been read-only, per docs/SPEC.md §34. */
-const READ_ONLY_ROLE = "Executive";
-
-export function defaultAccessFor(resource: string, roleName: string): ResourceAccess {
+export function defaultAccessFor(resource: string, roleCode: string): ResourceAccess {
   if (resource.startsWith("page:")) {
-    return { read: true, write: roleName !== READ_ONLY_ROLE, visible: true };
+    return { read: true, write: roleCode !== READ_ONLY_CODE, visible: true };
   }
   return DEFAULT_ACCESS;
 }
@@ -102,6 +109,7 @@ async function storedOverrides(organizationId: string, roleId: string): Promise<
  */
 export type PermissionSet = {
   roleName: string;
+  roleCode: string;
   isAdministrator: boolean;
   access: (resource: string) => ResourceAccess;
   canRead: (resource: string) => boolean;
@@ -109,18 +117,30 @@ export type PermissionSet = {
   isVisible: (resource: string) => boolean;
 };
 
-export async function getPermissions(
-  organizationId: string,
-  roleId: string,
-  roleName: string
-): Promise<PermissionSet> {
-  const isAdministrator = roleName === ADMINISTRATOR;
-  const overrides = isAdministrator ? new Map<string, ResourceAccess>() : await storedOverrides(organizationId, roleId);
+/**
+ * Resolved from the role's id against the database, not from whatever the
+ * session is carrying.
+ *
+ * A session's copy of the role name goes stale the moment a role is renamed,
+ * and a stale name deciding who is an Administrator is exactly the bug the
+ * code column exists to prevent. One extra lookup is worth not having to
+ * reason about token freshness.
+ */
+export async function getPermissions(organizationId: string, roleId: string): Promise<PermissionSet> {
+  const [role, overrides] = await Promise.all([
+    prisma.role.findUnique({ where: { id: roleId }, select: { name: true, code: true } }),
+    storedOverrides(organizationId, roleId),
+  ]);
+
+  // No role means no grounds to grant anything.
+  const roleName = role?.name ?? "Unknown";
+  const roleCode = role?.code ?? "";
+  const isAdministrator = roleCode === ADMINISTRATOR_CODE;
 
   const access = (resource: string): ResourceAccess => {
     if (isAdministrator) return FULL;
     const stored = overrides.get(resource);
-    if (!stored) return defaultAccessFor(resource, roleName);
+    if (!stored) return defaultAccessFor(resource, roleCode);
     // Write without read would be a contradiction the UI cannot express and
     // the server should not honour; read is the gate everything else sits
     // behind.
@@ -130,6 +150,7 @@ export async function getPermissions(
 
   return {
     roleName,
+    roleCode,
     isAdministrator,
     access,
     canRead: (r) => access(r).read,
@@ -140,9 +161,9 @@ export async function getPermissions(
 
 /** The set already resolved for the signed-in user. */
 export async function getSessionPermissions(session: {
-  user: { organizationId: string; roleId: string; roleName: string };
+  user: { organizationId: string; roleId: string };
 }): Promise<PermissionSet> {
-  return getPermissions(session.user.organizationId, session.user.roleId, session.user.roleName);
+  return getPermissions(session.user.organizationId, session.user.roleId);
 }
 
 // ---------------------------------------------------------------------------
@@ -180,11 +201,14 @@ export type RoleMatrix = {
 export async function getRoleMatrix(
   organizationId: string,
   roleId: string,
-  roleName: string,
+  roleCode: string,
   navLabel: (href: string, fallback: string) => string
 ): Promise<RoleMatrix> {
-  const isAdministrator = roleName === ADMINISTRATOR;
-  const overrides = await storedOverrides(organizationId, roleId);
+  const isAdministrator = roleCode === ADMINISTRATOR_CODE;
+  const [role, overrides] = await Promise.all([
+    prisma.role.findUnique({ where: { id: roleId }, select: { name: true } }),
+    storedOverrides(organizationId, roleId),
+  ]);
 
   const resolve = (kind: ResourceKind, href: string, fallback: string): PermissionRow => {
     const resource = resourceKey(kind, href);
@@ -193,7 +217,7 @@ export async function getRoleMatrix(
       href,
       kind,
       label: navLabel(href, fallback),
-      access: isAdministrator ? FULL : (overrides.get(resource) ?? defaultAccessFor(resource, roleName)),
+      access: isAdministrator ? FULL : (overrides.get(resource) ?? defaultAccessFor(resource, roleCode)),
       locked: isAdministrator,
     };
   };
@@ -212,7 +236,7 @@ export async function getRoleMatrix(
     });
   }
 
-  return { roleId, roleName, isAdministrator, sections };
+  return { roleId, roleName: role?.name ?? "Unknown", isAdministrator, sections };
 }
 
 export type PermissionInput = { resource: string; read: boolean; write: boolean; visible: boolean };
@@ -231,8 +255,10 @@ export async function setRolePermissions(
 ): Promise<void> {
   const role = await prisma.role.findUnique({ where: { id: roleId } });
   if (!role) throw new Error("Role not found");
-  if (role.name === ADMINISTRATOR) {
-    throw new Error("Administrator keeps full access — otherwise there would be no way back into this screen");
+  if (role.code === ADMINISTRATOR_CODE) {
+    throw new Error(
+      `${role.name} keeps full access — otherwise there would be no way back into this screen`
+    );
   }
 
   const allowed = allResourceKeys();
@@ -245,7 +271,7 @@ export async function setRolePermissions(
     const write = read && input.write;
     const visible = read && input.visible;
 
-    const fallback = defaultAccessFor(input.resource, role.name);
+    const fallback = defaultAccessFor(input.resource, role.code);
     const isDefault = read === fallback.read && write === fallback.write && visible === fallback.visible;
 
     if (isDefault) {
@@ -268,6 +294,187 @@ export async function resetRolePermissions(organizationId: string, roleId: strin
   await prisma.rolePermission.deleteMany({ where: { organizationId, roleId } });
 }
 
+// ---------------------------------------------------------------------------
+// Creating, renaming and removing roles
+// ---------------------------------------------------------------------------
+
+/** Reserved for the seeded roles, so a custom role can never claim a code the
+ * application reasons about. */
+const RESERVED_CODES = new Set([ADMINISTRATOR_CODE, READ_ONLY_CODE, "ASSET_MANAGER", "INSPECTOR"]);
+
+function validateRoleName(name: string): string {
+  const trimmed = name.trim().replace(/\s+/g, " ");
+  if (!trimmed) throw new Error("A role needs a name");
+  if (trimmed.length > 40) throw new Error("Keep role names under 40 characters");
+  return trimmed;
+}
+
+/**
+ * Rejects a name already in use, ignoring case.
+ *
+ * The unique index on `name` is case-sensitive, so "field supervisor" and
+ * "Field Supervisor" would both be accepted and then sit in the list looking
+ * like the same role twice. Two roles a person cannot tell apart is a worse
+ * outcome than a rejected name.
+ */
+async function assertNameFree(name: string, exceptRoleId?: string) {
+  const clash = await prisma.role.findFirst({
+    where: {
+      name: { equals: name, mode: "insensitive" },
+      ...(exceptRoleId ? { id: { not: exceptRoleId } } : {}),
+    },
+    select: { name: true },
+  });
+  if (clash) throw new Error(`There is already a role called "${clash.name}"`);
+}
+
+/**
+ * A stable code derived from the name it was created with.
+ *
+ * Derived once and then never touched again — renaming the role later does not
+ * change it, which is the whole point. A numeric suffix settles collisions so
+ * two roles named similarly still get distinct codes.
+ */
+async function codeForNewRole(name: string): Promise<string> {
+  const base =
+    name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 30) || "ROLE";
+
+  const taken = new Set((await prisma.role.findMany({ select: { code: true } })).map((r) => r.code));
+  let candidate = `CUSTOM_${base}`;
+  let n = 2;
+  while (taken.has(candidate) || RESERVED_CODES.has(candidate)) {
+    candidate = `CUSTOM_${base}_${n++}`;
+  }
+  return candidate;
+}
+
+export type CreateRoleInput = {
+  name: string;
+  /** Start from another role's permissions rather than the defaults. */
+  copyFromRoleId?: string;
+};
+
+export async function createRole(organizationId: string, input: CreateRoleInput) {
+  const name = validateRoleName(input.name);
+  await assertNameFree(name);
+
+  // Everything that can refuse the request is checked before anything is
+  // written. Validating the copy source after creating the role would leave an
+  // orphan behind every time a copy was refused.
+  let source: { id: string; code: string; name: string } | null = null;
+  if (input.copyFromRoleId) {
+    source = await prisma.role.findUnique({
+      where: { id: input.copyFromRoleId },
+      select: { id: true, code: true, name: true },
+    });
+    if (!source) throw new Error("The role to copy from no longer exists");
+
+    // Copying an Administrator would be copying "no stored rows", which reads
+    // as the defaults rather than as full access — misleading enough to refuse.
+    if (source.code === ADMINISTRATOR_CODE) {
+      throw new Error(
+        `${source.name} has full access by definition rather than stored permissions, so there is nothing to copy. Create the role and grant what it needs.`
+      );
+    }
+  }
+
+  const sourceRows = source
+    ? await prisma.rolePermission.findMany({ where: { organizationId, roleId: source.id } })
+    : [];
+
+  const code = await codeForNewRole(name);
+
+  // One transaction, so a role never exists without the permissions that were
+  // meant to come with it.
+  return prisma.$transaction(async (tx) => {
+    const role = await tx.role.create({
+      data: {
+        name,
+        code,
+        // The legacy string list stays empty: it is descriptive only, and what
+        // this role can actually reach lives in role_permissions.
+        permissions: [],
+        isSystem: false,
+      },
+    });
+
+    if (!source) return role;
+
+    const rows = sourceRows.map((r) => ({
+      organizationId,
+      roleId: role.id,
+      resource: r.resource,
+      canRead: r.canRead,
+      canWrite: r.canWrite,
+      visible: r.visible,
+    }));
+
+    // Stored rows are only the deviations, so anything the source left at its
+    // own default has to be written out explicitly where the new role's
+    // default differs — otherwise "a copy of Executive" would silently gain
+    // write on every page, since the new role is not itself an Executive.
+    const stored = new Set(sourceRows.map((r) => r.resource));
+    for (const resource of allResourceKeys()) {
+      if (stored.has(resource)) continue;
+      const theirs = defaultAccessFor(resource, source.code);
+      const mine = defaultAccessFor(resource, code);
+      if (theirs.read === mine.read && theirs.write === mine.write && theirs.visible === mine.visible) continue;
+      rows.push({
+        organizationId,
+        roleId: role.id,
+        resource,
+        canRead: theirs.read,
+        canWrite: theirs.write,
+        visible: theirs.visible,
+      });
+    }
+
+    if (rows.length > 0) await tx.rolePermission.createMany({ data: rows });
+    return role;
+  });
+}
+
+export async function renameRole(roleId: string, name: string) {
+  const role = await prisma.role.findUnique({ where: { id: roleId } });
+  if (!role) throw new Error("Role not found");
+
+  const next = validateRoleName(name);
+  if (next === role.name) return role;
+
+  // Excluding itself, so changing only the capitalisation of a role's own name
+  // is allowed rather than colliding with itself.
+  await assertNameFree(next, roleId);
+
+  // Renaming any role, including Administrator, is safe: nothing in the
+  // application reads the name to decide what a role may do.
+  return prisma.role.update({ where: { id: roleId }, data: { name: next } });
+}
+
+export async function deleteRole(organizationId: string, roleId: string) {
+  const role = await prisma.role.findUnique({
+    where: { id: roleId },
+    include: { _count: { select: { users: true } } },
+  });
+  if (!role) throw new Error("Role not found");
+
+  if (role.isSystem) {
+    throw new Error(`${role.name} is one of the built-in roles and cannot be deleted, only renamed`);
+  }
+  if (role._count.users > 0) {
+    throw new Error(
+      `${role.name} still has ${role._count.users} ${role._count.users === 1 ? "person" : "people"} assigned. Move them to another role first.`
+    );
+  }
+
+  // Its permission rows go with it — they describe this role and nothing else.
+  await prisma.rolePermission.deleteMany({ where: { organizationId, roleId } });
+  await prisma.role.delete({ where: { id: roleId } });
+}
+
 /** How many resources a role has moved off the default, for a summary line. */
 export async function countOverrides(organizationId: string): Promise<Map<string, number>> {
   const rows = await prisma.rolePermission.groupBy({
@@ -285,9 +492,9 @@ export async function countOverrides(organizationId: string): Promise<Map<string
  * hidden if either says so, since both are presentational and neither should
  * be able to override the other into showing something someone hid.
  */
-export async function hiddenHrefsForRole(organizationId: string, roleId: string, roleName: string): Promise<string[]> {
-  if (roleName === ADMINISTRATOR) return [];
-  const permissions = await getPermissions(organizationId, roleId, roleName);
+export async function hiddenHrefsForRole(organizationId: string, roleId: string): Promise<string[]> {
+  const permissions = await getPermissions(organizationId, roleId);
+  if (permissions.isAdministrator) return [];
   return governedPages()
     .filter((p) => !permissions.isVisible(resourceKey("page", p.href)))
     .map((p) => p.href);

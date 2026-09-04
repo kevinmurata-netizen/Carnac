@@ -55,10 +55,24 @@ model User {
 }
 
 model Role {
-  id          String @id @default(cuid())
-  name        String @unique // Administrator, AssetManager, Inspector, Executive
+  id String @id @default(cuid())
+
+  /// Stable identity for anything the code decides — ADMINISTRATOR, EXECUTIVE
+  /// and so on. Never shown and never edited, which is what lets `name` be
+  /// renamed freely: before this existed, calling the Administrator role
+  /// anything else would have silently removed everyone's admin access.
+  code String @unique
+
+  /// The display name. Free-form and renameable.
+  name String @unique
+
   permissions Json // array of permission strings; keeps RBAC config-driven
-  users       User[]
+
+  /// The four seeded roles. They can be renamed but not deleted — an
+  /// organization with no Administrator role has no way back in.
+  isSystem Boolean @default(false)
+
+  users User[]
 
   resourcePermissions RolePermission[]
 

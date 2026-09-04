@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getNavOverrides, getHiddenHrefs } from "@/server/navigation";
-import { hiddenHrefsForRole } from "@/server/permissions";
+import { getPermissions, governedPages, resourceKey } from "@/server/permissions";
 import { AppShell } from "@/components/layout/app-shell";
 import { BreadcrumbProvider } from "@/components/layout/breadcrumbs";
 
@@ -10,11 +10,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // Loaded once here and shared with both the sidebar and the breadcrumb trail
   // so a renamed page reads the same in either place.
-  const [overrides, hidden, hiddenForRole] = await Promise.all([
+  const [overrides, hidden, permissions] = await Promise.all([
     getNavOverrides(user.organizationId),
     getHiddenHrefs(user.organizationId),
-    hiddenHrefsForRole(user.organizationId, user.roleId, user.roleName),
+    getPermissions(user.organizationId, user.roleId),
   ]);
+
+  const hiddenForRole = permissions.isAdministrator
+    ? []
+    : governedPages()
+        .filter((p) => !permissions.isVisible(resourceKey("page", p.href)))
+        .map((p) => p.href);
 
   // Either source can hide an entry and neither can force one back into view:
   // both are presentational, so the union is the honest answer. A page hidden
@@ -27,7 +33,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         overrides={overrides}
         hidden={allHidden}
         userName={user.name ?? user.email ?? "User"}
-        roleName={user.roleName}
+        /* Read from the database rather than the session, so renaming a role
+           shows up straight away instead of waiting for everyone to sign in
+           again. */
+        roleName={permissions.roleName}
       >
         {children}
       </AppShell>

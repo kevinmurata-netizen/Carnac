@@ -78,7 +78,7 @@ export function PermissionMatrix({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Lock className="h-4 w-4" />
-            Administrator has full access
+            {roleName} has full access
           </CardTitle>
         </CardHeader>
         <CardContent className="border-t pt-4 text-sm text-muted-foreground">

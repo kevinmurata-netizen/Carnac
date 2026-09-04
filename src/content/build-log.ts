@@ -42,12 +42,16 @@ export const ENTRIES: BuildEntry[] = [
       "Administrator is deliberately fixed at full access. Somebody has to be able to undo a mistake, and a screen that lets you remove your own access to the screen that grants access is a trap.",
       "A page closed to your role says so, names the page, and points at who can change it — rather than pretending the page does not exist.",
       "Settings cards are now defined in one list that the Settings page and this permissions grid both read, so a card added later cannot quietly ship without access control.",
+      "Roles can be created, renamed and — for ones you added yourself — deleted. A new role can start from the defaults or as a copy of an existing role, which brings across exactly what that role can reach today.",
+      "Any role can be renamed, including Administrator. Each role carries a fixed internal code that nothing displays and nothing can edit, and every decision the system makes reads that code rather than the name — so calling Administrator something else changes the label and nothing else.",
+      "The four built-in roles can be renamed but not deleted, and a role with people still assigned to it cannot be deleted until they are moved.",
     ],
     fixes: [
       "The Map settings page had no card anywhere on the Settings screen, so the only way to reach it was to know the URL. It now has one, on the General tab.",
       "The breadcrumb's page-to-tab list was a second hand-maintained copy of the same information; it now derives from the card list, so a page can no longer be breadcrumbed into one tab while its card sits on another.",
+      "Two roles whose names differed only in capitalisation could both be created — \"Field Supervisor\" and \"field supervisor\" would sit in the list looking like the same role twice. Names are now compared without regard to case.",
     ],
-    note: "Needs a migration before deploying — it adds a role_permissions table. Nothing else changes: the table starts empty, and an empty table means exactly the behaviour that was there before (everyone can read everything, only an Administrator changes settings, and everyone except Executive can still record field data). Permissions are stored only where they differ from that default, so unticking one box stores one row.",
+    note: "Needs a migration before deploying — it adds a role_permissions table and gives roles a code. Nothing else changes: the table starts empty, and an empty table means exactly the behaviour that was there before (everyone can read everything, only an Administrator changes settings, and everyone except Executive can still record field data). Permissions are stored only where they differ from that default, so unticking one box stores one row.",
   },
   {
     date: "2026-09-03",
