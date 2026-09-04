@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireCardWrite } from "@/server/guard";
 import {
   updateConditionModel,
   updateRiskModel,
@@ -21,14 +21,11 @@ import { createMetric, updateMetric, deleteMetric } from "@/server/metrics";
 import type { ConditionBand } from "@/domain/waterline/condition";
 import type { SettingsActionState } from "./state";
 
-/** Modelling configuration is Administrator-only: these values sit underneath
- * every condition, risk and forecast number the system reports. */
-async function requireAdministrator() {
-  const session = await auth();
-  if (!session || session.user.roleName !== "Administrator") {
-    throw new Error("Only an Administrator can change settings");
-  }
-  return session;
+/** Each settings action names the card it belongs to, so write access is
+ * checked against the same permission the Settings page shows, rather than
+ * all of them sharing one "is this an Administrator" answer. */
+async function requireWriteAccess(card: string) {
+  return requireCardWrite(card, "Your role cannot change these settings");
 }
 
 /** Config changes ripple into every derived view, so revalidate broadly rather
@@ -68,7 +65,7 @@ export async function saveConditionModelAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/condition-models");
 
     const bands: ConditionBand[] = [];
     for (const [key, value] of formData.entries()) {
@@ -103,7 +100,7 @@ export async function saveRiskModelAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/risk-models");
 
     const pof: Record<string, number> = {};
     const cof: Record<string, number> = {};
@@ -133,7 +130,7 @@ export async function saveDeteriorationModelAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/deterioration-models");
     const id = String(formData.get("id") ?? "");
 
     await updateDeteriorationModel(session.user.organizationId, id, {
@@ -158,7 +155,7 @@ export async function saveAssetTypeAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/configuration");
     await updateAssetType(session.user.organizationId, String(formData.get("id") ?? ""), {
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
@@ -175,7 +172,7 @@ export async function createAssetTypeAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/configuration");
     await createAssetType(session.user.organizationId, {
       code: String(formData.get("code") ?? ""),
       name: String(formData.get("name") ?? ""),
@@ -196,7 +193,7 @@ export async function saveTemplateAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/configuration");
     await updateInspectionTemplate(session.user.organizationId, String(formData.get("id") ?? ""), {
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
@@ -213,7 +210,7 @@ export async function createFailureTypeAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/failure-types");
     await createFailureType(session.user.organizationId, {
       code: String(formData.get("code") ?? ""),
       label: String(formData.get("label") ?? ""),
@@ -230,7 +227,7 @@ export async function saveFailureTypesAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/failure-types");
     let count = 0;
     for (const [key, value] of formData.entries()) {
       if (!key.startsWith("label_")) continue;
@@ -251,7 +248,7 @@ export async function deleteFailureTypeAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/failure-types");
     await deleteFailureType(session.user.organizationId, String(formData.get("id") ?? ""));
     revalidateAll("/settings/failure-types");
     return { status: "success", message: "Failure type removed." };
@@ -265,7 +262,7 @@ export async function saveNavLabelsAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/navigation");
 
     const labels: Record<string, string> = {};
     for (const [key, value] of formData.entries()) {
@@ -302,7 +299,7 @@ export async function resetNavLabelsAction(
   _formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/navigation");
     await resetNavLabels(session.user.organizationId);
     revalidatePath("/", "layout");
     return { status: "success", message: "All page names reset to their defaults." };
@@ -338,7 +335,7 @@ export async function createMetricAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/condition-models");
     const source = String(formData.get("source") ?? "");
     const [sourceKind, sourceCode] = source.split(":");
 
@@ -367,7 +364,7 @@ export async function saveMetricAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/condition-models");
     await updateMetric(session.user.organizationId, String(formData.get("id") ?? ""), {
       name: String(formData.get("name") ?? ""),
       scaleMin: num(formData, "scaleMin"),
@@ -387,7 +384,7 @@ export async function deleteMetricAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/condition-models");
     await deleteMetric(session.user.organizationId, String(formData.get("id") ?? ""));
     revalidateAll("/settings/condition-models");
     return { status: "success", message: "Metric removed." };
@@ -406,7 +403,7 @@ export async function deleteMetricAction(
  * form would be invalid HTML and would submit the wrong one.
  */
 export async function toggleDeteriorationActiveAction(id: string, isActive: boolean) {
-  const session = await requireAdministrator();
+  const session = await requireWriteAccess("/settings/deterioration-models");
   const name = await setDeteriorationModelActive(session.user.organizationId, id, isActive);
   revalidateAll("/settings/deterioration-models");
   return isActive
@@ -415,7 +412,7 @@ export async function toggleDeteriorationActiveAction(id: string, isActive: bool
 }
 
 export async function toggleTemplateActiveAction(id: string, isActive: boolean) {
-  const session = await requireAdministrator();
+  const session = await requireWriteAccess("/settings/configuration");
   const name = await setInspectionTemplateActive(session.user.organizationId, id, isActive);
   revalidateAll("/settings/configuration", "/inspections");
   return isActive ? `${name} is active.` : `${name} is inactive and will not be offered for new inspections.`;
@@ -426,7 +423,7 @@ export async function saveMarkovModelAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess("/settings/deterioration-models");
 
     let matrix: number[][];
     try {

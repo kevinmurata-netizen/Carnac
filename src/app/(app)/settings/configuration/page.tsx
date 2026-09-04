@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { getConfigurationSettings } from "@/server/settings";
 import { ASSET_LABEL } from "@/config/labels";
 import { PageHeader } from "@/components/layout/page-header";
@@ -15,7 +16,7 @@ export default async function ConfigurationPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/configuration", "Configuration");
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/configuration");
 
   const config = await getConfigurationSettings(organizationId);
 
@@ -26,7 +27,7 @@ export default async function ConfigurationPage() {
         description={`${ASSET_LABEL.singular} classes, inventory attributes and the inspection forms used in the field`}
       />
 
-      {!isAdmin && (
+      {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           You are signed in as {session!.user.roleName}. Configuration is read-only for your role.
         </div>
@@ -37,7 +38,7 @@ export default async function ConfigurationPage() {
       </h2>
       <div className="space-y-4">
         {config.assetTypes.map((t) =>
-          isAdmin ? (
+          canEdit ? (
             <AssetTypeEditor key={t.id} assetType={t} />
           ) : (
             <Card key={t.id}>
@@ -52,14 +53,14 @@ export default async function ConfigurationPage() {
           )
         )}
       </div>
-      {isAdmin && <NewAssetTypeForm />}
+      {canEdit && <NewAssetTypeForm />}
 
       <h2 className="mb-2 mt-6 text-sm font-medium text-foreground">
         Inspection Templates <span className="text-muted-foreground">({config.templates.length})</span>
       </h2>
       <div className="space-y-4">
         {config.templates.map((t) =>
-          isAdmin ? (
+          canEdit ? (
             <TemplateEditor key={t.id} template={t} />
           ) : (
             <Card key={t.id}>

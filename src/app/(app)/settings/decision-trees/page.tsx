@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { prisma } from "@/lib/prisma";
 import { listTreatmentTrees } from "@/server/decision-trees";
 import { listMaterials, listCriticalities } from "@/server/assets";
@@ -80,7 +81,7 @@ export default async function DecisionTreesPage({
   const { treatment: requested } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/decision-trees");
   const pageTitle = await getPageName(organizationId, "/settings/decision-trees", "Decision Trees");
 
   const [treatments, samples, materials, criticalities] = await Promise.all([
@@ -106,7 +107,7 @@ export default async function DecisionTreesPage({
         description="Policy rules that decide whether an asset qualifies for a treatment, on top of its technical window."
       />
 
-      {!isAdmin && (
+      {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           You are signed in as {session!.user.roleName}. Decision trees are read-only for your role.
         </div>
@@ -129,7 +130,7 @@ export default async function DecisionTreesPage({
             selectedId={selected.treatmentId}
           />
 
-          {isAdmin ? (
+          {canEdit ? (
             <RuleBuilder
               key={selected.treatmentId}
               treatmentId={selected.treatmentId}

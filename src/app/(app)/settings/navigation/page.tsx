@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { listRenameablePages, getPageName } from "@/server/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { NavigationEditor } from "./editor";
 export default async function NavigationSettingsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/navigation");
 
   const [sections, title] = await Promise.all([
     listRenameablePages(organizationId),
@@ -24,7 +25,7 @@ export default async function NavigationSettingsPage() {
         description="Rename any page — the sidebar, breadcrumbs and page heading all follow"
       />
 
-      {isAdmin ? (
+      {canEdit ? (
         <NavigationEditor sections={sections} />
       ) : (
         <>

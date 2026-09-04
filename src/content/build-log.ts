@@ -29,6 +29,27 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-04",
+    title: "Set what each role can open, change and see",
+    pr: 24,
+    summary:
+      "Users and Roles are now two separate cards, and Roles & Permissions is a real screen: a grid where an Administrator sets read, write and visible for every page and every Settings card, one role at a time.",
+    changes: [
+      "Three switches per row, because they answer three different questions. Read opens the page. Write allows changes. Visible only decides whether the entry shows in the sidebar or the Settings grid — a hidden page still opens from a bookmark, which is what hiding has always meant here.",
+      "Write is enforced when a change is submitted, not by hiding buttons. Removing someone's write access while they have the form open means their next save is refused.",
+      "Unticking Read greys out the other two and clears them — being allowed to change a page you cannot open is not a state worth being able to express.",
+      "Per-section All / Read only / None buttons, so setting up a role does not mean forty individual clicks.",
+      "Administrator is deliberately fixed at full access. Somebody has to be able to undo a mistake, and a screen that lets you remove your own access to the screen that grants access is a trap.",
+      "A page closed to your role says so, names the page, and points at who can change it — rather than pretending the page does not exist.",
+      "Settings cards are now defined in one list that the Settings page and this permissions grid both read, so a card added later cannot quietly ship without access control.",
+    ],
+    fixes: [
+      "The Map settings page had no card anywhere on the Settings screen, so the only way to reach it was to know the URL. It now has one, on the General tab.",
+      "The breadcrumb's page-to-tab list was a second hand-maintained copy of the same information; it now derives from the card list, so a page can no longer be breadcrumbed into one tab while its card sits on another.",
+    ],
+    note: "Needs a migration before deploying — it adds a role_permissions table. Nothing else changes: the table starts empty, and an empty table means exactly the behaviour that was there before (everyone can read everything, only an Administrator changes settings, and everyone except Executive can still record field data). Permissions are stored only where they differ from that default, so unticking one box stores one row.",
+  },
+  {
     date: "2026-09-03",
     title: "A SQL console on the AI Assistant page",
     pr: 22,

@@ -1,3 +1,5 @@
+import { SETTINGS_CARDS, SETTINGS_TABS } from "@/config/settings-cards";
+
 /**
  * Which Settings tab each configuration page belongs to.
  *
@@ -5,42 +7,23 @@
  * Modeling › Metrics" — so going back one level lands on the tab the page came
  * from rather than on Settings' default tab.
  *
- * It also covers pages that do not live under /settings in the URL (Filters,
- * and the Administration sub-pages), because where a page sits in the
- * information architecture is not always where it sits in the path.
+ * Derived from the card registry rather than listed again: every one of these
+ * pages is reached through a card that already records which tab it sits on,
+ * and keeping a second copy by hand is how a page ends up breadcrumbed into
+ * one tab while its card lives on another. It also covers pages that do not
+ * live under /settings in the URL (Filters, and the Administration
+ * sub-pages), because where a page sits in the information architecture is
+ * not always where it sits in the path.
  */
 export type SettingsTab = { key: string; label: string };
 
-export const GENERAL_TAB: SettingsTab = { key: "general", label: "General" };
+const TAB_BY_KEY = new Map(SETTINGS_TABS.map((t) => [t.key, { key: t.key, label: t.label }]));
 
-const ADMINISTRATION: SettingsTab = { key: "administration", label: "Administration" };
-const DATABASE: SettingsTab = { key: "database", label: "Database" };
-const MODELING: SettingsTab = { key: "modeling", label: "Modeling" };
+export const GENERAL_TAB: SettingsTab = TAB_BY_KEY.get("general")!;
 
-export const TAB_FOR_PATH: Record<string, SettingsTab> = {
-  "/settings/configuration": GENERAL_TAB,
-  "/settings/navigation": GENERAL_TAB,
-  "/settings/theme": GENERAL_TAB,
-  "/settings/map": GENERAL_TAB,
-  "/filters": GENERAL_TAB,
-  "/administration/activity": GENERAL_TAB,
-
-  "/administration/users": ADMINISTRATION,
-  "/administration/wishlist": ADMINISTRATION,
-  "/settings/build-log": ADMINISTRATION,
-
-  "/settings/database": DATABASE,
-  "/administration/fields": DATABASE,
-  "/administration/import": DATABASE,
-
-  "/settings/condition-index": MODELING,
-  "/settings/condition-models": MODELING,
-  "/settings/treatments": MODELING,
-  "/settings/deterioration-models": MODELING,
-  "/settings/risk-models": MODELING,
-  "/settings/decision-trees": MODELING,
-  "/settings/failure-types": MODELING,
-};
+export const TAB_FOR_PATH: Record<string, SettingsTab> = Object.fromEntries(
+  SETTINGS_CARDS.map((card) => [card.href, TAB_BY_KEY.get(card.tab)!])
+);
 
 /** The tab a path belongs to, walking up so /settings/treatments/[id] inherits
  * from /settings/treatments. */

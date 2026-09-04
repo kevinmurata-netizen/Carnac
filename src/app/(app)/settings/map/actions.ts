@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireCardWrite } from "@/server/guard";
 import { setPopupFields } from "@/server/map-settings";
 import type { SettingsActionState } from "../state";
 
@@ -10,10 +10,7 @@ export async function saveMapPopupAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await auth();
-    if (!session || session.user.roleName !== "Administrator") {
-      throw new Error("Only an Administrator can change map settings");
-    }
+    const session = await requireCardWrite("/settings/map", "Your role cannot change map settings");
 
     // Unchecked boxes do not submit, so what arrives is exactly the set to keep.
     const keys = formData.getAll("field").map((v) => String(v));

@@ -1,18 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireCardWrite } from "@/server/guard";
 import { saveTrees, setQualifyMode } from "@/server/decision-trees";
 import { isValidTree, type DecisionTree, type QualifyMode } from "@/domain/waterline/decision-tree";
 
 /** Decision trees gate what work gets recommended and therefore what shows up
  * in the identified need, so changing them is an Administrator action. */
-async function requireAdministrator() {
-  const session = await auth();
-  if (!session || session.user.roleName !== "Administrator") {
-    throw new Error("Only an Administrator can change decision trees");
-  }
-  return session;
+async function requireWriteAccess() {
+  return requireCardWrite("/settings/decision-trees", "Only an Administrator can change decision trees");
 }
 
 export async function saveTreesAction(
@@ -21,7 +17,7 @@ export async function saveTreesAction(
   mode: QualifyMode
 ): Promise<{ ok: boolean; message: string }> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
 
     // The trees arrive from the browser, so they are validated here rather
     // than trusted — a crafted payload must not become a stored rule.

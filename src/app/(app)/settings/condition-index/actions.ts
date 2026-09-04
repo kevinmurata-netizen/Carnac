@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth";
+import { requireCardWrite } from "@/server/guard";
 import {
   updateComponentWeights,
   addComponent,
@@ -13,12 +13,8 @@ import type { IndexActionState } from "./state";
 
 /** Configuration changes are Administrator-only: reweighting the index moves
  * every condition score in the system. */
-async function requireAdministrator() {
-  const session = await auth();
-  if (!session || session.user.roleName !== "Administrator") {
-    throw new Error("Only an Administrator can change the condition index");
-  }
-  return session;
+async function requireWriteAccess() {
+  return requireCardWrite("/settings/condition-index", "Only an Administrator can change the condition index");
 }
 
 function revalidateAffected() {
@@ -30,7 +26,7 @@ function revalidateAffected() {
 
 export async function saveWeightsAction(_prev: IndexActionState, formData: FormData): Promise<IndexActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     const weights: Record<string, number> = {};
     for (const [key, value] of formData.entries()) {
       if (!key.startsWith("weight_")) continue;
@@ -56,7 +52,7 @@ export async function saveWeightsAction(_prev: IndexActionState, formData: FormD
 
 export async function addComponentAction(_prev: IndexActionState, formData: FormData): Promise<IndexActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     const existingCode = String(formData.get("existingFieldCode") ?? "").trim();
     const weight = Number(formData.get("weight"));
     if (!Number.isFinite(weight) || weight < 0) {
@@ -90,7 +86,7 @@ export async function addComponentAction(_prev: IndexActionState, formData: Form
 
 export async function removeComponentAction(_prev: IndexActionState, formData: FormData): Promise<IndexActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     const code = String(formData.get("code") ?? "");
     await removeComponent(session.user.organizationId, code);
     revalidateAffected();
@@ -106,7 +102,7 @@ export async function removeComponentAction(_prev: IndexActionState, formData: F
 
 export async function recalculateAction(_prev: IndexActionState, _formData: FormData): Promise<IndexActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     const result = await recalculateConditionScores(session.user.organizationId);
     revalidateAffected();
     return {

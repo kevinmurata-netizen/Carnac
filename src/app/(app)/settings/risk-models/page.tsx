@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { getRiskModelConfig } from "@/server/settings";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +11,7 @@ export default async function RiskModelsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/risk-models", "Risk Models");
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/risk-models");
 
   const config = await getRiskModelConfig(organizationId);
 
@@ -21,7 +22,7 @@ export default async function RiskModelsPage() {
         description="How much each factor counts toward probability and consequence of failure"
       />
 
-      {isAdmin ? (
+      {canEdit ? (
         <RiskModelEditor config={config} />
       ) : (
         <Card>

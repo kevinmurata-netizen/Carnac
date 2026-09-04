@@ -123,6 +123,7 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
     group: "Administration Pages",
     items: [
       ["/administration/users", "users"],
+      ["/administration/roles", "roles"],
       ["/administration/wishlist", "wishlist"],
       ["/administration/fields", "fields"],
       ["/administration/import", "import"],
