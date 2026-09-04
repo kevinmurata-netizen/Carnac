@@ -162,7 +162,12 @@ export async function getWciFlow(organizationId: string, scenarioId: string): Pr
         direction: delta > 0 ? ("improved" as const) : delta < 0 ? ("declined" as const) : ("unchanged" as const),
       };
     })
-    .sort((a, b) => b.value - a.value);
+    // Graph order, not traffic volume: `nodes` is built best-band-first on each
+    // side, so a link's source/target indices are its position in the diagram.
+    // Sorting on them makes the table read top-to-bottom exactly as the ribbons
+    // do — From dictates the order, To breaks the tie — so a row in one can be
+    // found in the other without hunting.
+    .sort((a, b) => a.source - b.source || a.target - b.target);
 
   const avg = (pick: (o: (typeof outcomes)[number]) => number) =>
     Math.round((outcomes.reduce((s, o) => s + pick(o), 0) / outcomes.length) * 10) / 10;

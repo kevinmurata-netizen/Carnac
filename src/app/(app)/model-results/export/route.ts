@@ -37,7 +37,12 @@ export async function GET(request: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const organizationId = session.user.organizationId;
-  const requested = new URL(request.url).searchParams.get("scenario") ?? undefined;
+  const search = new URL(request.url).searchParams;
+  const requested = search.get("scenario") ?? undefined;
+  // Present when the export came from an opened transition rather than the
+  // section heading — the file is then just that band-to-band path.
+  const fromBand = search.get("from");
+  const toBand = search.get("to");
 
   // Same selection rule as the page: the requested scenario if it has results,
   // otherwise the first that does.
@@ -51,6 +56,43 @@ export async function GET(request: Request) {
   const note =
     `Exported ${new Date().toISOString().slice(0, 10)} · ${flow.scenarioName} · ` +
     `${flow.strategy} over ${flow.years} years · average WCI ${flow.startAvg} → ${flow.endAvg}`;
+
+  // One transition asked for on its own: a single sheet of just its segments.
+  // Named for the path so the file is identifiable once it has left the app.
+  if (fromBand && toBand) {
+    const link = flow.links.find((l) => l.fromBand === fromBand && l.toBand === toBand);
+    if (!link) return new NextResponse("No such transition in this scenario", { status: 404 });
+
+    const buffer = await buildWorkbookSheets([
+      {
+        sheetName: "Segments",
+        title: `${link.fromBand} → ${link.toBand} — ${link.value.toLocaleString()} segments`,
+        note,
+        columns: SEGMENT_COLUMNS,
+        rows: link.assets.map((asset) => ({
+          assetCode: asset.assetCode,
+          material: asset.material,
+          fromBand: link.fromBand,
+          toBand: link.toBand,
+          startCondition: asset.startCondition,
+          endCondition: asset.endCondition,
+          change: Math.round((asset.endCondition - asset.startCondition) * 10) / 10,
+          treatments: asset.treatments,
+          direction: link.direction,
+        })),
+      },
+    ]);
+
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": XLSX_CONTENT_TYPE,
+        "Content-Disposition": `attachment; filename="${excelFileName(
+          `${flow.scenarioName}-${link.fromBand}-to-${link.toBand}`
+        )}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
 
   const transitions = flow.links.map((link) => ({
     fromBand: link.fromBand,
