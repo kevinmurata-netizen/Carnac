@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requirePage } from "@/server/guard";
 import {
   getNetworkForecast,
   listDeteriorationModels,
@@ -36,7 +37,7 @@ export default async function DeteriorationModelsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/deterioration-models", "Deterioration Models");
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requirePage("/deterioration-models");
 
   const [forecast, models, condition, configured] = await Promise.all([
     getNetworkForecast(organizationId),
@@ -177,7 +178,7 @@ export default async function DeteriorationModelsPage() {
                         id={m.id}
                         isActive={m.isActive}
                         action={toggleDeteriorationActiveAction}
-                        readOnly={!isAdmin}
+                        readOnly={!canEdit}
                         activeHint="Click to deactivate — this material falls back to the default curve in every forecast and scenario run"
                         inactiveHint="Click to activate — this curve shapes forecasts again"
                       />

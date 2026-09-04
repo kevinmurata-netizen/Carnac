@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { getConditionModelConfig } from "@/server/settings";
 import { listMetrics, listMetricSources } from "@/server/metrics";
 import { getPageName } from "@/server/navigation";
@@ -12,12 +13,12 @@ export default async function MetricsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/condition-models", "Metrics");
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/condition-models");
 
   const [config, metrics, sources] = await Promise.all([
     getConditionModelConfig(organizationId),
     listMetrics(organizationId),
-    isAdmin ? listMetricSources(organizationId) : Promise.resolve([]),
+    canEdit ? listMetricSources(organizationId) : Promise.resolve([]),
   ]);
 
   return (
@@ -27,7 +28,7 @@ export default async function MetricsPage() {
         description="The condition scale and its bands, plus any metric built on an inspection or inventory field"
       />
 
-      {isAdmin ? (
+      {canEdit ? (
         <>
           <ConditionModelEditor config={config} />
 

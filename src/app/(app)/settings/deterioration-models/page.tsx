@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { listDeteriorationModels, getMarkovConfig } from "@/server/settings";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +13,7 @@ export default async function DeteriorationModelSettingsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/deterioration-models", "Deterioration Models");
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/deterioration-models");
 
   const [models, markov] = await Promise.all([
     listDeteriorationModels(organizationId),
@@ -32,7 +33,7 @@ export default async function DeteriorationModelSettingsPage() {
         run; stored predictions keep the curve they were produced with.
       </div>
 
-      {isAdmin ? (
+      {canEdit ? (
         <DeteriorationModelList models={models} markov={markov} />
       ) : (
         <Card>

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { IMPORT_COLUMNS, IMPORT_TEMPLATE_HEADER, IMPORT_SAMPLE_ROWS } from "@/server/import";
 import { PageHeader } from "@/components/layout/page-header";
@@ -11,6 +12,7 @@ import { getPageName } from "@/server/navigation";
 
 export default async function ImportPage() {
   const session = await auth();
+  await requireCard("/administration/import");
   const pageTitle = await getPageName(session!.user.organizationId, "/administration/import", "Data Import");
   if (!canRecordFieldData(session)) redirect("/administration");
 

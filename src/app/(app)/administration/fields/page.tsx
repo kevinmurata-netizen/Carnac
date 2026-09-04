@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { listInspectionFields, listInventoryFields } from "@/server/field-config";
 import { ASSET_LABEL } from "@/config/labels";
 import { PageHeader } from "@/components/layout/page-header";
@@ -9,7 +10,7 @@ export default async function FieldsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/administration/fields", "Fields");
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/administration/fields");
 
   const [inspectionFields, inventoryFields] = await Promise.all([
     listInspectionFields(organizationId),
@@ -23,15 +24,15 @@ export default async function FieldsPage() {
         description={`What inspectors are asked, and what the ${ASSET_LABEL.lower} inventory records`}
       />
 
-      {!isAdmin && (
+      {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           You are signed in as {session!.user.roleName}. Field definitions are read-only for your role.
         </div>
       )}
 
       <div className="space-y-4">
-        <InspectionFieldsEditor fields={inspectionFields} canEdit={isAdmin} />
-        <InventoryFieldsEditor fields={inventoryFields} canEdit={isAdmin} />
+        <InspectionFieldsEditor fields={inspectionFields} canEdit={canEdit} />
+        <InventoryFieldsEditor fields={inventoryFields} canEdit={canEdit} />
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground">

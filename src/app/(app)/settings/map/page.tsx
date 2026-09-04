@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { getNetworkGeoJSON } from "@/server/geo";
 import { MAP_FIELDS, getPopupFields } from "@/server/map-settings";
 import { PageHeader } from "@/components/layout/page-header";
@@ -8,7 +9,7 @@ import { MapPopupEditor } from "./editor";
 export default async function MapSettingsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const canEdit = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/map");
   const pageTitle = await getPageName(organizationId, "/settings/map", "Map");
 
   const selected = await getPopupFields(organizationId);

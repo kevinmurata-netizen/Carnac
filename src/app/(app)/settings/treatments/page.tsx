@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { listTreatmentsForAdmin } from "@/server/treatment-config";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,7 +22,7 @@ export default async function TreatmentsAdminPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/treatments", "Treatments and Costs");
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
   const treatments = await listTreatmentsForAdmin(organizationId);
   const withTrees = treatments.filter((t) => t.treeCount > 0).length;
@@ -33,7 +34,7 @@ export default async function TreatmentsAdminPage() {
         description="The library that drives recommendations, life-cycle cost, work plans and scenarios"
       />
 
-      {!isAdmin && (
+      {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           You are signed in as {session!.user.roleName}. Treatments are read-only for your role.
         </div>
@@ -114,7 +115,7 @@ export default async function TreatmentsAdminPage() {
         </CardContent>
       </Card>
 
-      {isAdmin && <TreatmentForm mode="create" />}
+      {canEdit && <TreatmentForm mode="create" />}
 
       <p className="mt-3 text-xs text-muted-foreground">
         Edits apply on the next recommendation, life-cycle comparison, work plan generation or scenario run — none of

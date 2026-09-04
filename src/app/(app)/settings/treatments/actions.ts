@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireCardWrite } from "@/server/guard";
 import {
   createTreatment,
   updateTreatment,
@@ -12,12 +12,8 @@ import {
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 import type { TreatmentActionState } from "./state";
 
-async function requireAdministrator() {
-  const session = await auth();
-  if (!session || session.user.roleName !== "Administrator") {
-    throw new Error("Only an Administrator can change the treatment library");
-  }
-  return session;
+async function requireWriteAccess() {
+  return requireCardWrite("/settings/treatments", "Only an Administrator can change the treatment library");
 }
 
 /** Treatments feed recommendations, LCCA, work plans and scenarios. */
@@ -86,7 +82,7 @@ export async function saveTreatmentAction(
   formData: FormData
 ): Promise<TreatmentActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await updateTreatment(session.user.organizationId, String(formData.get("id") ?? ""), parseInput(formData));
     revalidateAffected();
     return { status: "success", message: "Treatment saved. Recommendations and plans will use it from now on." };
@@ -100,7 +96,7 @@ export async function createTreatmentAction(
   formData: FormData
 ): Promise<TreatmentActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await createTreatment(session.user.organizationId, parseInput(formData));
     revalidateAffected();
     return { status: "success", message: "Treatment created." };
@@ -114,7 +110,7 @@ export async function deleteTreatmentAction(
   formData: FormData
 ): Promise<TreatmentActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await deleteTreatment(session.user.organizationId, String(formData.get("id") ?? ""));
     revalidateAffected();
     return { status: "success", message: "Treatment deleted." };

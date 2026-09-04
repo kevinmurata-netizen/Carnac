@@ -103,6 +103,7 @@ export async function listUsers(organizationId: string) {
     email: u.email,
     roleId: u.roleId,
     roleName: u.role.name,
+    roleCode: u.role.code,
     isActive: u.isActive,
     inspectionCount: u._count.inspectionsPerformed,
     createdAt: u.createdAt,
@@ -117,6 +118,8 @@ export async function listRoles() {
   return roles.map((r) => ({
     id: r.id,
     name: r.name,
+    code: r.code,
+    isSystem: r.isSystem,
     permissions: Array.isArray(r.permissions) ? (r.permissions as string[]) : [],
     userCount: r._count.users,
   }));

@@ -39,7 +39,8 @@ export const SEGMENT_LABELS: Record<string, string> = {
   database: "Database Connection",
 
   administration: "Administration",
-  users: "Users & Roles",
+  users: "Users",
+  roles: "Roles & Permissions",
   fields: "Fields",
   import: "Data Import",
   activity: "Activity & Audit",

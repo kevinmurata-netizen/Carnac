@@ -38,6 +38,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           organizationId: user.organizationId,
           roleId: user.roleId,
           roleName: user.role.name,
+          roleCode: user.role.code,
           permissions: Array.isArray(user.role.permissions)
             ? (user.role.permissions as string[])
             : [],
@@ -51,6 +52,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.organizationId = user.organizationId;
         token.roleId = user.roleId;
         token.roleName = user.roleName;
+        token.roleCode = user.roleCode;
         token.permissions = user.permissions;
       }
       return token;
@@ -61,6 +63,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.organizationId = token.organizationId as string;
         session.user.roleId = token.roleId as string;
         session.user.roleName = token.roleName as string;
+        session.user.roleCode = token.roleCode as string;
         session.user.permissions = token.permissions as string[];
       }
       return session;

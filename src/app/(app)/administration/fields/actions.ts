@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { AttributeDataType } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import { requireCardWrite } from "@/server/guard";
 import {
   updateInspectionField,
   createInspectionField,
@@ -13,12 +13,8 @@ import {
 } from "@/server/field-config";
 import type { FieldActionState } from "./state";
 
-async function requireAdministrator() {
-  const session = await auth();
-  if (!session || session.user.roleName !== "Administrator") {
-    throw new Error("Only an Administrator can change field definitions");
-  }
-  return session;
+async function requireWriteAccess() {
+  return requireCardWrite("/administration/fields", "Only an Administrator can change field definitions");
 }
 
 function revalidateAffected() {
@@ -54,7 +50,7 @@ export async function saveInspectionFieldAction(
   formData: FormData
 ): Promise<FieldActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await updateInspectionField(session.user.organizationId, String(formData.get("fieldId") ?? ""), {
       label: String(formData.get("label") ?? ""),
       unit: String(formData.get("unit") ?? "") || null,
@@ -74,7 +70,7 @@ export async function createInspectionFieldAction(
   formData: FormData
 ): Promise<FieldActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await createInspectionField(session.user.organizationId, {
       code: String(formData.get("code") ?? ""),
       label: String(formData.get("label") ?? ""),
@@ -95,7 +91,7 @@ export async function deleteInspectionFieldAction(
   formData: FormData
 ): Promise<FieldActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await deleteInspectionField(session.user.organizationId, String(formData.get("fieldId") ?? ""));
     revalidateAffected();
     return ok("Inspection field deleted.");
@@ -111,7 +107,7 @@ export async function saveInventoryFieldAction(
   formData: FormData
 ): Promise<FieldActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await updateInventoryField(session.user.organizationId, String(formData.get("definitionId") ?? ""), {
       label: String(formData.get("label") ?? ""),
       unit: String(formData.get("unit") ?? "") || null,
@@ -131,7 +127,7 @@ export async function createInventoryFieldAction(
   formData: FormData
 ): Promise<FieldActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await createInventoryField(session.user.organizationId, {
       code: String(formData.get("code") ?? ""),
       label: String(formData.get("label") ?? ""),
@@ -152,7 +148,7 @@ export async function deleteInventoryFieldAction(
   formData: FormData
 ): Promise<FieldActionState> {
   try {
-    const session = await requireAdministrator();
+    const session = await requireWriteAccess();
     await deleteInventoryField(session.user.organizationId, String(formData.get("definitionId") ?? ""));
     revalidateAffected();
     return ok("Inventory field deleted.");

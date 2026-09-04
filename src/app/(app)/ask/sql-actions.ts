@@ -1,6 +1,7 @@
 "use server";
 
 import { auth } from "@/lib/auth";
+import { getSessionPermissions } from "@/server/permissions";
 import { getConsoleSchema, runConsoleQuery, type ConsoleTable, type ConsoleQueryResult } from "@/server/sql-console";
 import { translateToSql } from "@/domain/waterline/sql-translate";
 import type { Criterion } from "@/server/filter-schema";
@@ -15,7 +16,12 @@ import type { Criterion } from "@/server/filter-schema";
  */
 async function requireAdministrator() {
   const session = await auth();
-  if (!session || session.user.roleName !== "Administrator") {
+  if (!session) throw new Error("Sign in first");
+
+  // Resolved against the database rather than the session's copy of the role
+  // name, which a rename would leave stale.
+  const permissions = await getSessionPermissions(session);
+  if (!permissions.isAdministrator) {
     throw new Error("The SQL console is available to Administrators only");
   }
   return session;

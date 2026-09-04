@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { ENTRIES } from "@/content/build-log";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,8 @@ import { getPageName } from "@/server/navigation";
 
 export default async function BuildLogPage() {
   const session = await auth();
+
+  await requireCard("/settings/build-log");
   const pageTitle = await getPageName(session!.user.organizationId, "/settings/build-log", "Build Log");
 
   // Entries carry a date only, so they are read as calendar dates in the same

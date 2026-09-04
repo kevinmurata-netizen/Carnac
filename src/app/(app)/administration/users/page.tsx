@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { listUsers, listRoles } from "@/server/admin";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +15,8 @@ import { AddUserForm, ResetPasswordForm } from "./user-forms";
 export default async function UsersPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const pageTitle = await getPageName(organizationId, "/administration/users", "Users & Roles");
-  const isAdmin = session!.user.roleName === "Administrator";
+  const pageTitle = await getPageName(organizationId, "/administration/users", "Users");
+  const { canWrite: canEdit } = await requireCard("/administration/users");
 
   const [users, roles] = await Promise.all([listUsers(organizationId), listRoles()]);
 
@@ -22,10 +24,10 @@ export default async function UsersPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description="Role-based access control — Executive is read-only; Administrator, Asset Manager and Inspector can record field data"
+        description="Add people, assign a role, reset passwords and deactivate accounts"
       />
 
-      {!isAdmin && (
+      {!canEdit && (
         <Card className="mb-4 border-dashed bg-muted/40">
           <CardContent className="py-3 text-sm text-muted-foreground">
             You are signed in as {session!.user.roleName}. Only an Administrator can change roles or deactivate
@@ -34,7 +36,7 @@ export default async function UsersPage() {
         </Card>
       )}
 
-      {isAdmin && <AddUserForm roles={roles} />}
+      {canEdit && <AddUserForm roles={roles} />}
 
       <Card className="mb-4">
         <CardHeader>
@@ -49,7 +51,7 @@ export default async function UsersPage() {
                 <TableHead>Role</TableHead>
                 <TableHead>Inspections</TableHead>
                 <TableHead>Status</TableHead>
-                {isAdmin && <TableHead>Actions</TableHead>}
+                {canEdit && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -63,7 +65,7 @@ export default async function UsersPage() {
                     </TableCell>
                     <TableCell className="text-xs">{u.email}</TableCell>
                     <TableCell>
-                      <Badge variant={u.roleName === "Administrator" ? "default" : "secondary"}>{u.roleName}</Badge>
+                      <Badge variant={u.roleCode === "ADMINISTRATOR" ? "default" : "secondary"}>{u.roleName}</Badge>
                     </TableCell>
                     <TableCell>{formatNumber(u.inspectionCount)}</TableCell>
                     <TableCell>
@@ -73,7 +75,7 @@ export default async function UsersPage() {
                         <Badge variant="destructive">Inactive</Badge>
                       )}
                     </TableCell>
-                    {isAdmin && (
+                    {canEdit && (
                       <TableCell>
                         {isSelf ? (
                           <div className="space-y-2">
@@ -121,44 +123,14 @@ export default async function UsersPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Roles & Permissions</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Role</TableHead>
-                <TableHead>Users</TableHead>
-                <TableHead>Permissions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {roles.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium">{r.name}</TableCell>
-                  <TableCell>{formatNumber(r.userCount)}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {r.permissions.map((p) => (
-                        <Badge key={p} variant="secondary" className="text-[10px]">
-                          {p === "*" ? "all permissions" : p}
-                        </Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <p className="border-t px-4 py-3 text-xs text-muted-foreground">
-            Permissions are stored as data on the Role record, so a new role can be added without a code change.
-            The application currently gates on role name for write access; per-permission checks are the natural
-            next increment.
-          </p>
-        </CardContent>
-      </Card>
+      <p className="mt-4 text-xs text-muted-foreground">
+        A person&apos;s role is what decides which pages and cards they can reach. Setting that up now lives on its own
+        screen —{" "}
+        <Link href="/administration/roles" className="text-primary hover:underline">
+          Roles &amp; Permissions
+        </Link>
+        .
+      </p>
     </div>
   );
 }

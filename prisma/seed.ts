@@ -177,13 +177,17 @@ async function main() {
   const roles = await Promise.all([
     prisma.role.create({
       data: {
+        code: "ADMINISTRATOR",
         name: "Administrator",
+        isSystem: true,
         permissions: ["*"],
       },
     }),
     prisma.role.create({
       data: {
-        name: "AssetManager",
+        code: "ASSET_MANAGER",
+        name: "Asset Manager",
+        isSystem: true,
         permissions: [
           "assets:read",
           "assets:write",
@@ -197,13 +201,17 @@ async function main() {
     }),
     prisma.role.create({
       data: {
+        code: "INSPECTOR",
         name: "Inspector",
+        isSystem: true,
         permissions: ["assets:read", "inspections:read", "inspections:write"],
       },
     }),
     prisma.role.create({
       data: {
+        code: "EXECUTIVE",
         name: "Executive",
+        isSystem: true,
         permissions: ["assets:read", "dashboards:read", "reports:read", "scenarios:read", "work-plans:read"],
       },
     }),

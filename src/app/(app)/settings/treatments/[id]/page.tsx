@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { requireCard } from "@/server/guard";
 import { getTreatmentForAdmin } from "@/server/treatment-config";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
@@ -10,7 +11,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
   const { id } = await params;
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const isAdmin = session!.user.roleName === "Administrator";
+  const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
   const treatment = await getTreatmentForAdmin(organizationId, id);
   if (!treatment) notFound();
@@ -23,7 +24,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
         description={treatment.description || "Treatment definition, applicability and costs"}
       />
 
-      {!isAdmin && (
+      {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           You are signed in as {session!.user.roleName}. Treatments are read-only for your role.
         </div>
@@ -39,7 +40,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
       </div>
 
       <div className="space-y-4">
-        {isAdmin ? (
+        {canEdit ? (
           <TreatmentForm mode="edit" treatment={treatment} />
         ) : (
           <div className="rounded-lg border p-4 text-sm text-muted-foreground">

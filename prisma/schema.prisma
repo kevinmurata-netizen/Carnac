@@ -55,12 +55,61 @@ model User {
 }
 
 model Role {
-  id          String @id @default(cuid())
-  name        String @unique // Administrator, AssetManager, Inspector, Executive
+  id String @id @default(cuid())
+
+  /// Stable identity for anything the code decides — ADMINISTRATOR, EXECUTIVE
+  /// and so on. Never shown and never edited, which is what lets `name` be
+  /// renamed freely: before this existed, calling the Administrator role
+  /// anything else would have silently removed everyone's admin access.
+  code String @unique
+
+  /// The display name. Free-form and renameable.
+  name String @unique
+
   permissions Json // array of permission strings; keeps RBAC config-driven
-  users       User[]
+
+  /// The four seeded roles. They can be renamed but not deleted — an
+  /// organization with no Administrator role has no way back in.
+  isSystem Boolean @default(false)
+
+  users User[]
+
+  resourcePermissions RolePermission[]
 
   @@map("roles")
+}
+
+/// What one role may do with one page or Settings card.
+///
+/// Rows are overrides, not a complete matrix: a resource with no row falls back
+/// to the defaults in server/permissions.ts (readable and visible to everyone,
+/// writable only by Administrator), which is what the application did before
+/// this table existed. That keeps a fresh install and an unconfigured
+/// organization behaving identically, and means a resource added in code is
+/// never accidentally unreachable because nobody remembered to insert a row.
+model RolePermission {
+  id String @id @default(cuid())
+  // Plain column rather than a relation, matching navigation_labels and
+  // organization_settings — the other per-organization configuration tables.
+  organizationId String
+  roleId         String
+  role           Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  /// "page:/dashboard" or "card:/settings/treatments" — prefixed so the two
+  /// kinds can never collide on a shared href.
+  resource String
+
+  canRead  Boolean @default(true)
+  canWrite Boolean @default(false)
+  /// Presentational only: hides the sidebar entry or Settings tile while
+  /// leaving the page reachable. canRead is what actually closes a page.
+  visible  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, roleId, resource])
+  @@map("role_permissions")
 }
 
 // ----------------------------------------------------------------------------
