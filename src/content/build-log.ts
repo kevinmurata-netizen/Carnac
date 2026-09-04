@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-04",
+    title: "Sign in the way browsers expect, so the password prompt appears",
+    pr: 27,
+    summary:
+      "The previous attempt at this did not go far enough — the browser still never offered to save the password. Signing in is now a real form submission rather than a background request.",
+    changes: [
+      "The sign-in form posts directly to the authentication endpoint and the browser follows the redirect, which is the flow password managers were built to recognise. Before, the sign-in happened as a background request and the page moved itself afterwards, which a browser has to infer rather than observe.",
+      "A wrong password comes back on the page as before, and being sent to sign in from somewhere else still returns you to where you were going.",
+    ],
+    note: "If your browser still does not ask, check its list of sites it was told never to save for — once dismissed with \"Never\", it will not ask again no matter what this page does. In Chrome that is under Password Manager, Settings, Declined sites. No schema migration.",
+  },
+  {
+    date: "2026-09-04",
     title: "Stop retyping your email and password at sign-in",
     pr: 26,
     summary:

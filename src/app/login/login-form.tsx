@@ -1,21 +1,11 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { signIn } from "next-auth/react";
+import { getCsrfToken } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-
-const schema = z.object({
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
-});
-
-type FormValues = z.infer<typeof schema>;
 
 const ERROR_MESSAGES: Record<string, string> = {
   CredentialsSignin: "Invalid email or password.",
@@ -31,19 +21,14 @@ const ERROR_MESSAGES: Record<string, string> = {
  */
 const REMEMBERED_EMAIL_KEY = "carnac.login.email";
 
-/**
- * The remembered email, read as browser state rather than React state.
- *
- * localStorage does not exist on the server, so seeding a field from it during
- * render would make the server and client markup disagree. useSyncExternalStore
- * is how the sidebar already reads its own stored preference here: the server
- * snapshot is "nothing remembered", the client's is whatever is stored, and
- * React reconciles the two without a hydration warning.
- */
+// --- remembered email, read as browser state ------------------------------
+// localStorage does not exist on the server, so seeding a field from it during
+// render would make the server and client markup disagree. useSyncExternalStore
+// is how the sidebar already reads its own stored preference here.
+
 let cachedEmail: string | null | undefined;
 
 function subscribeToStorage(onChange: () => void) {
-  // Another tab signing in or out should be reflected here too.
   window.addEventListener("storage", onChange);
   return () => window.removeEventListener("storage", onChange);
 }
@@ -53,14 +38,12 @@ function getRememberedEmail(): string | null {
     try {
       cachedEmail = window.localStorage.getItem(REMEMBERED_EMAIL_KEY);
     } catch {
-      // Private browsing can refuse storage; signing in still works.
       cachedEmail = null;
     }
   }
   return cachedEmail;
 }
 
-/** Nothing is remembered as far as the server is concerned. */
 function getRememberedEmailOnServer(): string | null {
   return null;
 }
@@ -75,21 +58,66 @@ function writeRememberedEmail(email: string | null) {
   }
 }
 
+// --- the CSRF token, fetched once -----------------------------------------
+// Posting straight to Auth.js's callback needs the token that matches the
+// cookie, and fetching it is what sets that cookie in the first place. Read
+// through the same external-store pattern so it never becomes state written
+// from an effect.
+
+let csrfToken: string | null = null;
+let csrfStarted = false;
+const csrfListeners = new Set<() => void>();
+
+function subscribeToCsrf(onChange: () => void) {
+  csrfListeners.add(onChange);
+  if (!csrfStarted) {
+    csrfStarted = true;
+    getCsrfToken()
+      .then((token) => {
+        csrfToken = token ?? null;
+      })
+      .catch(() => {
+        csrfToken = null;
+      })
+      .finally(() => csrfListeners.forEach((l) => l()));
+  }
+  return () => csrfListeners.delete(onChange);
+}
+
+function getCsrf(): string | null {
+  return csrfToken;
+}
+
+function getCsrfOnServer(): string | null {
+  return null;
+}
+
+/**
+ * A real form POST to Auth.js's credentials callback.
+ *
+ * Not a fetch. Password managers decide whether to offer "save this password"
+ * by watching for a navigating form submission, and a sign-in done over fetch
+ * — however carefully it navigates afterwards — is something they have to
+ * infer rather than observe. This is the flow they were built around, and the
+ * one Auth.js's own sign-in page uses.
+ *
+ * The cost is that a wrong password comes back as a redirect carrying
+ * ?error=, rather than as inline state. This page already read that
+ * parameter, which suggests it was the original intent.
+ */
 export function LoginForm({ callbackUrl, error }: { callbackUrl?: string; error?: string }) {
   const remembered = useSyncExternalStore(
     subscribeToStorage,
     getRememberedEmail,
     getRememberedEmailOnServer
   );
+  const csrf = useSyncExternalStore(subscribeToCsrf, getCsrf, getCsrfOnServer);
 
-  // Remounted when the remembered value arrives, so the field and the checkbox
-  // take it as their initial value. Setting them from an effect instead would
-  // mean writing state during render's aftermath for something that is really
-  // just a different starting point.
   return (
     <LoginFields
       key={remembered ?? "nothing-remembered"}
       rememberedEmail={remembered}
+      csrf={csrf}
       callbackUrl={callbackUrl}
       error={error}
     />
@@ -98,82 +126,63 @@ export function LoginForm({ callbackUrl, error }: { callbackUrl?: string; error?
 
 function LoginFields({
   rememberedEmail,
+  csrf,
   callbackUrl,
   error,
 }: {
   rememberedEmail: string | null;
+  csrf: string | null;
   callbackUrl?: string;
   error?: string;
 }) {
-  const [submitError, setSubmitError] = useState<string | null>(
-    error ? ERROR_MESSAGES[error] ?? "Sign in failed." : null
-  );
   const [remember, setRemember] = useState(rememberedEmail !== null);
+  const [email, setEmail] = useState(rememberedEmail ?? "");
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { email: rememberedEmail ?? "", password: "" },
-  });
-
-  const onSubmit = async (values: FormValues) => {
-    setSubmitError(null);
-    const result = await signIn("credentials", {
-      ...values,
-      redirect: false,
-    });
-
-    if (result?.error) {
-      setSubmitError(ERROR_MESSAGES[result.error] ?? "Sign in failed.");
-      return;
-    }
-
-    writeRememberedEmail(remember ? values.email : null);
-
-    // A whole-document navigation rather than a client-side route change.
-    // Password managers decide whether to offer "save this password" by
-    // watching for a navigation after a password field is submitted; a soft
-    // navigation is invisible to that, which is why the browser never asked.
-    window.location.assign(callbackUrl || "/dashboard");
-  };
+  const message = error ? (ERROR_MESSAGES[error] ?? "Sign in failed.") : null;
 
   return (
     <Card>
       <CardContent className="pt-6">
-        {/* Enter in a text field should submit, but the Base UI Input wrapper
-            does not reliably produce the browser's implicit submission. This
-            submits explicitly instead.
-
-            Capture phase on purpose: it runs before any handler inside the
-            input could stop propagation. preventDefault also means that if
-            implicit submission *does* work in a given browser, it is cancelled
-            here rather than firing a second time. Activating the Sign in button
-            by keyboard is left alone — that is a click, not an INPUT. */}
         <form
-          onSubmit={handleSubmit(onSubmit)}
+          method="POST"
+          action="/api/auth/callback/credentials"
+          onSubmit={() => {
+            // Written before the browser navigates away, since after a real
+            // submission this code no longer runs.
+            writeRememberedEmail(remember ? email.trim() : null);
+          }}
           onKeyDownCapture={(e) => {
-            if (e.key !== "Enter" || isSubmitting) return;
+            // The Base UI Input wrapper does not reliably produce the
+            // browser's implicit submission. requestSubmit rather than a
+            // programmatic handler: it runs native validation and submits the
+            // form for real, which is the whole point of this page.
+            if (e.key !== "Enter") return;
             if ((e.target as HTMLElement).tagName !== "INPUT") return;
             e.preventDefault();
-            void handleSubmit(onSubmit)();
+            e.currentTarget.requestSubmit();
           }}
           className="space-y-4"
         >
+          <input type="hidden" name="csrfToken" value={csrf ?? ""} />
+          <input type="hidden" name="callbackUrl" value={callbackUrl || "/dashboard"} />
+
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             {/* "username", not "email": it is the token password managers pair
-                with current-password to recognise a sign-in form. "email" on
-                its own reads as a contact field and is filled less reliably. */}
-            <Input id="email" type="email" autoComplete="username" {...register("email")} />
-            {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+                with current-password to recognise a sign-in form. */}
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" autoComplete="current-password" {...register("password")} />
-            {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
+            <Input id="password" name="password" type="password" required autoComplete="current-password" />
           </div>
 
           <label className="flex items-start gap-2 text-sm">
@@ -192,9 +201,12 @@ function LoginFields({
             </span>
           </label>
 
-          {submitError && <p className="text-sm text-destructive">{submitError}</p>}
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Signing in…" : "Sign in"}
+          {message && <p className="text-sm text-destructive">{message}</p>}
+
+          {/* Disabled until the token has arrived: submitting without it would
+              be rejected as a forgery and look like a wrong password. */}
+          <Button type="submit" className="w-full" disabled={!csrf}>
+            {csrf ? "Sign in" : "Preparing…"}
           </Button>
         </form>
       </CardContent>
