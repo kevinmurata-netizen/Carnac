@@ -6,6 +6,8 @@ import { getFormulaFields, listCriticalityModels } from "@/server/criticality";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { FormulaEditor } from "./formula-editor";
+import { RecomputeButton } from "../recompute-button";
+import { recomputeRiskAction } from "../actions";
 import { saveFormulaAction, activateFormulaAction, deleteFormulaAction, previewFormulaAction } from "./actions";
 
 /**
@@ -46,6 +48,17 @@ export default async function CriticalityPage({
           <CardContent className="py-3 text-sm text-muted-foreground">
             You are signed in as {session!.user.roleName}. Criticality formulas are read-only for your role — you can
             still try one out to see what it would produce.
+          </CardContent>
+        </Card>
+      )}
+
+      {canEdit && (
+        <Card className="mb-4">
+          <CardContent className="py-4">
+            <RecomputeButton
+              action={recomputeRiskAction}
+              hint="A formula only changes anything once the model runs. This scores every asset with the active formula, and recomputes risk at the same time."
+            />
           </CardContent>
         </Card>
       )}

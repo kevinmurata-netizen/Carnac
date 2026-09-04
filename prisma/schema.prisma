@@ -585,6 +585,8 @@ model CriticalityModel {
 
   isActive Boolean @default(false)
 
+  scenarios Scenario[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -665,6 +667,12 @@ model Scenario {
   organizationId String
   name           String
   description    String?
+
+  /// Which criticality formula ranks the work plans generated from this
+  /// scenario. Null means the asset type's own active formula, so a scenario
+  /// differs only where someone deliberately made it differ.
+  criticalityModelId String?
+  criticalityModel   CriticalityModel? @relation(fields: [criticalityModelId], references: [id], onDelete: SetNull)
 
   assumptions ScenarioAssumption[]
   results     ScenarioResult[]

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/scenarios";
+import { listFormulaChoices } from "@/server/criticality";
 import { STRATEGIES, STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { PageHeader } from "@/components/layout/page-header";
@@ -12,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { ScenarioFields, toPercent } from "../scenario-fields";
+import { ScenarioFields, toPercent, type CriticalityChoice } from "../scenario-fields";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
 import { AlertTriangle, Gauge, Layers, Wallet } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
@@ -24,9 +25,10 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects] = await Promise.all([
+  const [scenario, projects, criticalityChoices] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
+    listFormulaChoices(organizationId),
   ]);
   if (!scenario) notFound();
 
@@ -79,7 +81,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} />
         </>
       ) : (
         <>
@@ -115,7 +117,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -305,7 +307,15 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
 /** Editable for anyone who can run scenarios, read-only otherwise. Rendered in
  * both the run and not-yet-run branches so an unrun scenario's parameters can
  * still be corrected before its first run. */
-function AssumptionsCard({ scenario, canEdit }: { scenario: ScenarioDetail; canEdit: boolean }) {
+function AssumptionsCard({
+  scenario,
+  canEdit,
+  criticalityChoices,
+}: {
+  scenario: ScenarioDetail;
+  canEdit: boolean;
+  criticalityChoices: CriticalityChoice[];
+}) {
   const a = scenario.assumptions;
 
   return (
@@ -325,9 +335,11 @@ function AssumptionsCard({ scenario, canEdit }: { scenario: ScenarioDetail; canE
             <ScenarioFields
               key={scenario.updatedAt.toISOString()}
               idPrefix="edit-"
+              criticalityChoices={criticalityChoices}
               defaults={{
                 name: scenario.name,
                 description: scenario.description ?? "",
+                criticalityModelId: scenario.criticalityModelId ?? null,
                 annualBudget: a.annualBudget,
                 fundingGrowthPct: toPercent(a.fundingGrowth),
                 discountRatePct: toPercent(a.discountRate),

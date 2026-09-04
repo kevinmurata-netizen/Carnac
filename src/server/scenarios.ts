@@ -73,13 +73,21 @@ function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>): Scen
 
 export async function createScenario(
   organizationId: string,
-  input: { name: string; description?: string; assumptions: ScenarioAssumptions }
+  input: {
+    name: string;
+    description?: string;
+    assumptions: ScenarioAssumptions;
+    /** Which criticality formula ranks work plans generated from this
+     * scenario. Null follows the asset type's active formula. */
+    criticalityModelId?: string | null;
+  }
 ) {
   return prisma.scenario.create({
     data: {
       organizationId,
       name: input.name,
       description: input.description || null,
+      criticalityModelId: input.criticalityModelId || null,
       assumptions: {
         create: Object.entries(input.assumptions).map(([key, value]) => ({ key, value })),
       },
@@ -96,7 +104,12 @@ export async function createScenario(
 export async function updateScenario(
   organizationId: string,
   scenarioId: string,
-  input: { name: string; description?: string; assumptions: ScenarioAssumptions }
+  input: {
+    name: string;
+    description?: string;
+    assumptions: ScenarioAssumptions;
+    criticalityModelId?: string | null;
+  }
 ) {
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
   if (!scenario) throw new Error("Scenario not found");
@@ -105,7 +118,11 @@ export async function updateScenario(
   await prisma.$transaction([
     prisma.scenario.update({
       where: { id: scenarioId },
-      data: { name: input.name.trim(), description: input.description?.trim() || null },
+      data: {
+        name: input.name.trim(),
+        description: input.description?.trim() || null,
+        criticalityModelId: input.criticalityModelId || null,
+      },
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
     prisma.scenarioAssumption.createMany({
@@ -277,13 +294,17 @@ export type ScenarioSummary = {
   /** Average network condition per year, so scenarios can be plotted against
    * each other without loading each one's full result set. */
   conditionSeries: Array<{ year: number; avgCondition: number }>;
+  /** The criticality formula this scenario ranks its work plans by, when it
+   * names one rather than following the asset type's active formula. */
+  criticalityModelId: string | null;
+  criticalityModelName: string | null;
   updatedAt: Date;
 };
 
 export async function listScenarios(organizationId: string): Promise<ScenarioSummary[]> {
   const scenarios = await prisma.scenario.findMany({
     where: { organizationId },
-    include: { assumptions: true, results: true },
+    include: { assumptions: true, results: true, criticalityModel: { select: { name: true } } },
     orderBy: { createdAt: "asc" },
   });
 
@@ -301,6 +322,8 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       description: s.description,
       assumptions,
       hasResults: s.results.length > 0,
+      criticalityModelId: s.criticalityModelId,
+      criticalityModelName: s.criticalityModel?.name ?? null,
       finalAvgCondition: conditions.at(-1)?.metricValue ?? null,
       finalBacklog: backlogs.at(-1)?.metricValue ?? null,
       totalSpend: spends.length ? Math.round(spends.reduce((sum, r) => sum + r.metricValue, 0)) : null,

@@ -18,6 +18,7 @@ const schema = z.object({
   conditionTarget: z.coerce.number().min(0).max(100),
   riskThreshold: z.coerce.number().min(0).max(25),
   strategy: z.string(),
+  criticalityModelId: z.string().optional(),
 });
 
 /** Percentages are entered as whole numbers in the form but stored as rates. */
@@ -25,6 +26,7 @@ function parseForm(formData: FormData): {
   name: string;
   description?: string;
   assumptions: ScenarioAssumptions;
+  criticalityModelId: string | null;
 } {
   const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
@@ -38,6 +40,8 @@ function parseForm(formData: FormData): {
   return {
     name: d.name,
     description: d.description,
+    // An empty select means "follow the asset type", not "a formula with no id".
+    criticalityModelId: d.criticalityModelId?.trim() || null,
     assumptions: {
       annualBudget: d.annualBudget,
       fundingGrowth: d.fundingGrowthPct / 100,

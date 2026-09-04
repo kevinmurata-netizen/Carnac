@@ -20,7 +20,11 @@ export type ScenarioFieldDefaults = {
   conditionTarget: number;
   riskThreshold: number;
   strategy: string;
+  criticalityModelId: string | null;
 };
+
+/** The formulas that can rank this scenario's work plans. */
+export type CriticalityChoice = { id: string; name: string; assetTypeName: string; isActive: boolean };
 
 /**
  * The scenario parameter inputs, shared by the create and edit forms so the two
@@ -30,9 +34,11 @@ export type ScenarioFieldDefaults = {
 export function ScenarioFields({
   defaults,
   idPrefix = "",
+  criticalityChoices = [],
 }: {
   defaults: ScenarioFieldDefaults;
   idPrefix?: string;
+  criticalityChoices?: CriticalityChoice[];
 }) {
   const id = (name: string) => `${idPrefix}${name}`;
 
@@ -134,6 +140,32 @@ export function ScenarioFields({
           ))}
         </select>
       </div>
+
+      {/* Only offered where formulas exist, so a system with none is not asked
+          to choose between nothing and nothing. */}
+      {criticalityChoices.length > 0 && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("criticalityModelId")}>Criticality formula</Label>
+          <select
+            id={id("criticalityModelId")}
+            name="criticalityModelId"
+            defaultValue={defaults.criticalityModelId ?? ""}
+            className={input}
+          >
+            <option value="">Whatever each asset type has active</option>
+            {criticalityChoices.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.assetTypeName}: {c.name}
+                {c.isActive ? " (currently active)" : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Ranks the work plans generated from this scenario, so two scenarios can be compared on what they treat as
+            important. It does not change the condition flow on Model Results, which does not use criticality.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

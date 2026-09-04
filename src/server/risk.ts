@@ -72,6 +72,9 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
     : null;
 
   const now = new Date();
+  const assessmentWrites: Prisma.PrismaPromise<unknown>[] = [];
+  const criticalityRows: Prisma.CriticalityScoreCreateManyInput[] = [];
+
   for (const asset of assets) {
     const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
 
@@ -125,25 +128,40 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
           ) as Prisma.InputJsonObject,
         };
 
-    await prisma.riskAssessment.create({
-      data: {
-        assetId: asset.id,
-        riskModelId: model.id,
-        probabilityScore: pof,
-        consequenceScore: cof,
-        riskScore,
-        assessmentDate: now,
-        factors: { create: factorRows },
-      },
+    assessmentWrites.push(
+      prisma.riskAssessment.create({
+        data: {
+          assetId: asset.id,
+          riskModelId: model.id,
+          probabilityScore: pof,
+          consequenceScore: cof,
+          riskScore,
+          assessmentDate: now,
+          factors: { create: factorRows },
+        },
+      })
+    );
+    criticalityRows.push({
+      assetId: asset.id,
+      score: criticality.score,
+      factors: criticality.factors,
+      calculatedAt: now,
     });
-    await prisma.criticalityScore.create({
-      data: {
-        assetId: asset.id,
-        score: criticality.score,
-        factors: criticality.factors,
-        calculatedAt: now,
-      },
-    });
+  }
+
+  // Batched rather than awaited one at a time. The work is the same either way
+  // locally, but every await is a network round trip to a hosted database —
+  // 520 of them is the difference between a second and a request that runs out
+  // of time before it finishes.
+  await prisma.criticalityScore.createMany({ data: criticalityRows });
+
+  // Assessments carry nested factor rows, so they cannot use createMany.
+  // Chunked instead: one transaction per chunk keeps the number of round trips
+  // small without building a single statement large enough to be a problem on
+  // a much bigger asset type.
+  const CHUNK = 50;
+  for (let i = 0; i < assessmentWrites.length; i += CHUNK) {
+    await prisma.$transaction(assessmentWrites.slice(i, i + CHUNK));
   }
 
   return assets.length;

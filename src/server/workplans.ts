@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { compileCriticalityModel, loadAssetValues, scoreAssets } from "@/server/criticality";
 import { WorkPlanItemStatus } from "@prisma/client";
 import {
   DEFAULT_WEIGHTS,
@@ -52,10 +53,41 @@ type CandidateInfo = {
 
 const TEN_YEARS_MS = 10 * 365.25 * 24 * 60 * 60 * 1000;
 
+/**
+ * Criticality per asset for a scenario that names its own formula.
+ *
+ * Returns null when the scenario has no formula of its own, which leaves the
+ * stored score in charge — the one the asset pages show — so a plan only
+ * diverges from the rest of the system where that was asked for.
+ */
+async function criticalityForScenario(
+  organizationId: string,
+  scenarioId: string
+): Promise<Map<string, number> | null> {
+  const scenario = await prisma.scenario.findFirst({
+    where: { id: scenarioId, organizationId },
+    select: { criticalityModel: true },
+  });
+  const model = scenario?.criticalityModel;
+  if (!model) return null;
+
+  const compiled = await compileCriticalityModel(model.id);
+  if (!compiled) return null;
+
+  const values = await loadAssetValues(organizationId, model.assetTypeId, compiled.valueMaps);
+  return new Map(scoreAssets(compiled.tree, values).map((s) => [s.assetId, s.score]));
+}
+
 /** Assemble every asset with a viable treatment, plus the objective values
  * the optimizer needs. Reuses the same applicability rules as Phase 5 so the
  * plan can never contain work the recommendation engine would reject. */
-async function buildCandidates(organizationId: string): Promise<CandidateInfo[]> {
+async function buildCandidates(
+  organizationId: string,
+  /** Criticality from the scenario's own formula, worked out live. Absent for a
+   * plan with no scenario, or a scenario that follows the asset type's active
+   * formula, in which case the last computed score is used. */
+  scenarioCriticality?: Map<string, number> | null
+): Promise<CandidateInfo[]> {
   const curves = await getMaterialCurves(organizationId);
   const since = new Date(Date.now() - TEN_YEARS_MS);
   const library = await loadTreatmentDefs(organizationId);
@@ -166,7 +198,8 @@ async function buildCandidates(organizationId: string): Promise<CandidateInfo[]>
         riskNow: Math.round(pof * cof * 10) / 10,
         riskAfter: Math.round(riskAfter * 10) / 10,
         lccSavings: doNothing.totalNpv - lcca.totalNpv,
-        criticality: asset.criticalityScores[0]?.score ?? 50,
+        criticality:
+          scenarioCriticality?.get(asset.id) ?? asset.criticalityScores[0]?.score ?? 50,
         serviceArea: asset.location?.serviceArea ?? null,
         material: ctx.material,
       };
@@ -193,7 +226,16 @@ function objectiveValues(c: CandidateInfo): ObjectiveValues {
 export async function generateWorkPlan(organizationId: string, input: GenerateWorkPlanInput) {
   const curves = await getMaterialCurves(organizationId);
   const weights = normalizeWeights(input.weights);
-  const candidates = await buildCandidates(organizationId);
+
+  // A scenario may name its own criticality formula, which is the whole point
+  // of being able to ask "what if we prioritised hospitals instead". Worked
+  // out live rather than read from the stored score, so choosing a formula
+  // ranks the next plan without waiting for a model run.
+  const scenarioCriticality = input.scenarioId
+    ? await criticalityForScenario(organizationId, input.scenarioId)
+    : null;
+
+  const candidates = await buildCandidates(organizationId, scenarioCriticality);
 
   const scored = scoreCandidates(
     candidates.map((c) => ({ item: c, raw: objectiveValues(c) })),

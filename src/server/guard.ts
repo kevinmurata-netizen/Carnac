@@ -61,6 +61,22 @@ export async function requireCardWrite(href: string, message: string) {
   return session;
 }
 
+/**
+ * Write access to any one of several cards.
+ *
+ * For an operation that belongs to more than one screen — recomputing risk
+ * also recomputes criticality — so that whoever may change either of the
+ * things that feed it may also run it.
+ */
+export async function requireAnyCardWrite(hrefs: string[], message: string) {
+  const session = await auth();
+  if (!session) throw new Error("Sign in first");
+
+  const permissions = await getSessionPermissions(session);
+  if (!hrefs.some((href) => permissions.canWrite(resourceKey("card", href)))) throw new Error(message);
+  return session;
+}
+
 /** The same, for a page in the sidebar rather than a Settings card. */
 export async function requirePageWrite(href: string, message: string) {
   const session = await auth();

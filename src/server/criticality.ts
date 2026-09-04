@@ -338,6 +338,21 @@ export async function listCriticalityModels(organizationId: string): Promise<
   }));
 }
 
+/** Every formula, flattened for a picker — what a scenario may choose from. */
+export async function listFormulaChoices(
+  organizationId: string
+): Promise<Array<{ id: string; name: string; assetTypeName: string; isActive: boolean }>> {
+  const groups = await listCriticalityModels(organizationId);
+  return groups.flatMap((g) =>
+    g.models.map((m) => ({
+      id: m.id,
+      name: m.name,
+      assetTypeName: g.assetTypeName,
+      isActive: m.isActive,
+    }))
+  );
+}
+
 async function assertAssetTypeInOrg(organizationId: string, assetTypeId: string) {
   const type = await prisma.assetType.findFirst({ where: { id: assetTypeId, organizationId } });
   if (!type) throw new Error("Asset type not found");
@@ -444,21 +459,45 @@ export async function deleteCriticalityModel(organizationId: string, id: string)
  * Null is the signal to fall back to the consequence-of-failure derivation,
  * which is what criticality meant before formulas existed.
  */
-export async function getActiveFormula(
-  assetTypeId: string
-): Promise<{ id: string; name: string; tree: Node; valueMaps: ValueMaps } | null> {
-  const model = await prisma.criticalityModel.findFirst({ where: { assetTypeId, isActive: true } });
+export type CompiledFormula = {
+  id: string;
+  name: string;
+  assetTypeId: string;
+  tree: Node;
+  valueMaps: ValueMaps;
+};
+
+/**
+ * One stored formula, compiled — or null if it no longer parses.
+ *
+ * Null rather than throwing, because a formula that has gone stale (a renamed
+ * attribute, say) must not be able to stop a model run or a work plan. The
+ * caller falls back to what it would have done without a formula.
+ */
+export async function compileCriticalityModel(id: string): Promise<CompiledFormula | null> {
+  const model = await prisma.criticalityModel.findUnique({ where: { id } });
   if (!model) return null;
   try {
     return {
       id: model.id,
       name: model.name,
+      assetTypeId: model.assetTypeId,
       tree: parse(model.expression),
       valueMaps: readValueMaps(model.valueMaps),
     };
   } catch {
-    // An active formula that no longer parses must not stop a model run; the
-    // fallback is the same one an asset type with no formula uses.
     return null;
   }
+}
+
+/**
+ * The active formula for an asset type, compiled and ready — or null.
+ *
+ * Null is the signal to fall back to the consequence-of-failure derivation,
+ * which is what criticality meant before formulas existed.
+ */
+export async function getActiveFormula(assetTypeId: string): Promise<CompiledFormula | null> {
+  const model = await prisma.criticalityModel.findFirst({ where: { assetTypeId, isActive: true } });
+  if (!model) return null;
+  return compileCriticalityModel(model.id);
 }
