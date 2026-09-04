@@ -205,9 +205,21 @@ export function FormulaEditor({
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Click to insert. Also available: {Object.keys(FUNCTIONS).join(", ")}, and + − × ÷ with brackets.
-              </p>
+              <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                <p>Click a field to insert it. Also available:</p>
+                <ul className="space-y-0.5">
+                  {Object.entries(FUNCTIONS).map(([name, fn]) => (
+                    <li key={name} className="font-mono text-[10px]">
+                      {fn.help}
+                    </li>
+                  ))}
+                </ul>
+                <p>
+                  + − × ÷ with brackets, comparisons{" "}
+                  <span className="font-mono">&gt; &lt; &gt;= &lt;= = !=</span>, and{" "}
+                  <span className="font-mono">and</span> / <span className="font-mono">or</span> to join tests.
+                </p>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -238,7 +250,7 @@ export function FormulaEditor({
                   disabled={!canEdit}
                   spellCheck={false}
                   rows={4}
-                  placeholder="clamp((CUSTOMERS_SERVED / 20) + CRITICALITY * 8, 0, 100)"
+                  placeholder={"clamp((CUSTOMERS_SERVED / 20) + CRITICALITY * 8 + if(DIAMETER > 12, 15, 0), 0, 100)"}
                   className="w-full resize-y rounded-md border border-input bg-background p-3 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                 />
               </label>

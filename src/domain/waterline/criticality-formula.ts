@@ -14,26 +14,52 @@
  * `eval` in a try/catch never could.
  */
 
+export type ArithOp = "+" | "-" | "*" | "/";
+export type CompareOp = ">" | "<" | ">=" | "<=" | "==" | "!=";
+export type LogicalOp = "and" | "or";
+
 export type Token =
   | { kind: "number"; value: number; at: number }
   | { kind: "field"; name: string; at: number }
-  | { kind: "op"; value: "+" | "-" | "*" | "/"; at: number }
+  | { kind: "op"; value: ArithOp; at: number }
+  | { kind: "compare"; value: CompareOp; at: number }
+  | { kind: "keyword"; value: LogicalOp; at: number }
   | { kind: "paren"; value: "(" | ")"; at: number }
   | { kind: "comma"; at: number };
 
 export type Node =
   | { kind: "number"; value: number }
   | { kind: "field"; name: string }
-  | { kind: "binary"; op: "+" | "-" | "*" | "/"; left: Node; right: Node }
+  | { kind: "binary"; op: ArithOp; left: Node; right: Node }
+  | { kind: "compare"; op: CompareOp; left: Node; right: Node }
+  | { kind: "logical"; op: LogicalOp; left: Node; right: Node }
   | { kind: "negate"; operand: Node }
   | { kind: "call"; name: FunctionName; args: Node[] };
 
 export const FUNCTIONS = {
+  if: {
+    arity: 3,
+    help: "if(test, then, otherwise) — for example if(LENGTH > 20, 5, 10)",
+  },
   min: { arity: 2, help: "min(a, b) — the smaller of two values" },
   max: { arity: 2, help: "max(a, b) — the larger of two values" },
   clamp: { arity: 3, help: "clamp(value, low, high) — hold a value inside a range" },
   round: { arity: 1, help: "round(value) — to the nearest whole number" },
 } as const;
+
+/**
+ * A test is just a number: true is 1, false is 0.
+ *
+ * Keeping one type in the language means a comparison can be used wherever a
+ * number can — `(LENGTH > 20) * 5` is a perfectly good way to add five to the
+ * long ones — and `if` needs no separate notion of truth to check against.
+ */
+export const TRUE = 1;
+export const FALSE = 0;
+
+/** Reserved because the parser reads them as operators; a field could not be
+ * told apart from them. */
+export const RESERVED_WORDS = new Set(["and", "or"]);
 
 export type FunctionName = keyof typeof FUNCTIONS;
 
@@ -73,6 +99,34 @@ export function tokenize(input: string): Token[] {
       continue;
     }
 
+    // Two-character comparisons first: reading ">" alone would leave the "="
+    // of ">=" behind as a stray character.
+    const pair = input.slice(i, i + 2);
+    if (pair === ">=" || pair === "<=" || pair === "==" || pair === "!=") {
+      tokens.push({ kind: "compare", value: pair, at: i });
+      i += 2;
+      continue;
+    }
+    // "<>" is how a spreadsheet spells "not equal", and people arrive here
+    // from spreadsheets.
+    if (pair === "<>") {
+      tokens.push({ kind: "compare", value: "!=", at: i });
+      i += 2;
+      continue;
+    }
+
+    if (c === ">" || c === "<") {
+      tokens.push({ kind: "compare", value: c, at: i++ });
+      continue;
+    }
+
+    // A single "=" is what most people type for equality; accept it rather
+    // than being right about a distinction this language does not have.
+    if (c === "=") {
+      tokens.push({ kind: "compare", value: "==", at: i++ });
+      continue;
+    }
+
     if (c === "+" || c === "-" || c === "*" || c === "/") {
       tokens.push({ kind: "op", value: c, at: i++ });
       continue;
@@ -91,7 +145,12 @@ export function tokenize(input: string): Token[] {
     if (FIELD_START.test(c)) {
       const start = i;
       while (i < input.length && FIELD_CHAR.test(input[i])) i++;
-      tokens.push({ kind: "field", name: input.slice(start, i), at: start });
+      const word = input.slice(start, i);
+      if (RESERVED_WORDS.has(word.toLowerCase())) {
+        tokens.push({ kind: "keyword", value: word.toLowerCase() as LogicalOp, at: start });
+      } else {
+        tokens.push({ kind: "field", name: word, at: start });
+      }
       continue;
     }
 
@@ -120,7 +179,56 @@ export function parse(input: string): Node {
     return token;
   }
 
+  /**
+   * Loosest binding first, so each level only has to know the one below it:
+   * or → and → comparison → + − → × ÷ → unary → primary.
+   *
+   * That ordering is what makes `if(LENGTH > 20 and DIAMETER > 12, 5, 10)`
+   * read the way it looks, without any precedence table to keep in step.
+   */
   function parseExpression(): Node {
+    return parseOr();
+  }
+
+  function parseOr(): Node {
+    let left = parseAnd();
+    while (!end()) {
+      const token = peek();
+      if (token.kind !== "keyword" || token.value !== "or") break;
+      pos++;
+      left = { kind: "logical", op: "or", left, right: parseAnd() };
+    }
+    return left;
+  }
+
+  function parseAnd(): Node {
+    let left = parseComparison();
+    while (!end()) {
+      const token = peek();
+      if (token.kind !== "keyword" || token.value !== "and") break;
+      pos++;
+      left = { kind: "logical", op: "and", left, right: parseComparison() };
+    }
+    return left;
+  }
+
+  function parseComparison(): Node {
+    const left = parseAdditive();
+    const token = peek();
+    if (!token || token.kind !== "compare") return left;
+    pos++;
+    const node: Node = { kind: "compare", op: token.value, left, right: parseAdditive() };
+
+    // `a < b < c` would compare a true/false to c, which is never what anyone
+    // means. Refusing it is friendlier than quietly scoring on nonsense.
+    const next = peek();
+    if (next && next.kind === "compare") {
+      throw new FormulaError("Comparisons cannot be chained — join them with \"and\" instead", next.at);
+    }
+    return node;
+  }
+
+  function parseAdditive(): Node {
     let left = parseTerm();
     while (!end()) {
       const token = peek();
@@ -237,6 +345,8 @@ export function fieldsUsed(node: Node): string[] {
         if (!found.includes(n.name)) found.push(n.name);
         break;
       case "binary":
+      case "compare":
+      case "logical":
         walk(n.left);
         walk(n.right);
         break;
@@ -305,7 +415,44 @@ function walk(node: Node, values: Record<string, number>): number {
       break;
     }
 
+    case "compare": {
+      const left = walk(node.left, values);
+      const right = walk(node.right, values);
+      const yes = (() => {
+        switch (node.op) {
+          case ">":
+            return left > right;
+          case "<":
+            return left < right;
+          case ">=":
+            return left >= right;
+          case "<=":
+            return left <= right;
+          case "==":
+            return left === right;
+          case "!=":
+            return left !== right;
+        }
+      })();
+      return yes ? TRUE : FALSE;
+    }
+
+    case "logical": {
+      // Anything other than exactly zero counts as true, so a comparison and a
+      // plain number can both be used as a test.
+      const left = walk(node.left, values) !== 0;
+      // Short-circuits, so the untaken side cannot contribute a surprise.
+      if (node.op === "and") return left && walk(node.right, values) !== 0 ? TRUE : FALSE;
+      return left || walk(node.right, values) !== 0 ? TRUE : FALSE;
+    }
+
     case "call": {
+      // if() picks a branch before working it out, so the branch not taken is
+      // never evaluated.
+      if (node.name === "if") {
+        return walk(node.args[0], values) !== 0 ? walk(node.args[1], values) : walk(node.args[2], values);
+      }
+
       const args = node.args.map((a) => walk(a, values));
       switch (node.name) {
         case "min":
