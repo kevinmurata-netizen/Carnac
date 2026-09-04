@@ -30,6 +30,28 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-04",
+    title: "Write your own criticality formula",
+    pr: 25,
+    summary:
+      "Settings → Modeling → Criticality is a new screen for defining how much an asset matters, using that asset type's own fields and basic maths. Criticality is what ranks which projects a work plan funds first.",
+    changes: [
+      "Write a formula like clamp((CUSTOMERS_SERVED / 20) + CRITICALITY * 8, 0, 100). Click any field on the left to drop it in; brackets, + − × ÷ and min, max, clamp and round are all available.",
+      "Conditions too: if(LENGTH > 20, 5, 10) gives one value when a test passes and another when it does not, and they nest, so a formula can step an asset through tiers rather than only scaling it smoothly.",
+      "Tests compare with > < >= <= = and !=, and join with and / or — if(DIAMETER > 12 and CUSTOMERS_SERVED > 200, 90, 20). A comparison is worth 1 or 0 on its own, so (DIAMETER > 12) * 15 works as a way of adding a bonus.",
+      "Dropdowns can be used too. Say what each value is worth — Institutional 6, Residential 1 — and only the dropdowns your formula actually mentions ask to be filled in.",
+      "Try it on every asset before saving. You get the spread of scores, which segments would rank first and last, and a warning if any asset is missing a value the formula reads, which is how you catch a dropdown value nobody gave a number to.",
+      "Formulas are per asset type, so pipes and pumps can be scored on entirely different things. Several can exist side by side and one is active — an alternative can be written and tried out without disturbing the one in use.",
+      "Every score records which formula produced it and what went in, so a number on an asset can always be explained.",
+      "Run the model now, on both the Criticality and Risk Models screens. Saved weights and formulas have always said they apply \"the next time the model runs\" — but nothing in the application ever ran it, so until now neither took effect outside a reseed.",
+      "A scenario can name the criticality formula that ranks its work plans, so two scenarios can be compared on what they treat as important — one that funds hospitals first against one that funds the oldest pipe first — from the same budget and the same network.",
+    ],
+    fixes: [
+      "Risk weights and criticality formulas were both inert. Saving either one said it would apply on the next model run, and there was no way to run the model — the recompute existed but was only ever called by the database seed.",
+    ],
+    note: "Needs a migration before deploying — it adds a criticality_models table and a column on scenarios. Nothing changes until a formula is made active: an asset type without one keeps the previous behaviour, where criticality is a rescale of the risk model's consequence-of-failure rating. A scenario's own formula ranks its work plans straight away; the stored score that asset pages show changes when the model runs.",
+  },
+  {
+    date: "2026-09-04",
     title: "Set what each role can open, change and see",
     pr: 24,
     summary:

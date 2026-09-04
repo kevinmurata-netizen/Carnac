@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { listFormulaChoices } from "@/server/criticality";
 import { canRecordFieldData } from "@/lib/permissions";
 import { listScenarios, getAnnualBudget } from "@/server/scenarios";
 import { STRATEGIES, STRATEGY_DESCRIPTIONS, DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
@@ -20,9 +21,10 @@ export default async function ScenarioPlanningPage() {
   const pageTitle = await getPageName(organizationId, "/scenario-planning", "Scenario Planning");
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenarios, annualBudget] = await Promise.all([
+  const [scenarios, annualBudget, criticalityChoices] = await Promise.all([
     listScenarios(organizationId),
     getAnnualBudget(organizationId),
+    listFormulaChoices(organizationId),
   ]);
   const canEdit = canRecordFieldData(session);
 
@@ -75,9 +77,11 @@ export default async function ScenarioPlanningPage() {
           <CardContent>
             <form action={createScenarioAction} className="space-y-4">
               <ScenarioFields
+                criticalityChoices={criticalityChoices}
                 defaults={{
                   name: "",
                   description: "",
+                  criticalityModelId: null,
                   annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
                   fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),
                   discountRatePct: toPercent(DEFAULT_ASSUMPTIONS.discountRate),

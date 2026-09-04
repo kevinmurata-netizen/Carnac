@@ -131,6 +131,7 @@ model AssetType {
   conditionModels      ConditionModel[]
   deteriorationModels  DeteriorationModel[]
   riskModels           RiskModel[]
+  criticalityModels    CriticalityModel[]
   treatments           Treatment[]
   failureTypes         FailureType[]
 
@@ -558,6 +559,41 @@ model RiskFactor {
   @@map("risk_factors")
 }
 
+/// A named way of working out how much an asset matters.
+///
+/// The expression is the definition — "(CUSTOMERS_SERVED / 20) + CRITICALITY *
+/// 12" — read against each asset's own fields and clamped to 0-100 so two
+/// asset types with different formulas still rank against each other.
+///
+/// Several may exist per asset type so an alternative can be written and
+/// previewed beside the one in use; at most one is active, and only the active
+/// one is ever run. An asset type with no active formula keeps the older
+/// behaviour where criticality is derived from the risk model's
+/// consequence-of-failure side, so this changes nothing until it is used.
+model CriticalityModel {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id], onDelete: Cascade)
+
+  name       String
+  expression String
+
+  /// What each value of a dropdown field is worth, keyed by field code:
+  /// { "CRITICALITY": { "High": 5, "Low": 1 } }. Dropdowns carry most of what
+  /// makes an asset critical, and arithmetic needs a number.
+  valueMaps Json @default("{}")
+
+  isActive Boolean @default(false)
+
+  scenarios Scenario[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([assetTypeId, name])
+  @@map("criticality_models")
+}
+
 model CriticalityScore {
   id      String @id @default(cuid())
   assetId String
@@ -631,6 +667,12 @@ model Scenario {
   organizationId String
   name           String
   description    String?
+
+  /// Which criticality formula ranks the work plans generated from this
+  /// scenario. Null means the asset type's own active formula, so a scenario
+  /// differs only where someone deliberately made it differ.
+  criticalityModelId String?
+  criticalityModel   CriticalityModel? @relation(fields: [criticalityModelId], references: [id], onDelete: SetNull)
 
   assumptions ScenarioAssumption[]
   results     ScenarioResult[]

@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireCardWrite } from "@/server/guard";
+import { requireCardWrite, requireAnyCardWrite } from "@/server/guard";
+import { recomputeRiskForOrganization } from "@/server/risk";
 import {
   updateConditionModel,
   updateRiskModel,
@@ -441,5 +442,40 @@ export async function saveMarkovModelAction(
     return { status: "success", message: "Saved — the network forecast steps with this matrix now." };
   } catch (e) {
     return fail(e);
+  }
+}
+
+/**
+ * Runs the risk and criticality model over every asset, now.
+ *
+ * Both the risk weights and the criticality formulas say they apply "the next
+ * time the model runs" — and until this existed, nothing in the application
+ * ever ran it, so neither took effect outside a reseed. This is that run.
+ *
+ * Available to whoever may change either of the two things it reads, since
+ * running it is how you see the effect of a change you were allowed to make.
+ */
+export async function recomputeRiskAction(
+  _prev: SettingsActionState,
+  _formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireAnyCardWrite(
+      ["/settings/risk-models", "/settings/criticality"],
+      "Your role cannot run the model"
+    );
+
+    const started = Date.now();
+    const count = await recomputeRiskForOrganization(session.user.organizationId);
+    const seconds = Math.max(1, Math.round((Date.now() - started) / 1000));
+
+    revalidateAll("/risk", "/assets", "/work-plan", "/treatment-planning", "/settings/criticality");
+
+    return {
+      status: "success",
+      message: `Scored ${count.toLocaleString()} assets in ${seconds}s. Risk and criticality are up to date with the current weights and formula.`,
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not run the model" };
   }
 }

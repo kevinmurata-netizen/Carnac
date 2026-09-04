@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { RiskModelEditor } from "./editor";
 import { formatNumber } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
+import { RecomputeButton } from "../recompute-button";
+import { recomputeRiskAction } from "../actions";
 
 export default async function RiskModelsPage() {
   const session = await auth();
@@ -21,6 +23,17 @@ export default async function RiskModelsPage() {
         title={pageTitle}
         description="How much each factor counts toward probability and consequence of failure"
       />
+
+      {canEdit && (
+        <Card className="mb-4">
+          <CardContent className="py-4">
+            <RecomputeButton
+              action={recomputeRiskAction}
+              hint="Saved weights only take effect when the model runs. Existing assessments keep the weights they were scored with."
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {canEdit ? (
         <RiskModelEditor config={config} />

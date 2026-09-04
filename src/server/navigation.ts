@@ -113,6 +113,7 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
       ["/settings/treatments", "treatments"],
       ["/settings/deterioration-models", "deterioration-models"],
       ["/settings/risk-models", "risk-models"],
+      ["/settings/criticality", "criticality"],
       ["/settings/decision-trees", "decision-trees"],
       ["/settings/failure-types", "failure-types"],
       ["/filters", "filters"],
