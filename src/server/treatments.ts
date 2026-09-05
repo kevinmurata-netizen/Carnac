@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import {
   WATERLINE_TREATMENTS,
+  rulesFromWindow,
   recommendTreatment,
   type AssetTreatmentContext,
   type Recommendation,
@@ -9,8 +10,18 @@ import {
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 
-/** Idempotently write the treatment library (plus a machine-readable rule row
- * per treatment) so admins can retune applicability without code changes. */
+/**
+ * Idempotently write the treatment library, and the rules that decide what
+ * each treatment is considered for.
+ *
+ * The rules matter as much as the treatments now. Seeding a treatment without
+ * them would leave it ungated — considered for every inspected asset — which
+ * is the opposite of the condition window it was written with. `rulesFromWindow`
+ * is the same conversion the Phase 1 migration performs in SQL for databases
+ * that already hold treatments; this is the other half, for a fresh one. The
+ * two produce identical names on purpose, so a seeded database and a migrated
+ * one agree about which assets qualify.
+ */
 export async function ensureTreatments(organizationId: string) {
   const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
   if (!assetType) throw new Error("WATERLINE asset type not found");
@@ -19,7 +30,7 @@ export async function ensureTreatments(organizationId: string) {
     const existing = await prisma.treatment.findFirst({ where: { assetTypeId: assetType.id, name: def.name } });
     if (existing) continue;
 
-    await prisma.treatment.create({
+    const created = await prisma.treatment.create({
       data: {
         assetTypeId: assetType.id,
         name: def.name,
@@ -45,20 +56,9 @@ export async function ensureTreatments(organizationId: string) {
         mobilizationCost: def.mobilizationCost,
         annualMaintenanceCost: def.annualMaintenanceCost,
         usefulLife: def.usefulLife,
-        rules: {
-          create: [
-            {
-              ruleType: "condition-triggered",
-              condition: {
-                conditionMin: def.applicableConditionMin,
-                conditionMax: def.applicableConditionMax,
-                materials: def.applicableMaterials ?? "*",
-                diameterMin: def.applicableDiameterMin ?? null,
-                diameterMax: def.applicableDiameterMax ?? null,
-              },
-            },
-          ],
-        },
+        // Rules are combined with AND, matching how the window checks these
+        // were converted from used to be applied.
+        qualifyMode: "all",
         costs: {
           create: [
             { costType: "Initial", amount: def.unitCost },
@@ -66,7 +66,29 @@ export async function ensureTreatments(organizationId: string) {
           ],
         },
       },
+      select: { id: true },
     });
+
+    // Shared by name, so "Condition 0-45" is one row linked to Replacement and
+    // Upsizing rather than a copy inside each — which is the whole point of
+    // rules being organization-owned.
+    for (const rule of rulesFromWindow(def)) {
+      const row = await prisma.rule.upsert({
+        where: { organizationId_name: { organizationId, name: rule.name } },
+        update: {},
+        create: {
+          organizationId,
+          name: rule.name,
+          description: rule.description ?? null,
+          effect: rule.effect,
+          enabled: rule.enabled,
+          definition: rule.root as object,
+          isGenerated: true,
+        },
+        select: { id: true },
+      });
+      await prisma.treatmentRuleLink.create({ data: { treatmentId: created.id, ruleId: row.id } });
+    }
   }
 }
 
@@ -97,7 +119,7 @@ const TEN_YEARS_MS = 10 * 365.25 * 24 * 60 * 60 * 1000;
 /** Assemble the live inputs a recommendation needs: condition, risk,
  * attributes and failure history — all read fresh so a new inspection or
  * failure immediately changes what the system recommends. */
-async function buildContexts(organizationId: string, assetId?: string) {
+export async function buildContexts(organizationId: string, assetId?: string) {
   const since = new Date(Date.now() - TEN_YEARS_MS);
   const assets = await prisma.asset.findMany({
     where: {

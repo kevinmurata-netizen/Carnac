@@ -25,7 +25,7 @@ export default async function TreatmentsAdminPage() {
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
   const treatments = await listTreatmentsForAdmin(organizationId);
-  const withTrees = treatments.filter((t) => t.treeCount > 0).length;
+  const withRules = treatments.filter((t) => t.ruleCount > 0).length;
 
   return (
     <div>
@@ -44,9 +44,9 @@ export default async function TreatmentsAdminPage() {
         <CardHeader>
           <CardTitle>
             Library <span className="text-muted-foreground">({treatments.length})</span>
-            {withTrees > 0 && (
+            {withRules > 0 && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                · {withTrees} with a rule
+                · {withRules} with a rule
               </span>
             )}
           </CardTitle>
@@ -58,8 +58,6 @@ export default async function TreatmentsAdminPage() {
                 <TableRow>
                   <TableHead>Treatment</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead>Condition</TableHead>
-                  <TableHead>Materials</TableHead>
                   <TableHead>Unit Cost</TableHead>
                   <TableHead>Effect</TableHead>
                   <TableHead>Rules</TableHead>
@@ -82,10 +80,6 @@ export default async function TreatmentsAdminPage() {
                       <Badge variant={CATEGORY_VARIANT[t.category] ?? "default"}>{t.category}</Badge>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
-                      {t.applicableConditionMin}–{t.applicableConditionMax}
-                    </TableCell>
-                    <TableCell className="text-xs">{t.applicableMaterials?.join(", ") ?? "All"}</TableCell>
-                    <TableCell className="whitespace-nowrap">
                       {formatCurrency(t.unitCost)} {t.costUnit}
                     </TableCell>
                     <TableCell className="text-xs">
@@ -97,13 +91,16 @@ export default async function TreatmentsAdminPage() {
                       <span className="text-muted-foreground"> · ×{t.failureProbMultiplier}</span>
                     </TableCell>
                     <TableCell>
-                      {t.treeCount > 0 ? (
+                      {t.ruleCount > 0 ? (
                         <Badge variant="default">
-                          {t.treeCount} tree{t.treeCount === 1 ? "" : "s"} · {t.treeConditionCount} condition
-                          {t.treeConditionCount === 1 ? "" : "s"}
+                          {t.ruleCount} rule{t.ruleCount === 1 ? "" : "s"}
+                          {t.blockRuleCount > 0 ? `, ${t.blockRuleCount} blocking` : ""}
                         </Badge>
                       ) : (
-                        <span className="text-xs text-muted-foreground">none</span>
+                        // Not a neutral "none": with no rules the treatment is
+                        // considered for every inspected asset, which is worth
+                        // noticing from the list.
+                        <span className="text-xs text-destructive">none — considered for everything</span>
                       )}
                     </TableCell>
                     <TableCell>{formatNumber(t.workPlanItemCount)}</TableCell>

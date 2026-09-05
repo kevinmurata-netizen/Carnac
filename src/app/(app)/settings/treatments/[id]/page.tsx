@@ -2,9 +2,11 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { getTreatmentForAdmin } from "@/server/treatment-config";
-import Link from "next/link";
+import { listRules, getTreatmentRules } from "@/server/rules";
 import { PageHeader } from "@/components/layout/page-header";
 import { TreatmentForm } from "../treatment-form";
+import { RulePicker } from "./rule-picker";
+import { setTreatmentRulesAction } from "./actions";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 
 export default async function TreatmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -13,8 +15,12 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
   const organizationId = session!.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
-  const treatment = await getTreatmentForAdmin(organizationId, id);
-  if (!treatment) notFound();
+  const [treatment, allRules, selection] = await Promise.all([
+    getTreatmentForAdmin(organizationId, id),
+    listRules(organizationId),
+    getTreatmentRules(organizationId, id),
+  ]);
+  if (!treatment || !selection) notFound();
 
   return (
     <div>
@@ -30,26 +36,22 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      <div className="mb-4 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-        {treatment.treeCount > 0
-          ? `${treatment.treeCount} treatment rule${treatment.treeCount === 1 ? " gates" : "s gate"} when this treatment is considered.`
-          : "No treatment rule gates this treatment — only the technical window below applies."}{" "}
-        <Link href={`/settings/decision-trees?treatment=${treatment.id}`} className="text-primary hover:underline">
-          Edit treatment rules →
-        </Link>
-      </div>
-
       <div className="space-y-4">
+        <RulePicker
+          treatmentName={treatment.name}
+          allRules={allRules}
+          attachedIds={selection.attached.map((r) => r.id)}
+          qualifyMode={selection.qualifyMode}
+          canEdit={canEdit}
+          onSave={setTreatmentRulesAction.bind(null, treatment.id)}
+        />
+
         {canEdit ? (
           <TreatmentForm mode="edit" treatment={treatment} />
         ) : (
           <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-            Condition {treatment.applicableConditionMin}–{treatment.applicableConditionMax} ·{" "}
-            {treatment.applicableMaterials?.join(", ") ?? "all materials"} · ${treatment.unitCost}{" "}
-            {treatment.costUnit}
-            {treatment.treeCount > 0
-              ? ` · ${treatment.treeCount} treatment rule${treatment.treeCount === 1 ? "" : "s"}`
-              : ""}
+            ${treatment.unitCost} {treatment.costUnit} · {treatment.expectedLifeExtension} years of added life ·{" "}
+            {treatment.ruleCount} rule{treatment.ruleCount === 1 ? "" : "s"}
           </div>
         )}
       </div>

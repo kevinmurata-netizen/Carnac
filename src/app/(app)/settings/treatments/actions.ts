@@ -56,14 +56,6 @@ function parseInput(form: FormData): TreatmentInput {
     name: String(form.get("name") ?? ""),
     description: String(form.get("description") ?? ""),
     category: CATEGORIES.includes(category) ? category : "Repair",
-    applicableConditionMin: num(form, "applicableConditionMin", 0),
-    applicableConditionMax: num(form, "applicableConditionMax", 100),
-    applicableMaterials: String(form.get("applicableMaterials") ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean),
-    applicableDiameterMin: optionalNum(form, "applicableDiameterMin"),
-    applicableDiameterMax: optionalNum(form, "applicableDiameterMax"),
     conditionResetTo: effectMode === "reset" ? effectValue : null,
     conditionGain: effectMode === "gain" ? effectValue : null,
     failureProbMultiplier: num(form, "failureProbMultiplier", 1),
