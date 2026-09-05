@@ -32,10 +32,10 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
 
       <div className="mb-4 rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
         {treatment.treeCount > 0
-          ? `${treatment.treeCount} decision tree${treatment.treeCount === 1 ? " gates" : "s gate"} when this treatment is considered.`
-          : "No decision tree gates this treatment — only the technical window below applies."}{" "}
+          ? `${treatment.treeCount} treatment rule${treatment.treeCount === 1 ? " gates" : "s gate"} when this treatment is considered.`
+          : "No treatment rule gates this treatment — only the technical window below applies."}{" "}
         <Link href={`/settings/decision-trees?treatment=${treatment.id}`} className="text-primary hover:underline">
-          Edit decision trees →
+          Edit treatment rules →
         </Link>
       </div>
 
@@ -48,7 +48,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
             {treatment.applicableMaterials?.join(", ") ?? "all materials"} · ${treatment.unitCost}{" "}
             {treatment.costUnit}
             {treatment.treeCount > 0
-              ? ` · ${treatment.treeCount} decision tree${treatment.treeCount === 1 ? "" : "s"}`
+              ? ` · ${treatment.treeCount} treatment rule${treatment.treeCount === 1 ? "" : "s"}`
               : ""}
           </div>
         )}

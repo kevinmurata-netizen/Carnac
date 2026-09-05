@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { prisma } from "@/lib/prisma";
 import { listTreatmentTrees } from "@/server/decision-trees";
-import { listMaterials, listCriticalities } from "@/server/assets";
+import { listMaterials, listCriticalities, listServiceAreas, listPressureZones } from "@/server/assets";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { ageInYears } from "@/lib/format";
 import type { DecisionField, DecisionInput } from "@/domain/waterline/decision-tree";
@@ -29,6 +29,7 @@ async function loadSamples(organizationId: string): Promise<Sample[]> {
           attributeValues: { include: { definition: true } },
           riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
           failureEvents: { select: { id: true } },
+          location: { select: { serviceArea: true, pressureZone: true } },
         },
       },
     },
@@ -61,13 +62,15 @@ async function loadSamples(organizationId: string): Promise<Sample[]> {
       failuresLast10Years: asset.failureEvents.length,
       material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
       criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      serviceArea: asset.location?.serviceArea ?? null,
+      pressureZone: asset.location?.pressureZone ?? null,
     };
 
     return {
       id: asset.id,
       label: `${asset.assetCode} — WCI ${input.condition}, ${input.material ?? "unknown material"}, ${
         input.customersServed ?? 0
-      } customers`,
+      } customers${input.serviceArea ? `, ${input.serviceArea}` : ""}`,
       input,
     };
   });
@@ -82,13 +85,15 @@ export default async function DecisionTreesPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/decision-trees");
-  const pageTitle = await getPageName(organizationId, "/settings/decision-trees", "Decision Trees");
+  const pageTitle = await getPageName(organizationId, "/settings/decision-trees", "Treatment Rules");
 
-  const [treatments, samples, materials, criticalities] = await Promise.all([
+  const [treatments, samples, materials, criticalities, serviceAreas, pressureZones] = await Promise.all([
     listTreatmentTrees(organizationId),
     loadSamples(organizationId),
     listMaterials(organizationId),
     listCriticalities(organizationId),
+    listServiceAreas(organizationId),
+    listPressureZones(organizationId),
   ]);
 
   const selected = treatments.find((t) => t.treatmentId === requested) ?? treatments[0];
@@ -98,6 +103,8 @@ export default async function DecisionTreesPage({
   const fieldOptions: Partial<Record<DecisionField, string[]>> = {
     material: materials,
     criticality: criticalities,
+    serviceArea: serviceAreas,
+    pressureZone: pressureZones,
   };
 
   return (
@@ -109,7 +116,7 @@ export default async function DecisionTreesPage({
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Decision trees are read-only for your role.
+          You are signed in as {session!.user.roleName}. Treatment rules are read-only for your role.
         </div>
       )}
 
@@ -146,7 +153,7 @@ export default async function DecisionTreesPage({
               <CardContent className="space-y-2 py-6 text-sm">
                 {selected.trees.length === 0 ? (
                   <p className="text-muted-foreground">
-                    No decision tree gates {selected.treatmentName}.
+                    No treatment rule gates {selected.treatmentName}.
                   </p>
                 ) : (
                   selected.trees.map((tree) => (

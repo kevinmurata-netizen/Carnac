@@ -34,7 +34,7 @@ export function TreatmentPicker({
         </select>
       </div>
       <p className="pb-1.5 text-xs text-muted-foreground">
-        {treatments.filter((t) => t.treeCount > 0).length} of {treatments.length} treatments have a decision tree.
+        {treatments.filter((t) => t.treeCount > 0).length} of {treatments.length} treatments have a rule.
       </p>
     </div>
   );

@@ -203,7 +203,7 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     key: "decision-trees",
     href: "/settings/decision-trees",
     tab: "modeling",
-    title: "Decision Trees",
+    title: "Treatment Rules",
     icon: GitBranch,
     detail:
       "Grouped AND/OR rules deciding whether an asset qualifies for a treatment, on top of its technical window.",

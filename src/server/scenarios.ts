@@ -26,6 +26,7 @@ export async function buildSimAssets(organizationId: string): Promise<SimAsset[]
       attributeValues: { include: { definition: true } },
       conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
       riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+      location: { select: { serviceArea: true, pressureZone: true } },
     },
   });
 
@@ -53,6 +54,9 @@ export async function buildSimAssets(organizationId: string): Promise<SimAsset[]
       condition,
       effectiveAge: effectiveAgeForCondition(curve, condition),
       curve,
+      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      serviceArea: asset.location?.serviceArea ?? null,
+      pressureZone: asset.location?.pressureZone ?? null,
     };
   });
 }

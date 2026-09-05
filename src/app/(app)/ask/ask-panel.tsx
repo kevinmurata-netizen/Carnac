@@ -38,7 +38,7 @@ export function AskPanel({
   ask: (question: string) => Promise<AssistantResult>;
   configured: boolean;
   /** Present only for Administrators — the console reads the database
-   * directly, so it carries the same trust bar as Decision Trees or the map
+   * directly, so it carries the same trust bar as Treatment Rules or the map
    * settings, not the general "every role may ask" rule above. */
   sqlConsole?: {
     schema: ConsoleTable[];

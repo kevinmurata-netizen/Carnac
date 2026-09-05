@@ -27,7 +27,9 @@ export type DecisionField =
   | "cof"
   | "failuresLast10Years"
   | "material"
-  | "criticality";
+  | "criticality"
+  | "serviceArea"
+  | "pressureZone";
 
 export const NUMERIC_FIELDS: DecisionField[] = [
   "condition",
@@ -42,7 +44,7 @@ export const NUMERIC_FIELDS: DecisionField[] = [
   "failuresLast10Years",
 ];
 
-export const TEXT_FIELDS: DecisionField[] = ["material", "criticality"];
+export const TEXT_FIELDS: DecisionField[] = ["material", "criticality", "serviceArea", "pressureZone"];
 
 export const FIELD_LABELS: Record<DecisionField, string> = {
   condition: "Condition (WCI)",
@@ -57,6 +59,10 @@ export const FIELD_LABELS: Record<DecisionField, string> = {
   failuresLast10Years: "Failures in last 10 years",
   material: "Material",
   criticality: "Criticality",
+  // Named for what an operator calls it, qualified so it is traceable to the
+  // stored field every other screen labels "Service Area".
+  serviceArea: "District (service area)",
+  pressureZone: "Pressure zone",
 };
 
 export function fieldType(field: DecisionField): "number" | "text" {
@@ -77,6 +83,8 @@ export type DecisionInput = {
   failuresLast10Years: number;
   material: string | null;
   criticality: string | null;
+  serviceArea: string | null;
+  pressureZone: string | null;
 };
 
 // ---------------------------------------------------------------------------

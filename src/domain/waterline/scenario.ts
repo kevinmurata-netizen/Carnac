@@ -78,6 +78,13 @@ export type SimAsset = {
   /** Position on the material's deterioration curve, in years. */
   effectiveAge: number;
   curve: CurveParams;
+  /** Carried only so treatment rules can test them. The simulation itself
+   * never reads these — but a rule written against a district has to see the
+   * same value here that it sees on the work plan, or a scenario and the plan
+   * it justifies would disagree about which treatments were even allowed. */
+  criticality: string | null;
+  serviceArea: string | null;
+  pressureZone: string | null;
 };
 
 /** A single funded project inside a scenario run. */
@@ -181,6 +188,9 @@ function buildContext(asset: SimAsset): AssetTreatmentContext {
     failuresLast10Years: 0,
     ageYears: Math.round(asset.effectiveAge),
     expectedUsefulLife: asset.curve.serviceLife,
+    criticality: asset.criticality,
+    serviceArea: asset.serviceArea,
+    pressureZone: asset.pressureZone,
   };
 }
 

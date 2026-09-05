@@ -9,7 +9,7 @@ import type { Criterion } from "@/server/filter-schema";
 /**
  * The SQL console's server side.
  *
- * Gated to Administrator, same bar as Decision Trees and the map settings —
+ * Gated to Administrator, same bar as Treatment Rules and the map settings —
  * this reads the database directly rather than through the curated grids, so
  * it gets the same trust level as the other tools that bypass the app's usual
  * screens.
