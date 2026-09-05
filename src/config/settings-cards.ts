@@ -206,7 +206,7 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     title: "Treatment Rules",
     icon: GitBranch,
     detail:
-      "Grouped AND/OR rules deciding whether an asset qualifies for a treatment, on top of its technical window.",
+      "Named conditions that decide whether an asset qualifies for a treatment. Written once, attached to as many treatments as they apply to.",
   },
   {
     key: "deterioration-models",

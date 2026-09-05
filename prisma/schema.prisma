@@ -630,13 +630,24 @@ model Treatment {
   annualMaintenanceCost  Float?
   usefulLife             Int?
 
+  /// How this treatment's "allow" rules combine: "any" (each rule is an
+  /// alternative route to qualifying) or "all" (each is a gate every asset
+  /// must clear). Block rules ignore this — they are always AND-ed.
+  /// Previously a key inside `applicability`; a column because it decides
+  /// which assets qualify and deserves to be visible in the schema.
+  qualifyMode String @default("any")
+
   costs         TreatmentCost[]
   workPlanItems WorkPlanItem[]
   rules         TreatmentRule[]
+  ruleLinks     TreatmentRuleLink[]
 
   @@map("treatments")
 }
 
+/// Superseded by Rule + TreatmentRuleLink. Kept for one release so Phase 1
+/// can be reverted without losing the trees it was migrated from; dropped in
+/// Phase 6. Nothing reads it after the Phase 1 migration.
 model TreatmentRule {
   id          String    @id @default(cuid())
   treatmentId String
@@ -645,6 +656,56 @@ model TreatmentRule {
   condition   Json // expressible rule definition, transparent not black-box
 
   @@map("treatment_rules")
+}
+
+/// A named, reusable qualification rule, owned by the organization rather
+/// than by any one treatment — so "Condition 0-30" is written once and
+/// attached wherever it belongs.
+model Rule {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  /// "allow" — an asset must match this rule to qualify.
+  /// "block" — a match disqualifies it, whatever the allow rules say.
+  /// Blocks exist because inverting a permission by hand is error-prone and
+  /// the mistake is silent: the rule still evaluates, just against the wrong
+  /// assets.
+  effect String @default("allow")
+
+  /// A disabled rule is kept but takes no part in qualification anywhere.
+  enabled Boolean @default(true)
+
+  /// The root Group of the grouped AND/OR condition tree, same shape the rule
+  /// builder has always written. Validated on read rather than trusted.
+  definition Json
+
+  /// True for rules the Phase 1 migration generated from the old technical
+  /// window and hard-coded gates. Only used to explain their origin on the
+  /// page — they are ordinary rules and can be edited or deleted.
+  isGenerated Boolean @default(false)
+
+  treatments TreatmentRuleLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("rules")
+}
+
+model TreatmentRuleLink {
+  treatmentId String
+  treatment   Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  ruleId      String
+  rule        Rule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([treatmentId, ruleId])
+  @@index([ruleId])
+  @@map("treatment_rule_links")
 }
 
 model TreatmentCost {

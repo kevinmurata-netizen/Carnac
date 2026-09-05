@@ -7,7 +7,7 @@ import { listRenameablePages, getPageName } from "@/server/navigation";
 import { getSessionPermissions, resourceKey } from "@/server/permissions";
 import { getWishlistSummary } from "@/server/wishlist";
 import { listSavedFilters } from "@/server/saved-filters";
-import { listTreatmentTrees } from "@/server/decision-trees";
+import { listRules } from "@/server/rules";
 import { ENTRIES, latestEntry } from "@/content/build-log";
 import { ASSET_LABEL } from "@/config/labels";
 import { SETTINGS_CARDS, SETTINGS_TABS, type SettingsTabKey } from "@/config/settings-cards";
@@ -51,7 +51,7 @@ export default async function SettingsPage({
     roles,
     wishlist,
     filters,
-    trees,
+    rules,
     permissions,
   ] = await Promise.all([
     getConfigSummary(organizationId),
@@ -64,7 +64,7 @@ export default async function SettingsPage({
     listRoles(),
     getWishlistSummary(organizationId),
     listSavedFilters(organizationId),
-    listTreatmentTrees(organizationId),
+    listRules(organizationId),
     getSessionPermissions(session!),
   ]);
 
@@ -72,7 +72,8 @@ export default async function SettingsPage({
   const renamedCount = navItems.filter((i) => i.renamed).length;
   const name = (href: string, fallback: string) => navItems.find((i) => i.href === href)?.label ?? fallback;
   const activeCurves = deterioration.filter((d) => d.isActive).length;
-  const treatmentsWithTrees = trees.filter((t) => t.trees.some((tree) => tree.enabled)).length;
+  const activeRules = rules.filter((r) => r.enabled).length;
+  const attachedRules = rules.filter((r) => r.enabled && r.usedBy.length > 0).length;
   const latest = latestEntry();
 
   /** One line per card, keyed the same way the registry is. */
@@ -112,9 +113,9 @@ export default async function SettingsPage({
     "condition-models": `Scale ${conditionModel.scaleMin}–${conditionModel.scaleMax} · ${conditionModel.bands.length} bands`,
     treatments: `${formatNumber(config.treatments.length)} treatments in the library`,
     "decision-trees":
-      treatmentsWithTrees === 0
-        ? "No qualification rules configured"
-        : `${treatmentsWithTrees} of ${formatNumber(config.treatments.length)} treatments gated`,
+      activeRules === 0
+        ? "No rules written yet"
+        : `${formatNumber(activeRules)} rules · ${formatNumber(attachedRules)} attached to a treatment`,
     "deterioration-models": `${activeCurves} of ${deterioration.length} active`,
     "risk-models": `${Object.keys(riskModel.pof).length} probability · ${
       Object.keys(riskModel.cof).length

@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-05",
+    title: "Treatment rules are written once and shared",
+    summary:
+      "A rule is no longer buried inside one treatment. \"Condition 0-45\" is now a single named rule that Replacement and Upsizing both point at, so changing it changes both — and everything that decides when a treatment can be used is finally visible on a page.",
+    changes: [
+      "Settings → Treatment Rules lists every rule you have, what each one reads as in plain English, and which treatments use it. Edit one there and every treatment using it follows.",
+      "The condition window, material list and diameter limits that used to be typed into each treatment have been converted into rules with those names — \"Condition 0-45\", \"Material - Cast Iron, Ductile Iron, Steel, Copper\", \"Diameter at least 6\". Identical ones were merged, so the material rule that three treatments shared is now one rule with three users.",
+      "Three rules that were previously buried in the code, invisible and uneditable, are now ordinary rules you can see and change: inspections are skipped on segments already in Excellent condition, abandonment is refused above 25 customers, and emergency repair is only offered where a failure has actually been recorded.",
+      "A rule can now allow or block. A block refuses a treatment whatever the other rules say — which is what the three above always meant, and is far safer than asking someone to write the opposite of a condition by hand.",
+      "Each treatment's page now has \"When this treatment can be used\": tick the rules that apply, and choose whether an asset must match every rule or any one of them.",
+      "Deleting a rule that treatments still depend on is refused, and the message names them.",
+    ],
+    note: "This one needs its migration run before deploying, as usual. Which assets qualify for which treatments is unchanged — that was checked segment by segment across the whole network, before and after. Adding a treatment with no rules attached now means it is considered for every inspected asset; the Treatments list flags that in red.",
+  },
+  {
+    date: "2026-09-05",
     title: "Rules can test district, and Decision Trees is now Treatment Rules",
     summary:
       "Groundwork for a larger rebuild of how treatments, costs and rules fit together. A rule can now test which district a segment is in, which is what lets a treatment carry a different cost per district later on.",

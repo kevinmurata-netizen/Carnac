@@ -10,7 +10,17 @@
 // administrators can retune applicability/cost/effects without code changes.
 
 import { ASSET_LABEL } from "@/config/labels";
-import { qualifies, type DecisionTree, type QualifyMode, type DecisionInput } from "./decision-tree";
+import {
+  qualifiesUnderRules,
+  type QualifyMode,
+  type DecisionInput,
+  type DecisionField,
+  type Comparator,
+  type Condition,
+  type Rule,
+  type RuleEffect,
+  type RuleOutcome,
+} from "./decision-tree";
 
 export type TreatmentCategory = "Assess" | "Repair" | "Rehabilitate" | "Renew" | "Retire";
 
@@ -18,6 +28,12 @@ export type TreatmentDef = {
   name: string;
   description: string;
   category: TreatmentCategory;
+  /**
+   * The old technical window. Since Phase 1 of the treatment model rebuild
+   * these no longer decide anything — `rulesFromWindow` turns them into the
+   * named rules that do, and the stored columns behind them are read only to
+   * seed a fresh install. Phase 6 removes them.
+   */
   /** Inclusive WCI window in which this treatment makes sense. */
   applicableConditionMin: number;
   applicableConditionMax: number;
@@ -38,11 +54,11 @@ export type TreatmentDef = {
   annualMaintenanceCost: number;
   usefulLife: number;
   implementationConstraints?: string;
-  /** Optional policy gate on top of the technical window. When present, the
-   * treatment is only considered if the tree evaluates to "consider". */
-  /** Policy gates on top of the technical window. Empty means no gate. */
-  decisionTrees?: DecisionTree[];
-  /** Whether an asset must clear any one tree or all of them. */
+  /** Every rule attached to this treatment. Empty means no gate at all, so
+   * the treatment is considered for any inspected asset. */
+  rules?: Rule[];
+  /** Whether an asset must clear any one allow rule or all of them. Blocks
+   * ignore this and always apply. */
   qualifyMode?: QualifyMode;
   /** Set for treatments loaded from the database. */
   id?: string;
@@ -261,6 +277,146 @@ export const WATERLINE_TREATMENTS: TreatmentDef[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Turning the old technical window into rules
+// ---------------------------------------------------------------------------
+
+/**
+ * The rules a treatment's technical window and hard-coded gates amount to.
+ *
+ * The Phase 1 migration does exactly this in SQL for databases that already
+ * hold treatments. This is the same conversion for the other case: seeding a
+ * fresh organization, and the fallback library a brand-new install runs on
+ * before anything is stored. The two must agree — same names, same
+ * conditions — or a seeded database and a migrated one would disagree about
+ * which assets qualify. `npm run qa:matrix` on a freshly seeded database is
+ * what checks that.
+ *
+ * Names are formulaic ("Condition 0-45") so that two treatments sharing a
+ * window share one rule rather than each carrying a private copy.
+ */
+const BLOCK_RULES: Record<string, { name: string; description: string; field: DecisionField; operator: Comparator; value: string }> = {
+  Inspection: {
+    name: "Skip inspection when condition is Excellent",
+    description:
+      "Was hard-coded. A routine inspection of a segment already in Excellent condition padded the identified-need total with work that is not needed.",
+    field: "condition",
+    operator: "gte",
+    value: "85",
+  },
+  Abandonment: {
+    name: "No abandonment above 25 customers",
+    description:
+      "Was hard-coded. Retiring a main that still serves a meaningful customer base is not a real option whatever its condition.",
+    field: "customersServed",
+    operator: "gt",
+    value: "25",
+  },
+  "Emergency Repair": {
+    name: "Emergency repair only after a recorded failure",
+    description:
+      "Was hard-coded. Emergency repair is reactive, so it is only offered where a failure has actually been recorded.",
+    field: "failuresLast10Years",
+    operator: "eq",
+    value: "0",
+  },
+};
+
+/** Matches the SQL's trim_scale(round(x, 2)): no trailing zeros, so a window
+ * of 0-45 is named "Condition 0-45" and not "Condition 0.00-45.00". */
+function num(value: number): string {
+  return String(Math.round(value * 100) / 100);
+}
+
+function makeRule(
+  name: string,
+  description: string,
+  effect: RuleEffect,
+  condition: Omit<Condition, "kind" | "id">
+): Rule {
+  // Derived from the name so that two treatments generating the same rule
+  // generate the identical object, which is what makes them shareable.
+  const key = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return {
+    id: `gen-${key}`,
+    name,
+    description,
+    enabled: true,
+    effect,
+    isGenerated: true,
+    root: {
+      kind: "group",
+      id: `gen-g-${key}`,
+      join: "AND",
+      children: [{ kind: "condition", id: `gen-c-${key}`, ...condition }],
+    },
+  };
+}
+
+export function rulesFromWindow(def: TreatmentDef): Rule[] {
+  const rules: Rule[] = [];
+
+  // A 0-100 window constrains nothing, so it produces no rule.
+  if (def.applicableConditionMin > 0 || def.applicableConditionMax < 100) {
+    const lo = num(def.applicableConditionMin);
+    const hi = num(def.applicableConditionMax);
+    rules.push(
+      makeRule(`Condition ${lo}-${hi}`, "The condition window this treatment was written for.", "allow", {
+        field: "condition",
+        operator: "between",
+        value: lo,
+        value2: hi,
+      })
+    );
+  }
+
+  if (def.applicableMaterials && def.applicableMaterials.length > 0) {
+    const list = def.applicableMaterials.join(", ");
+    rules.push(
+      makeRule(`Material - ${list}`, "The materials this treatment can be used on.", "allow", {
+        field: "material",
+        operator: "in",
+        value: list,
+      })
+    );
+  }
+
+  if (def.applicableDiameterMin != null) {
+    rules.push(
+      makeRule(
+        `Diameter at least ${num(def.applicableDiameterMin)}`,
+        "The smallest diameter this treatment works on.",
+        "allow",
+        { field: "diameterInches", operator: "gte", value: num(def.applicableDiameterMin) }
+      )
+    );
+  }
+
+  if (def.applicableDiameterMax != null) {
+    rules.push(
+      makeRule(
+        `Diameter at most ${num(def.applicableDiameterMax)}`,
+        "The largest diameter this treatment works on.",
+        "allow",
+        { field: "diameterInches", operator: "lte", value: num(def.applicableDiameterMax) }
+      )
+    );
+  }
+
+  const block = BLOCK_RULES[def.name];
+  if (block) {
+    rules.push(
+      makeRule(block.name, block.description, "block", {
+        field: block.field,
+        operator: block.operator,
+        value: block.value,
+      })
+    );
+  }
+
+  return rules;
+}
+
 /** Larger mains cost disproportionately more; normalized so 8" = 1.0. */
 export function diameterCostFactor(diameterInches: number | null): number {
   if (!diameterInches) return 1;
@@ -305,31 +461,28 @@ export type AssetTreatmentContext = {
   pressureZone: string | null;
 };
 
+/**
+ * Whether this treatment is on the table for this asset.
+ *
+ * Everything that used to live here as a condition window, a material list, a
+ * diameter bound or a hard-coded exception is now a named rule an
+ * administrator can read and edit — see docs/TREATMENT-MODEL-REBUILD.md. The
+ * Phase 1 migration converted each of them, so this returns exactly what it
+ * returned before; what changed is that the reasoning is now visible.
+ *
+ * One check stays in code. An asset nobody has inspected has no condition to
+ * reason from, and recommending capital work off a condition that does not
+ * exist would be a fabricated justification (SPEC §32) rather than a policy
+ * choice. That is not a rule to be tuned, so it is not offered as one.
+ */
 export function isApplicable(def: TreatmentDef, ctx: AssetTreatmentContext): boolean {
-  // Uninspected assets can only be sent for inspection — recommending capital
-  // work off an unknown condition would be a fabricated justification.
   if (ctx.conditionScore == null) return def.name === "Inspection";
+  return explainApplicability(def, ctx).pass;
+}
 
-  if (ctx.conditionScore < def.applicableConditionMin || ctx.conditionScore > def.applicableConditionMax) return false;
-  if (def.applicableMaterials && (!ctx.material || !def.applicableMaterials.includes(ctx.material))) return false;
-  if (def.applicableDiameterMin != null && (ctx.diameterInches ?? 0) < def.applicableDiameterMin) return false;
-  if (def.applicableDiameterMax != null && (ctx.diameterInches ?? Infinity) > def.applicableDiameterMax) return false;
-
-  // An asset already in Excellent condition needs nothing. Surfacing a routine
-  // inspection here would pad the identified-need total with work that isn't.
-  if (def.name === "Inspection" && ctx.conditionScore >= 85) return false;
-  // Retiring a main that still serves a meaningful customer base is not a
-  // real option regardless of its condition.
-  if (def.name === "Abandonment" && (ctx.customersServed ?? 0) > 25) return false;
-  // Emergency repair is reactive: only surface it where failures actually occur.
-  if (def.name === "Emergency Repair" && ctx.failuresLast10Years === 0) return false;
-
-  // Finally the configured policy gate, if the administrator built one.
-  if (def.decisionTrees?.length && !qualifies(def.decisionTrees, def.qualifyMode ?? "any", toDecisionInput(ctx)).pass) {
-    return false;
-  }
-
-  return true;
+/** The same decision, with the trace that produced it. */
+export function explainApplicability(def: TreatmentDef, ctx: AssetTreatmentContext): RuleOutcome {
+  return qualifiesUnderRules(def.rules ?? [], def.qualifyMode ?? "all", toDecisionInput(ctx));
 }
 
 /** Flatten a treatment context into the shape a decision tree tests. */

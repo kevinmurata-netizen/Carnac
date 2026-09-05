@@ -18,7 +18,8 @@
     "db:seed:prod": "tsx prisma/seed.ts",
     "user:password": "tsx scripts/set-password.ts",
     "db:deploy": "prisma migrate deploy",
-    "vercel:prune": "tsx scripts/prune-deployments.ts"
+    "vercel:prune": "tsx scripts/prune-deployments.ts",
+    "qa:matrix": "tsx scripts/qualification-matrix.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

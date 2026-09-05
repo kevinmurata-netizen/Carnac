@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { WATERLINE_TREATMENTS, type TreatmentDef, type TreatmentCategory } from "@/domain/waterline/treatment";
-import { countConditions } from "@/domain/waterline/decision-tree";
-import { parseTrees, parseQualifyMode } from "@/server/decision-trees";
+import {
+  WATERLINE_TREATMENTS,
+  rulesFromWindow,
+  type TreatmentDef,
+  type TreatmentCategory,
+} from "@/domain/waterline/treatment";
+import { countConditions, type QualifyMode } from "@/domain/waterline/decision-tree";
+import { parseRules } from "@/server/rules";
 
 /**
  * The treatment library is configuration. These loaders map Treatment rows
@@ -12,10 +17,14 @@ import { parseTrees, parseQualifyMode } from "@/server/decision-trees";
 
 type TreatmentWithRules = Awaited<ReturnType<typeof fetchTreatments>>[number];
 
+const withRules = {
+  ruleLinks: { include: { rule: true } },
+} as const;
+
 function fetchTreatments(organizationId: string) {
   return prisma.treatment.findMany({
     where: { assetType: { code: "WATERLINE", organizationId } },
-    include: { rules: true },
+    include: withRules,
     orderBy: { applicableConditionMin: "asc" },
   });
 }
@@ -66,44 +75,57 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
     annualMaintenanceCost: row.annualMaintenanceCost ?? 0,
     usefulLife: row.usefulLife ?? 0,
     implementationConstraints: applicability.constraints ?? undefined,
-    decisionTrees: parseTrees(row.rules),
-    qualifyMode: parseQualifyMode(row.applicability),
+    rules: parseRules(row.ruleLinks.map((l) => l.rule)),
+    qualifyMode: (row.qualifyMode === "any" ? "any" : "all") as QualifyMode,
   };
 }
 
-/** The live treatment library. Falls back to the seed constant only when the
- * database has none, so a fresh install still behaves. */
+/**
+ * The live treatment library. Falls back to the seed constant only when the
+ * database has none, so a fresh install still behaves.
+ *
+ * The fallback has to carry rules of its own now that rules are what decide
+ * applicability. Without them a brand-new install would consider every
+ * treatment for every asset — the opposite of the old behaviour, and
+ * spectacularly wrong rather than quietly wrong.
+ */
 export async function loadTreatmentDefs(organizationId: string): Promise<TreatmentDef[]> {
   const rows = await fetchTreatments(organizationId);
-  if (rows.length === 0) return WATERLINE_TREATMENTS;
+  if (rows.length === 0) {
+    return WATERLINE_TREATMENTS.map((def) => ({ ...def, rules: rulesFromWindow(def), qualifyMode: "all" as const }));
+  }
   return rows.map(toDef);
 }
 
 export type TreatmentAdminRow = TreatmentDef & {
   id: string;
-  /** Conditions across every tree gating this treatment. */
-  treeConditionCount: number;
-  treeCount: number;
+  /** Conditions across every rule gating this treatment. */
+  ruleConditionCount: number;
+  ruleCount: number;
+  blockRuleCount: number;
   workPlanItemCount: number;
 };
+
+function toAdminRow(row: TreatmentWithRules & { _count: { workPlanItems: number } }): TreatmentAdminRow {
+  const def = toDef(row);
+  const rules = def.rules ?? [];
+  return {
+    ...def,
+    id: row.id,
+    ruleConditionCount: rules.reduce((n, r) => n + countConditions(r.root), 0),
+    ruleCount: rules.length,
+    blockRuleCount: rules.filter((r) => r.effect === "block").length,
+    workPlanItemCount: row._count.workPlanItems,
+  };
+}
 
 export async function listTreatmentsForAdmin(organizationId: string): Promise<TreatmentAdminRow[]> {
   const rows = await prisma.treatment.findMany({
     where: { assetType: { code: "WATERLINE", organizationId } },
-    include: { rules: true, _count: { select: { workPlanItems: true } } },
+    include: { ...withRules, _count: { select: { workPlanItems: true } } },
     orderBy: [{ applicableConditionMin: "asc" }, { name: "asc" }],
   });
-
-  return rows.map((row) => {
-    const def = toDef(row as TreatmentWithRules);
-    return {
-      ...def,
-      id: row.id,
-      treeConditionCount: (def.decisionTrees ?? []).reduce((n, t) => n + countConditions(t.root), 0),
-      treeCount: (def.decisionTrees ?? []).length,
-      workPlanItemCount: row._count.workPlanItems,
-    };
-  });
+  return rows.map(toAdminRow);
 }
 
 export async function getTreatmentForAdmin(
@@ -112,28 +134,19 @@ export async function getTreatmentForAdmin(
 ): Promise<TreatmentAdminRow | null> {
   const row = await prisma.treatment.findFirst({
     where: { id, assetType: { code: "WATERLINE", organizationId } },
-    include: { rules: true, _count: { select: { workPlanItems: true } } },
+    include: { ...withRules, _count: { select: { workPlanItems: true } } },
   });
-  if (!row) return null;
-  const def = toDef(row as TreatmentWithRules);
-  return {
-    ...def,
-    id: row.id,
-    treeConditionCount: (def.decisionTrees ?? []).reduce((n, t) => n + countConditions(t.root), 0),
-    treeCount: (def.decisionTrees ?? []).length,
-    workPlanItemCount: row._count.workPlanItems,
-  };
+  return row ? toAdminRow(row) : null;
 }
 
 export type TreatmentInput = {
   name: string;
   description: string;
   category: TreatmentCategory;
-  applicableConditionMin: number;
-  applicableConditionMax: number;
-  applicableMaterials: string[];
-  applicableDiameterMin: number | null;
-  applicableDiameterMax: number | null;
+  // The condition window, material list and diameter bounds are absent on
+  // purpose: they are rules now, edited on the treatment's own page. The
+  // columns behind them still hold what they last held, and this form no
+  // longer writes to them, so nothing rewrites history on an unrelated edit.
   /** Exactly one of these is used; the other must be null. */
   conditionResetTo: number | null;
   conditionGain: number | null;
@@ -149,9 +162,6 @@ export type TreatmentInput = {
 
 function validate(input: TreatmentInput) {
   if (!input.name.trim()) throw new Error("Treatment name is required");
-  if (input.applicableConditionMin > input.applicableConditionMax) {
-    throw new Error("Condition minimum cannot exceed the maximum");
-  }
   if (input.failureProbMultiplier < 0 || input.failureProbMultiplier > 1) {
     throw new Error("Failure probability multiplier must be between 0 and 1 (1 = no effect)");
   }
@@ -161,13 +171,13 @@ function validate(input: TreatmentInput) {
   if (input.unitCost < 0 || input.mobilizationCost < 0) throw new Error("Costs cannot be negative");
 }
 
+// `existing` is spread first and the applicability keys are no longer written,
+// so a treatment edited today keeps the window it was migrated from rather
+// than having it silently blanked by a form that no longer asks about it.
 function toApplicability(input: TreatmentInput, existing: Record<string, unknown> = {}) {
   return {
     ...existing,
     category: input.category,
-    materials: input.applicableMaterials.length > 0 ? input.applicableMaterials : null,
-    diameterMin: input.applicableDiameterMin,
-    diameterMax: input.applicableDiameterMax,
     constraints: input.implementationConstraints,
     conditionResetTo: input.conditionResetTo,
     conditionGain: input.conditionGain,
@@ -186,8 +196,6 @@ export async function updateTreatment(organizationId: string, id: string, input:
     data: {
       name: input.name.trim(),
       description: input.description.trim() || null,
-      applicableConditionMin: input.applicableConditionMin,
-      applicableConditionMax: input.applicableConditionMax,
       applicability: toApplicability(input, (existing.applicability ?? {}) as Record<string, unknown>),
       expectedLifeExtension: input.expectedLifeExtension,
       effectOnCondition: input.conditionResetTo ?? input.conditionGain ?? 0,
@@ -216,8 +224,6 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
       assetTypeId: assetType.id,
       name: input.name.trim(),
       description: input.description.trim() || null,
-      applicableConditionMin: input.applicableConditionMin,
-      applicableConditionMax: input.applicableConditionMax,
       applicability: toApplicability(input),
       expectedLifeExtension: input.expectedLifeExtension,
       effectOnCondition: input.conditionResetTo ?? input.conditionGain ?? 0,

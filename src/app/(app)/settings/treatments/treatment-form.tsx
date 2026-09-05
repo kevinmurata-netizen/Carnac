@@ -96,74 +96,26 @@ export function TreatmentForm({
               </div>
             </div>
 
+            {/* "When it can be used" used to live here as a condition window, a
+                material list and diameter bounds. Those are now named rules,
+                chosen above and written on the Treatment Rules page, so that
+                the same condition can gate several treatments instead of being
+                retyped into each. */}
             <fieldset className="space-y-3 rounded-md border p-3">
-              <legend className="px-1 text-sm font-medium">When it can be used</legend>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="applicableConditionMin">Condition min</Label>
-                  <input
-                    id="applicableConditionMin"
-                    name="applicableConditionMin"
-                    type="number"
-                    min={0}
-                    max={100}
-                    defaultValue={treatment?.applicableConditionMin ?? 0}
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="applicableConditionMax">Condition max</Label>
-                  <input
-                    id="applicableConditionMax"
-                    name="applicableConditionMax"
-                    type="number"
-                    min={0}
-                    max={100}
-                    defaultValue={treatment?.applicableConditionMax ?? 100}
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="applicableDiameterMin">Diameter min (in)</Label>
-                  <input
-                    id="applicableDiameterMin"
-                    name="applicableDiameterMin"
-                    type="number"
-                    defaultValue={treatment?.applicableDiameterMin ?? ""}
-                    placeholder="any"
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="applicableDiameterMax">Diameter max (in)</Label>
-                  <input
-                    id="applicableDiameterMax"
-                    name="applicableDiameterMax"
-                    type="number"
-                    defaultValue={treatment?.applicableDiameterMax ?? ""}
-                    placeholder="any"
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="applicableMaterials">Materials (comma-separated, blank = all)</Label>
-                  <input
-                    id="applicableMaterials"
-                    name="applicableMaterials"
-                    defaultValue={treatment?.applicableMaterials?.join(", ") ?? ""}
-                    placeholder="Cast Iron, Ductile Iron"
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="implementationConstraints">Implementation constraints</Label>
-                  <input
-                    id="implementationConstraints"
-                    name="implementationConstraints"
-                    defaultValue={treatment?.implementationConstraints ?? ""}
-                    className={input}
-                  />
-                </div>
+              <legend className="px-1 text-sm font-medium">Notes</legend>
+              <div className="space-y-1.5">
+                <Label htmlFor="implementationConstraints">Implementation constraints</Label>
+                <input
+                  id="implementationConstraints"
+                  name="implementationConstraints"
+                  defaultValue={treatment?.implementationConstraints ?? ""}
+                  placeholder="Requires temporary bypass; not suitable below 6 inch diameter."
+                  className={input}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Shown alongside a recommendation. A note for whoever reads it — it does not decide anything, so
+                  anything that should actually rule an asset in or out belongs in a rule.
+                </p>
               </div>
             </fieldset>
 

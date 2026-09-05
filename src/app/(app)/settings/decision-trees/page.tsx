@@ -1,16 +1,23 @@
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { prisma } from "@/lib/prisma";
-import { listTreatmentTrees } from "@/server/decision-trees";
-import { listMaterials, listCriticalities, listServiceAreas, listPressureZones } from "@/server/assets";
+import { listRules, getRuleForEditing } from "@/server/rules";
+import {
+  listMaterials,
+  listCriticalities,
+  listServiceAreas,
+  listPressureZones,
+} from "@/server/assets";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { ageInYears } from "@/lib/format";
-import type { DecisionField, DecisionInput } from "@/domain/waterline/decision-tree";
+import { emptyGroup, type DecisionField, type DecisionInput } from "@/domain/waterline/decision-tree";
 import { PageHeader } from "@/components/layout/page-header";
-import { Card, CardContent } from "@/components/ui/card";
-import { RuleBuilder, type Sample } from "./rule-builder";
-import { TreatmentPicker } from "./treatment-picker";
-import { saveTreesAction } from "./actions";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { RuleEditor, type Sample, type RuleDraft } from "./rule-editor";
+import { saveRuleAction, deleteRuleAction } from "./actions";
 import { getPageName } from "@/server/navigation";
 
 /**
@@ -76,19 +83,19 @@ async function loadSamples(organizationId: string): Promise<Sample[]> {
   });
 }
 
-export default async function DecisionTreesPage({
+export default async function TreatmentRulesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ treatment?: string }>;
+  searchParams: Promise<{ rule?: string }>;
 }) {
-  const { treatment: requested } = await searchParams;
+  const { rule: requested } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/decision-trees");
   const pageTitle = await getPageName(organizationId, "/settings/decision-trees", "Treatment Rules");
 
-  const [treatments, samples, materials, criticalities, serviceAreas, pressureZones] = await Promise.all([
-    listTreatmentTrees(organizationId),
+  const [rules, samples, materials, criticalities, serviceAreas, pressureZones] = await Promise.all([
+    listRules(organizationId),
     loadSamples(organizationId),
     listMaterials(organizationId),
     listCriticalities(organizationId),
@@ -96,10 +103,8 @@ export default async function DecisionTreesPage({
     listPressureZones(organizationId),
   ]);
 
-  const selected = treatments.find((t) => t.treatmentId === requested) ?? treatments[0];
-
   // Text fields offer what the inventory actually holds, so a rule cannot be
-  // written against a material no segment has.
+  // written against a material or district no segment has.
   const fieldOptions: Partial<Record<DecisionField, string[]>> = {
     material: materials,
     criticality: criticalities,
@@ -107,11 +112,30 @@ export default async function DecisionTreesPage({
     pressureZone: pressureZones,
   };
 
+  const selected = requested && requested !== "new" ? rules.find((r) => r.id === requested) : undefined;
+  const editing = await (selected ? getRuleForEditing(organizationId, selected.id) : Promise.resolve(null));
+
+  // Built here rather than by a helper in rule-editor.tsx: that file is a
+  // client module, and a server component cannot call into one.
+  const draft: RuleDraft | null =
+    requested === "new" && canEdit
+      ? { id: null, name: "", description: "", effect: "allow", enabled: true, root: emptyGroup("AND") }
+      : editing
+        ? {
+            id: editing.id,
+            name: editing.name,
+            description: editing.description ?? "",
+            effect: editing.effect,
+            enabled: editing.enabled,
+            root: editing.root,
+          }
+        : null;
+
   return (
     <div>
       <PageHeader
         title={pageTitle}
-        description="Policy rules that decide whether an asset qualifies for a treatment, on top of its technical window."
+        description="Named conditions that decide whether an asset qualifies for a treatment. A rule is written once here and attached to as many treatments as it applies to."
       />
 
       {!canEdit && (
@@ -120,54 +144,84 @@ export default async function DecisionTreesPage({
         </div>
       )}
 
-      {treatments.length === 0 ? (
+      <div className="space-y-4">
         <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No treatments are configured yet. Add one under Settings → Treatments and Costs first.
+          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+            <CardTitle>
+              Rules <span className="text-muted-foreground">({rules.length})</span>
+            </CardTitle>
+            {canEdit && (
+              <Link
+                href="/settings/decision-trees?rule=new"
+                className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                New rule
+              </Link>
+            )}
+          </CardHeader>
+          <CardContent className="p-0">
+            {rules.length === 0 ? (
+              <p className="px-6 py-10 text-center text-sm text-muted-foreground">
+                No rules yet. Without any, every treatment is considered for every inspected asset.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Rule</TableHead>
+                      <TableHead>Effect</TableHead>
+                      <TableHead>Reads as</TableHead>
+                      <TableHead>Used by</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rules.map((r) => (
+                      <TableRow key={r.id} className={r.id === selected?.id ? "bg-muted/50" : undefined}>
+                        <TableCell>
+                          <Link
+                            href={`/settings/decision-trees?rule=${r.id}`}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {r.name}
+                          </Link>
+                          {!r.enabled && <span className="ml-2 text-xs text-muted-foreground">(disabled)</span>}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={r.effect === "block" ? "destructive" : "secondary"}>
+                            {r.effect === "block" ? "Blocks" : "Allows"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-md text-sm text-muted-foreground">{r.summary}</TableCell>
+                        <TableCell className="text-sm">
+                          {r.usedBy.length === 0 ? (
+                            <span className="text-muted-foreground">Nothing yet</span>
+                          ) : (
+                            r.usedBy.join(", ")
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-4">
-          <TreatmentPicker
-            treatments={treatments.map((t) => ({
-              id: t.treatmentId,
-              name: t.treatmentName,
-              treeCount: t.trees.filter((tree) => tree.enabled).length,
-            }))}
-            selectedId={selected.treatmentId}
-          />
 
-          {canEdit ? (
-            <RuleBuilder
-              key={selected.treatmentId}
-              treatmentId={selected.treatmentId}
-              treatmentName={selected.treatmentName}
-              initialTrees={selected.trees}
-              initialMode={selected.qualifyMode}
-              samples={samples}
-              fieldOptions={fieldOptions}
-              onSave={saveTreesAction}
-            />
-          ) : (
-            <Card>
-              <CardContent className="space-y-2 py-6 text-sm">
-                {selected.trees.length === 0 ? (
-                  <p className="text-muted-foreground">
-                    No treatment rule gates {selected.treatmentName}.
-                  </p>
-                ) : (
-                  selected.trees.map((tree) => (
-                    <p key={tree.id}>
-                      <span className="font-medium">{tree.name}</span>
-                      {!tree.enabled && <span className="text-muted-foreground"> (disabled)</span>}
-                    </p>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+        {draft && canEdit && (
+          <RuleEditor
+            key={draft.id ?? "new"}
+            initial={draft}
+            usedBy={selected?.usedBy ?? []}
+            isGenerated={selected?.isGenerated ?? false}
+            samples={samples}
+            fieldOptions={fieldOptions}
+            onSave={saveRuleAction}
+            onDelete={deleteRuleAction}
+          />
+        )}
+      </div>
     </div>
   );
 }
