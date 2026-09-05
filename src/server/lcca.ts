@@ -47,6 +47,7 @@ export async function getAssetLcca(
       conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
       riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
       failureEvents: { where: { failureDate: { gte: since } }, select: { id: true } },
+      location: { select: { serviceArea: true, pressureZone: true } },
     },
   });
   if (!asset) return null;
@@ -72,6 +73,8 @@ export async function getAssetLcca(
     ageYears: ageInYears(asset.installationDate),
     expectedUsefulLife: asset.expectedUsefulLife ?? 75,
     criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+    serviceArea: asset.location?.serviceArea ?? null,
+    pressureZone: asset.location?.pressureZone ?? null,
   };
 
   const assetCostInputs = { diameterInches, customersServed };

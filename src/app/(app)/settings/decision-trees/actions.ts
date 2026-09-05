@@ -5,10 +5,10 @@ import { requireCardWrite } from "@/server/guard";
 import { saveTrees, setQualifyMode } from "@/server/decision-trees";
 import { isValidTree, type DecisionTree, type QualifyMode } from "@/domain/waterline/decision-tree";
 
-/** Decision trees gate what work gets recommended and therefore what shows up
+/** Treatment rules gate what work gets recommended and therefore what shows up
  * in the identified need, so changing them is an Administrator action. */
 async function requireWriteAccess() {
-  return requireCardWrite("/settings/decision-trees", "Only an Administrator can change decision trees");
+  return requireCardWrite("/settings/decision-trees", "Only an Administrator can change treatment rules");
 }
 
 export async function saveTreesAction(

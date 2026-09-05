@@ -46,7 +46,7 @@ export default async function TreatmentsAdminPage() {
             Library <span className="text-muted-foreground">({treatments.length})</span>
             {withTrees > 0 && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                · {withTrees} with a decision tree
+                · {withTrees} with a rule
               </span>
             )}
           </CardTitle>
@@ -62,7 +62,7 @@ export default async function TreatmentsAdminPage() {
                   <TableHead>Materials</TableHead>
                   <TableHead>Unit Cost</TableHead>
                   <TableHead>Effect</TableHead>
-                  <TableHead>Decision Tree</TableHead>
+                  <TableHead>Rules</TableHead>
                   <TableHead>In Plans</TableHead>
                 </TableRow>
               </TableHeader>

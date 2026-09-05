@@ -99,7 +99,7 @@ async function buildCandidates(
       riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
       criticalityScores: { orderBy: { calculatedAt: "desc" }, take: 1 },
       failureEvents: { where: { failureDate: { gte: since } }, select: { id: true } },
-      location: { select: { serviceArea: true } },
+      location: { select: { serviceArea: true, pressureZone: true } },
     },
   });
 
@@ -130,6 +130,8 @@ async function buildCandidates(
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      serviceArea: asset.location?.serviceArea ?? null,
+      pressureZone: asset.location?.pressureZone ?? null,
     };
 
     const curve = curveFor(ctx.material, curves);

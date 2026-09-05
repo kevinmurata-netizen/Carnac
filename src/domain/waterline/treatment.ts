@@ -298,6 +298,11 @@ export type AssetTreatmentContext = {
   /** Optional — only decision trees test it, so call sites that predate
    * trees need not supply it. */
   criticality?: string | null;
+  /** Where the asset sits. Only rules test these, but they are required rather
+   * than optional: a call site that quietly omitted a district would make every
+   * district rule match nothing, and nothing would report that. */
+  serviceArea: string | null;
+  pressureZone: string | null;
 };
 
 export function isApplicable(def: TreatmentDef, ctx: AssetTreatmentContext): boolean {
@@ -345,6 +350,8 @@ export function toDecisionInput(ctx: AssetTreatmentContext): DecisionInput {
     failuresLast10Years: ctx.failuresLast10Years,
     material: ctx.material,
     criticality: ctx.criticality ?? null,
+    serviceArea: ctx.serviceArea,
+    pressureZone: ctx.pressureZone,
   };
 }
 

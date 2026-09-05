@@ -102,11 +102,11 @@ export function RuleBuilder({
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
           <div>
-            <CardTitle>Decision trees for {treatmentName}</CardTitle>
+            <CardTitle>Treatment rules for {treatmentName}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               {trees.length === 0
-                ? "No trees yet — this treatment is gated only by its condition, material and diameter window."
-                : `${trees.length} tree${trees.length === 1 ? "" : "s"}, ${trees.filter((t) => t.enabled).length} active.`}
+                ? "No rules yet — this treatment is gated only by its condition, material and diameter window."
+                : `${trees.length} rule${trees.length === 1 ? "" : "s"}, ${trees.filter((t) => t.enabled).length} active.`}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -117,7 +117,7 @@ export function RuleBuilder({
               onClick={() => setTrees((all) => [...all, newTree(`Rule ${all.length + 1}`)])}
             >
               <Plus className="mr-1 h-3.5 w-3.5" />
-              Add tree
+              Add rule
             </Button>
             <Button type="button" size="sm" onClick={save} disabled={saving || !dirty}>
               {saving ? "Saving…" : dirty ? "Save changes" : "Saved"}
@@ -132,11 +132,11 @@ export function RuleBuilder({
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value as QualifyMode)}
-                aria-label="How the trees combine"
+                aria-label="How the rules combine"
                 className={control}
               >
-                <option value="any">any one tree</option>
-                <option value="all">every tree</option>
+                <option value="any">any one rule</option>
+                <option value="all">every rule</option>
               </select>
               <span className="text-muted-foreground">matches.</span>
             </div>
@@ -160,14 +160,14 @@ export function RuleBuilder({
               <input
                 value={tree.name}
                 onChange={(e) => patchTree(tree.id, { name: e.target.value })}
-                aria-label="Tree name"
+                aria-label="Rule name"
                 placeholder="Name this rule"
                 className="w-full max-w-sm rounded-md border border-input bg-background px-2 py-1 text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
               <input
                 value={tree.description ?? ""}
                 onChange={(e) => patchTree(tree.id, { description: e.target.value })}
-                aria-label="Tree description"
+                aria-label="Rule description"
                 placeholder="Why this rule exists (optional)"
                 className="w-full max-w-xl rounded-md border border-input bg-background px-2 py-1 text-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
@@ -261,7 +261,7 @@ export function RuleBuilder({
               >
                 {verdict.pass ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                 {verdict.results.length === 0
-                  ? "No active trees, so this segment is gated only by the technical window."
+                  ? "No active rules, so this segment is gated only by the technical window."
                   : verdict.pass
                     ? `Qualifies for ${treatmentName}.`
                     : `Does not qualify for ${treatmentName}.`}

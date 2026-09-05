@@ -111,6 +111,7 @@ async function buildContexts(organizationId: string, assetId?: string) {
       conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
       riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
       failureEvents: { where: { failureDate: { gte: since } }, select: { id: true } },
+      location: { select: { serviceArea: true, pressureZone: true } },
     },
   });
 
@@ -130,6 +131,8 @@ async function buildContexts(organizationId: string, assetId?: string) {
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      serviceArea: asset.location?.serviceArea ?? null,
+      pressureZone: asset.location?.pressureZone ?? null,
     };
     return { asset: { id: asset.id, assetCode: asset.assetCode }, ctx };
   });

@@ -29,6 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-05",
+    title: "Rules can test district, and Decision Trees is now Treatment Rules",
+    summary:
+      "Groundwork for a larger rebuild of how treatments, costs and rules fit together. A rule can now test which district a segment is in, which is what lets a treatment carry a different cost per district later on.",
+    changes: [
+      "District (service area) and pressure zone joined the fields a rule can test, alongside condition, material, diameter and the rest. Both offer the values your inventory actually holds, so a rule cannot be written against a district that does not exist.",
+      "The Decision Trees card is now called Treatment Rules, and the page says rule wherever it used to say tree. Nothing moved and nothing was renamed in your data — the rules you have already written are untouched.",
+      "The sample segments used to test a rule now show which district they are in.",
+    ],
+    fixes: [
+      "Scenario runs were ignoring any rule written against criticality — the simulation never supplied that value, so such a rule quietly matched nothing. It now supplies it, so scenarios and work plans agree about which treatments are allowed.",
+    ],
+    note: "No schema migration. If you have a rule that tests criticality, the next scenario run may fund different work than the last one did — that is the fix above taking effect.",
+  },
+  {
     date: "2026-09-04",
     title: "Sign in the way browsers expect, so the password prompt appears",
     pr: 27,
