@@ -637,11 +637,12 @@ model Treatment {
   /// which assets qualify and deserves to be visible in the schema.
   qualifyMode String @default("any")
 
-  costs         TreatmentCost[]
-  costRates     TreatmentCostRate[]
-  workPlanItems WorkPlanItem[]
-  rules         TreatmentRule[]
-  ruleLinks     TreatmentRuleLink[]
+  costs                  TreatmentCost[]
+  costRates              TreatmentCostRate[]
+  workPlanItems          WorkPlanItem[]
+  rules                  TreatmentRule[]
+  ruleLinks              TreatmentRuleLink[]
+  combinationMemberships CombinationMember[]
 
   @@map("treatments")
 }
@@ -657,6 +658,61 @@ model TreatmentRule {
   condition   Json // expressible rule definition, transparent not black-box
 
   @@map("treatment_rules")
+}
+
+/// Treatments an organization is willing to apply together on one asset in
+/// one year — "relining, spot repair and cathodic protection on the same
+/// main". Predefining them is what keeps the model from having to search
+/// every subset of the library.
+///
+/// Purely additive: defining a combination never withdraws the option of
+/// applying its members separately.
+model TreatmentCombination {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  enabled        Boolean @default(true)
+
+  /// An extra gate on the bundle as a whole, on top of each member's own
+  /// rules. Usually empty: a combination should not re-state conditions its
+  /// members already carry.
+  qualifyMode String @default("all")
+
+  members CombinationMember[]
+  rules   CombinationRuleLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("treatment_combinations")
+}
+
+model CombinationMember {
+  combinationId String
+  combination   TreatmentCombination @relation(fields: [combinationId], references: [id], onDelete: Cascade)
+  treatmentId   String
+  treatment     Treatment            @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  /// A required member that does not qualify rules the whole combination out.
+  /// An optional one simply stays behind.
+  required Boolean @default(true)
+
+  @@id([combinationId, treatmentId])
+  @@index([treatmentId])
+  @@map("treatment_combination_members")
+}
+
+model CombinationRuleLink {
+  combinationId String
+  combination   TreatmentCombination @relation(fields: [combinationId], references: [id], onDelete: Cascade)
+  ruleId        String
+  rule          Rule                 @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@id([combinationId, ruleId])
+  @@index([ruleId])
+  @@map("treatment_combination_rule_links")
 }
 
 /// A named, reusable qualification rule, owned by the organization rather
@@ -687,8 +743,9 @@ model Rule {
   /// page — they are ordinary rules and can be edited or deleted.
   isGenerated Boolean @default(false)
 
-  treatments TreatmentRuleLink[]
-  costRates  TreatmentCostRate[]
+  treatments   TreatmentRuleLink[]
+  costRates    TreatmentCostRate[]
+  combinations CombinationRuleLink[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -834,6 +891,14 @@ model WorkPlanItem {
   reasonExplanation String? // human-readable "why" — see explainability requirement
   fundingSource     String?
   status            WorkPlanItemStatus @default(PLANNED)
+
+  /// Rows sharing a bundleId are one decision — a treatment combination
+  /// applied together. Null for a treatment planned on its own, which is most
+  /// of them. One row per treatment rather than one row per bundle, so
+  /// treatmentId stays a real foreign key and every existing read path,
+  /// export and chart keeps working untouched.
+  bundleId   String?
+  bundleName String?
 
   @@map("work_plan_items")
 }

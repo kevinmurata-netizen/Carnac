@@ -319,6 +319,34 @@ untouched. Rows sharing a `bundleId` are one decision, displayed grouped.
 `treatments + combinations` — linear, not `2^n`. This is exactly the saving the
 request anticipates.
 
+### Found while building Phase 4 — read before Phase 5
+
+**A combination changes recommendations but never reaches the work plan.**
+Measured on the full network with a "Spot Repair + Valve Replacement" bundle
+defined: 80 of 222 recommendations switched to it, identified need fell from
+$46.3M to $25.1M — and the generated work plan contained *zero* bundle rows.
+
+The cause predates combinations. `buildCandidates` picks **one option per
+asset**, by highest life-cycle saving, and only that winner is handed to the
+optimizer — which then ranks assets by a completely different, weighted
+objective. A bundle always costs more than its cheapest member while its
+incremental benefit is discounted over time, so it loses that first contest
+almost always. Three separate bundles were tried, including ones built on the
+life-cycle winner; none was ever funded.
+
+Two consequences worth deciding on:
+
+1. **The per-asset filter and the optimizer disagree about what "best" means.**
+   Whatever Expected Benefit turns out to be (§6.1), it should probably decide
+   both, or the work plan will keep discarding options the ranking would have
+   preferred.
+2. **A bundle of cheap patches can clear a guard neither member clears.**
+   `MIN_RISK_REDUCTION_PCT` (25%) exists to stop a cheap patch headlining on a
+   failing main. Spot Repair alone cuts risk 20% and Valve Replacement 10%, but
+   bundled they compound to 28% — over the bar, at a fraction of renewal cost.
+   That is how 43 assets moved off Rehabilitation. The threshold was calibrated
+   against single treatments and has not been re-examined for bundles.
+
 ---
 
 ## Phase 5 — Combination arithmetic and the new objective
