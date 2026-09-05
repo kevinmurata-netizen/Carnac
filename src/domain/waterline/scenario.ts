@@ -216,22 +216,29 @@ function candidateFor(
 
   // Pick the most cost-effective qualifying treatment for this asset; the
   // strategy then decides which *assets* get funded.
-  const scored = applicable.map((def) => {
-    const cost = estimateTreatmentCost(def, { lengthFt: asset.lengthFt, diameterInches: asset.diameterInches });
+  const scored = applicable.flatMap((def) => {
+    // No rate covering this asset means the treatment cannot be priced, so it
+    // is not a candidate. Treating it as free would make it win every
+    // per-dollar comparison below.
+    const cost = estimateTreatmentCost(def, ctx);
+    if (cost == null) return [];
     const projectedCondition = projectedConditionAfter(def, asset.condition);
     const riskAfter = Math.max(1, pof * def.failureProbMultiplier) * asset.cof;
     const riskReduction = Math.max(0, riskNow - riskAfter);
-    return {
-      asset,
-      def,
-      cost,
-      projectedCondition,
-      riskNow,
-      riskAfter,
-      riskReduction,
-      riskReductionPerDollar: cost > 0 ? riskReduction / cost : 0,
-    };
+    return [
+      {
+        asset,
+        def,
+        cost,
+        projectedCondition,
+        riskNow,
+        riskAfter,
+        riskReduction,
+        riskReductionPerDollar: cost > 0 ? riskReduction / cost : 0,
+      },
+    ];
   });
+  if (scored.length === 0) return null;
 
   // A treatment only counts as addressing a below-target asset if it either
   // lifts it to the target or cuts risk materially. Without this, per-dollar

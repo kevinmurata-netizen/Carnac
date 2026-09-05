@@ -11,6 +11,7 @@ import {
   WATERLINE_TREATMENTS,
   isApplicable,
   estimateTreatmentCost,
+  resolveTreatmentCost,
   type AssetTreatmentContext,
 } from "@/domain/waterline/treatment";
 import { curveFor } from "@/domain/waterline/scenario";
@@ -91,7 +92,12 @@ export async function getAssetLcca(
   // Cost of the replacement that eventually becomes unavoidable, at the
   // emergency premium since it happens on the pipe's schedule, not ours.
   const replacementDef = library.find((d) => d.name === "Replacement") ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
-  const plannedReplacementCost = estimateTreatmentCost(replacementDef, { lengthFt, diameterInches });
+  // The forced replacement is what the do-nothing baseline is measured
+  // against, so if no rate prices Replacement for this asset there is no
+  // baseline and the whole comparison is meaningless rather than merely
+  // incomplete.
+  const plannedReplacementCost = estimateTreatmentCost(replacementDef, ctx);
+  if (plannedReplacementCost == null) return null;
   const forcedReplacementCost = Math.round(plannedReplacementCost * EMERGENCY_COST_PREMIUM);
 
   // Baseline: keep operating as-is. No capital cost today, but the pipe keeps
@@ -116,6 +122,11 @@ export async function getAssetLcca(
     if (def.category === "Assess" || def.category === "Retire") continue;
     if (!isApplicable(def, ctx)) continue;
 
+    // Unpriceable here means no cost rate claims this asset. Left out rather
+    // than costed at zero, which would win the comparison outright.
+    const priced = resolveTreatmentCost(def, ctx);
+    if (!priced) continue;
+
     // A treatment that only nudges condition (a patch) leaves the pipe on the
     // same deterioration path, so it inherits the escalating failure rate and
     // the eventual forced replacement — just deferred by its life extension.
@@ -126,8 +137,10 @@ export async function getAssetLcca(
       computeLcca(
         {
           label: def.name,
-          initialCost: estimateTreatmentCost(def, { lengthFt, diameterInches }),
-          annualMaintenanceCost: def.annualMaintenanceCost,
+          initialCost: priced.amount,
+          // From the rate, not the treatment: a rate that prices the work
+          // differently generally maintains it differently too.
+          annualMaintenanceCost: priced.rate.annualMaintenanceCost,
           resultingPof: Math.max(1, currentPof * def.failureProbMultiplier),
           serviceLifeYears: def.usefulLife,
           ...(resetsCondition

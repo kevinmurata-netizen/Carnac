@@ -12,6 +12,7 @@
 import { ASSET_LABEL } from "@/config/labels";
 import {
   qualifiesUnderRules,
+  evaluateTree,
   type QualifyMode,
   type DecisionInput,
   type DecisionField,
@@ -54,6 +55,8 @@ export type TreatmentDef = {
   annualMaintenanceCost: number;
   usefulLife: number;
   implementationConstraints?: string;
+  /** Priced ways of doing this treatment, in the order they are tried. */
+  costRates?: CostRate[];
   /** Every rule attached to this treatment. Empty means no gate at all, so
    * the treatment is considered for any inspected asset. */
   rules?: Rule[];
@@ -423,14 +426,90 @@ export function diameterCostFactor(diameterInches: number | null): number {
   return Math.round(Math.pow(diameterInches / 8, 0.7) * 100) / 100;
 }
 
-export function estimateTreatmentCost(
-  def: Pick<TreatmentDef, "unitCost" | "costUnit" | "mobilizationCost">,
+// ---------------------------------------------------------------------------
+// Cost rates
+// ---------------------------------------------------------------------------
+
+/** One priced way of doing a treatment, and the rule saying when that price
+ * applies. A rate with no rule is the fallback. */
+export type CostRate = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  rule: Rule | null;
+  unitCost: number;
+  costUnit: "per LF" | "per each";
+  mobilizationCost: number;
+  annualMaintenanceCost: number;
+};
+
+export type ResolvedCost = {
+  amount: number;
+  rate: CostRate;
+  /** "Cost basis: District 3 ($340 per LF plus $40,000 mobilization)." */
+  reason: string;
+};
+
+/**
+ * Which rate prices this treatment for this asset.
+ *
+ * Rates are tried in order and the first whose rule matches wins, so ordering
+ * is meaning rather than presentation — a narrow rate must sit above the
+ * broader one it carves out of. A rate with no rule matches anything, which is
+ * why the editor requires exactly one of those and puts it last.
+ *
+ * Returns null when nothing matches. The caller must then treat the treatment
+ * as not costable and leave it out, NOT price it at zero: a free treatment
+ * beats every alternative on every ranking the system has, so a missing rate
+ * would quietly put phantom work at the top of the work plan.
+ */
+export function resolveCostRate(def: TreatmentDef, ctx: AssetTreatmentContext): CostRate | null {
+  const rates = [...(def.costRates ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
+  if (rates.length === 0) return null;
+
+  const input = toDecisionInput(ctx);
+  for (const rate of rates) {
+    if (!rate.rule) return rate;
+    if (!rate.rule.enabled) continue;
+    if (evaluateTree(rate.rule, input).pass) return rate;
+  }
+  return null;
+}
+
+function describeRate(rate: CostRate): string {
+  const unit = `$${rate.unitCost.toLocaleString("en-US")} ${rate.costUnit}`;
+  const mob =
+    rate.mobilizationCost > 0
+      ? ` plus $${rate.mobilizationCost.toLocaleString("en-US")} mobilization`
+      : "";
+  return `Cost basis: ${rate.name} (${unit}${mob}).`;
+}
+
+export function priceWithRate(
+  rate: CostRate,
   asset: { lengthFt: number | null; diameterInches: number | null }
 ): number {
   const factor = diameterCostFactor(asset.diameterInches);
   const base =
-    def.costUnit === "per LF" ? def.unitCost * factor * (asset.lengthFt ?? 0) : def.unitCost * factor;
-  return Math.round(base + def.mobilizationCost);
+    rate.costUnit === "per LF" ? rate.unitCost * factor * (asset.lengthFt ?? 0) : rate.unitCost * factor;
+  return Math.round(base + rate.mobilizationCost);
+}
+
+/** The price, the rate that produced it, and a sentence saying so — because a
+ * cost that changes by district has to be able to explain which district it
+ * decided the asset was in (SPEC §32). */
+export function resolveTreatmentCost(
+  def: TreatmentDef,
+  ctx: AssetTreatmentContext
+): ResolvedCost | null {
+  const rate = resolveCostRate(def, ctx);
+  if (!rate) return null;
+  return { amount: priceWithRate(rate, ctx), rate, reason: describeRate(rate) };
+}
+
+/** The price alone, or null when no rate claims this asset. */
+export function estimateTreatmentCost(def: TreatmentDef, ctx: AssetTreatmentContext): number | null {
+  return resolveTreatmentCost(def, ctx)?.amount ?? null;
 }
 
 export function projectedConditionAfter(def: Pick<TreatmentDef, "conditionResetTo" | "conditionGain">, current: number): number {
@@ -520,11 +599,20 @@ export type TreatmentEvaluation = {
   expectedLifeExtension: number;
   /** Risk points removed per $1,000 spent — the ranking objective. */
   riskReductionPerThousand: number | null;
+  /** Which cost rate produced the price, as a sentence. */
+  costReason: string;
   reasons: string[];
 };
 
-export function evaluateTreatment(def: TreatmentDef, ctx: AssetTreatmentContext): TreatmentEvaluation {
-  const estimatedCost = estimateTreatmentCost(def, { lengthFt: ctx.lengthFt, diameterInches: ctx.diameterInches });
+/**
+ * Null when no cost rate claims this asset, which means the treatment cannot
+ * be priced and so cannot be offered. Pricing it at zero instead would put it
+ * top of every ranking in the system.
+ */
+export function evaluateTreatment(def: TreatmentDef, ctx: AssetTreatmentContext): TreatmentEvaluation | null {
+  const cost = resolveTreatmentCost(def, ctx);
+  if (!cost) return null;
+  const estimatedCost = cost.amount;
   const current = ctx.conditionScore ?? 0;
   const projectedCondition = projectedConditionAfter(def, current);
 
@@ -552,6 +640,7 @@ export function evaluateTreatment(def: TreatmentDef, ctx: AssetTreatmentContext)
     riskReductionPct,
     expectedLifeExtension: def.expectedLifeExtension,
     riskReductionPerThousand,
+    costReason: cost.reason,
     reasons: [],
   };
 }
@@ -605,11 +694,25 @@ export function recommendTreatment(
       noActionReason:
         ctx.conditionScore != null && ctx.conditionScore >= 85
           ? `Condition is ${bandLabel(ctx.conditionScore)} (WCI ${ctx.conditionScore}) — no intervention is warranted yet.`
-          : `No treatment in the library matches this ${ASSET_LABEL.lower}'s condition, material, and diameter.`,
+          : `No treatment in the library has a rule this ${ASSET_LABEL.lower} matches.`,
     };
   }
 
-  const evaluations = applicable.map((def) => evaluateTreatment(def, ctx));
+  // A treatment no cost rate claims cannot be priced, so it cannot be
+  // compared or recommended. Named rather than dropped silently: an
+  // administrator who narrowed a cost rule needs to see what it cost them.
+  const unpriced = applicable.filter((def) => resolveCostRate(def, ctx) === null).map((def) => def.name);
+  const evaluations = applicable
+    .map((def) => evaluateTreatment(def, ctx))
+    .filter((e): e is TreatmentEvaluation => e !== null);
+
+  if (evaluations.length === 0) {
+    return {
+      recommended: null,
+      alternatives: [],
+      noActionReason: `No cost rate covers this ${ASSET_LABEL.lower}, so ${unpriced.join(", ")} could not be priced. Add a fallback rate on each of those treatments.`,
+    };
+  }
 
   // Rank by value for money; fall back to condition gain when risk is unknown.
   const ranked = [...evaluations].sort((a, b) => {
@@ -652,6 +755,12 @@ export function recommendTreatment(
       );
       chosen = renewal;
     }
+  }
+
+  if (unpriced.length > 0) {
+    overrideReasons.push(
+      `${unpriced.join(", ")} could not be considered: no cost rate covers this ${ASSET_LABEL.lower}.`
+    );
   }
 
   chosen.reasons = buildReasons(chosen, ctx, overrideReasons);
@@ -703,6 +812,12 @@ function buildReasons(evaluation: TreatmentEvaluation, ctx: AssetTreatmentContex
     reasons.push(`Adds an expected ${evaluation.expectedLifeExtension} years of service life.`);
   }
   reasons.push(`Estimated cost: $${evaluation.estimatedCost.toLocaleString("en-US")}.`);
+  // Which rate priced it. Silent when the treatment has a single "Standard"
+  // rate, because naming it would say nothing; worth a line the moment a
+  // district or ground-condition rate is what set the number.
+  if (evaluation.costReason && !evaluation.costReason.startsWith("Cost basis: Standard")) {
+    reasons.push(evaluation.costReason);
+  }
 
   return reasons;
 }

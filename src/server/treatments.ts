@@ -9,6 +9,7 @@ import {
 } from "@/domain/waterline/treatment";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
+import { createStandardRate } from "@/server/cost-rates";
 
 /**
  * Idempotently write the treatment library, and the rules that decide what
@@ -67,6 +68,15 @@ export async function ensureTreatments(organizationId: string) {
         },
       },
       select: { id: true },
+    });
+
+    // A treatment with no rate cannot be priced and so is never recommended.
+    // Seeded with the single fallback its own columns amount to.
+    await createStandardRate(created.id, {
+      unitCost: def.unitCost,
+      costUnit: def.costUnit,
+      mobilizationCost: def.mobilizationCost,
+      annualMaintenanceCost: def.annualMaintenanceCost,
     });
 
     // Shared by name, so "Condition 0-45" is one row linked to Replacement and

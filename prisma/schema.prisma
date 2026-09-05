@@ -88,7 +88,7 @@ model Role {
 /// organization behaving identically, and means a resource added in code is
 /// never accidentally unreachable because nobody remembered to insert a row.
 model RolePermission {
-  id String @id @default(cuid())
+  id             String @id @default(cuid())
   // Plain column rather than a relation, matching navigation_labels and
   // organization_settings — the other per-organization configuration tables.
   organizationId String
@@ -638,6 +638,7 @@ model Treatment {
   qualifyMode String @default("any")
 
   costs         TreatmentCost[]
+  costRates     TreatmentCostRate[]
   workPlanItems WorkPlanItem[]
   rules         TreatmentRule[]
   ruleLinks     TreatmentRuleLink[]
@@ -687,6 +688,7 @@ model Rule {
   isGenerated Boolean @default(false)
 
   treatments TreatmentRuleLink[]
+  costRates  TreatmentCostRate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -708,6 +710,9 @@ model TreatmentRuleLink {
   @@map("treatment_rule_links")
 }
 
+/// Superseded by TreatmentCostRate. Written but never read even before that;
+/// left in place so the release running before the Phase 2 migration keeps
+/// working. Dropped in Phase 6.
 model TreatmentCost {
   id            String    @id @default(cuid())
   treatmentId   String
@@ -717,6 +722,38 @@ model TreatmentCost {
   effectiveDate DateTime?
 
   @@map("treatment_costs")
+}
+
+/// One priced way of doing a treatment, and the rule saying when that price
+/// applies — "Replacement costs $340/LF in District 3, $290/LF elsewhere".
+///
+/// Rates are tried in `sortOrder` and the first whose rule matches is used, so
+/// order is meaning rather than presentation. Exactly one rate per treatment
+/// carries no rule at all: the fallback, which must sit last.
+model TreatmentCostRate {
+  id          String    @id @default(cuid())
+  treatmentId String
+  treatment   Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  name      String // "District 3", "Standard", "Rock excavation"
+  sortOrder Int    @default(0)
+
+  /// Null means this is the fallback — it applies to anything the rates above
+  /// it did not claim.
+  ruleId String?
+  rule   Rule?   @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+
+  unitCost              Float
+  costUnit              String // "per LF" | "per each"
+  mobilizationCost      Float  @default(0)
+  annualMaintenanceCost Float  @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([treatmentId, name])
+  @@index([ruleId])
+  @@map("treatment_cost_rates")
 }
 
 // ----------------------------------------------------------------------------
@@ -863,7 +900,7 @@ model Document {
 /// entries get a row; anything absent falls back to the label in config/nav.ts,
 /// so the defaults stay in code and the database records only the exceptions.
 model NavigationLabel {
-  id             String @id @default(cuid())
+  id             String  @id @default(cuid())
   organizationId String
   href           String
   label          String
@@ -912,7 +949,7 @@ model WishlistItem {
 /// Values are JSON so a setting can grow a shape without a migration; the
 /// loaders in server/ are what give each key its meaning and validation.
 model OrganizationSetting {
-  id             String   @id @default(cuid())
+  id             String @id @default(cuid())
   organizationId String
   key            String
   value          Json

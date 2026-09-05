@@ -23,7 +23,7 @@ import { writeFileSync } from "node:fs";
 import { prisma } from "../src/lib/prisma";
 import { buildContexts } from "../src/server/treatments";
 import { loadTreatmentDefs } from "../src/server/treatment-config";
-import { isApplicable } from "../src/domain/waterline/treatment";
+import { isApplicable, estimateTreatmentCost } from "../src/domain/waterline/treatment";
 
 type Matrix = {
   generatedAt: string;
@@ -33,6 +33,11 @@ type Matrix = {
   qualifies: Record<string, string[]>;
   /** How many assets each treatment qualified for — the quick eyeball. */
   totals: Record<string, number>;
+  /** "assetCode|treatment" -> estimated cost. Phase 2 moves cost out of the
+   * treatment's own columns and into rule-selected rates, and the same
+   * before/after argument applies: the numbers must not move. */
+  costs: Record<string, number>;
+  costTotal: number;
 };
 
 async function main() {
@@ -52,15 +57,19 @@ async function main() {
 
   const qualifies: Record<string, string[]> = {};
   const totals: Record<string, number> = {};
+  const costs: Record<string, number> = {};
   for (const def of library) totals[def.name] = 0;
 
   for (const { asset, ctx } of contexts) {
-    const names = library
-      .filter((def) => isApplicable(def, ctx))
-      .map((def) => def.name)
-      .sort();
+    const applicable = library.filter((def) => isApplicable(def, ctx));
+    const names = applicable.map((def) => def.name).sort();
     qualifies[asset.assetCode] = names;
     for (const name of names) totals[name] = (totals[name] ?? 0) + 1;
+
+    for (const def of applicable) {
+      const cost = estimateTreatmentCost(def, ctx);
+      if (cost != null) costs[`${asset.assetCode}|${def.name}`] = cost;
+    }
   }
 
   const matrix: Matrix = {
@@ -71,13 +80,16 @@ async function main() {
     // differ only in the order the database happened to return rows.
     qualifies: Object.fromEntries(Object.entries(qualifies).sort(([a], [b]) => a.localeCompare(b))),
     totals: Object.fromEntries(Object.entries(totals).sort(([a], [b]) => a.localeCompare(b))),
+    costs: Object.fromEntries(Object.entries(costs).sort(([a], [b]) => a.localeCompare(b))),
+    costTotal: Object.values(costs).reduce((sum, c) => sum + c, 0),
   };
 
   writeFileSync(outPath, JSON.stringify(matrix, null, 2));
 
   const pairs = Object.values(qualifies).reduce((n, list) => n + list.length, 0);
   console.log(`${org.name}: ${contexts.length} assets x ${library.length} treatments`);
-  console.log(`${pairs} qualifying pairs written to ${outPath}\n`);
+  console.log(`${pairs} qualifying pairs written to ${outPath}`);
+  console.log(`cost of every qualifying pair: $${matrix.costTotal.toLocaleString("en-US")}\n`);
   for (const [name, count] of Object.entries(matrix.totals)) {
     console.log(`  ${String(count).padStart(5)}  ${name}`);
   }
