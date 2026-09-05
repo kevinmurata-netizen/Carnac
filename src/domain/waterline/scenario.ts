@@ -18,11 +18,11 @@ import {
 import { annualFailureProbability, failureEventCost, presentValue } from "./lcca";
 import {
   WATERLINE_TREATMENTS,
-  isApplicable,
-  estimateTreatmentCost,
-  projectedConditionAfter,
+  enumerateOptions,
   type AssetTreatmentContext,
   type TreatmentDef,
+  type TreatmentOption,
+  type CombinationDef,
 } from "./treatment";
 
 export const STRATEGIES = [
@@ -165,7 +165,7 @@ export function pofFromCondition(condition: number): number {
 
 type Candidate = {
   asset: SimAsset;
-  def: TreatmentDef;
+  option: TreatmentOption;
   cost: number;
   projectedCondition: number;
   riskNow: number;
@@ -194,49 +194,47 @@ function buildContext(asset: SimAsset): AssetTreatmentContext {
   };
 }
 
-/** The single treatment this strategy would apply to this asset, if any. */
+/** The single option this strategy would apply to this asset, if any. An
+ * option is one treatment or a configured bundle; only the price and effect
+ * matter here, and both come off the option already combined. */
 function candidateFor(
   asset: SimAsset,
   assumptions: ScenarioAssumptions,
-  library: TreatmentDef[]
+  library: TreatmentDef[],
+  combinations: CombinationDef[] = []
 ): Candidate | null {
   const strategy = assumptions.strategy;
   const ctx = buildContext(asset);
-  let applicable = library.filter(
-    (def) => def.category !== "Assess" && def.category !== "Retire" && isApplicable(def, ctx)
+  // An option that cannot be priced never appears here — enumerateOptions
+  // drops it — so nothing below can treat missing cost as free.
+  let options = enumerateOptions(ctx, library, combinations).filter(
+    (o) => o.category !== "Assess" && o.category !== "Retire"
   );
 
   if (strategy === "replacement-only") {
-    applicable = applicable.filter((def) => def.category === "Renew");
+    options = options.filter((o) => o.category === "Renew");
   }
-  if (applicable.length === 0) return null;
+  if (options.length === 0) return null;
 
   const pof = ctx.pof ?? pofFromCondition(asset.condition);
   const riskNow = pof * asset.cof;
 
-  // Pick the most cost-effective qualifying treatment for this asset; the
+  // Pick the most cost-effective qualifying option for this asset; the
   // strategy then decides which *assets* get funded.
-  const scored = applicable.flatMap((def) => {
-    // No rate covering this asset means the treatment cannot be priced, so it
-    // is not a candidate. Treating it as free would make it win every
-    // per-dollar comparison below.
-    const cost = estimateTreatmentCost(def, ctx);
-    if (cost == null) return [];
-    const projectedCondition = projectedConditionAfter(def, asset.condition);
-    const riskAfter = Math.max(1, pof * def.failureProbMultiplier) * asset.cof;
+  const scored = options.map((option) => {
+    const cost = option.cost;
+    const riskAfter = Math.max(1, pof * option.failureProbMultiplier) * asset.cof;
     const riskReduction = Math.max(0, riskNow - riskAfter);
-    return [
-      {
-        asset,
-        def,
-        cost,
-        projectedCondition,
-        riskNow,
-        riskAfter,
-        riskReduction,
-        riskReductionPerDollar: cost > 0 ? riskReduction / cost : 0,
-      },
-    ];
+    return {
+      asset,
+      option,
+      cost,
+      projectedCondition: option.projectedCondition,
+      riskNow,
+      riskAfter,
+      riskReduction,
+      riskReductionPerDollar: cost > 0 ? riskReduction / cost : 0,
+    };
   });
   if (scored.length === 0) return null;
 
@@ -337,8 +335,8 @@ export function runScenario(
       selected.push({
         assetId: candidate.asset.id,
         assetCode: candidate.asset.assetCode,
-        treatment: candidate.def.name,
-        category: candidate.def.category,
+        treatment: candidate.option.label,
+        category: candidate.option.category,
         cost: Math.round(candidate.cost),
         conditionBefore: Math.round(candidate.asset.condition * 10) / 10,
         conditionAfter: Math.round(candidate.projectedCondition * 10) / 10,

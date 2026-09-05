@@ -23,7 +23,7 @@ import { writeFileSync } from "node:fs";
 import { prisma } from "../src/lib/prisma";
 import { buildContexts } from "../src/server/treatments";
 import { loadTreatmentDefs } from "../src/server/treatment-config";
-import { isApplicable, estimateTreatmentCost } from "../src/domain/waterline/treatment";
+import { isApplicable, estimateTreatmentCost, recommendTreatment } from "../src/domain/waterline/treatment";
 
 type Matrix = {
   generatedAt: string;
@@ -38,6 +38,10 @@ type Matrix = {
    * before/after argument applies: the numbers must not move. */
   costs: Record<string, number>;
   costTotal: number;
+  /** What the recommendation engine actually picks, and why. Phase 3 rewrites
+   * the three loops that choose a treatment, so the choice AND its published
+   * reasoning both have to survive unchanged. */
+  recommended: Record<string, { treatment: string; cost: number; reasons: string[] }>;
 };
 
 async function main() {
@@ -58,6 +62,7 @@ async function main() {
   const qualifies: Record<string, string[]> = {};
   const totals: Record<string, number> = {};
   const costs: Record<string, number> = {};
+  const recommended: Matrix["recommended"] = {};
   for (const def of library) totals[def.name] = 0;
 
   for (const { asset, ctx } of contexts) {
@@ -69,6 +74,15 @@ async function main() {
     for (const def of applicable) {
       const cost = estimateTreatmentCost(def, ctx);
       if (cost != null) costs[`${asset.assetCode}|${def.name}`] = cost;
+    }
+
+    const rec = recommendTreatment(ctx, library);
+    if (rec.recommended) {
+      recommended[asset.assetCode] = {
+        treatment: rec.recommended.name,
+        cost: rec.recommended.estimatedCost,
+        reasons: rec.recommended.reasons,
+      };
     }
   }
 
@@ -82,6 +96,7 @@ async function main() {
     totals: Object.fromEntries(Object.entries(totals).sort(([a], [b]) => a.localeCompare(b))),
     costs: Object.fromEntries(Object.entries(costs).sort(([a], [b]) => a.localeCompare(b))),
     costTotal: Object.values(costs).reduce((sum, c) => sum + c, 0),
+    recommended: Object.fromEntries(Object.entries(recommended).sort(([a], [b]) => a.localeCompare(b))),
   };
 
   writeFileSync(outPath, JSON.stringify(matrix, null, 2));
