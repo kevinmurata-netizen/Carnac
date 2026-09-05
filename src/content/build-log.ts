@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-05",
+    title: "A treatment can cost different amounts in different places",
+    summary:
+      "Replacement can now cost $340 a foot in one district and $290 in another, without inventing a second Replacement. A treatment carries a list of prices, each with a rule saying when it applies.",
+    changes: [
+      "Each treatment's page has a \"What it costs\" section listing its prices. Prices are tried top to bottom and the first whose rule matches is charged, so a narrow price sits above the broad one it carves out of, and the arrows move them.",
+      "One price on every treatment has no rule: the fallback, which covers anything the prices above it do not claim. It has to be last, and there has to be exactly one — the page refuses to save otherwise, because a price below the fallback would never be reached and a treatment with no fallback silently stops being offered for the assets its rules miss.",
+      "Prices use the same rules as everything else, so \"District - Downtown\" written once can select a price on one treatment and gate a different treatment entirely.",
+      "The reasoning behind a recommendation now names which price it used — \"Cost basis: Downtown ($185 per LF plus $30,000 mobilization)\" — whenever it is not the plain fallback.",
+      "The Treatments page has a roll-up of every price across the library, so an annual rate review is one screen rather than thirteen.",
+      "Mobilization and annual maintenance belong to the price too, not to the treatment, since work priced differently is generally set up and maintained differently.",
+    ],
+    note: "Needs its migration run before deploying. Every treatment starts with a single price named \"Standard\", holding exactly what it charged before, so nothing costs anything different until you add a second price. That was checked across the whole network: all 1,172 asset-and-treatment pairs came to the same total, to the dollar.",
+  },
+  {
+    date: "2026-09-05",
     title: "Treatment rules are written once and shared",
     summary:
       "A rule is no longer buried inside one treatment. \"Condition 0-45\" is now a single named rule that Replacement and Upsizing both point at, so changing it changes both — and everything that decides when a treatment can be used is finally visible on a page.",

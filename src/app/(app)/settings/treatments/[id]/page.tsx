@@ -3,10 +3,12 @@ import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { getTreatmentForAdmin } from "@/server/treatment-config";
 import { listRules, getTreatmentRules } from "@/server/rules";
+import { getTreatmentCosts } from "@/server/cost-rates";
 import { PageHeader } from "@/components/layout/page-header";
 import { TreatmentForm } from "../treatment-form";
 import { RulePicker } from "./rule-picker";
-import { setTreatmentRulesAction } from "./actions";
+import { CostEditor } from "./cost-editor";
+import { setTreatmentRulesAction, setTreatmentCostsAction } from "./actions";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 
 export default async function TreatmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -15,12 +17,13 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
   const organizationId = session!.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
-  const [treatment, allRules, selection] = await Promise.all([
+  const [treatment, allRules, selection, costs] = await Promise.all([
     getTreatmentForAdmin(organizationId, id),
     listRules(organizationId),
     getTreatmentRules(organizationId, id),
+    getTreatmentCosts(organizationId, id),
   ]);
-  if (!treatment || !selection) notFound();
+  if (!treatment || !selection || !costs) notFound();
 
   return (
     <div>
@@ -44,6 +47,14 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
           qualifyMode={selection.qualifyMode}
           canEdit={canEdit}
           onSave={setTreatmentRulesAction.bind(null, treatment.id)}
+        />
+
+        <CostEditor
+          treatmentName={treatment.name}
+          initial={costs.rates}
+          rules={allRules}
+          canEdit={canEdit}
+          onSave={setTreatmentCostsAction.bind(null, treatment.id)}
         />
 
         {canEdit ? (

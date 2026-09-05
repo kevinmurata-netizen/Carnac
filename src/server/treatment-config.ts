@@ -4,9 +4,11 @@ import {
   rulesFromWindow,
   type TreatmentDef,
   type TreatmentCategory,
+  type CostRate,
 } from "@/domain/waterline/treatment";
-import { countConditions, type QualifyMode } from "@/domain/waterline/decision-tree";
+import { countConditions, type QualifyMode, type Rule } from "@/domain/waterline/decision-tree";
 import { parseRules } from "@/server/rules";
+import { createStandardRate } from "@/server/cost-rates";
 
 /**
  * The treatment library is configuration. These loaders map Treatment rows
@@ -19,7 +21,59 @@ type TreatmentWithRules = Awaited<ReturnType<typeof fetchTreatments>>[number];
 
 const withRules = {
   ruleLinks: { include: { rule: true } },
+  costRates: { include: { rule: true }, orderBy: { sortOrder: "asc" } },
 } as const;
+
+/** Cost rates in the order they are tried. A rate whose rule fails validation
+ * is dropped rather than treated as ruleless, because a broken rule silently
+ * becoming a catch-all would reprice the whole network. */
+function toCostRates(
+  rows: Array<{
+    id: string;
+    name: string;
+    sortOrder: number;
+    unitCost: number;
+    costUnit: string;
+    mobilizationCost: number;
+    annualMaintenanceCost: number;
+    rule: Parameters<typeof parseRules>[0][number] | null;
+  }>
+): CostRate[] {
+  return rows.flatMap((row) => {
+    let rule: Rule | null = null;
+    if (row.rule) {
+      rule = parseRules([row.rule])[0] ?? null;
+      if (!rule) return [];
+    }
+    return [
+      {
+        id: row.id,
+        name: row.name,
+        sortOrder: row.sortOrder,
+        rule,
+        unitCost: row.unitCost,
+        costUnit: row.costUnit === "per LF" ? "per LF" : "per each",
+        mobilizationCost: row.mobilizationCost,
+        annualMaintenanceCost: row.annualMaintenanceCost,
+      },
+    ];
+  });
+}
+
+/** The single fallback rate a treatment's own columns amount to. Used for the
+ * seed library, which has no database rows behind it. */
+export function standardRateFor(def: TreatmentDef): CostRate {
+  return {
+    id: `seed-${def.name}`,
+    name: "Standard",
+    sortOrder: 0,
+    rule: null,
+    unitCost: def.unitCost,
+    costUnit: def.costUnit,
+    mobilizationCost: def.mobilizationCost,
+    annualMaintenanceCost: def.annualMaintenanceCost,
+  };
+}
 
 function fetchTreatments(organizationId: string) {
   return prisma.treatment.findMany({
@@ -76,6 +130,7 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
     usefulLife: row.usefulLife ?? 0,
     implementationConstraints: applicability.constraints ?? undefined,
     rules: parseRules(row.ruleLinks.map((l) => l.rule)),
+    costRates: toCostRates(row.costRates),
     qualifyMode: (row.qualifyMode === "any" ? "any" : "all") as QualifyMode,
   };
 }
@@ -92,7 +147,12 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
 export async function loadTreatmentDefs(organizationId: string): Promise<TreatmentDef[]> {
   const rows = await fetchTreatments(organizationId);
   if (rows.length === 0) {
-    return WATERLINE_TREATMENTS.map((def) => ({ ...def, rules: rulesFromWindow(def), qualifyMode: "all" as const }));
+    return WATERLINE_TREATMENTS.map((def) => ({
+      ...def,
+      rules: rulesFromWindow(def),
+      costRates: [standardRateFor(def)],
+      qualifyMode: "all" as const,
+    }));
   }
   return rows.map(toDef);
 }
@@ -200,10 +260,9 @@ export async function updateTreatment(organizationId: string, id: string, input:
       expectedLifeExtension: input.expectedLifeExtension,
       effectOnCondition: input.conditionResetTo ?? input.conditionGain ?? 0,
       effectOnFailureProb: input.failureProbMultiplier,
-      unitCost: input.unitCost,
-      costUnit: input.costUnit,
-      mobilizationCost: input.mobilizationCost,
-      annualMaintenanceCost: input.annualMaintenanceCost,
+      // The cost columns are deliberately not written. Cost rates own the
+      // price now, the edit form no longer asks about it, and writing the
+      // form's empty defaults here would blank what these columns still hold.
       usefulLife: input.usefulLife,
     },
   });
@@ -219,7 +278,7 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
   });
   if (clash) throw new Error(`A treatment named "${input.name.trim()}" already exists`);
 
-  await prisma.treatment.create({
+  const created = await prisma.treatment.create({
     data: {
       assetTypeId: assetType.id,
       name: input.name.trim(),
@@ -240,6 +299,17 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
         ],
       },
     },
+    select: { id: true },
+  });
+
+  // Without a rate the treatment cannot be priced, so it would be silently
+  // absent from every recommendation. Created here so a new treatment is
+  // usable the moment it exists, with the price just entered as its fallback.
+  await createStandardRate(created.id, {
+    unitCost: input.unitCost,
+    costUnit: input.costUnit,
+    mobilizationCost: input.mobilizationCost,
+    annualMaintenanceCost: input.annualMaintenanceCost,
   });
 }
 

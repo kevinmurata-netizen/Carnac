@@ -14,6 +14,7 @@ import {
   WATERLINE_TREATMENTS,
   isApplicable,
   estimateTreatmentCost,
+  resolveTreatmentCost,
   projectedConditionAfter,
   type AssetTreatmentContext,
   type TreatmentDef,
@@ -140,9 +141,13 @@ async function buildCandidates(
       Math.round(curve.serviceLife - effectiveAgeForCondition(curve, conditionScore))
     );
     const replacementDef = library.find((d) => d.name === "Replacement") ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
-    const forcedReplacementCost = Math.round(
-      estimateTreatmentCost(replacementDef, { lengthFt, diameterInches }) * EMERGENCY_COST_PREMIUM
-    );
+    // Every life-cycle comparison below is measured against this. Without a
+    // rate that prices Replacement for this asset there is no baseline, so the
+    // asset yields no candidate at all rather than a set of costs compared
+    // against nothing.
+    const plannedReplacementCost = estimateTreatmentCost(replacementDef, ctx);
+    if (plannedReplacementCost == null) continue;
+    const forcedReplacementCost = Math.round(plannedReplacementCost * EMERGENCY_COST_PREMIUM);
     const costInputs = { diameterInches, customersServed };
 
     const doNothing = computeLcca(
@@ -166,7 +171,9 @@ async function buildCandidates(
       if (def.category === "Assess" || def.category === "Retire") continue;
       if (!isApplicable(def, ctx)) continue;
 
-      const cost = estimateTreatmentCost(def, { lengthFt, diameterInches });
+      const priced = resolveTreatmentCost(def, ctx);
+      if (!priced) continue; // no rate covers this asset — not a candidate
+      const cost = priced.amount;
       const projectedCondition = projectedConditionAfter(def, conditionScore);
       const riskAfter = Math.max(1, pof * def.failureProbMultiplier) * cof;
       const resetsCondition = def.conditionResetTo != null;
@@ -176,7 +183,9 @@ async function buildCandidates(
         {
           label: def.name,
           initialCost: cost,
-          annualMaintenanceCost: def.annualMaintenanceCost,
+          // From the rate, not the treatment: a rate that prices the work
+          // differently generally maintains it differently too.
+          annualMaintenanceCost: priced.rate.annualMaintenanceCost,
           resultingPof: Math.max(1, pof * def.failureProbMultiplier),
           serviceLifeYears: def.usefulLife,
           ...(resetsCondition

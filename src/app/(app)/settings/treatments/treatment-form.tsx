@@ -178,7 +178,12 @@ export function TreatmentForm({
               </p>
             </fieldset>
 
-            <fieldset className="space-y-3 rounded-md border p-3">
+            {/* Only when creating. An existing treatment's prices are edited
+                in the cost rates above, which can hold several — showing these
+                as well would be two editors for one number, disagreeing the
+                moment anyone adds a second rate. What is entered here becomes
+                the new treatment's single fallback rate. */}
+            <fieldset className={`space-y-3 rounded-md border p-3 ${mode === "edit" ? "hidden" : ""}`}>
               <legend className="px-1 text-sm font-medium">What it costs</legend>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <div className="space-y-1.5">
