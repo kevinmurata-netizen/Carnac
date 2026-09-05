@@ -518,6 +518,162 @@ export function projectedConditionAfter(def: Pick<TreatmentDef, "conditionResetT
   return current;
 }
 
+// ---------------------------------------------------------------------------
+// Options: one or more treatments applied together
+// ---------------------------------------------------------------------------
+//
+// Everything that chooses work for an asset used to assume exactly one
+// treatment — three separate loops, each picking a single winner. An Option is
+// the shared abstraction that lets a bundle be compared against a single
+// treatment on equal terms: a standalone treatment is simply an option with
+// one member.
+//
+// The combining arithmetic below is written for any number of members even
+// though `enumerateOptions` currently produces only singletons and pairs from
+// configured combinations. Each rule reduces to the identity on one member,
+// which is what makes the change to the three consumers provably
+// behaviour-preserving. See docs/TREATMENT-MODEL-REBUILD.md §5.1 — every one
+// of these is a modeling assumption, not arithmetic fact, and each is stated
+// there for the reader.
+
+export type TreatmentOption = {
+  /** "t:Relining" for a single treatment, "combo:<id>" for a bundle. */
+  id: string;
+  label: string;
+  description: string;
+  category: TreatmentCategory;
+  members: TreatmentDef[];
+  /** The rate that priced each member, in member order. */
+  rates: CostRate[];
+  cost: number;
+  /** One sentence per member saying which rate set its share of the price. */
+  costReasons: string[];
+  projectedCondition: number;
+  conditionGain: number;
+  failureProbMultiplier: number;
+  expectedLifeExtension: number;
+  annualMaintenanceCost: number;
+  usefulLife: number;
+};
+
+/** A bundle an administrator has defined. Phase 4 stores these; Phase 3 only
+ * needs the shape so the enumeration is written once. */
+export type CombinationDef = {
+  id: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  /** Treatment names. Every one must independently qualify and be priceable. */
+  members: string[];
+};
+
+/** Which category a bundle reports as. The most committing member wins, so a
+ * bundle containing a replacement is filtered as renewal wherever a caller
+ * filters on category. */
+const CATEGORY_RANK: Record<TreatmentCategory, number> = {
+  Assess: 0,
+  Repair: 1,
+  Rehabilitate: 2,
+  Renew: 3,
+  Retire: 4,
+};
+
+/**
+ * Null when any member cannot be priced for this asset — a bundle is only as
+ * available as its least available part, and a missing rate must never be
+ * silently costed at zero.
+ */
+export function buildOption(
+  id: string,
+  label: string,
+  members: TreatmentDef[],
+  ctx: AssetTreatmentContext
+): TreatmentOption | null {
+  if (members.length === 0) return null;
+
+  const priced = members.map((m) => resolveTreatmentCost(m, ctx));
+  if (priced.some((p) => p == null)) return null;
+  const resolved = priced as ResolvedCost[];
+  const rates = resolved.map((p) => p.rate);
+
+  // Cost: every member's unit component, but mobilization ONCE at its largest.
+  // One crew, one traffic plan, one bypass — that saving is the reason to
+  // bundle at all, and summing mobilization would mean no bundle ever won.
+  const factor = diameterCostFactor(ctx.diameterInches);
+  const unitTotal = rates.reduce(
+    (sum, r) => sum + (r.costUnit === "per LF" ? r.unitCost * factor * (ctx.lengthFt ?? 0) : r.unitCost * factor),
+    0
+  );
+  const mobilization = Math.max(...rates.map((r) => r.mobilizationCost));
+  const cost = Math.round(unitTotal + mobilization);
+
+  // Condition: a reset establishes a floor, gains are incremental on top.
+  const current = ctx.conditionScore ?? 0;
+  const resets = members.map((m) => m.conditionResetTo).filter((v): v is number => v != null);
+  const floor = resets.length > 0 ? Math.max(...resets) : current;
+  const gains = members.reduce((sum, m) => sum + (m.conditionGain ?? 0), 0);
+  const projectedCondition = Math.min(100, floor + gains);
+
+  return {
+    id,
+    label,
+    description: members.map((m) => m.description).join(" "),
+    category: members.reduce(
+      (best, m) => (CATEGORY_RANK[m.category] > CATEGORY_RANK[best] ? m.category : best),
+      members[0].category
+    ),
+    members,
+    rates,
+    cost,
+    costReasons: resolved.map((p) => p.reason),
+    projectedCondition,
+    conditionGain: Math.round((projectedCondition - current) * 10) / 10,
+    // Independent mitigations compound.
+    failureProbMultiplier: members.reduce((p, m) => p * m.failureProbMultiplier, 1),
+    // Max, not sum: a liner and anodes on the same main do not add 50 + 15
+    // years. Summing is the intuitive error and it inflates every LCCA.
+    expectedLifeExtension: Math.max(...members.map((m) => m.expectedLifeExtension)),
+    // Sum: each installed system is separately maintained.
+    annualMaintenanceCost: rates.reduce((sum, r) => sum + r.annualMaintenanceCost, 0),
+    usefulLife: Math.max(...members.map((m) => m.usefulLife)),
+  };
+}
+
+/**
+ * Everything that could be done to this asset: each qualifying treatment on
+ * its own, plus each configured combination whose members all qualify.
+ *
+ * A combination never removes the option of applying its members separately —
+ * defining "trenchless package" adds a way to spend money, it does not
+ * withdraw one.
+ */
+export function enumerateOptions(
+  ctx: AssetTreatmentContext,
+  library: TreatmentDef[],
+  combinations: CombinationDef[] = []
+): TreatmentOption[] {
+  const applicable = library.filter((def) => isApplicable(def, ctx));
+  const options: TreatmentOption[] = [];
+
+  for (const def of applicable) {
+    const option = buildOption(`t:${def.name}`, def.name, [def], ctx);
+    if (option) options.push(option);
+  }
+
+  for (const combo of combinations) {
+    if (!combo.enabled) continue;
+    // Every member must independently qualify. Rule authorship stays in one
+    // place: a combination never re-states conditions its members already
+    // carry.
+    const members = combo.members.map((name) => applicable.find((d) => d.name === name));
+    if (members.length < 2 || members.some((m) => !m)) continue;
+    const option = buildOption(`combo:${combo.id}`, combo.name, members as TreatmentDef[], ctx);
+    if (option) options.push(option);
+  }
+
+  return options;
+}
+
 export type AssetTreatmentContext = {
   conditionScore: number | null;
   material: string | null;
@@ -605,42 +761,43 @@ export type TreatmentEvaluation = {
 };
 
 /**
- * Null when no cost rate claims this asset, which means the treatment cannot
- * be priced and so cannot be offered. Pricing it at zero instead would put it
- * top of every ranking in the system.
+ * Evaluates one option — a single treatment, or a bundle applied together.
+ *
+ * Everything it reads comes off the option, so a bundle is scored by exactly
+ * the arithmetic a lone treatment is. The combining rules live in
+ * `buildOption`; nothing about "several treatments" leaks in here.
  */
-export function evaluateTreatment(def: TreatmentDef, ctx: AssetTreatmentContext): TreatmentEvaluation | null {
-  const cost = resolveTreatmentCost(def, ctx);
-  if (!cost) return null;
-  const estimatedCost = cost.amount;
-  const current = ctx.conditionScore ?? 0;
-  const projectedCondition = projectedConditionAfter(def, current);
+export function evaluateOption(option: TreatmentOption, ctx: AssetTreatmentContext): TreatmentEvaluation {
+  const estimatedCost = option.cost;
+  const projectedCondition = option.projectedCondition;
 
   let projectedRisk: number | null = null;
   let riskReductionPct: number | null = null;
   let riskReductionPerThousand: number | null = null;
   if (ctx.pof != null && ctx.cof != null && ctx.riskScore != null && ctx.riskScore > 0) {
-    const projectedPof = Math.max(1, ctx.pof * def.failureProbMultiplier);
+    const projectedPof = Math.max(1, ctx.pof * option.failureProbMultiplier);
     projectedRisk = Math.round(projectedPof * ctx.cof * 10) / 10;
     // Abandonment removes the asset from service entirely: no residual risk.
-    if (def.failureProbMultiplier === 0) projectedRisk = 0;
+    if (option.failureProbMultiplier === 0) projectedRisk = 0;
     const reduction = ctx.riskScore - projectedRisk;
     riskReductionPct = Math.round((reduction / ctx.riskScore) * 1000) / 10;
     riskReductionPerThousand = estimatedCost > 0 ? Math.round((reduction / (estimatedCost / 1000)) * 1000) / 1000 : null;
   }
 
   return {
-    name: def.name,
-    category: def.category,
-    description: def.description,
+    name: option.label,
+    category: option.category,
+    description: option.description,
     estimatedCost,
     projectedCondition,
-    conditionGain: Math.round((projectedCondition - current) * 10) / 10,
+    conditionGain: option.conditionGain,
     projectedRisk,
     riskReductionPct,
-    expectedLifeExtension: def.expectedLifeExtension,
+    expectedLifeExtension: option.expectedLifeExtension,
     riskReductionPerThousand,
-    costReason: cost.reason,
+    // One sentence per member; for a single treatment that is the one line
+    // the reasoning already showed.
+    costReason: option.costReasons.join(" "),
     reasons: [],
   };
 }
@@ -683,7 +840,8 @@ const MIN_RISK_REDUCTION_PCT = 25;
  */
 export function recommendTreatment(
   ctx: AssetTreatmentContext,
-  library: TreatmentDef[] = WATERLINE_TREATMENTS
+  library: TreatmentDef[] = WATERLINE_TREATMENTS,
+  combinations: CombinationDef[] = []
 ): Recommendation {
   const applicable = library.filter((def) => isApplicable(def, ctx));
 
@@ -702,9 +860,7 @@ export function recommendTreatment(
   // compared or recommended. Named rather than dropped silently: an
   // administrator who narrowed a cost rule needs to see what it cost them.
   const unpriced = applicable.filter((def) => resolveCostRate(def, ctx) === null).map((def) => def.name);
-  const evaluations = applicable
-    .map((def) => evaluateTreatment(def, ctx))
-    .filter((e): e is TreatmentEvaluation => e !== null);
+  const evaluations = enumerateOptions(ctx, library, combinations).map((option) => evaluateOption(option, ctx));
 
   if (evaluations.length === 0) {
     return {

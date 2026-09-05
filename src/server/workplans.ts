@@ -12,12 +12,10 @@ import {
 } from "@/domain/waterline/optimization";
 import {
   WATERLINE_TREATMENTS,
-  isApplicable,
+  enumerateOptions,
   estimateTreatmentCost,
-  resolveTreatmentCost,
-  projectedConditionAfter,
   type AssetTreatmentContext,
-  type TreatmentDef,
+  type TreatmentOption,
 } from "@/domain/waterline/treatment";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { computeLcca, DEFAULT_LCCA_ASSUMPTIONS, EMERGENCY_COST_PREMIUM } from "@/domain/waterline/lcca";
@@ -40,7 +38,7 @@ export type GenerateWorkPlanInput = {
 type CandidateInfo = {
   assetId: string;
   assetCode: string;
-  treatment: TreatmentDef;
+  option: TreatmentOption;
   cost: number;
   conditionNow: number;
   projectedCondition: number;
@@ -164,30 +162,29 @@ async function buildCandidates(
       DEFAULT_LCCA_ASSUMPTIONS
     );
 
-    // Pick this asset's best treatment on life-cycle cost, then let the
-    // optimizer decide which assets get funded first.
+    // Pick this asset's best option on life-cycle cost, then let the optimizer
+    // decide which assets get funded first. An option is one treatment or a
+    // configured bundle; the arithmetic that combines a bundle's members lives
+    // in buildOption, so nothing here has to know which it is holding.
     let best: CandidateInfo | null = null;
-    for (const def of library) {
-      if (def.category === "Assess" || def.category === "Retire") continue;
-      if (!isApplicable(def, ctx)) continue;
+    for (const option of enumerateOptions(ctx, library)) {
+      if (option.category === "Assess" || option.category === "Retire") continue;
 
-      const priced = resolveTreatmentCost(def, ctx);
-      if (!priced) continue; // no rate covers this asset — not a candidate
-      const cost = priced.amount;
-      const projectedCondition = projectedConditionAfter(def, conditionScore);
-      const riskAfter = Math.max(1, pof * def.failureProbMultiplier) * cof;
-      const resetsCondition = def.conditionResetTo != null;
-      const deferredLife = remainingLife + def.expectedLifeExtension;
+      const cost = option.cost;
+      const projectedCondition = option.projectedCondition;
+      const riskAfter = Math.max(1, pof * option.failureProbMultiplier) * cof;
+      const resetsCondition = option.members.some((m) => m.conditionResetTo != null);
+      const deferredLife = remainingLife + option.expectedLifeExtension;
 
       const lcca = computeLcca(
         {
-          label: def.name,
+          label: option.label,
           initialCost: cost,
           // From the rate, not the treatment: a rate that prices the work
           // differently generally maintains it differently too.
-          annualMaintenanceCost: priced.rate.annualMaintenanceCost,
-          resultingPof: Math.max(1, pof * def.failureProbMultiplier),
-          serviceLifeYears: def.usefulLife,
+          annualMaintenanceCost: option.annualMaintenanceCost,
+          resultingPof: Math.max(1, pof * option.failureProbMultiplier),
+          serviceLifeYears: option.usefulLife,
           ...(resetsCondition
             ? {}
             : {
@@ -202,7 +199,7 @@ async function buildCandidates(
       const info: CandidateInfo = {
         assetId: asset.id,
         assetCode: asset.assetCode,
-        treatment: def,
+        option,
         cost,
         conditionNow: conditionScore,
         projectedCondition,
@@ -296,7 +293,12 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
         idx++;
         continue;
       }
-      const treatmentId = treatmentIdByName.get(c.treatment.name);
+      // One row, one treatment. `enumerateOptions` is called without
+      // combinations above, so every option here has exactly one member and
+      // this is exact. Storing a bundle needs the shared bundleId on
+      // WorkPlanItem, which is Phase 4's job — until then a multi-member
+      // option cannot arrive here.
+      const treatmentId = treatmentIdByName.get(c.option.members[0].name);
       if (!treatmentId) {
         idx++;
         continue;

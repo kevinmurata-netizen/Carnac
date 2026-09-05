@@ -298,9 +298,12 @@ model CombinationMember {
 }
 ```
 
-Plus `Treatment.standaloneAllowed Boolean @default(true)`. Abandonment and
-Replacement get it set false only if you want them *never* considered alone,
-which is unlikely — see §7.
+**No standalone flag.** An earlier draft proposed `Treatment.standaloneAllowed`,
+reading "abandonment and replacement would be standalone" as a restriction.
+Confirmed 2026-09-05 that it was a description of the usual case, not a rule:
+someone might still want to bundle either. So combinations are purely
+additive — defining a bundle never removes the option of applying its members
+on their own, and there is no flag to get backwards.
 
 A combination is a candidate when **every required member independently
 qualifies** under its own rules, and the combination's own rules (if any) pass.
@@ -399,10 +402,30 @@ Phases 0–4 can proceed on the recommendations already stated. These five chang
 what gets built and are worth settling first.
 
 1. **Expected Benefit is undefined in the formula.** It needs one number.
-   *Recommendation:* risk points removed (probability × consequence, before
-   minus after) — already computed, already explainable, already on every work
-   plan item. Alternative: expose it as a criticality-style formula so you can
-   write `riskReduction * 2 + conditionGain`. That is more power and more rope.
+   Open as of 2026-09-05; two things found while investigating it:
+
+   - **Risk points are blind to condition.** `riskReduction` moves only with
+     `failureProbMultiplier`; a treatment's `conditionResetTo` / `conditionGain`
+     never enters it. So Cathodic Protection (×0.65, +10) and Coating (×0.6,
+     reset to 65) score almost identically on risk, despite very different
+     outcomes. The current optimizer avoids this by scoring
+     `conditionImprovement` as its own objective at weight 0.30.
+   - **Criticality is already inside risk.** `riskScore = POF × COF`, and COF
+     is a weighted blend whose factors include Criticality itself
+     (`risk.ts` `combineFactors`). With no criticality formula active — which
+     is production today — the stored criticality score is a straight rescale
+     of that same COF. So `Criticality × RiskReduction` is roughly COF², and
+     large mains serving many customers would dominate for reasons no reader
+     could see.
+
+   *Recommendation:* Benefit = the existing weighted score with criticality's
+   weight zeroed, leaving condition improvement, risk reduction and life-cycle
+   saving. The formula keeps its shape, criticality is applied once and
+   explicitly, and `explainPriority` already decomposes every term.
+   Alternatives: risk points alone with the Criticality multiplier dropped
+   (correct but condition-blind), or a user-written formula in the criticality
+   expression language (most power, most rope, and the units are yours to keep
+   commensurable).
 
 2. **District = `AssetLocation.serviceArea`?** It is the only district-shaped
    field stored, and the map and work plan already treat it that way. If
@@ -417,12 +440,11 @@ what gets built and are worth settling first.
 4. **Life extension = max.** Stated as the safe default. If a bundle's whole
    point is additive life, this needs to be per-combination rather than global.
 
-5. **Should `standaloneAllowed` default false for anything?** Turning it off for
-   Replacement means the model can *only* propose replacement inside a
-   combination, which is probably not intended. My reading is that Abandonment
-   and Replacement are standalone-**only** — the inverse restriction: they must
-   never appear in a bundle. If so, the flag is better named
-   `combinableWithOthers` and defaults true, with those two set false.
+5. ~~**Should `standaloneAllowed` default false for anything?**~~ **Settled
+   2026-09-05: no flag at all.** "Abandonment and Replacement would be
+   standalone" described what is typical, not a restriction — someone might
+   still bundle either. Combinations are additive: defining a bundle never
+   removes the option of applying its members alone.
 
 ---
 
