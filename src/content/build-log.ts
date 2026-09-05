@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-05",
+    title: "Treatments you would do together, priced as one job",
+    summary:
+      "Settings → Treatment Combinations lets you say which treatments you would apply to one segment in one year — relining and cathodic protection, say — so the model can weigh the bundle instead of only the parts.",
+    changes: [
+      "A combination adds a way of doing the work; it never takes one away. Every treatment in a bundle is still offered on its own exactly as before.",
+      "Members qualify under their own rules, so a combination never re-states conditions its treatments already carry. A required member that does not qualify rules the bundle out; an optional one simply stays behind.",
+      "A bundle is priced as one job: each treatment's own cost, but mobilization charged once at its largest — one crew, one traffic plan, one bypass. That saving is the reason to bundle at all.",
+      "Condition takes the highest reset as a floor and adds any improvements on top; failure probabilities compound; added service life is the longest member's, not the sum, because a liner and anodes do not give fifty years plus fifteen.",
+      "In a work plan a bundle appears as one row per treatment, marked as belonging together, with the cost divided between them so the rows still add up.",
+      "The page warns when two members both reset condition, which usually means paying for both and counting only the better one.",
+    ],
+    note: "Needs its migration run before deploying. Nothing changes until you define a combination — with none, the model considers each treatment on its own exactly as it did before. Worth knowing before you define one: a bundle can change what is recommended a great deal, and on our test data it changed 80 of 222 recommendations. It does not currently affect generated work plans at all; the reason is written up in the plan document, and it is the next thing to settle.",
+  },
+  {
+    date: "2026-09-05",
     title: "A treatment can cost different amounts in different places",
     summary:
       "Replacement can now cost $340 a foot in one district and $290 in another, without inventing a second Replacement. A treatment carries a list of prices, each with a rule saying when it applies.",

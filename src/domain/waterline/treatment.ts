@@ -556,15 +556,19 @@ export type TreatmentOption = {
   usefulLife: number;
 };
 
-/** A bundle an administrator has defined. Phase 4 stores these; Phase 3 only
- * needs the shape so the enumeration is written once. */
+/** A bundle an administrator has defined. */
 export type CombinationDef = {
   id: string;
   name: string;
   description?: string;
   enabled: boolean;
-  /** Treatment names. Every one must independently qualify and be priceable. */
-  members: string[];
+  /** Treatment names, resolved from ids by the loader so the domain never
+   * handles database identifiers. */
+  members: Array<{ treatment: string; required: boolean }>;
+  /** An extra gate on the bundle as a whole. Usually empty — a combination
+   * should not re-state conditions its members already carry. */
+  rules?: Rule[];
+  qualifyMode?: QualifyMode;
 };
 
 /** Which category a bundle reports as. The most committing member wins, so a
@@ -662,16 +666,63 @@ export function enumerateOptions(
 
   for (const combo of combinations) {
     if (!combo.enabled) continue;
-    // Every member must independently qualify. Rule authorship stays in one
-    // place: a combination never re-states conditions its members already
-    // carry.
-    const members = combo.members.map((name) => applicable.find((d) => d.name === name));
-    if (members.length < 2 || members.some((m) => !m)) continue;
-    const option = buildOption(`combo:${combo.id}`, combo.name, members as TreatmentDef[], ctx);
+
+    // Members qualify under their own rules. Rule authorship stays in one
+    // place: a combination never re-states conditions its members carry.
+    // A required member that does not qualify rules the bundle out; an
+    // optional one simply stays behind.
+    const members: TreatmentDef[] = [];
+    let blocked = false;
+    for (const member of combo.members) {
+      const def = applicable.find((d) => d.name === member.treatment);
+      if (def) members.push(def);
+      else if (member.required) {
+        blocked = true;
+        break;
+      }
+    }
+    // A bundle that has shrunk to one treatment is just that treatment, which
+    // is already on the list — offering it twice under a different name would
+    // only duplicate a row in every plan.
+    if (blocked || members.length < 2) continue;
+
+    if (combo.rules?.length && !qualifiesUnderRules(combo.rules, combo.qualifyMode ?? "all", toDecisionInput(ctx)).pass) {
+      continue;
+    }
+
+    const option = buildOption(`combo:${combo.id}`, combo.name, members, ctx);
     if (option) options.push(option);
   }
 
   return options;
+}
+
+/**
+ * How an option's cost divides between its members, for storage as one work
+ * plan row each.
+ *
+ * Each member carries its own unit component; the single mobilization the
+ * bundle was charged goes to the member whose rate set it. The shares are
+ * then adjusted so they sum to exactly the option's cost — a plan whose rows
+ * do not add up to its total is worse than one that is slightly arbitrary
+ * about which row absorbs a rounding penny.
+ */
+export function splitOptionCost(option: TreatmentOption, ctx: AssetTreatmentContext): number[] {
+  const factor = diameterCostFactor(ctx.diameterInches);
+  const units = option.rates.map((r) =>
+    r.costUnit === "per LF" ? r.unitCost * factor * (ctx.lengthFt ?? 0) : r.unitCost * factor
+  );
+
+  const maxMob = Math.max(...option.rates.map((r) => r.mobilizationCost));
+  const mobIndex = option.rates.findIndex((r) => r.mobilizationCost === maxMob);
+
+  const shares = units.map((u, i) => Math.round(u + (i === mobIndex ? maxMob : 0)));
+  const drift = option.cost - shares.reduce((sum, s) => sum + s, 0);
+  if (drift !== 0) {
+    const largest = shares.indexOf(Math.max(...shares));
+    shares[largest] += drift;
+  }
+  return shares;
 }
 
 export type AssetTreatmentContext = {

@@ -10,6 +10,7 @@ import {
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { createStandardRate } from "@/server/cost-rates";
+import { loadCombinations } from "@/server/combinations";
 
 /**
  * Idempotently write the treatment library, and the rules that decide what
@@ -176,7 +177,11 @@ export async function getRecommendationForAsset(
 ): Promise<Recommendation | null> {
   const contexts = await buildContexts(organizationId, assetId);
   if (contexts.length === 0) return null;
-  return recommendTreatment(contexts[0].ctx, await loadTreatmentDefs(organizationId));
+  const [library, combinations] = await Promise.all([
+    loadTreatmentDefs(organizationId),
+    loadCombinations(organizationId),
+  ]);
+  return recommendTreatment(contexts[0].ctx, library, combinations);
 }
 
 export type NetworkRecommendationRow = {
@@ -199,12 +204,15 @@ export type NetworkRecommendations = {
 
 export async function getNetworkRecommendations(organizationId: string): Promise<NetworkRecommendations> {
   const contexts = await buildContexts(organizationId);
-  const library = await loadTreatmentDefs(organizationId);
+  const [library, combinations] = await Promise.all([
+    loadTreatmentDefs(organizationId),
+    loadCombinations(organizationId),
+  ]);
   const rows: NetworkRecommendationRow[] = [];
   let noActionCount = 0;
 
   for (const { asset, ctx } of contexts) {
-    const rec = recommendTreatment(ctx, library);
+    const rec = recommendTreatment(ctx, library, combinations);
     if (!rec.recommended) {
       noActionCount++;
       continue;

@@ -209,6 +209,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
       "Named conditions that decide whether an asset qualifies for a treatment. Written once, attached to as many treatments as they apply to.",
   },
   {
+    key: "treatment-combinations",
+    href: "/settings/treatment-combinations",
+    tab: "modeling",
+    title: "Treatment Combinations",
+    icon: Layers,
+    detail:
+      "Treatments you would apply together on one asset in one year, so the model can price the bundle instead of only the parts.",
+  },
+  {
     key: "deterioration-models",
     href: "/settings/deterioration-models",
     tab: "modeling",

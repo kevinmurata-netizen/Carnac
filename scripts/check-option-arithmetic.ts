@@ -8,6 +8,7 @@ import {
   WATERLINE_TREATMENTS,
   buildOption,
   priceWithRate,
+  splitOptionCost,
   type AssetTreatmentContext,
   type CostRate,
 } from "../src/domain/waterline/treatment";
@@ -78,6 +79,30 @@ check("two cost reasons, one per member", combo.costReasons.length, 2);
 // Condition cap.
 const nearFull = buildOption("combo:y", "y", [relining, cathodic], { ...ctx, conditionScore: 99 })!;
 check("condition capped at 100", nearFull.projectedCondition <= 100, true);
+
+// --- splitting a bundle's cost across its work plan rows -------------------
+// Each member carries its own unit component; the one mobilization the bundle
+// was charged goes to the member whose rate set it. A plan whose rows do not
+// add up to its total would be worse than one that is slightly arbitrary about
+// which row absorbs a rounding penny, so the shares are reconciled.
+const shares = splitOptionCost(combo, ctx);
+check("one share per member", shares.length, 2);
+check("shares sum to exactly the bundle cost", shares.reduce((a, b) => a + b, 0), combo.cost);
+check("relining carries its unit cost plus the mobilization", shares[0], 185 * 1000 + 30000);
+check("cathodic carries its unit cost alone", shares[1], 35 * 1000);
+
+const singleShares = splitOptionCost(single, ctx);
+check("a single treatment's share is the whole cost", singleShares, [single.cost]);
+
+// Rounding: an odd length makes every component fractional, and the shares
+// must still reconcile to the total exactly.
+const odd = { ...ctx, lengthFt: 1337.7, diameterInches: 11 };
+const oddCombo = buildOption("combo:z", "z", [relining, cathodic], odd)!;
+check(
+  "shares reconcile when every component is fractional",
+  splitOptionCost(oddCombo, odd).reduce((a, b) => a + b, 0),
+  oddCombo.cost
+);
 
 for (const [label, ok, detail] of results) console.log(`${ok ? "PASS" : "FAIL"}  ${label}${ok ? "" : ` — ${detail}`}`);
 if (results.some(([, ok]) => !ok)) process.exitCode = 1;

@@ -14,6 +14,7 @@ import {
   WATERLINE_TREATMENTS,
   enumerateOptions,
   estimateTreatmentCost,
+  splitOptionCost,
   type AssetTreatmentContext,
   type TreatmentOption,
 } from "@/domain/waterline/treatment";
@@ -23,6 +24,7 @@ import { curveFor } from "@/domain/waterline/scenario";
 import { effectiveAgeForCondition, evaluateCurve } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
+import { loadCombinations } from "@/server/combinations";
 import { getMaterialCurves } from "@/server/settings";
 
 export type GenerateWorkPlanInput = {
@@ -48,6 +50,8 @@ type CandidateInfo = {
   criticality: number;
   serviceArea: string | null;
   material: string | null;
+  /** Kept so the cost can be split between a bundle's members at write time. */
+  ctx: AssetTreatmentContext;
 };
 
 const TEN_YEARS_MS = 10 * 365.25 * 24 * 60 * 60 * 1000;
@@ -89,7 +93,10 @@ async function buildCandidates(
 ): Promise<CandidateInfo[]> {
   const curves = await getMaterialCurves(organizationId);
   const since = new Date(Date.now() - TEN_YEARS_MS);
-  const library = await loadTreatmentDefs(organizationId);
+  const [library, combinations] = await Promise.all([
+    loadTreatmentDefs(organizationId),
+    loadCombinations(organizationId),
+  ]);
   const assets = await prisma.asset.findMany({
     where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
     include: {
@@ -167,7 +174,7 @@ async function buildCandidates(
     // configured bundle; the arithmetic that combines a bundle's members lives
     // in buildOption, so nothing here has to know which it is holding.
     let best: CandidateInfo | null = null;
-    for (const option of enumerateOptions(ctx, library)) {
+    for (const option of enumerateOptions(ctx, library, combinations)) {
       if (option.category === "Assess" || option.category === "Retire") continue;
 
       const cost = option.cost;
@@ -210,6 +217,7 @@ async function buildCandidates(
           scenarioCriticality?.get(asset.id) ?? asset.criticalityScores[0]?.score ?? 50,
         serviceArea: asset.location?.serviceArea ?? null,
         material: ctx.material,
+        ctx,
       };
 
       if (!best || info.lccSavings > best.lccSavings) best = info;
@@ -267,6 +275,8 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
     workPlanId: string;
     assetId: string;
     treatmentId: string;
+    bundleId: string | null;
+    bundleName: string | null;
     year: number;
     estimatedCost: number;
     expectedBenefit: object;
@@ -293,13 +303,11 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
         idx++;
         continue;
       }
-      // One row, one treatment. `enumerateOptions` is called without
-      // combinations above, so every option here has exactly one member and
-      // this is exact. Storing a bundle needs the shared bundleId on
-      // WorkPlanItem, which is Phase 4's job — until then a multi-member
-      // option cannot arrive here.
-      const treatmentId = treatmentIdByName.get(c.option.members[0].name);
-      if (!treatmentId) {
+      // One row per treatment, so treatmentId stays a real foreign key and
+      // every existing read path keeps working. A bundle becomes several rows
+      // sharing a bundleId, which is what marks them as one decision.
+      const treatmentIds = c.option.members.map((m) => treatmentIdByName.get(m.name));
+      if (treatmentIds.some((id) => !id)) {
         idx++;
         continue;
       }
@@ -313,12 +321,21 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
           ? c.conditionNow
           : evaluateCurve(curve, effectiveAgeForCondition(curve, c.conditionNow) + i);
 
+      // A bundle's cost divides between its members so the rows add up to the
+      // option's total exactly; a single treatment gets the whole amount.
+      const isBundle = c.option.members.length > 1;
+      const shares = isBundle ? splitOptionCost(c.option, c.ctx) : [c.cost];
+      const bundleId = isBundle ? `${workPlan.id}:${c.assetId}:${c.option.id}` : null;
+
+      c.option.members.forEach((member, memberIndex) => {
       itemsToCreate.push({
         workPlanId: workPlan.id,
         assetId: c.assetId,
-        treatmentId,
+        treatmentId: treatmentIds[memberIndex]!,
+        bundleId,
+        bundleName: isBundle ? c.option.label : null,
         year,
-        estimatedCost: c.cost,
+        estimatedCost: shares[memberIndex],
         expectedBenefit: {
           conditionImprovement: Math.round((c.projectedCondition - c.conditionNow) * 10) / 10,
           riskReduction: Math.round((c.riskNow - c.riskAfter) * 10) / 10,
@@ -331,12 +348,18 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
         },
         reasonExplanation: [
           explainPriority(candidate, weights),
+          isBundle
+            ? `Part of ${c.option.label}, applied together as ${c.option.members.map((m) => m.name).join(" + ")} at a combined $${c.cost.toLocaleString("en-US")}.`
+            : "",
           `Condition ${c.conditionNow} → ${c.projectedCondition}.`,
           `Risk ${c.riskNow} → ${c.riskAfter}.`,
           `Life-cycle saving vs doing nothing: $${Math.round(c.lccSavings).toLocaleString("en-US")}.`,
-        ].join(" "),
+        ]
+          .filter(Boolean)
+          .join(" "),
         fundingSource: "Capital Program",
         status: WorkPlanItemStatus.PLANNED,
+      });
       });
 
       remaining.splice(idx, 1);

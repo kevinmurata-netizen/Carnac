@@ -23,6 +23,7 @@ import { writeFileSync } from "node:fs";
 import { prisma } from "../src/lib/prisma";
 import { buildContexts } from "../src/server/treatments";
 import { loadTreatmentDefs } from "../src/server/treatment-config";
+import { loadCombinations } from "../src/server/combinations";
 import { isApplicable, estimateTreatmentCost, recommendTreatment } from "../src/domain/waterline/treatment";
 
 type Matrix = {
@@ -54,9 +55,10 @@ async function main() {
   const org = await prisma.organization.findFirst({ select: { id: true, name: true } });
   if (!org) throw new Error("No organization found");
 
-  const [contexts, library] = await Promise.all([
+  const [contexts, library, combinations] = await Promise.all([
     buildContexts(org.id),
     loadTreatmentDefs(org.id),
+    loadCombinations(org.id),
   ]);
 
   const qualifies: Record<string, string[]> = {};
@@ -76,7 +78,7 @@ async function main() {
       if (cost != null) costs[`${asset.assetCode}|${def.name}`] = cost;
     }
 
-    const rec = recommendTreatment(ctx, library);
+    const rec = recommendTreatment(ctx, library, combinations);
     if (rec.recommended) {
       recommended[asset.assetCode] = {
         treatment: rec.recommended.name,
