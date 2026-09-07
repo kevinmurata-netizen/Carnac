@@ -6,7 +6,13 @@ import {
   type TreatmentCategory,
   type CostRate,
 } from "@/domain/waterline/treatment";
-import { countConditions, type QualifyMode, type Rule } from "@/domain/waterline/decision-tree";
+import {
+  countConditions,
+  isValidRuleNode,
+  type QualifyMode,
+  type Rule,
+  type RuleGroup,
+} from "@/domain/waterline/decision-tree";
 import { parseRules } from "@/server/rules";
 import { createStandardRate } from "@/server/cost-rates";
 
@@ -130,6 +136,7 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
     usefulLife: row.usefulLife ?? 0,
     implementationConstraints: applicability.constraints ?? undefined,
     rules: parseRules(row.ruleLinks.map((l) => l.rule)),
+    ruleTree: parseRuleTree(row.ruleTree),
     costRates: toCostRates(row.costRates),
     qualifyMode: (row.qualifyMode === "any" ? "any" : "all") as QualifyMode,
   };
@@ -329,4 +336,12 @@ export async function deleteTreatment(organizationId: string, id: string) {
   await prisma.treatmentRule.deleteMany({ where: { treatmentId: id } });
   await prisma.treatmentCost.deleteMany({ where: { treatmentId: id } });
   await prisma.treatment.delete({ where: { id } });
+}
+
+/** Stored as JSON, so validated on the way out rather than trusted. An
+ * unreadable tree is treated as absent, which falls back to the flat reading
+ * — permissive and visible, rather than silently excluding every asset. */
+function parseRuleTree(value: unknown): RuleGroup | undefined {
+  if (!isValidRuleNode(value)) return undefined;
+  return (value as RuleGroup).kind === "group" ? (value as RuleGroup) : undefined;
 }

@@ -12,6 +12,7 @@
 import { ASSET_LABEL } from "@/config/labels";
 import {
   qualifiesUnderRules,
+  ruleTreeFromFlat,
   evaluateTree,
   type QualifyMode,
   type DecisionInput,
@@ -21,6 +22,7 @@ import {
   type Rule,
   type RuleEffect,
   type RuleOutcome,
+  type RuleGroup,
 } from "./decision-tree";
 
 export type TreatmentCategory = "Assess" | "Repair" | "Rehabilitate" | "Renew" | "Retire";
@@ -60,7 +62,10 @@ export type TreatmentDef = {
   /** Every rule attached to this treatment. Empty means no gate at all, so
    * the treatment is considered for any inspected asset. */
   rules?: Rule[];
-  /** Whether an asset must clear any one allow rule or all of them. Blocks
+  /** How the allow rules are arranged: groups joined by AND or OR with rules
+   * at the leaves. Absent means the flat reading below still applies. */
+  ruleTree?: RuleGroup;
+  /** Superseded by ruleTree; read only when no tree is stored. Blocks
    * ignore this and always apply. */
   qualifyMode?: QualifyMode;
   /** Set for treatments loaded from the database. */
@@ -686,7 +691,10 @@ export function enumerateOptions(
     // only duplicate a row in every plan.
     if (blocked || members.length < 2) continue;
 
-    if (combo.rules?.length && !qualifiesUnderRules(combo.rules, combo.qualifyMode ?? "all", toDecisionInput(ctx)).pass) {
+    if (
+      combo.rules?.length &&
+      !qualifiesUnderRules(combo.rules, ruleTreeFromFlat(combo.rules, combo.qualifyMode ?? "all"), toDecisionInput(ctx)).pass
+    ) {
       continue;
     }
 
@@ -768,7 +776,11 @@ export function isApplicable(def: TreatmentDef, ctx: AssetTreatmentContext): boo
 
 /** The same decision, with the trace that produced it. */
 export function explainApplicability(def: TreatmentDef, ctx: AssetTreatmentContext): RuleOutcome {
-  return qualifiesUnderRules(def.rules ?? [], def.qualifyMode ?? "all", toDecisionInput(ctx));
+  const rules = def.rules ?? [];
+  // A treatment with no stored arrangement falls back to the flat reading, so
+  // the seed library and a fresh install still evaluate a tree.
+  const tree = def.ruleTree ?? ruleTreeFromFlat(rules, def.qualifyMode ?? "all");
+  return qualifiesUnderRules(rules, tree, toDecisionInput(ctx));
 }
 
 /** Flatten a treatment context into the shape a decision tree tests. */

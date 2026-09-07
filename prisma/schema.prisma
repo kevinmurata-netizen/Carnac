@@ -631,12 +631,25 @@ model Treatment {
   annualMaintenanceCost  Float?
   usefulLife             Int?
 
-  /// How this treatment's "allow" rules combine: "any" (each rule is an
-  /// alternative route to qualifying) or "all" (each is a gate every asset
-  /// must clear). Block rules ignore this — they are always AND-ed.
-  /// Previously a key inside `applicability`; a column because it decides
-  /// which assets qualify and deserves to be visible in the schema.
+  /// Superseded by `ruleTree`, which can express the same thing and more.
+  /// Kept for one release so the conversion can be checked and reverted;
+  /// dropped in Phase 6.
   qualifyMode String @default("any")
+
+  /// How this treatment's "allow" rules combine, as a tree: groups joined by
+  /// AND or OR, with rules at the leaves. A flat list and a single any/all
+  /// switch could not say "condition AND (district OR pressure zone)", which
+  /// is the shape real policy takes.
+  ///
+  /// Block rules are deliberately NOT in here. They are absolute — one match
+  /// refuses the treatment whatever else holds — and a block inside an OR
+  /// group has no coherent reading: "refuse this, or allow that" does not
+  /// resolve. They stay attached through TreatmentRuleLink and are applied
+  /// before the tree is consulted.
+  ///
+  /// Null means no tree has been written, in which case the loader synthesises
+  /// one from the attached allow rules so the engine always evaluates a tree.
+  ruleTree Json?
 
   costs                  TreatmentCost[]
   costRates              TreatmentCostRate[]

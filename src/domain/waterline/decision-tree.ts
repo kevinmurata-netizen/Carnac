@@ -359,6 +359,135 @@ export function qualifies(
   return { pass, results };
 }
 
+// ---------------------------------------------------------------------------
+// Arranging rules into a tree
+// ---------------------------------------------------------------------------
+//
+// A flat list of rules plus one any/all switch cannot say "condition AND
+// (district OR pressure zone)", which is the shape real policy takes. So the
+// allow rules on a treatment are arranged in groups joined by AND or OR, with
+// rules at the leaves — the same structure the conditions inside a single rule
+// already use, one level up.
+//
+// Blocks are deliberately absent. They are absolute, and a block inside an OR
+// group has no coherent reading: "refuse this, or allow that" does not
+// resolve. They are applied before the tree is consulted.
+
+export type RuleRef = { kind: "rule"; id: string; ruleId: string };
+
+export type RuleGroup = { kind: "group"; id: string; join: Join; children: RuleNode[] };
+
+export type RuleNode = RuleRef | RuleGroup;
+
+export function emptyRuleGroup(join: Join = "AND"): RuleGroup {
+  return { kind: "group", id: newId(), join, children: [] };
+}
+
+export function newRuleRef(ruleId: string): RuleRef {
+  return { kind: "rule", id: newId(), ruleId };
+}
+
+export function isValidRuleNode(value: unknown, depth = 0): value is RuleNode {
+  if (depth > 32 || !value || typeof value !== "object") return false;
+  const node = value as Record<string, unknown>;
+
+  if (node.kind === "rule") return typeof node.id === "string" && typeof node.ruleId === "string";
+
+  if (node.kind === "group") {
+    return (
+      typeof node.id === "string" &&
+      (node.join === "AND" || node.join === "OR") &&
+      Array.isArray(node.children) &&
+      node.children.every((c) => isValidRuleNode(c, depth + 1))
+    );
+  }
+
+  return false;
+}
+
+/** Every rule id the tree references, in order, deduplicated. */
+export function ruleIdsIn(node: RuleNode): string[] {
+  const out: string[] = [];
+  const walk = (n: RuleNode) => {
+    if (n.kind === "rule") {
+      if (!out.includes(n.ruleId)) out.push(n.ruleId);
+      return;
+    }
+    n.children.forEach(walk);
+  };
+  walk(node);
+  return out;
+}
+
+/** Structural editing. Every operation returns a new tree. */
+export function addToRuleGroup(root: RuleGroup, groupId: string, child: RuleNode): RuleGroup {
+  const walk = (n: RuleNode): RuleNode =>
+    n.kind === "group"
+      ? { ...n, children: n.id === groupId ? [...n.children, child] : n.children.map(walk) }
+      : n;
+  return walk(root) as RuleGroup;
+}
+
+export function removeRuleNode(root: RuleGroup, nodeId: string): RuleGroup {
+  const walk = (n: RuleNode): RuleNode =>
+    n.kind === "group" ? { ...n, children: n.children.filter((c) => c.id !== nodeId).map(walk) } : n;
+  return walk(root) as RuleGroup;
+}
+
+export function setRuleGroupJoin(root: RuleGroup, groupId: string, join: Join): RuleGroup {
+  const walk = (n: RuleNode): RuleNode =>
+    n.kind === "group"
+      ? { ...n, join: n.id === groupId ? join : n.join, children: n.children.map(walk) }
+      : n;
+  return walk(root) as RuleGroup;
+}
+
+export type RuleTreeTrace = {
+  kind: "rule" | "group";
+  pass: boolean;
+  /** Rule name for a leaf, "All of" / "Any of" for a group. */
+  label: string;
+  ruleId?: string;
+  children?: RuleTreeTrace[];
+};
+
+/**
+ * Evaluates the tree, with a trace of every branch taken.
+ *
+ * An empty group passes, matching what an empty group of conditions already
+ * does inside a rule: a half-built arrangement is permissive rather than
+ * silently excluding every asset. A leaf naming a rule that no longer exists,
+ * or a disabled one, is skipped rather than failed — deleting a rule should
+ * not quietly invert a treatment.
+ */
+export function evaluateRuleTree(
+  node: RuleNode,
+  rulesById: Map<string, Rule>,
+  input: DecisionInput,
+  depth = 0
+): RuleTreeTrace {
+  if (depth > 32) return { kind: "group", pass: true, label: "stopped: nested too deeply" };
+
+  if (node.kind === "rule") {
+    const rule = rulesById.get(node.ruleId);
+    if (!rule || !rule.enabled) {
+      return { kind: "rule", pass: true, label: rule?.name ?? "a rule that no longer exists", ruleId: node.ruleId };
+    }
+    return {
+      kind: "rule",
+      pass: evaluateTree(rule, input).pass,
+      label: rule.name,
+      ruleId: node.ruleId,
+    };
+  }
+
+  const children = node.children.map((c) => evaluateRuleTree(c, rulesById, input, depth + 1));
+  const pass =
+    children.length === 0 ? true : node.join === "AND" ? children.every((c) => c.pass) : children.some((c) => c.pass);
+
+  return { kind: "group", pass, label: node.join === "AND" ? "All of" : "Any of", children };
+}
+
 export type RuleOutcome = {
   pass: boolean;
   /** The block rule that disqualified the asset, if one did. Named so the
@@ -366,6 +495,9 @@ export type RuleOutcome = {
   blockedBy: Rule | null;
   /** Every rule that took part, with its trace. Disabled rules are absent. */
   results: Array<{ rule: Rule; outcome: TreeOutcome }>;
+  /** How the arrangement of allow rules evaluated. Null when a block refused
+   * the treatment before the tree was reached. */
+  treeTrace: RuleTreeTrace | null;
 };
 
 /**
@@ -381,26 +513,44 @@ export type RuleOutcome = {
  * makes a half-built configuration permissive rather than silently excluding
  * every asset — the same choice an empty group already makes.
  */
-export function qualifiesUnderRules(rules: Rule[], mode: QualifyMode, input: DecisionInput): RuleOutcome {
+export function qualifiesUnderRules(
+  rules: Rule[],
+  tree: RuleGroup,
+  input: DecisionInput
+): RuleOutcome {
   const active = rules.filter((r) => r.enabled);
   const results: RuleOutcome["results"] = [];
 
+  // Blocks first and always: one match refuses the treatment whatever the tree
+  // says, which is why they are not in it.
   for (const rule of active.filter((r) => r.effect === "block")) {
     const outcome = evaluateTree(rule, input);
     results.push({ rule, outcome });
-    if (outcome.pass) return { pass: false, blockedBy: rule, results };
+    if (outcome.pass) return { pass: false, blockedBy: rule, results, treeTrace: null };
   }
 
-  const allows = active.filter((r) => r.effect === "allow");
-  if (allows.length === 0) return { pass: true, blockedBy: null, results };
+  const byId = new Map(rules.map((r) => [r.id, r]));
+  const treeTrace = evaluateRuleTree(tree, byId, input);
 
-  for (const rule of allows) results.push({ rule, outcome: evaluateTree(rule, input) });
+  for (const rule of active.filter((r) => r.effect === "allow")) {
+    results.push({ rule, outcome: evaluateTree(rule, input) });
+  }
 
-  const allowResults = results.filter((r) => r.rule.effect === "allow");
-  const pass =
-    mode === "all" ? allowResults.every((r) => r.outcome.pass) : allowResults.some((r) => r.outcome.pass);
+  return { pass: treeTrace.pass, blockedBy: null, results, treeTrace };
+}
 
-  return { pass, blockedBy: null, results };
+/** The tree a flat set of allow rules amounts to: one group, joined the way
+ * the treatment says. Used for the seed library and anywhere a treatment has
+ * no tree stored yet, so the engine always evaluates a tree. */
+export function ruleTreeFromFlat(rules: Rule[], mode: QualifyMode): RuleGroup {
+  return {
+    kind: "group",
+    id: "synthesised-root",
+    join: mode === "any" ? "OR" : "AND",
+    children: rules
+      .filter((r) => r.effect === "allow")
+      .map((r) => ({ kind: "rule" as const, id: `n-${r.id}`, ruleId: r.id })),
+  };
 }
 
 export function countConditions(node: TreeNode): number {

@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-07",
+    title: "Arrange the rules that decide when a treatment can be used",
+    summary:
+      "Rules on a treatment were a flat list with one switch: match all of them, or any of them. They can now be grouped, so \"the right condition, and either the right district or the right pressure zone\" is something you can actually say.",
+    changes: [
+      "When it can be used is now drawn as a flow chart. Groups hang off a rail, each set to Match all of or Match any of, with rules inside them — so the shape of the logic is visible rather than inferred.",
+      "Rules are added from a searchable dropdown instead of a list of every rule with a tick box beside it.",
+      "Click any rule in the chart to open the page where it is written.",
+      "Blocking rules stay in their own list below, and still apply whatever the arrangement says. A block inside an \"any of\" group has no clear meaning — \"refuse this, or allow that\" does not resolve — so they are kept out of it deliberately.",
+      "An empty group lets everything through, matching how an empty group of conditions inside a single rule already behaves. A rule that has been deleted is skipped rather than treated as failed, so removing a rule never silently narrows a treatment.",
+    ],
+    note: "Needs its migration run before deploying. Every treatment converts to a single group joined the way its old setting said — all becomes Match all, any becomes Match any — which is exactly equivalent, so which assets qualify does not move. That was checked across the whole network before and after.",
+  },
+  {
+    date: "2026-09-07",
     title: "Treatment pages, rearranged",
     summary:
       "Costs get their own card, a treatment's page reads top to bottom in the order you would explain it, and every section folds away.",
