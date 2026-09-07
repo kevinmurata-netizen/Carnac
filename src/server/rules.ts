@@ -4,7 +4,11 @@ import {
   countConditions,
   describeNode,
   emptyGroup,
+  isValidRuleNode,
+  ruleIdsIn,
+  ruleTreeFromFlat,
   type Group,
+  type RuleGroup,
   type Rule,
   type RuleEffect,
 } from "@/domain/waterline/decision-tree";
@@ -207,6 +211,11 @@ export type TreatmentRuleSelection = {
   treatmentName: string;
   qualifyMode: "any" | "all";
   attached: RuleSummary[];
+  /** How the allow rules are arranged. Synthesised from the flat list when
+   * nothing is stored, so the editor always has a tree to show. */
+  tree: RuleGroup;
+  /** Blocks are absolute and sit outside the tree, so they are listed apart. */
+  blocks: RuleSummary[];
 };
 
 export async function getTreatmentRules(
@@ -223,11 +232,24 @@ export async function getTreatmentRules(
   });
   if (!treatment) return null;
 
+  const attached = treatment.ruleLinks
+    .map((l) => toSummary(l.rule))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const mode = treatment.qualifyMode === "any" ? ("any" as const) : ("all" as const);
+
+  const stored = treatment.ruleTree;
+  const tree =
+    isValidRuleNode(stored) && (stored as RuleGroup).kind === "group"
+      ? (stored as RuleGroup)
+      : ruleTreeFromFlat(parseRules(treatment.ruleLinks.map((l) => l.rule)), mode);
+
   return {
     treatmentId: treatment.id,
     treatmentName: treatment.name,
-    qualifyMode: treatment.qualifyMode === "any" ? "any" : "all",
-    attached: treatment.ruleLinks.map((l) => toSummary(l.rule)).sort((a, b) => a.name.localeCompare(b.name)),
+    qualifyMode: mode,
+    attached,
+    tree,
+    blocks: attached.filter((r) => r.effect === "block"),
   };
 }
 
@@ -237,6 +259,54 @@ export async function getTreatmentRules(
  * identical: there is no partial state where a detached rule still gates
  * recommendations.
  */
+/**
+ * Save the arrangement of allow rules, plus whichever blocks are attached.
+ *
+ * The tree is the source of truth for which allow rules gate the treatment;
+ * the links are rewritten from it so "Used by" on the rules page cannot drift
+ * from what actually applies. Blocks are passed separately because they are
+ * not in the tree.
+ */
+export async function setTreatmentRuleTree(
+  organizationId: string,
+  treatmentId: string,
+  tree: RuleGroup,
+  blockRuleIds: string[]
+) {
+  const treatment = await prisma.treatment.findFirst({
+    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
+    select: { id: true },
+  });
+  if (!treatment) throw new Error("That treatment no longer exists");
+  if (!isValidRuleNode(tree) || tree.kind !== "group") throw new Error("That arrangement is malformed and was not saved");
+
+  const referenced = ruleIdsIn(tree);
+  const all = [...new Set([...referenced, ...blockRuleIds])];
+
+  // Checked against this organization rather than trusted, so a crafted
+  // request cannot gate on another tenant's rule.
+  const valid = await prisma.rule.findMany({
+    where: { id: { in: all }, organizationId },
+    select: { id: true, effect: true },
+  });
+  if (valid.length !== all.length) throw new Error("One of those rules no longer exists");
+
+  const blocksInTree = valid.filter((r) => r.effect === "block" && referenced.includes(r.id));
+  if (blocksInTree.length > 0) {
+    throw new Error(
+      "A blocking rule cannot go inside the arrangement. Blocks always apply, so putting one inside an \"any of\" group would have no clear meaning."
+    );
+  }
+
+  await prisma.$transaction([
+    prisma.treatmentRuleLink.deleteMany({ where: { treatmentId } }),
+    ...(all.length > 0
+      ? [prisma.treatmentRuleLink.createMany({ data: all.map((ruleId) => ({ treatmentId, ruleId })) })]
+      : []),
+    prisma.treatment.update({ where: { id: treatmentId }, data: { ruleTree: tree as object } }),
+  ]);
+}
+
 export async function setTreatmentRules(
   organizationId: string,
   treatmentId: string,

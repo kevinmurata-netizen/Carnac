@@ -2,57 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
-import { setTreatmentRules } from "@/server/rules";
+import { setTreatmentRuleTree } from "@/server/rules";
+import { ruleIdsIn, type RuleGroup } from "@/domain/waterline/decision-tree";
 import { setTreatmentCosts, type CostRateInput } from "@/server/cost-rates";
 
 /**
  * Which rules gate a treatment decides what the model recommends, so it
  * carries the same bar as editing the treatment itself.
  */
-export async function setTreatmentRulesAction(
-  treatmentId: string,
-  ruleIds: string[],
-  mode: "any" | "all"
-): Promise<{ ok: boolean; message: string }> {
-  try {
-    const session = await requireCardWrite(
-      "/settings/treatments",
-      "Only an Administrator can change which rules gate a treatment"
-    );
-
-    await setTreatmentRules(
-      session.user.organizationId,
-      treatmentId,
-      Array.isArray(ruleIds) ? ruleIds : [],
-      mode === "any" ? "any" : "all"
-    );
-
-    // Recommendations, costs, work plans and scenarios all run through
-    // isApplicable, so all of them change the moment an attachment does.
-    for (const path of [
-      "/settings/treatments",
-      `/settings/treatments/${treatmentId}`,
-      "/settings/decision-trees",
-      "/treatment-planning",
-      "/work-plan",
-      "/scenario-planning",
-      "/model-results",
-      "/assets",
-    ]) {
-      revalidatePath(path);
-    }
-
-    return {
-      ok: true,
-      message:
-        ruleIds.length === 0
-          ? "Saved. With no rules attached, this treatment is considered for every inspected asset."
-          : `Saved. ${ruleIds.length} rule${ruleIds.length === 1 ? "" : "s"} now gate this treatment.`,
-    };
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Could not save" };
-  }
-}
+/* Superseded by setTreatmentRuleTreeAction. */
 
 /**
  * What a treatment costs, and which rule picks each price. Same bar as editing
@@ -91,6 +49,54 @@ export async function setTreatmentCostsAction(
         priced === 0
           ? "Saved. One price for every asset."
           : `Saved. ${priced} rule-selected price${priced === 1 ? "" : "s"}, plus the fallback.`,
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not save" };
+  }
+}
+
+/**
+ * How the allow rules are arranged, plus which blocks apply. Same bar as
+ * editing the treatment: the arrangement decides what the model proposes.
+ */
+export async function setTreatmentRuleTreeAction(
+  treatmentId: string,
+  tree: RuleGroup,
+  blockIds: string[]
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const session = await requireCardWrite(
+      "/settings/treatments",
+      "Only an Administrator can change when a treatment can be used"
+    );
+
+    await setTreatmentRuleTree(
+      session.user.organizationId,
+      treatmentId,
+      tree,
+      Array.isArray(blockIds) ? blockIds : []
+    );
+
+    for (const path of [
+      "/settings/treatments",
+      `/settings/treatments/${treatmentId}`,
+      "/settings/decision-trees",
+      "/treatment-planning",
+      "/work-plan",
+      "/scenario-planning",
+      "/model-results",
+      "/assets",
+    ]) {
+      revalidatePath(path);
+    }
+
+    const count = ruleIdsIn(tree).length;
+    return {
+      ok: true,
+      message:
+        count === 0 && blockIds.length === 0
+          ? "Saved. With nothing arranged, this treatment is considered for every inspected asset."
+          : `Saved. ${count} rule${count === 1 ? "" : "s"} arranged${blockIds.length > 0 ? `, plus ${blockIds.length} blocking` : ""}.`,
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not save" };

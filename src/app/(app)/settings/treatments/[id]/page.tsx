@@ -7,9 +7,9 @@ import { getTreatmentCosts } from "@/server/cost-rates";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionGroup, CollapsibleSection } from "@/components/layout/collapsible-section";
 import { TreatmentForm, TreatmentDangerZone } from "../treatment-form";
-import { RulePicker } from "./rule-picker";
+import { RuleTreeEditor } from "./rule-tree-editor";
 import { CostEditor } from "./cost-editor";
-import { setTreatmentRulesAction, setTreatmentCostsAction } from "./actions";
+import { setTreatmentRuleTreeAction, setTreatmentCostsAction } from "./actions";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 
 /**
@@ -83,15 +83,14 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
         <CollapsibleSection
           id="rules"
           title="When it can be used"
-          description="The rules an asset has to satisfy before this treatment is considered for it."
+          description="How the rules combine to decide whether this treatment is considered. Click any rule to open it."
         >
-          <RulePicker
-            treatmentName={treatment.name}
+          <RuleTreeEditor
             allRules={allRules}
-            attachedIds={selection.attached.map((r) => r.id)}
-            qualifyMode={selection.qualifyMode}
+            initialTree={selection.tree}
+            initialBlockIds={selection.blocks.map((r) => r.id)}
             canEdit={canEdit}
-            onSave={setTreatmentRulesAction.bind(null, treatment.id)}
+            onSave={setTreatmentRuleTreeAction.bind(null, treatment.id)}
           />
         </CollapsibleSection>
       </SectionGroup>
