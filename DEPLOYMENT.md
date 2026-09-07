@@ -179,6 +179,32 @@ git push
 
 Vercel rebuilds and redeploys. It does not migrate — see Schema changes above.
 
+**Only `main` builds.** `vercel.json` carries an `ignoreCommand` that skips
+every build except production, so a branch or pull request no longer produces
+a preview deployment:
+
+```json
+"ignoreCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then exit 1; else exit 0; fi"
+```
+
+(Exit 1 means build, exit 0 means skip. It reads backwards and it is correct.)
+
+This exists because the free plan allows 10GB of function storage and each
+deployment costs a few hundred megabytes; previews were half of them and
+filled it in two days. They were also close to useless here — `NEXTAUTH_URL`
+is shared with production, so signing in to a preview redirects to the live
+site and its pages stay unreachable. A preview only ever confirmed that the
+build compiled.
+
+**So run the build yourself before opening a pull request**, because nothing
+else will now:
+
+```bash
+npm run build
+```
+
+To restore previews, delete `vercel.json`.
+
 **To avoid disrupting a review in progress**, work on a branch:
 
 ```bash
