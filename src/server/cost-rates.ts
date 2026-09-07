@@ -92,7 +92,12 @@ export type CostRateInput = {
   annualMaintenanceCost: number;
 };
 
-function validate(rates: CostRateInput[]) {
+/**
+ * Exported so a treatment being created can have its prices checked *before*
+ * the treatment row exists. Creating first and validating second would leave a
+ * half-built treatment behind whenever the prices turn out to be wrong.
+ */
+export function validateCostRates(rates: CostRateInput[]) {
   if (rates.length === 0) {
     throw new Error(
       "A treatment needs at least one cost rate. Without one it cannot be priced, so it would never be recommended."
@@ -152,7 +157,7 @@ export async function setTreatmentCosts(
   });
   if (!treatment) throw new Error("That treatment no longer exists");
 
-  validate(rates);
+  validateCostRates(rates);
 
   // Checked against this organization's rules rather than trusted, so a
   // crafted request cannot price against another tenant's rule.

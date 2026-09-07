@@ -7,7 +7,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { TreatmentForm } from "./treatment-form";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 import { formatNumber } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
 
@@ -33,6 +34,23 @@ export default async function TreatmentsAdminPage() {
       <PageHeader
         title={pageTitle}
         description="The library that drives recommendations, life-cycle cost, work plans and scenarios"
+        actions={
+          canEdit && (
+            // A page of its own rather than a blank form below the table: a
+            // treatment needs prices and rules to be usable, and neither can
+            // be filled in against a treatment that does not exist yet.
+            <Button
+              size="sm"
+              nativeButton={false}
+              render={
+                <Link href="/settings/treatments/new">
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add new Treatment
+                </Link>
+              }
+            />
+          )
+        }
       />
 
       {!canEdit && (
@@ -108,8 +126,6 @@ export default async function TreatmentsAdminPage() {
           </div>
         </CardContent>
       </Card>
-
-      {canEdit && <TreatmentForm mode="create" />}
 
       <p className="mt-3 text-xs text-muted-foreground">
         Edits apply on the next recommendation, life-cycle comparison, work plan generation or scenario run — none of

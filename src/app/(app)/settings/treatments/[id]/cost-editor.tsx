@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useSectionDirty } from "@/components/layout/collapsible-section";
 
-import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, CircleDot } from "lucide-react";
 import type { CostRateRow } from "@/server/cost-rates";
 import type { RuleSummary } from "@/server/rules";
 
@@ -29,6 +30,9 @@ type Draft = {
  * the first whose rule matches is charged, so a narrow rate has to sit above
  * the broad one it carves out of. That is why the rows move rather than sort,
  * and why the fallback is pinned conceptually to the bottom.
+ *
+ * Used two ways, like the rule tree: with `onSave` it saves itself, with
+ * `onChange` it reports upwards for a treatment that does not exist yet.
  */
 export function CostEditor({
   treatmentName,
@@ -36,12 +40,14 @@ export function CostEditor({
   rules,
   canEdit,
   onSave,
+  onChange,
 }: {
   treatmentName: string;
   initial: CostRateRow[];
   rules: RuleSummary[];
   canEdit: boolean;
-  onSave: (rates: Draft[]) => Promise<{ ok: boolean; message: string }>;
+  onSave?: (rates: Draft[]) => Promise<{ ok: boolean; message: string }>;
+  onChange?: (rates: Draft[]) => void;
 }) {
   const router = useRouter();
   const toDraft = (r: CostRateRow): Draft => ({
@@ -58,6 +64,17 @@ export function CostEditor({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [saved, setSaved] = useState(() => JSON.stringify(initial.map(toDraft)));
   const dirty = JSON.stringify(rates) !== saved;
+
+  // The surrounding section shows the marker, so a price changed and then
+  // folded away still says so.
+  useSectionDirty(Boolean(onSave) && dirty);
+
+  useEffect(() => {
+    onChange?.(rates);
+    // Reporting a value, not reacting to the callback — a parent that passes a
+    // fresh arrow function each render must not re-fire this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rates]);
 
   const patch = (index: number, change: Partial<Draft>) =>
     setRates((all) => all.map((r, i) => (i === index ? { ...r, ...change } : r)));
@@ -88,6 +105,7 @@ export function CostEditor({
     });
 
   const save = async () => {
+    if (!onSave) return;
     setBusy(true);
     setResult(null);
     const outcome = await onSave(rates);
@@ -116,13 +134,21 @@ export function CostEditor({
         </p>
         {canEdit && (
           <div className="flex items-center gap-2">
+            {onSave && dirty && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+                <CircleDot className="h-3 w-3" />
+                Unsaved changes
+              </span>
+            )}
             <Button type="button" size="sm" variant="outline" onClick={add}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               Add a price
             </Button>
-            <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
-              {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
-            </Button>
+            {onSave && (
+              <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
+                {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
+              </Button>
+            )}
           </div>
         )}
       </div>

@@ -51,7 +51,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
         {/* Renders the Definition and What it does sections; they are one form
             and save together. */}
         {canEdit ? (
-          <TreatmentForm mode="edit" treatment={treatment} />
+          <TreatmentForm treatment={treatment} />
         ) : (
           <CollapsibleSection id="definition" title="Treatment Definition">
             <p className="text-sm text-muted-foreground">
