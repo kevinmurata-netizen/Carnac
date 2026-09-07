@@ -30,6 +30,17 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-07",
+    title: "Deployments are a fraction of the size they were",
+    summary:
+      "Vercel's function storage filled up because the database library shipped a 21MB program inside every page of the app. It has been replaced with a much smaller one that does the same job.",
+    changes: [
+      "The database layer went from 47MB to 5.7MB. It was being copied into 53 of the 58 pages that read data, so this is the difference between filling the storage allowance in days and not thinking about it.",
+      "Nothing about how the app queries the database changed. Every recommendation, cost, qualification and map draws exactly as before — checked query by query, including the mapping and reporting queries that were most likely to shift.",
+    ],
+    note: "No migration. Running the app locally now needs one extra container, started the same way as the database: `docker compose up -d`. It translates between the new database driver and the local Postgres, and is not used in production.",
+  },
+  {
+    date: "2026-09-07",
     title: "Groundwork for a much smaller deployment",
     summary:
       "Vercel's function storage filled up. Old deployments were cleared, and three things that were quietly making every deployment larger than it needed to be have been fixed.",

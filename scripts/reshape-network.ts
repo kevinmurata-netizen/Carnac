@@ -18,10 +18,10 @@
 import { config } from "dotenv";
 config();
 
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../src/lib/prisma";
 import { buildNetworkLayout } from "../src/domain/waterline/network-layout";
 
-const prisma = new PrismaClient();
+
 
 async function main() {
   const org = await prisma.organization.findFirst();
