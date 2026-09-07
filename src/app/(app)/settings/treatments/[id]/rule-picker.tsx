@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import type { RuleSummary } from "@/server/rules";
 
 /**
@@ -84,28 +84,27 @@ export function RulePicker({
     </label>
   );
 
+  // Heading supplied by the surrounding collapsible section; this is content
+  // only, so the page does not show a card inside a card.
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-        <div>
-          <CardTitle>When this treatment can be used</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {selected.length === 0
-              ? "No rules attached, so this treatment is considered for every inspected asset."
-              : `${selected.length} rule${selected.length === 1 ? "" : "s"} attached.`}{" "}
-            <Link href="/settings/decision-trees" className="text-primary hover:underline">
-              Write or edit rules →
-            </Link>
-          </p>
-        </div>
+    <div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {selected.length === 0
+            ? "No rules attached, so this treatment is considered for every inspected asset."
+            : `${selected.length} rule${selected.length === 1 ? "" : "s"} attached.`}{" "}
+          <Link href="/settings/decision-trees" className="text-primary hover:underline">
+            Write or edit rules →
+          </Link>
+        </p>
         {canEdit && (
           <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
             {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
           </Button>
         )}
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-4 border-t pt-4">
+      <div className="space-y-4">
         {activeAllows > 1 && (
           <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
             <span className="text-muted-foreground">An asset qualifies when</span>
@@ -158,7 +157,7 @@ export function RulePicker({
         )}
 
         {result && <p className={`text-sm ${result.ok ? "text-emerald-600" : "text-destructive"}`}>{result.message}</p>}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

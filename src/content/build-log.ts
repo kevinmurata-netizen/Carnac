@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-07",
+    title: "Treatment pages, rearranged",
+    summary:
+      "Costs get their own card, a treatment's page reads top to bottom in the order you would explain it, and every section folds away.",
+    changes: [
+      "Treatments and Costs is now two cards: Treatments, and Treatment Costs. The list of every price across the library moved to the new card, where it is grouped by treatment and shows the order each price is tried in.",
+      "A treatment's page now runs Treatment Definition, then What it does, then What it costs, then When it can be used. Each section folds away, with a Show all / Hide all button at the top; everything starts open.",
+      "Deleting a treatment moved to the bottom of its page, out of the middle of the sections you edit.",
+      "On the Treatment Rules page, a long rule now wraps inside its column instead of running into the next one.",
+    ],
+    note: "No migration, and nothing about the model changed. Prices are still edited on the treatment they belong to; the new card is a second view of the same rates.",
+  },
+  {
+    date: "2026-09-07",
     title: "Deployments are a fraction of the size they were",
     summary:
       "Vercel's function storage filled up because the database library shipped a 21MB program inside every page of the app. It has been replaced with a much smaller one that does the same job.",

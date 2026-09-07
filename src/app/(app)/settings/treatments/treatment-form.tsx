@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { CollapsibleSection as Section } from "@/components/layout/collapsible-section";
 import { Label } from "@/components/ui/label";
 import { saveTreatmentAction, createTreatmentAction, deleteTreatmentAction } from "./actions";
 import { EMPTY_TREATMENT_STATE, type TreatmentActionState } from "./state";
@@ -42,11 +43,6 @@ export function TreatmentForm({
 }) {
   const action = mode === "edit" ? saveTreatmentAction : createTreatmentAction;
   const [state, submit, pending] = useActionState<TreatmentActionState, FormData>(action, EMPTY_TREATMENT_STATE);
-  const [deleteState, remove, deleting] = useActionState<TreatmentActionState, FormData>(
-    deleteTreatmentAction,
-    EMPTY_TREATMENT_STATE
-  );
-
   const [effectMode, setEffectMode] = useState<"reset" | "gain">(
     treatment?.conditionResetTo != null ? "reset" : "gain"
   );
@@ -54,16 +50,21 @@ export function TreatmentForm({
 
   return (
     <div className="space-y-4">
-      <Feedback state={deleteState.status !== "idle" ? deleteState : state} />
+      <Feedback state={state} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{mode === "edit" ? "Treatment Definition" : "New Treatment"}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form action={submit} className="space-y-5">
-            {treatment && <input type="hidden" name="id" value={treatment.id} />}
+      {/* One form spanning two collapsible sections, so Definition and What it
+          does read as separate parts of the page while still saving together.
+          Sections hide their content rather than unmounting it, which is what
+          lets a folded-away field keep an unsaved edit. */}
+      <form action={submit} className="space-y-4">
+        {treatment && <input type="hidden" name="id" value={treatment.id} />}
 
+        <Section
+          id="definition"
+          title={mode === "edit" ? "Treatment Definition" : "New Treatment"}
+          description="What it is called, what kind of work it is, and how long it lasts."
+        >
+          <div className="space-y-5">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="name">Name</Label>
@@ -118,9 +119,17 @@ export function TreatmentForm({
                 </p>
               </div>
             </fieldset>
+          </div>
+        </Section>
 
+        <Section
+          id="does"
+          title="What it does"
+          description="The effect on condition, on failure probability, and on remaining life — the numbers every recommendation and life-cycle comparison is built from."
+        >
+          <div className="space-y-5">
             <fieldset className="space-y-3 rounded-md border p-3">
-              <legend className="px-1 text-sm font-medium">What it does</legend>
+              <legend className="px-1 text-sm font-medium">Effects</legend>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="effectMode">Condition effect</Label>
@@ -178,13 +187,23 @@ export function TreatmentForm({
               </p>
             </fieldset>
 
-            {/* Only when creating. An existing treatment's prices are edited
-                in the cost rates above, which can hold several — showing these
-                as well would be two editors for one number, disagreeing the
-                moment anyone adds a second rate. What is entered here becomes
-                the new treatment's single fallback rate. */}
-            <fieldset className={`space-y-3 rounded-md border p-3 ${mode === "edit" ? "hidden" : ""}`}>
-              <legend className="px-1 text-sm font-medium">What it costs</legend>
+          </div>
+        </Section>
+
+        {/* Only when creating. An existing treatment's prices are edited in its
+            cost rates, which can hold several — showing these as well would be
+            two editors for one number, disagreeing the moment anyone adds a
+            second rate. What is entered here becomes the new treatment's single
+            fallback rate. */}
+        {mode === "create" && (
+        <Section
+          id="costs-initial"
+          title="What it costs"
+          description="The starting price, which becomes this treatment's fallback rate."
+        >
+          <div className="space-y-5">
+            <fieldset className="space-y-3 rounded-md border p-3">
+              <legend className="px-1 text-sm font-medium">Rate</legend>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="unitCost">Unit cost ($)</Label>
@@ -231,33 +250,53 @@ export function TreatmentForm({
                 </div>
               </div>
             </fieldset>
+          </div>
+        </Section>
+        )}
 
-            <div className="flex justify-end">
-              <Button type="submit" disabled={pending}>
-                {pending ? "Saving…" : mode === "edit" ? "Save Treatment" : "Create Treatment"}
-              </Button>
-            </div>
+        {/* Outside every section, because it saves all of them and must stay
+            reachable however many are folded away. */}
+        <div className="flex justify-end">
+          <Button type="submit" disabled={pending}>
+            {pending ? "Saving…" : mode === "edit" ? "Save Treatment" : "Create Treatment"}
+          </Button>
+        </div>
+      </form>
+
+    </div>
+  );
+}
+
+/**
+ * Deleting the treatment, kept apart from the form and rendered last on the
+ * page. It belongs after everything describing the treatment, not in the
+ * middle of it — a destructive control interrupting a run of editable
+ * sections is easy to reach for by accident.
+ */
+export function TreatmentDangerZone({ treatment }: { treatment: TreatmentAdminRow }) {
+  const [state, remove, deleting] = useActionState<TreatmentActionState, FormData>(
+    deleteTreatmentAction,
+    EMPTY_TREATMENT_STATE
+  );
+
+  return (
+    <div className="space-y-3">
+      <Feedback state={state} />
+      <Card>
+        <CardContent className="flex items-center justify-between gap-4 py-4">
+          <p className="text-xs text-muted-foreground">
+            {treatment.workPlanItemCount > 0
+              ? `Used by ${treatment.workPlanItemCount} work plan project(s) — deletion will be refused while those exist.`
+              : "Not referenced by any work plan project."}
+          </p>
+          <form action={remove}>
+            <input type="hidden" name="id" value={treatment.id} />
+            <Button type="submit" size="sm" variant="destructive" disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete Treatment"}
+            </Button>
           </form>
         </CardContent>
       </Card>
-
-      {mode === "edit" && treatment && (
-        <Card>
-          <CardContent className="flex items-center justify-between gap-4 py-4">
-            <p className="text-xs text-muted-foreground">
-              {treatment.workPlanItemCount > 0
-                ? `Used by ${treatment.workPlanItemCount} work plan project(s) — deletion will be refused while those exist.`
-                : "Not referenced by any work plan project."}
-            </p>
-            <form action={remove}>
-              <input type="hidden" name="id" value={treatment.id} />
-              <Button type="submit" size="sm" variant="destructive" disabled={deleting}>
-                {deleting ? "Deleting…" : "Delete Treatment"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

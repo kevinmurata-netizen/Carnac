@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import type { CostRateRow } from "@/server/cost-rates";
 import type { RuleSummary } from "@/server/rules";
@@ -101,20 +101,19 @@ export function CostEditor({
 
   const fallbackCount = rates.filter((r) => !r.ruleId).length;
 
+  // The surrounding collapsible section supplies the heading, so this renders
+  // its content only — a card inside a card would read as two things.
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-        <div>
-          <CardTitle>What it costs</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {rates.length === 1
-              ? "One price for every asset."
-              : `${rates.length} prices, tried top to bottom — the first whose rule matches is charged.`}{" "}
-            <Link href="/settings/decision-trees" className="text-primary hover:underline">
-              Write a rule →
-            </Link>
-          </p>
-        </div>
+    <div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {rates.length === 1
+            ? "One price for every asset."
+            : `${rates.length} prices, tried top to bottom — the first whose rule matches is charged.`}{" "}
+          <Link href="/settings/decision-trees" className="text-primary hover:underline">
+            Write a rule →
+          </Link>
+        </p>
         {canEdit && (
           <div className="flex items-center gap-2">
             <Button type="button" size="sm" variant="outline" onClick={add}>
@@ -126,9 +125,9 @@ export function CostEditor({
             </Button>
           </div>
         )}
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-3 border-t pt-4">
+      <div className="space-y-3">
         {rates.map((rate, index) => {
           const isFallback = !rate.ruleId;
           return (
@@ -272,7 +271,7 @@ export function CostEditor({
         )}
 
         {result && <p className={`text-sm ${result.ok ? "text-emerald-600" : "text-destructive"}`}>{result.message}</p>}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

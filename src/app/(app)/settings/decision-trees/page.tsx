@@ -171,7 +171,7 @@ export default async function TreatmentRulesPage({
                     <TableRow>
                       <TableHead>Rule</TableHead>
                       <TableHead>Effect</TableHead>
-                      <TableHead>Reads as</TableHead>
+                      <TableHead className="min-w-[16rem]">Reads as</TableHead>
                       <TableHead>Used by</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -192,8 +192,8 @@ export default async function TreatmentRulesPage({
                             {r.effect === "block" ? "Blocks" : "Allows"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="max-w-md text-sm text-muted-foreground">{r.summary}</TableCell>
-                        <TableCell className="text-sm">
+                        <TableCell className="min-w-[16rem] whitespace-normal break-words text-sm text-muted-foreground">{r.summary}</TableCell>
+                        <TableCell className="whitespace-normal break-words text-sm">
                           {r.usedBy.length === 0 ? (
                             <span className="text-muted-foreground">Nothing yet</span>
                           ) : (
