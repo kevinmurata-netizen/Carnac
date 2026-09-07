@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { FilterField } from "@/server/filter-schema";
+import type { FilterField } from "@/domain/filters";
 import { ArrowDown, ArrowUp, GripVertical, X } from "lucide-react";
 
 /**

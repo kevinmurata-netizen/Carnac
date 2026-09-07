@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { FilterTable } from "@/server/filter-schema";
+import type { FilterTable } from "@/domain/filters";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 
 /**

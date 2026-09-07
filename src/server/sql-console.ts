@@ -88,7 +88,13 @@ export async function getConsoleSchema(): Promise<ConsoleTable[]> {
   const rows = await prisma.$queryRaw<
     Array<{ table_name: string; column_name: string; data_type: string }>
   >`
-    SELECT table_name, column_name, data_type
+    -- Cast to text explicitly. information_schema columns are the "name"
+    -- domain, which the driver adapter refuses to deserialize
+    -- (UnsupportedNativeDataType) where the old Rust engine coerced it
+    -- silently. Ordering is unaffected: both are collated the same way.
+    SELECT table_name::text AS table_name,
+           column_name::text AS column_name,
+           data_type::text AS data_type
     FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = ANY(${ALLOWED_TABLES})
     ORDER BY table_name, ordinal_position

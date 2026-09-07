@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { FilterTable, Criterion } from "@/server/filter-schema";
+import type { FilterTable, Criterion } from "@/domain/filters";
 import type { SavedFilterRow, FilterResult } from "@/server/saved-filters";
 import { runFilterAction, saveFilterAction, deleteFilterAction } from "./actions";
 import { SchemaTree } from "./schema-tree";

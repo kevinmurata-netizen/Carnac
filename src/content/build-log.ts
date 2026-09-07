@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-07",
+    title: "Groundwork for a much smaller deployment",
+    summary:
+      "Vercel's function storage filled up. Old deployments were cleared, and three things that were quietly making every deployment larger than it needed to be have been fixed.",
+    changes: [
+      "The sign-in check that runs on every request no longer loads the database layer. It only ever needed to read the session token, and pulling the whole database client along with it made every request carry code it never used.",
+      "The AI assistant and filter builder screens no longer pull the database client into the browser. They only ever needed the list of comparison operators; they were dragging along everything behind it.",
+      "The SQL console asks the database for its table and column names in a slightly more explicit way, which is unchanged in what it returns but survives a change of database driver.",
+    ],
+    note: "Nothing about this is visible on screen, and nothing was verified to have changed: every recommendation, cost and qualification came out identical afterwards. 24 old deployments were also removed, keeping the live one and the one before it for rollback.",
+  },
+  {
     date: "2026-09-05",
     title: "Treatments you would do together, priced as one job",
     summary:
