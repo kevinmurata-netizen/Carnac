@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { OPERATORS, operatorsFor, type Criterion, type FilterField, type FilterTable } from "@/server/filter-schema";
+import { OPERATORS, operatorsFor, type Criterion, type FilterField, type FilterTable } from "@/domain/filters";
 import { Plus, X } from "lucide-react";
 
 const control =

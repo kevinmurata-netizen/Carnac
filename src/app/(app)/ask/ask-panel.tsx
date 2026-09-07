@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sparkles, CornerDownLeft, Database } from "lucide-react";
-import { OPERATORS, type Criterion } from "@/server/filter-schema";
+import { OPERATORS, type Criterion } from "@/domain/filters";
 import type { AssistantResult } from "@/server/assistant";
 import type { ConsoleTable } from "@/server/sql-console";
 import { SqlConsole, type EquivalentQuery } from "./sql-console";

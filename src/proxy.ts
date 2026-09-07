@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
+import { authConfig } from "@/lib/auth.config";
+
+// Built from the edge-safe config rather than importing the full setup: this
+// file runs on the Edge runtime, and the full setup reaches the database.
+const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
   const isLoggedIn = !!req.auth;
