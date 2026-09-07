@@ -1,4 +1,5 @@
-import { PrismaClient, AssetStatus } from "@prisma/client";
+import { AssetStatus } from "@prisma/client";
+import { prisma } from "../src/lib/prisma";
 import bcrypt from "bcryptjs";
 import {
   WATERLINE_ATTRIBUTE_DEFINITIONS,
@@ -19,7 +20,9 @@ import { ensureBaselineScenarios } from "../src/server/scenarios";
 import { ensureBaselineWorkPlan } from "../src/server/workplans";
 import { WATERLINE_TREATMENTS } from "../src/domain/waterline/treatment";
 
-const prisma = new PrismaClient();
+// The shared client, so the seed uses the same driver adapter the app does.
+// Constructing one here would fail outright: with engineType "client" there is
+// no built-in engine to fall back on.
 
 // Deterministic PRNG so re-running the seed produces the same demo network.
 function mulberry32(seed: number) {

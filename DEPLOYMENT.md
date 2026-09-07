@@ -169,6 +169,33 @@ Code-only changes — the vast majority — need none of this. Just push.
 
 ---
 
+## Running locally
+
+```bash
+docker compose up -d
+```
+
+That starts two containers: Postgres, and a small WebSocket proxy.
+
+The proxy exists because Prisma no longer carries its own database engine.
+That engine was a 21MB native binary bundled into every route function and the
+single largest thing in each deployment; it has been replaced by a 1.9MB
+WebAssembly compiler plus a driver, which cut the client from 47MB to 5.7MB.
+The driver speaks WebSocket rather than raw TCP, so locally something has to
+translate — that is all the proxy does. Production talks to Neon directly and
+never uses it.
+
+The choice of driver is not free rein: node-postgres reaches for `net`, `dns`,
+`tls` and `fs`, which cannot be bundled, and the build fails under both
+Turbopack and webpack regardless of `serverExternalPackages`. The Neon driver
+imports no Node built-ins, which is why it is the one that works — and using it
+in both places means the database layer is identical everywhere rather than
+differing between the machine you test on and the one that serves users.
+
+`DATABASE_URL` is unchanged and still points at `localhost:5432`. The Prisma
+CLI — `db:deploy`, `db:seed`, `migrate` — connects directly over TCP and does
+not involve the proxy at all.
+
 ## Continuing to develop
 
 Keep working locally as usual. To publish:
