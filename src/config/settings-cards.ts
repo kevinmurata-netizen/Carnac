@@ -2,6 +2,7 @@ import {
   Activity,
   Compass,
   Database,
+  DollarSign,
   FileUp,
   Filter,
   GitBranch,
@@ -194,10 +195,19 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     key: "treatments",
     href: "/settings/treatments",
     tab: "modeling",
-    title: "Treatments and Costs",
+    title: "Treatments",
     icon: Wrench,
     detail:
-      "Unit costs, mobilization and maintenance, condition and risk effects, and applicability rules.",
+      "The library: what each treatment does to condition and failure probability, how long it lasts, and the rules deciding when it can be used.",
+  },
+  {
+    key: "treatment-costs",
+    href: "/settings/treatment-costs",
+    tab: "modeling",
+    title: "Treatment Costs",
+    icon: DollarSign,
+    detail:
+      "Every price across the library in one place, with the rule that selects each one — so an annual rate review is a single screen.",
   },
   {
     key: "decision-trees",

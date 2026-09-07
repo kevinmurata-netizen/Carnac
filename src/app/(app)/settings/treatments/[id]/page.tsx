@@ -5,11 +5,19 @@ import { getTreatmentForAdmin } from "@/server/treatment-config";
 import { listRules, getTreatmentRules } from "@/server/rules";
 import { getTreatmentCosts } from "@/server/cost-rates";
 import { PageHeader } from "@/components/layout/page-header";
-import { TreatmentForm } from "../treatment-form";
+import { SectionGroup, CollapsibleSection } from "@/components/layout/collapsible-section";
+import { TreatmentForm, TreatmentDangerZone } from "../treatment-form";
 import { RulePicker } from "./rule-picker";
 import { CostEditor } from "./cost-editor";
 import { setTreatmentRulesAction, setTreatmentCostsAction } from "./actions";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
+
+/**
+ * Ordered outwards from the treatment itself: what it is, what it does, what
+ * it costs, and last when it may be used — which is the part most likely to be
+ * long, and the part you change least often.
+ */
+const SECTION_IDS = ["definition", "does", "costs", "rules"];
 
 export default async function TreatmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -30,7 +38,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
       <SetBreadcrumb segment={id} label={treatment.name} />
       <PageHeader
         title={treatment.name}
-        description={treatment.description || "Treatment definition, applicability and costs"}
+        description={treatment.description || "Treatment definition, effects, costs and rules"}
       />
 
       {!canEdit && (
@@ -39,33 +47,60 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
         </div>
       )}
 
-      <div className="space-y-4">
-        <RulePicker
-          treatmentName={treatment.name}
-          allRules={allRules}
-          attachedIds={selection.attached.map((r) => r.id)}
-          qualifyMode={selection.qualifyMode}
-          canEdit={canEdit}
-          onSave={setTreatmentRulesAction.bind(null, treatment.id)}
-        />
-
-        <CostEditor
-          treatmentName={treatment.name}
-          initial={costs.rates}
-          rules={allRules}
-          canEdit={canEdit}
-          onSave={setTreatmentCostsAction.bind(null, treatment.id)}
-        />
-
+      <SectionGroup ids={SECTION_IDS}>
+        {/* Renders the Definition and What it does sections; they are one form
+            and save together. */}
         {canEdit ? (
           <TreatmentForm mode="edit" treatment={treatment} />
         ) : (
-          <div className="rounded-lg border p-4 text-sm text-muted-foreground">
-            ${treatment.unitCost} {treatment.costUnit} · {treatment.expectedLifeExtension} years of added life ·{" "}
-            {treatment.ruleCount} rule{treatment.ruleCount === 1 ? "" : "s"}
-          </div>
+          <CollapsibleSection id="definition" title="Treatment Definition">
+            <p className="text-sm text-muted-foreground">
+              {treatment.category} · {treatment.usefulLife} year useful life ·{" "}
+              {treatment.conditionResetTo != null
+                ? `resets condition to ${treatment.conditionResetTo}`
+                : treatment.conditionGain != null
+                  ? `adds ${treatment.conditionGain} condition points`
+                  : "no condition effect"}{" "}
+              · failure probability ×{treatment.failureProbMultiplier}
+            </p>
+          </CollapsibleSection>
         )}
-      </div>
+
+        <CollapsibleSection
+          id="costs"
+          title="What it costs"
+          description="Prices tried top to bottom — the first whose rule matches is charged."
+        >
+          <CostEditor
+            treatmentName={treatment.name}
+            initial={costs.rates}
+            rules={allRules}
+            canEdit={canEdit}
+            onSave={setTreatmentCostsAction.bind(null, treatment.id)}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          id="rules"
+          title="When it can be used"
+          description="The rules an asset has to satisfy before this treatment is considered for it."
+        >
+          <RulePicker
+            treatmentName={treatment.name}
+            allRules={allRules}
+            attachedIds={selection.attached.map((r) => r.id)}
+            qualifyMode={selection.qualifyMode}
+            canEdit={canEdit}
+            onSave={setTreatmentRulesAction.bind(null, treatment.id)}
+          />
+        </CollapsibleSection>
+      </SectionGroup>
+
+      {canEdit && (
+        <div className="mt-4">
+          <TreatmentDangerZone treatment={treatment} />
+        </div>
+      )}
     </div>
   );
 }
