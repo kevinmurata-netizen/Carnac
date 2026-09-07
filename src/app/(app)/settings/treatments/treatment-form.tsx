@@ -1,52 +1,51 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { CollapsibleSection as Section } from "@/components/layout/collapsible-section";
-import { Label } from "@/components/ui/label";
-import { saveTreatmentAction, createTreatmentAction, deleteTreatmentAction } from "./actions";
+import { CircleDot } from "lucide-react";
+import { CollapsibleSection as Section, SectionDirty } from "@/components/layout/collapsible-section";
+import { saveTreatmentAction, deleteTreatmentAction } from "./actions";
+import {
+  DefinitionFields,
+  EffectFields,
+  Feedback,
+  draftFromTreatment,
+  type TreatmentDraft,
+} from "./treatment-fields";
 import { EMPTY_TREATMENT_STATE, type TreatmentActionState } from "./state";
 import type { TreatmentAdminRow } from "@/server/treatment-config";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
-const input =
-  "h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-const CATEGORIES = ["Assess", "Repair", "Rehabilitate", "Renew", "Retire"] as const;
-
-function Feedback({ state }: { state: TreatmentActionState }) {
-  if (state.status === "idle" || !state.message) return null;
-  const error = state.status === "error";
-  return (
-    <div
-      className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${
-        error ? "border-destructive/40 bg-destructive/5" : "border-emerald-600/40 bg-emerald-50/50 dark:bg-emerald-950/20"
-      }`}
-    >
-      {error ? (
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-      ) : (
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-      )}
-      <span>{state.message}</span>
-    </div>
+/**
+ * An existing treatment's definition and effects.
+ *
+ * Creating a treatment is a page of its own, not a blank copy of this form
+ * dropped below the library: an empty form sitting under a list reads as part
+ * of the list, and it could only ever offer half of what a treatment has —
+ * costs and rules need a treatment to attach to.
+ */
+export function TreatmentForm({ treatment }: { treatment: TreatmentAdminRow }) {
+  const [state, submit, pending] = useActionState<TreatmentActionState, FormData>(
+    saveTreatmentAction,
+    EMPTY_TREATMENT_STATE
   );
-}
+  // Saved values, and what is in the boxes now. Held rather than left to the
+  // DOM because React empties an uncontrolled form once its action returns —
+  // which would throw away an edit precisely when a save was refused.
+  const [stored, setStored] = useState<TreatmentDraft>(() => draftFromTreatment(treatment));
+  const [draft, setDraft] = useState<TreatmentDraft>(stored);
+  const patch = (change: Partial<TreatmentDraft>) => setDraft((d) => ({ ...d, ...change }));
+  const dirty = JSON.stringify(draft) !== JSON.stringify(stored);
 
-export function TreatmentForm({
-  treatment,
-  mode,
-}: {
-  treatment?: TreatmentAdminRow;
-  mode: "edit" | "create";
-}) {
-  const action = mode === "edit" ? saveTreatmentAction : createTreatmentAction;
-  const [state, submit, pending] = useActionState<TreatmentActionState, FormData>(action, EMPTY_TREATMENT_STATE);
-  const [effectMode, setEffectMode] = useState<"reset" | "gain">(
-    treatment?.conditionResetTo != null ? "reset" : "gain"
-  );
-  const effectValue = treatment?.conditionResetTo ?? treatment?.conditionGain ?? "";
+  // What went to the server, so a success can be recognised as saving exactly
+  // those values — and not whatever has been typed since.
+  const submitted = useRef<TreatmentDraft | null>(null);
+  useEffect(() => {
+    if (state.status === "success" && submitted.current) {
+      setStored(submitted.current);
+      submitted.current = null;
+    }
+  }, [state]);
 
   return (
     <div className="space-y-4">
@@ -56,70 +55,22 @@ export function TreatmentForm({
           does read as separate parts of the page while still saving together.
           Sections hide their content rather than unmounting it, which is what
           lets a folded-away field keep an unsaved edit. */}
-      <form action={submit} className="space-y-4">
-        {treatment && <input type="hidden" name="id" value={treatment.id} />}
+      <form
+        action={submit}
+        onSubmit={() => {
+          submitted.current = draft;
+        }}
+        className="space-y-4"
+      >
+        <input type="hidden" name="id" value={treatment.id} />
 
         <Section
           id="definition"
-          title={mode === "edit" ? "Treatment Definition" : "New Treatment"}
+          title="Treatment Definition"
           description="What it is called, what kind of work it is, and how long it lasts."
         >
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="name">Name</Label>
-                <input id="name" name="name" required defaultValue={treatment?.name} className={input} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="category">Category</Label>
-                <select id="category" name="category" defaultValue={treatment?.category ?? "Repair"} className={input}>
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="usefulLife">Useful Life (yr)</Label>
-                <input
-                  id="usefulLife"
-                  name="usefulLife"
-                  type="number"
-                  min={0}
-                  defaultValue={treatment?.usefulLife ?? 0}
-                  className={input}
-                />
-              </div>
-              <div className="space-y-1.5 sm:col-span-4">
-                <Label htmlFor="description">Description</Label>
-                <input id="description" name="description" defaultValue={treatment?.description} className={input} />
-              </div>
-            </div>
-
-            {/* "When it can be used" used to live here as a condition window, a
-                material list and diameter bounds. Those are now named rules,
-                chosen above and written on the Treatment Rules page, so that
-                the same condition can gate several treatments instead of being
-                retyped into each. */}
-            <fieldset className="space-y-3 rounded-md border p-3">
-              <legend className="px-1 text-sm font-medium">Notes</legend>
-              <div className="space-y-1.5">
-                <Label htmlFor="implementationConstraints">Implementation constraints</Label>
-                <input
-                  id="implementationConstraints"
-                  name="implementationConstraints"
-                  defaultValue={treatment?.implementationConstraints ?? ""}
-                  placeholder="Requires temporary bypass; not suitable below 6 inch diameter."
-                  className={input}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Shown alongside a recommendation. A note for whoever reads it — it does not decide anything, so
-                  anything that should actually rule an asset in or out belongs in a rule.
-                </p>
-              </div>
-            </fieldset>
-          </div>
+          <SectionDirty dirty={dirty} />
+          <DefinitionFields draft={draft} onChange={patch} />
         </Section>
 
         <Section
@@ -127,142 +78,26 @@ export function TreatmentForm({
           title="What it does"
           description="The effect on condition, on failure probability, and on remaining life — the numbers every recommendation and life-cycle comparison is built from."
         >
-          <div className="space-y-5">
-            <fieldset className="space-y-3 rounded-md border p-3">
-              <legend className="px-1 text-sm font-medium">Effects</legend>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="effectMode">Condition effect</Label>
-                  <select
-                    id="effectMode"
-                    name="effectMode"
-                    value={effectMode}
-                    onChange={(e) => setEffectMode(e.target.value as "reset" | "gain")}
-                    className={input}
-                  >
-                    <option value="reset">Resets condition to</option>
-                    <option value="gain">Adds points</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="effectValue">{effectMode === "reset" ? "New WCI" : "Points added"}</Label>
-                  <input
-                    id="effectValue"
-                    name="effectValue"
-                    type="number"
-                    step="any"
-                    defaultValue={effectValue}
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="failureProbMultiplier">Failure prob. ×</Label>
-                  <input
-                    id="failureProbMultiplier"
-                    name="failureProbMultiplier"
-                    type="number"
-                    min={0}
-                    max={1}
-                    step="any"
-                    defaultValue={treatment?.failureProbMultiplier ?? 1}
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="expectedLifeExtension">Life extension (yr)</Label>
-                  <input
-                    id="expectedLifeExtension"
-                    name="expectedLifeExtension"
-                    type="number"
-                    min={0}
-                    defaultValue={treatment?.expectedLifeExtension ?? 0}
-                    className={input}
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                A treatment that <em>resets</em> condition renews the asset; one that only <em>adds points</em> is a
-                patch and stays on the same deterioration path in life-cycle cost. Failure multiplier of 1 means no
-                effect, 0.2 means an 80% cut.
-              </p>
-            </fieldset>
-
-          </div>
+          {/* Both sections are one form and save together, so both carry the
+              marker whichever of them was actually edited. */}
+          <SectionDirty dirty={dirty} />
+          <EffectFields draft={draft} onChange={patch} />
         </Section>
-
-        {/* Only when creating. An existing treatment's prices are edited in its
-            cost rates, which can hold several — showing these as well would be
-            two editors for one number, disagreeing the moment anyone adds a
-            second rate. What is entered here becomes the new treatment's single
-            fallback rate. */}
-        {mode === "create" && (
-        <Section
-          id="costs-initial"
-          title="What it costs"
-          description="The starting price, which becomes this treatment's fallback rate."
-        >
-          <div className="space-y-5">
-            <fieldset className="space-y-3 rounded-md border p-3">
-              <legend className="px-1 text-sm font-medium">Rate</legend>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="unitCost">Unit cost ($)</Label>
-                  <input
-                    id="unitCost"
-                    name="unitCost"
-                    type="number"
-                    min={0}
-                    step="any"
-                    defaultValue={treatment?.unitCost ?? 0}
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="costUnit">Unit</Label>
-                  <select id="costUnit" name="costUnit" defaultValue={treatment?.costUnit ?? "per each"} className={input}>
-                    <option value="per LF">per LF</option>
-                    <option value="per each">per each</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="mobilizationCost">Mobilization ($)</Label>
-                  <input
-                    id="mobilizationCost"
-                    name="mobilizationCost"
-                    type="number"
-                    min={0}
-                    step="any"
-                    defaultValue={treatment?.mobilizationCost ?? 0}
-                    className={input}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="annualMaintenanceCost">Annual maintenance ($)</Label>
-                  <input
-                    id="annualMaintenanceCost"
-                    name="annualMaintenanceCost"
-                    type="number"
-                    min={0}
-                    step="any"
-                    defaultValue={treatment?.annualMaintenanceCost ?? 0}
-                    className={input}
-                  />
-                </div>
-              </div>
-            </fieldset>
-          </div>
-        </Section>
-        )}
 
         {/* Outside every section, because it saves all of them and must stay
             reachable however many are folded away. */}
-        <div className="flex justify-end">
-          <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : mode === "edit" ? "Save Treatment" : "Create Treatment"}
+        <div className="flex items-center justify-end gap-2">
+          {dirty && (
+            <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+              <CircleDot className="h-3 w-3" />
+              Unsaved changes
+            </span>
+          )}
+          <Button type="submit" disabled={pending || !dirty}>
+            {pending ? "Saving…" : dirty ? "Save Treatment" : "Saved"}
           </Button>
         </div>
       </form>
-
     </div>
   );
 }

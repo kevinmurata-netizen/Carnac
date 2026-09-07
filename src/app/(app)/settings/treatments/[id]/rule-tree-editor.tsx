@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Trash2, FolderPlus, Ban, ExternalLink } from "lucide-react";
+import { useSectionDirty } from "@/components/layout/collapsible-section";
+import { Plus, Trash2, FolderPlus, Ban, ExternalLink, CircleDot } from "lucide-react";
 import {
   addToRuleGroup,
   removeRuleNode,
@@ -31,22 +32,28 @@ const control =
  * of checkboxes hides it.
  *
  * Blocking rules are not in the tree. They always apply, so an "any of" group
- * containing one would have no clear reading; they are listed separately.
+ * containing one would have no clear reading; they are chosen separately, but
+ * the same way — searched for and picked, not hunted for in a list of every
+ * block ever written.
+ *
+ * Used two ways. With `onSave` it owns its own saving, which is the treatment
+ * detail page. With `onChange` it reports upwards and saves nothing, which is
+ * how a treatment that does not exist yet can still be given an arrangement.
  */
 export function RuleTreeEditor({
-
   allRules,
   initialTree,
   initialBlockIds,
   canEdit,
   onSave,
+  onChange,
 }: {
-
   allRules: RuleSummary[];
   initialTree: RuleGroup;
   initialBlockIds: string[];
   canEdit: boolean;
-  onSave: (tree: RuleGroup, blockIds: string[]) => Promise<{ ok: boolean; message: string }>;
+  onSave?: (tree: RuleGroup, blockIds: string[]) => Promise<{ ok: boolean; message: string }>;
+  onChange?: (tree: RuleGroup, blockIds: string[]) => void;
 }) {
   const router = useRouter();
   const [tree, setTree] = useState<RuleGroup>(initialTree);
@@ -56,12 +63,29 @@ export function RuleTreeEditor({
   const [saved, setSaved] = useState(() => JSON.stringify({ tree: initialTree, blockIds: [...initialBlockIds].sort() }));
   const dirty = JSON.stringify({ tree, blockIds: [...blockIds].sort() }) !== saved;
 
+  // The surrounding section shows the marker, so an arrangement changed and
+  // then folded away still says so.
+  useSectionDirty(Boolean(onSave) && dirty);
+
+  useEffect(() => {
+    onChange?.(tree, blockIds);
+    // Reporting a value, not reacting to the callback — a parent that passes a
+    // fresh arrow function each render must not re-fire this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tree, blockIds]);
+
   const byId = useMemo(() => new Map(allRules.map((r) => [r.id, r])), [allRules]);
   const allows = useMemo(() => allRules.filter((r) => r.effect === "allow"), [allRules]);
   const blocks = useMemo(() => allRules.filter((r) => r.effect === "block"), [allRules]);
+  const chosenBlocks = useMemo(
+    () => blockIds.map((id) => byId.get(id)).filter((r): r is RuleSummary => Boolean(r)),
+    [blockIds, byId]
+  );
+  const availableBlocks = useMemo(() => blocks.filter((r) => !blockIds.includes(r.id)), [blocks, blockIds]);
   const used = useMemo(() => new Set(ruleIdsIn(tree)), [tree]);
 
   const save = async () => {
+    if (!onSave) return;
     setBusy(true);
     setResult(null);
     const outcome = await onSave(tree, blockIds);
@@ -84,10 +108,20 @@ export function RuleTreeEditor({
             Write or edit rules →
           </Link>
         </p>
-        {canEdit && (
-          <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
-            {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
-          </Button>
+        {canEdit && onSave && (
+          <div className="flex items-center gap-2">
+            {/* Adding a rule changes nothing until this is pressed, and that was
+                not obvious from a button label alone. */}
+            {dirty && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+                <CircleDot className="h-3 w-3" />
+                Unsaved changes
+              </span>
+            )}
+            <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
+              {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -109,33 +143,48 @@ export function RuleTreeEditor({
           Blocks — refuse the treatment whatever the arrangement above says
         </p>
         <p className="mb-2 text-sm text-muted-foreground">
-          Not part of the arrangement, because a block inside an &ldquo;any of&rdquo; group would have no clear
+          Kept out of the arrangement, because a block inside an &ldquo;any of&rdquo; group would have no clear
           meaning. Any one of these matching is enough to rule the asset out.
         </p>
-        {blocks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No blocking rules written yet.</p>
-        ) : (
-          blocks.map((r) => (
-            <label
-              key={r.id}
-              className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
-            >
-              <input
-                type="checkbox"
-                checked={blockIds.includes(r.id)}
-                onChange={() =>
-                  setBlockIds((all) => (all.includes(r.id) ? all.filter((x) => x !== r.id) : [...all, r.id]))
-                }
-                disabled={!canEdit}
-                className="mt-0.5 h-4 w-4 accent-primary"
-              />
+
+        <div className="space-y-2 border-l-2 border-muted pl-4">
+          {chosenBlocks.length === 0 && (
+            <p className="py-1 text-sm text-muted-foreground">
+              {blocks.length === 0
+                ? "No blocking rules written yet."
+                : "None applied — nothing refuses this treatment outright."}
+            </p>
+          )}
+
+          {chosenBlocks.map((rule) => (
+            <div key={rule.id} className="flex items-start gap-2 rounded-md border bg-background px-3 py-2">
               <span className="min-w-0 flex-1">
-                <RuleLink rule={r} />
-                <span className="mt-0.5 block text-xs text-muted-foreground">{r.summary}</span>
+                <RuleLink rule={rule} />
+                <span className="mt-0.5 block text-xs text-muted-foreground">{rule.summary}</span>
               </span>
-            </label>
-          ))
-        )}
+              {!rule.enabled && <Badge variant="secondary">disabled</Badge>}
+              {canEdit && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Remove ${rule.name}`}
+                  onClick={() => setBlockIds((all) => all.filter((x) => x !== rule.id))}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          ))}
+
+          {canEdit && blocks.length > 0 && (
+            <RulePicker
+              available={availableBlocks}
+              label="blocking rule"
+              onPick={(ruleId) => setBlockIds((all) => (all.includes(ruleId) ? all : [...all, ruleId]))}
+            />
+          )}
+        </div>
       </div>
 
       {result && <p className={`mt-3 text-sm ${result.ok ? "text-emerald-600" : "text-destructive"}`}>{result.message}</p>}
@@ -155,6 +204,65 @@ function RuleLink({ rule }: { rule: RuleSummary }) {
       <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
       {!rule.enabled && <span className="ml-1 text-xs font-normal text-muted-foreground">(disabled)</span>}
     </Link>
+  );
+}
+
+/**
+ * Search, then pick. There are already eighteen rules and the number only
+ * grows, so a list of every one of them is a worse way to find the one you
+ * mean than typing three letters of its name.
+ */
+function RulePicker({
+  available,
+  label,
+  onPick,
+}: {
+  available: RuleSummary[];
+  label: string;
+  onPick: (ruleId: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const matches = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return available;
+    return available.filter((r) => r.name.toLowerCase().includes(q) || r.summary.toLowerCase().includes(q));
+  }, [available, search]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 pt-1">
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search rules…"
+        aria-label={`Search ${label}s to add`}
+        className={`${control} w-44`}
+      />
+      <select
+        value=""
+        onChange={(e) => {
+          if (e.target.value) onPick(e.target.value);
+          setSearch("");
+        }}
+        aria-label={`Add a ${label}`}
+        className={`${control} max-w-sm`}
+        disabled={available.length === 0}
+      >
+        <option value="">
+          {available.length === 0
+            ? `Every ${label} is already applied`
+            : matches.length === 0
+              ? "No rule matches that search"
+              : `Add a ${label}… (${matches.length})`}
+        </option>
+        {matches.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+            {r.enabled ? "" : " (disabled)"}
+          </option>
+        ))}
+      </select>
+      <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+    </div>
   );
 }
 
@@ -184,13 +292,6 @@ function GroupEditor({
   onRemove: (nodeId: string) => void;
   onJoin: (groupId: string, join: "AND" | "OR") => void;
 }) {
-  const [search, setSearch] = useState("");
-  const matches = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return available;
-    return available.filter((r) => r.name.toLowerCase().includes(q) || r.summary.toLowerCase().includes(q));
-  }, [available, search]);
-
   return (
     <div className={depth > 0 ? "rounded-md border border-dashed bg-muted/20 p-3" : ""}>
       <div className="flex flex-wrap items-center gap-2">
@@ -256,35 +357,7 @@ function GroupEditor({
         ))}
 
         {canEdit && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search rules…"
-              aria-label="Search rules to add"
-              className={`${control} w-44`}
-            />
-            <select
-              value=""
-              onChange={(e) => {
-                if (e.target.value) onAddRule(group.id, e.target.value);
-                setSearch("");
-              }}
-              aria-label="Add a rule to this group"
-              className={`${control} max-w-sm`}
-            >
-              <option value="">
-                {matches.length === 0 ? "No rule matches that search" : `Add a rule… (${matches.length})`}
-              </option>
-              {matches.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                  {r.enabled ? "" : " (disabled)"}
-                </option>
-              ))}
-            </select>
-            <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
+          <RulePicker available={available} label="rule" onPick={(ruleId) => onAddRule(group.id, ruleId)} />
         )}
       </div>
     </div>

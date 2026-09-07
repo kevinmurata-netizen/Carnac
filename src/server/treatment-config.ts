@@ -318,6 +318,8 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
     mobilizationCost: input.mobilizationCost,
     annualMaintenanceCost: input.annualMaintenanceCost,
   });
+
+  return created.id;
 }
 
 export async function deleteTreatment(organizationId: string, id: string) {
