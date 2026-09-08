@@ -150,8 +150,14 @@ export default async function TreatmentPlanningPage() {
                       )} · ${formatCurrency(row.costPerUnit)} ${row.costBasis}`}
                     >
                       <span className="font-medium">{row.expectedBenefit}</span>
+                      {/* A real space, not just the margin: the gap has to
+                          survive being read aloud or copied out of the table,
+                          where a margin is nothing at all. */}
                       {row.value != null && (
-                        <span className="ml-1.5 text-xs text-muted-foreground">value {row.value}</span>
+                        <>
+                          {" "}
+                          <span className="text-xs text-muted-foreground">value {row.value}</span>
+                        </>
                       )}
                     </TableCell>
                   </TableRow>
