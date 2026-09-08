@@ -13,13 +13,12 @@ import {
 import {
   WATERLINE_TREATMENTS,
   enumerateOptions,
-  estimateTreatmentCost,
   splitOptionCost,
   type AssetTreatmentContext,
   type TreatmentOption,
 } from "@/domain/waterline/treatment";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
-import { computeLcca, DEFAULT_LCCA_ASSUMPTIONS, EMERGENCY_COST_PREMIUM } from "@/domain/waterline/lcca";
+import { buildLccaEvaluator } from "@/server/lcca-evaluator";
 import { curveFor } from "@/domain/waterline/scenario";
 import { effectiveAgeForCondition, evaluateCurve } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
@@ -143,34 +142,18 @@ async function buildCandidates(
       pressureZone: asset.location?.pressureZone ?? null,
     };
 
-    const curve = curveFor(ctx.material, curves);
-    const remainingLife = Math.max(
-      1,
-      Math.round(curve.serviceLife - effectiveAgeForCondition(curve, conditionScore))
+    // Every life-cycle comparison below is measured against a planned
+    // Replacement. Without a rate that prices one for this asset there is no
+    // baseline, so the asset yields no candidate at all rather than a set of
+    // costs compared against nothing.
+    const lcca = buildLccaEvaluator(
+      ctx,
+      conditionScore,
+      library,
+      curves,
+      WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!
     );
-    const replacementDef = library.find((d) => d.name === "Replacement") ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
-    // Every life-cycle comparison below is measured against this. Without a
-    // rate that prices Replacement for this asset there is no baseline, so the
-    // asset yields no candidate at all rather than a set of costs compared
-    // against nothing.
-    const plannedReplacementCost = estimateTreatmentCost(replacementDef, ctx);
-    if (plannedReplacementCost == null) continue;
-    const forcedReplacementCost = Math.round(plannedReplacementCost * EMERGENCY_COST_PREMIUM);
-    const costInputs = { diameterInches, customersServed };
-
-    const doNothing = computeLcca(
-      {
-        label: "Do nothing",
-        initialCost: 0,
-        annualMaintenanceCost: 0,
-        resultingPof: pof,
-        serviceLifeYears: 0,
-        pofEscalationYears: remainingLife,
-        forcedReplacement: { year: remainingLife, cost: forcedReplacementCost },
-      },
-      costInputs,
-      DEFAULT_LCCA_ASSUMPTIONS
-    );
+    if (!lcca) continue;
 
     // Pick this asset's best option on life-cycle cost, then let the optimizer
     // decide which assets get funded first. An option is one treatment or a
@@ -183,28 +166,6 @@ async function buildCandidates(
       const cost = option.cost;
       const projectedCondition = option.projectedCondition;
       const riskAfter = Math.max(1, pof * option.failureProbMultiplier) * cof;
-      const resetsCondition = option.members.some((m) => m.conditionResetTo != null);
-      const deferredLife = remainingLife + option.expectedLifeExtension;
-
-      const lcca = computeLcca(
-        {
-          label: option.label,
-          initialCost: cost,
-          // From the rate, not the treatment: a rate that prices the work
-          // differently generally maintains it differently too.
-          annualMaintenanceCost: option.annualMaintenanceCost,
-          resultingPof: Math.max(1, pof * option.failureProbMultiplier),
-          serviceLifeYears: option.usefulLife,
-          ...(resetsCondition
-            ? {}
-            : {
-                pofEscalationYears: deferredLife,
-                forcedReplacement: { year: deferredLife, cost: forcedReplacementCost },
-              }),
-        },
-        costInputs,
-        DEFAULT_LCCA_ASSUMPTIONS
-      );
 
       const info: CandidateInfo = {
         assetId: asset.id,
@@ -215,7 +176,7 @@ async function buildCandidates(
         projectedCondition,
         riskNow: Math.round(pof * cof * 10) / 10,
         riskAfter: Math.round(riskAfter * 10) / 10,
-        lccSavings: doNothing.totalNpv - lcca.totalNpv,
+        lccSavings: lcca.savingFor(option),
         criticality:
           scenarioCriticality?.get(asset.id) ?? asset.criticalityScores[0]?.score ?? 50,
         serviceArea: asset.location?.serviceArea ?? null,

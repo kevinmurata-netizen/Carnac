@@ -4,13 +4,27 @@ import {
   WATERLINE_TREATMENTS,
   rulesFromWindow,
   recommendTreatment,
+  enumerateOptions,
   type AssetTreatmentContext,
   type Recommendation,
 } from "@/domain/waterline/treatment";
+import {
+  benefitCof,
+  costPerUnit,
+  rankingValue,
+  scoreBenefits,
+  type BenefitTerms,
+  type BenefitWeights,
+  type CostBasis,
+} from "@/domain/waterline/benefit";
+import { computeCriticalityScore } from "@/domain/waterline/risk";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { createStandardRate } from "@/server/cost-rates";
 import { loadCombinations } from "@/server/combinations";
+import { buildLccaEvaluator } from "@/server/lcca-evaluator";
+import { getMaterialCurves } from "@/server/settings";
+import { resolveWeights } from "@/server/weight-sets";
 
 /**
  * Idempotently write the treatment library, and the rules that decide what
@@ -145,6 +159,9 @@ export async function buildContexts(organizationId: string, assetId?: string) {
       riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
       failureEvents: { where: { failureDate: { gte: since } }, select: { id: true } },
       location: { select: { serviceArea: true, pressureZone: true } },
+      // The multiplier in the ranking formula. Present only where a formula
+      // has been run; the risk-based default fills in otherwise.
+      criticalityScores: { orderBy: { calculatedAt: "desc" }, take: 1, select: { score: true } },
     },
   });
 
@@ -164,10 +181,18 @@ export async function buildContexts(organizationId: string, assetId?: string) {
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
       serviceArea: asset.location?.serviceArea ?? null,
       pressureZone: asset.location?.pressureZone ?? null,
     };
-    return { asset: { id: asset.id, assetCode: asset.assetCode }, ctx };
+    return {
+      asset: {
+        id: asset.id,
+        assetCode: asset.assetCode,
+        storedCriticality: asset.criticalityScores[0]?.score ?? null,
+      },
+      ctx,
+    };
   });
 }
 
@@ -193,6 +218,18 @@ export type NetworkRecommendationRow = {
   category: string;
   estimatedCost: number;
   riskReductionPct: number | null;
+  /** What the treatment achieves, 0–100, normalized across every
+   * recommendation in this run. See docs/TREATMENT-MODEL-REBUILD.md §5.3. */
+  expectedBenefit: number;
+  /** The three terms behind it, so the score can be read rather than trusted. */
+  benefitTerms: BenefitTerms;
+  /** What the asset is worth, 0–100 — the active formula's score, or the
+   * risk-based default. */
+  criticalityScore: number;
+  /** Criticality × Benefit ÷ Cost per Unit. Null when the cost is zero. */
+  value: number | null;
+  costPerUnit: number;
+  costBasis: CostBasis;
 };
 
 export type NetworkRecommendations = {
@@ -204,11 +241,37 @@ export type NetworkRecommendations = {
 
 export async function getNetworkRecommendations(organizationId: string): Promise<NetworkRecommendations> {
   const contexts = await buildContexts(organizationId);
-  const [library, combinations] = await Promise.all([
+  const [library, combinations, curves, chosen] = await Promise.all([
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
+    getMaterialCurves(organizationId),
+    resolveWeights(organizationId),
   ]);
-  const rows: NetworkRecommendationRow[] = [];
+
+  // Criticality is deliberately absent from these weights: it multiplies the
+  // benefit rather than forming part of it. §5.3.
+  const benefitWeights: BenefitWeights = {
+    conditionImprovement: chosen.weights.conditionImprovement,
+    riskReduction: chosen.weights.riskReduction,
+    lifeCycleSaving: chosen.weights.lifeCycleCost,
+  };
+
+  const fallbackReplacement = WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
+
+  type Pending = {
+    assetId: string;
+    assetCode: string;
+    conditionScore: number | null;
+    riskScore: number | null;
+    treatment: string;
+    category: string;
+    estimatedCost: number;
+    riskReductionPct: number | null;
+    criticalityScore: number;
+    lengthFt: number | null;
+  };
+
+  const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
   let noActionCount = 0;
 
   for (const { asset, ctx } of contexts) {
@@ -217,17 +280,83 @@ export async function getNetworkRecommendations(organizationId: string): Promise
       noActionCount++;
       continue;
     }
-    rows.push({
-      assetId: asset.id,
-      assetCode: asset.assetCode,
-      conditionScore: ctx.conditionScore,
-      riskScore: ctx.riskScore,
-      treatment: rec.recommended.name,
-      category: rec.recommended.category,
-      estimatedCost: rec.recommended.estimatedCost,
-      riskReductionPct: rec.recommended.riskReductionPct,
+
+    // Criticality-free consequence, so the multiplier below is not also
+    // hiding inside the risk term.
+    const cofNoCriticality = benefitCof({
+      customersServed: ctx.customersServed,
+      criticality: ctx.criticality ?? null,
+      diameterInches: ctx.diameterInches,
+      customerType: ctx.customerType ?? null,
+    });
+
+    const option = enumerateOptions(ctx, library, combinations).find(
+      (o) => o.label === rec.recommended!.name
+    );
+
+    const conditionNow = ctx.conditionScore ?? 0;
+    const conditionImprovement = option
+      ? Math.max(0, option.projectedCondition - conditionNow)
+      : Math.max(0, (rec.recommended.projectedCondition ?? conditionNow) - conditionNow);
+
+    // Risk points removed, recomputed against the criticality-free consequence
+    // rather than read off the stored risk score.
+    const pof = ctx.pof ?? 0;
+    const riskNow = pof * cofNoCriticality;
+    const riskAfter = option ? Math.max(1, pof * option.failureProbMultiplier) * cofNoCriticality : riskNow;
+    const riskReduction = Math.max(0, riskNow - (option?.failureProbMultiplier === 0 ? 0 : riskAfter));
+
+    const lcca =
+      ctx.conditionScore != null
+        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curves, fallbackReplacement)
+        : null;
+    const lifeCycleSaving = lcca && option ? Math.max(0, lcca.savingFor(option)) : 0;
+
+    pending.push({
+      item: {
+        assetId: asset.id,
+        assetCode: asset.assetCode,
+        conditionScore: ctx.conditionScore,
+        riskScore: ctx.riskScore,
+        treatment: rec.recommended.name,
+        category: rec.recommended.category,
+        estimatedCost: rec.recommended.estimatedCost,
+        riskReductionPct: rec.recommended.riskReductionPct,
+        criticalityScore:
+          asset.storedCriticality ??
+          computeCriticalityScore({
+            customersServed: ctx.customersServed,
+            criticality: ctx.criticality ?? null,
+            diameterInches: ctx.diameterInches,
+            customerType: ctx.customerType ?? null,
+          }).score,
+        lengthFt: ctx.lengthFt,
+      },
+      terms: { conditionImprovement, riskReduction, lifeCycleSaving },
     });
   }
+
+  // Normalized across every recommendation in this run, so two assets' scores
+  // mean the same thing. §5.3.
+  const rows: NetworkRecommendationRow[] = scoreBenefits(pending, benefitWeights).map((s) => {
+    const unit = costPerUnit(s.item.estimatedCost, s.item.lengthFt);
+    return {
+      assetId: s.item.assetId,
+      assetCode: s.item.assetCode,
+      conditionScore: s.item.conditionScore,
+      riskScore: s.item.riskScore,
+      treatment: s.item.treatment,
+      category: s.item.category,
+      estimatedCost: s.item.estimatedCost,
+      riskReductionPct: s.item.riskReductionPct,
+      expectedBenefit: s.benefit,
+      benefitTerms: s.raw,
+      criticalityScore: Math.round(s.item.criticalityScore * 10) / 10,
+      value: rankingValue(s.item.criticalityScore, s.benefit, unit.value),
+      costPerUnit: unit.value,
+      costBasis: unit.basis,
+    };
+  });
 
   const byTreatmentMap = new Map<string, { count: number; cost: number }>();
   let totalEstimatedCost = 0;
