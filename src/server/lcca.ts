@@ -100,6 +100,17 @@ export async function getAssetLcca(
   if (plannedReplacementCost == null) return null;
   const forcedReplacementCost = Math.round(plannedReplacementCost * EMERGENCY_COST_PREMIUM);
 
+  // The pipe a forced replacement installs is the same pipe a planned one
+  // would install: same service life, and worth the planned price rather than
+  // the emergency price, since the premium buys speed and not durable value.
+  // Without this credit the do-nothing baseline is charged for a main it is
+  // never credited for, which flatters every treatment measured against it.
+  const forcedResidual = {
+    cost: forcedReplacementCost,
+    serviceLifeYears: replacementDef.usefulLife,
+    residualBasis: plannedReplacementCost,
+  };
+
   // Baseline: keep operating as-is. No capital cost today, but the pipe keeps
   // degrading — failure probability climbs and replacement still arrives,
   // just as an emergency instead of a planned project.
@@ -111,7 +122,7 @@ export async function getAssetLcca(
       resultingPof: currentPof,
       serviceLifeYears: 0,
       pofEscalationYears: remainingLife,
-      forcedReplacement: { year: remainingLife, cost: forcedReplacementCost },
+      forcedReplacement: { year: remainingLife, ...forcedResidual },
     },
     assetCostInputs,
     assumptions
@@ -147,7 +158,7 @@ export async function getAssetLcca(
             ? {}
             : {
                 pofEscalationYears: deferredLife,
-                forcedReplacement: { year: deferredLife, cost: forcedReplacementCost },
+                forcedReplacement: { year: deferredLife, ...forcedResidual },
               }),
         },
         assetCostInputs,

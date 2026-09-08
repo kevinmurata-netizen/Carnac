@@ -54,6 +54,15 @@ export function buildLccaEvaluator(
   const costInputs = { diameterInches: ctx.diameterInches, customersServed: ctx.customersServed };
   const pof = ctx.pof ?? 1;
 
+  // The pipe a forced replacement installs is the same pipe a planned one
+  // would install: same service life, and worth the planned price rather than
+  // the emergency price, since the premium buys speed and not durable value.
+  const forcedReplacement = {
+    cost: forcedReplacementCost,
+    serviceLifeYears: replacementDef.usefulLife,
+    residualBasis: plannedReplacementCost,
+  };
+
   const doNothing = computeLcca(
     {
       label: "Do nothing",
@@ -62,7 +71,7 @@ export function buildLccaEvaluator(
       resultingPof: pof,
       serviceLifeYears: 0,
       pofEscalationYears: remainingLife,
-      forcedReplacement: { year: remainingLife, cost: forcedReplacementCost },
+      forcedReplacement: { year: remainingLife, ...forcedReplacement },
     },
     costInputs,
     DEFAULT_LCCA_ASSUMPTIONS
@@ -91,7 +100,7 @@ export function buildLccaEvaluator(
             ? {}
             : {
                 pofEscalationYears: deferredLife,
-                forcedReplacement: { year: deferredLife, cost: forcedReplacementCost },
+                forcedReplacement: { year: deferredLife, ...forcedReplacement },
               }),
         },
         costInputs,

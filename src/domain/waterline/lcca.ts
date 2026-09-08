@@ -104,7 +104,27 @@ export type LccaOption = {
   pofEscalationYears?: number;
   /** Unavoidable replacement once the asset is exhausted. Emergency work
    * carries a premium over the same job done as planned capital. */
-  forcedReplacement?: { year: number; cost: number };
+  forcedReplacement?: {
+    year: number;
+    cost: number;
+    /**
+     * Service life of the asset the forced replacement installs, so its unused
+     * life at the horizon can be credited back. Omitting it gives no credit,
+     * which is what every caller did before — and it made the comparison
+     * unfair in one direction: a branch that runs the asset to failure was
+     * charged for the replacement it was forced into and then credited
+     * nothing for it, while a planned replacement doing the same job earlier
+     * received a credit.
+     */
+    serviceLifeYears?: number;
+    /**
+     * What the installed asset is worth, where that differs from what was paid.
+     * The emergency premium buys speed, not durable value, so the credit is
+     * based on the planned price of the same work rather than the price paid.
+     * Defaults to `cost`.
+     */
+    residualBasis?: number;
+  };
 };
 
 /** Emergency/reactive work costs more than the same job planned. */
@@ -173,9 +193,16 @@ export function computeLcca(
     }
   }
 
-  // Residual value: straight-line remaining worth of the most recent
-  // investment at the end of the analysis period, discounted back. Treated
-  // as a credit (negative cost).
+  // Residual value: straight-line remaining worth of whatever the option
+  // leaves standing at the end of the analysis period, discounted back and
+  // treated as a credit (negative cost).
+  //
+  // Two things can be left standing, and both are counted. The work this
+  // option paid for up front, and — separately — the replacement it was
+  // forced into. Crediting only the first is what made the comparison unfair:
+  // "do nothing" buys a new main at the emergency premium and then held it for
+  // free in the arithmetic, inflating its cost and therefore every saving
+  // measured against it.
   let residualValuePv = 0;
   if (option.serviceLifeYears > 0 && option.initialCost > 0) {
     const lastInvestmentYear = renewalCount * option.serviceLifeYears;
@@ -183,6 +210,14 @@ export function computeLcca(
     const remainingFraction = Math.max(0, 1 - ageAtEnd / option.serviceLifeYears);
     const basis = renewalCount > 0 ? renewalCost : option.initialCost;
     residualValuePv = -presentValue(basis * remainingFraction, n, r);
+  }
+
+  const forced = option.forcedReplacement;
+  if (forced && forced.year <= n && forced.serviceLifeYears && forced.serviceLifeYears > 0) {
+    const ageAtEnd = n - forced.year;
+    const remainingFraction = Math.max(0, 1 - ageAtEnd / forced.serviceLifeYears);
+    const basis = forced.residualBasis ?? forced.cost;
+    residualValuePv += -presentValue(basis * remainingFraction, n, r);
   }
 
   // Unavoidable replacement when the asset runs out of life under this option.
