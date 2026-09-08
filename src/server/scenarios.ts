@@ -84,6 +84,9 @@ export async function createScenario(
     /** Which criticality formula ranks work plans generated from this
      * scenario. Null follows the asset type's active formula. */
     criticalityModelId?: string | null;
+    /** Which named weighting ranks this scenario's work plans. Null uses the
+     * organization's default set. */
+    weightSetId?: string | null;
   }
 ) {
   return prisma.scenario.create({
@@ -92,6 +95,7 @@ export async function createScenario(
       name: input.name,
       description: input.description || null,
       criticalityModelId: input.criticalityModelId || null,
+      weightSetId: input.weightSetId || null,
       assumptions: {
         create: Object.entries(input.assumptions).map(([key, value]) => ({ key, value })),
       },
@@ -113,6 +117,9 @@ export async function updateScenario(
     description?: string;
     assumptions: ScenarioAssumptions;
     criticalityModelId?: string | null;
+    /** Which named weighting ranks this scenario's work plans. Null uses the
+     * organization's default set. */
+    weightSetId?: string | null;
   }
 ) {
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
@@ -126,6 +133,7 @@ export async function updateScenario(
         name: input.name.trim(),
         description: input.description?.trim() || null,
         criticalityModelId: input.criticalityModelId || null,
+        weightSetId: input.weightSetId || null,
       },
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
@@ -302,13 +310,22 @@ export type ScenarioSummary = {
    * names one rather than following the asset type's active formula. */
   criticalityModelId: string | null;
   criticalityModelName: string | null;
+  /** The named weighting this scenario ranks by, when it names one rather than
+   * following the organization's default set. */
+  weightSetId: string | null;
+  weightSetName: string | null;
   updatedAt: Date;
 };
 
 export async function listScenarios(organizationId: string): Promise<ScenarioSummary[]> {
   const scenarios = await prisma.scenario.findMany({
     where: { organizationId },
-    include: { assumptions: true, results: true, criticalityModel: { select: { name: true } } },
+    include: {
+      assumptions: true,
+      results: true,
+      criticalityModel: { select: { name: true } },
+      weightSet: { select: { name: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -328,6 +345,8 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       hasResults: s.results.length > 0,
       criticalityModelId: s.criticalityModelId,
       criticalityModelName: s.criticalityModel?.name ?? null,
+      weightSetId: s.weightSetId,
+      weightSetName: s.weightSet?.name ?? null,
       finalAvgCondition: conditions.at(-1)?.metricValue ?? null,
       finalBacklog: backlogs.at(-1)?.metricValue ?? null,
       totalSpend: spends.length ? Math.round(spends.reduce((sum, r) => sum + r.metricValue, 0)) : null,

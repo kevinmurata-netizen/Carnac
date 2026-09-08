@@ -831,6 +831,44 @@ model TreatmentCostRate {
 // Scenarios, Work Plans, Projects, Budgets
 // ----------------------------------------------------------------------------
 
+/// A named, reusable set of objective weights.
+///
+/// Ranking anything means deciding what "best" means, and that decision was
+/// previously four numbers typed into the Generate Work Plan form and
+/// remembered by whoever typed them. Naming it makes it comparable: two
+/// scenarios can be read as "Risk First" against "Balanced" rather than as two
+/// sets of digits nobody can source.
+model ScenarioWeightSet {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  conditionImprovement Float @default(0.3)
+  riskReduction        Float @default(0.4)
+  lifeCycleCost        Float @default(0.2)
+
+  /// Read only by the existing weighted-sum ranking, where criticality is one
+  /// objective among four. The Criticality × Benefit ÷ Cost ranking applies
+  /// criticality once as a multiplier and ignores this — see
+  /// docs/TREATMENT-MODEL-REBUILD.md §5.3.
+  criticality Float @default(0.1)
+
+  /// What is used when nobody chose. At most one per organization; enforced in
+  /// `setDefaultWeightSet` rather than by constraint, because "exactly one" is
+  /// a transition, not a row-level fact.
+  isDefault Boolean @default(false)
+
+  scenarios Scenario[]
+  workPlans WorkPlan[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("scenario_weight_sets")
+}
+
 model Scenario {
   id             String  @id @default(cuid())
   organizationId String
@@ -842,6 +880,12 @@ model Scenario {
   /// differs only where someone deliberately made it differ.
   criticalityModelId String?
   criticalityModel   CriticalityModel? @relation(fields: [criticalityModelId], references: [id], onDelete: SetNull)
+
+  /// How this scenario weighs the objectives. Null means the organization's
+  /// default set — same convention as criticalityModelId above, so a scenario
+  /// differs only where someone made it differ.
+  weightSetId String?
+  weightSet   ScenarioWeightSet? @relation(fields: [weightSetId], references: [id], onDelete: SetNull)
 
   assumptions ScenarioAssumption[]
   results     ScenarioResult[]
@@ -881,6 +925,16 @@ model WorkPlan {
   name       String
   startYear  Int
   endYear    Int
+
+  /// Which named set was chosen, for provenance.
+  weightSetId String?
+  weightSet   ScenarioWeightSet? @relation(fields: [weightSetId], references: [id], onDelete: SetNull)
+
+  /// The weights actually used, copied at generation time. The set it came
+  /// from can be edited or deleted afterwards; a saved plan has to stay
+  /// reproducible, and until now nothing recorded what produced its ranking
+  /// beyond the prose in each item's reasonExplanation.
+  objectiveWeights Json?
 
   items WorkPlanItem[]
 

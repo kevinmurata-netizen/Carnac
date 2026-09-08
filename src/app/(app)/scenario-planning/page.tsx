@@ -1,17 +1,13 @@
+import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { listFormulaChoices } from "@/server/criticality";
 import { canRecordFieldData } from "@/lib/permissions";
 import { listScenarios, getAnnualBudget } from "@/server/scenarios";
-import { STRATEGIES, STRATEGY_DESCRIPTIONS, DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { ScenarioComparison } from "./scenario-comparison";
-import { ScenarioFields, toPercent } from "./scenario-fields";
-import { createScenarioAction } from "./actions";
-import { DollarSign, GitCompare, TrendingUp, Wallet } from "lucide-react";
+import { DollarSign, GitCompare, Plus, TrendingUp, Wallet } from "lucide-react";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 
@@ -21,10 +17,9 @@ export default async function ScenarioPlanningPage() {
   const pageTitle = await getPageName(organizationId, "/scenario-planning", "Scenario Planning");
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenarios, annualBudget, criticalityChoices] = await Promise.all([
+  const [scenarios, annualBudget] = await Promise.all([
     listScenarios(organizationId),
     getAnnualBudget(organizationId),
-    listFormulaChoices(organizationId),
   ]);
   const canEdit = canRecordFieldData(session);
 
@@ -43,6 +38,23 @@ export default async function ScenarioPlanningPage() {
       <PageHeader
         title={pageTitle}
         description="Run the network forward under different funding levels and strategies, and compare what actually happens"
+        actions={
+          canEdit && (
+            // A page of its own rather than a form below the grid: a scenario
+            // has a dozen inputs, and an empty one sitting under the
+            // comparison read as part of it.
+            <Button
+              size="sm"
+              nativeButton={false}
+              render={
+                <Link href="/scenario-planning/new">
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add New Scenario
+                </Link>
+              }
+            />
+          )
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -68,48 +80,6 @@ export default async function ScenarioPlanningPage() {
       </div>
 
       <ScenarioComparison scenarios={scenarios} bands={conditionBands} />
-
-      {canEdit && (
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>Create a Scenario</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form action={createScenarioAction} className="space-y-4">
-              <ScenarioFields
-                criticalityChoices={criticalityChoices}
-                defaults={{
-                  name: "",
-                  description: "",
-                  criticalityModelId: null,
-                  annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
-                  fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),
-                  discountRatePct: toPercent(DEFAULT_ASSUMPTIONS.discountRate),
-                  analysisPeriodYears: DEFAULT_ASSUMPTIONS.analysisPeriodYears,
-                  conditionTarget: DEFAULT_ASSUMPTIONS.conditionTarget,
-                  riskThreshold: DEFAULT_ASSUMPTIONS.riskThreshold,
-                  strategy: "risk-based",
-                }}
-              />
-
-              <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-                <div className="mb-1 font-medium text-foreground">Strategies</div>
-                <ul className="space-y-0.5">
-                  {STRATEGIES.map((s) => (
-                    <li key={s}>
-                      <span className="font-medium">{s}</span> — {STRATEGY_DESCRIPTIONS[s]}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit">Create &amp; Run Scenario</Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

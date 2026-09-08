@@ -13,6 +13,7 @@ import {
   Palette,
   ListChecks,
   ListTodo,
+  Scale,
   ShieldAlert,
   ScrollText,
   ShieldCheck,
@@ -226,6 +227,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     icon: Layers,
     detail:
       "Treatments you would apply together on one asset in one year, so the model can price the bundle instead of only the parts.",
+  },
+  {
+    key: "scenario-weights",
+    href: "/settings/scenario-weights",
+    tab: "modeling",
+    title: "Scenario Weights",
+    icon: Scale,
+    detail:
+      "Named weightings — how much condition, risk and life-cycle cost each count when work is ranked. Chosen on a scenario or a work plan rather than retyped each time.",
   },
   {
     key: "deterioration-models",

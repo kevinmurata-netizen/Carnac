@@ -21,10 +21,14 @@ export type ScenarioFieldDefaults = {
   riskThreshold: number;
   strategy: string;
   criticalityModelId: string | null;
+  weightSetId: string | null;
 };
 
 /** The formulas that can rank this scenario's work plans. */
 export type CriticalityChoice = { id: string; name: string; assetTypeName: string; isActive: boolean };
+
+/** The named weightings this scenario can rank by. */
+export type WeightSetChoice = { id: string; name: string; isDefault: boolean; summary: string };
 
 /**
  * The scenario parameter inputs, shared by the create and edit forms so the two
@@ -35,10 +39,12 @@ export function ScenarioFields({
   defaults,
   idPrefix = "",
   criticalityChoices = [],
+  weightSetChoices = [],
 }: {
   defaults: ScenarioFieldDefaults;
   idPrefix?: string;
   criticalityChoices?: CriticalityChoice[];
+  weightSetChoices?: WeightSetChoice[];
 }) {
   const id = (name: string) => `${idPrefix}${name}`;
 
@@ -140,6 +146,33 @@ export function ScenarioFields({
           ))}
         </select>
       </div>
+
+      {/* Chosen from the named sets rather than typed here. A weighting is a
+          policy that outlives one scenario, and four numbers in this form
+          could not be compared with four numbers in another. */}
+      {weightSetChoices.length > 0 && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("weightSetId")}>Scenario weighting</Label>
+          <select
+            id={id("weightSetId")}
+            name="weightSetId"
+            defaultValue={defaults.weightSetId ?? ""}
+            className={input}
+          >
+            <option value="">The organization&apos;s default weighting</option>
+            {weightSetChoices.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+                {w.isDefault ? " (default)" : ""} — {w.summary}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            How much condition, risk and life-cycle cost each count when this scenario&apos;s work is ranked. Edit the
+            sets themselves under Settings › Scenario Weights.
+          </p>
+        </div>
+      )}
 
       {/* Only offered where formulas exist, so a system with none is not asked
           to choose between nothing and nothing. */}
