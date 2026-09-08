@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/scenarios";
 import { listFormulaChoices } from "@/server/criticality";
+import { listWeightSets } from "@/server/weight-sets";
+import { normalizeWeights } from "@/domain/waterline/optimization";
 import { STRATEGIES, STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { PageHeader } from "@/components/layout/page-header";
@@ -13,7 +15,12 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { ScenarioFields, toPercent, type CriticalityChoice } from "../scenario-fields";
+import {
+  ScenarioFields,
+  toPercent,
+  type CriticalityChoice,
+  type WeightSetChoice,
+} from "../scenario-fields";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
 import { AlertTriangle, Gauge, Layers, Wallet } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
@@ -25,12 +32,26 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects, criticalityChoices] = await Promise.all([
+  const [scenario, projects, criticalityChoices, weightSets] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
     listFormulaChoices(organizationId),
+    listWeightSets(organizationId),
   ]);
   if (!scenario) notFound();
+
+  const weightSetChoices: WeightSetChoice[] = weightSets.map((w) => {
+    const n = normalizeWeights(w.weights);
+    const pct = (v: number) => Math.round(v * 100);
+    return {
+      id: w.id,
+      name: w.name,
+      isDefault: w.isDefault,
+      summary: `condition ${pct(n.conditionImprovement)}%, risk ${pct(n.riskReduction)}%, life-cycle ${pct(
+        n.lifeCycleCost
+      )}%`,
+    };
+  });
 
   const projectsByYear = new Map<number, typeof projects>();
   for (const p of projects) {
@@ -81,7 +102,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} />
         </>
       ) : (
         <>
@@ -117,7 +138,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -311,10 +332,12 @@ function AssumptionsCard({
   scenario,
   canEdit,
   criticalityChoices,
+  weightSetChoices,
 }: {
   scenario: ScenarioDetail;
   canEdit: boolean;
   criticalityChoices: CriticalityChoice[];
+  weightSetChoices: WeightSetChoice[];
 }) {
   const a = scenario.assumptions;
 
@@ -336,10 +359,12 @@ function AssumptionsCard({
               key={scenario.updatedAt.toISOString()}
               idPrefix="edit-"
               criticalityChoices={criticalityChoices}
+              weightSetChoices={weightSetChoices}
               defaults={{
                 name: scenario.name,
                 description: scenario.description ?? "",
                 criticalityModelId: scenario.criticalityModelId ?? null,
+                weightSetId: scenario.weightSetId ?? null,
                 annualBudget: a.annualBudget,
                 fundingGrowthPct: toPercent(a.fundingGrowth),
                 discountRatePct: toPercent(a.discountRate),

@@ -34,6 +34,9 @@ export type GenerateWorkPlanInput = {
   annualBudget: number;
   fundingGrowth: number;
   weights: ObjectiveWeights;
+  /** Which named set the weights came from, for provenance. Null when they
+   * came from the built-in defaults. */
+  weightSetId?: string | null;
   scenarioId?: string | null;
 };
 
@@ -264,6 +267,10 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
       startYear: input.startYear,
       endYear: input.startYear + input.years - 1,
       scenarioId: input.scenarioId ?? null,
+      weightSetId: input.weightSetId ?? null,
+      // Copied, not merely referenced. The set can be edited or deleted later
+      // and this plan still has to explain its own ranking.
+      objectiveWeights: input.weights as object,
     },
   });
 

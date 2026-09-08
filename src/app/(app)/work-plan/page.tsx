@@ -3,7 +3,8 @@ import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { listWorkPlans } from "@/server/workplans";
 import { getAnnualBudget } from "@/server/scenarios";
-import { DEFAULT_WEIGHTS, OBJECTIVE_LABELS, OBJECTIVE_DESCRIPTIONS } from "@/domain/waterline/optimization";
+import { normalizeWeights, type ObjectiveWeights } from "@/domain/waterline/optimization";
+import { listWeightSets } from "@/server/weight-sets";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,9 +22,14 @@ export default async function WorkPlanPage() {
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/work-plan", "Work Plan");
 
-  const [plans, annualBudget] = await Promise.all([listWorkPlans(), getAnnualBudget(organizationId)]);
+  const [plans, annualBudget, weightSets] = await Promise.all([
+    listWorkPlans(),
+    getAnnualBudget(organizationId),
+    listWeightSets(organizationId),
+  ]);
   const canEdit = canRecordFieldData(session);
   const currentYear = new Date().getFullYear();
+  const defaultSet = weightSets.find((s) => s.isDefault) ?? weightSets[0];
 
   return (
     <div>
@@ -120,38 +126,38 @@ export default async function WorkPlanPage() {
                 </div>
               </div>
 
+              {/* Chosen, not retyped. The weighting is a policy decision that
+                  outlives one generation run, so it is a named row picked from
+                  a list — and the plan records which one it used. */}
               <div>
                 <div className="mb-2 text-sm font-medium text-foreground">Objective Weights</div>
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Weights are normalized, so 30/40/20/10 and 3/4/2/1 give the same ranking. Each candidate&apos;s
-                  objectives are rescaled 0–100 across the whole candidate set, then combined as a weighted sum —
-                  the published formula, no black box.
+                  Each candidate&apos;s objectives are rescaled 0–100 across the whole candidate set, then combined as
+                  a weighted sum — the published formula, no black box.{" "}
+                  <Link href="/settings/scenario-weights" className="text-primary hover:underline">
+                    Add or edit weightings →
+                  </Link>
                 </p>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <WeightField
-                    id="wCondition"
-                    label={OBJECTIVE_LABELS.conditionImprovement}
-                    hint={OBJECTIVE_DESCRIPTIONS.conditionImprovement}
-                    defaultValue={DEFAULT_WEIGHTS.conditionImprovement * 100}
-                  />
-                  <WeightField
-                    id="wRisk"
-                    label={OBJECTIVE_LABELS.riskReduction}
-                    hint={OBJECTIVE_DESCRIPTIONS.riskReduction}
-                    defaultValue={DEFAULT_WEIGHTS.riskReduction * 100}
-                  />
-                  <WeightField
-                    id="wLcc"
-                    label={OBJECTIVE_LABELS.lifeCycleCost}
-                    hint={OBJECTIVE_DESCRIPTIONS.lifeCycleCost}
-                    defaultValue={DEFAULT_WEIGHTS.lifeCycleCost * 100}
-                  />
-                  <WeightField
-                    id="wCriticality"
-                    label={OBJECTIVE_LABELS.criticality}
-                    hint={OBJECTIVE_DESCRIPTIONS.criticality}
-                    defaultValue={DEFAULT_WEIGHTS.criticality * 100}
-                  />
+                <div className="max-w-xl space-y-1.5">
+                  <Label htmlFor="weightSetId">Weighting</Label>
+                  <select id="weightSetId" name="weightSetId" defaultValue={defaultSet?.id ?? ""} className={inputClass}>
+                    {weightSets.length === 0 && <option value="">Built-in 30/40/20/10</option>}
+                    {weightSets.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                        {s.isDefault ? " (default)" : ""} — {describeSplit(s.weights)}
+                      </option>
+                    ))}
+                  </select>
+                  {weightSets.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      No weightings saved yet, so the built-in defaults apply.{" "}
+                      <Link href="/settings/scenario-weights" className="text-primary hover:underline">
+                        Create one
+                      </Link>{" "}
+                      to compare policies rather than numbers.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -166,30 +172,12 @@ export default async function WorkPlanPage() {
   );
 }
 
-function WeightField({
-  id,
-  label,
-  hint,
-  defaultValue,
-}: {
-  id: string;
-  label: string;
-  hint: string;
-  defaultValue: number;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label} (%)</Label>
-      <input
-        id={id}
-        name={id}
-        type="number"
-        min={0}
-        max={100}
-        defaultValue={defaultValue}
-        className={inputClass}
-      />
-      <p className="text-xs text-muted-foreground">{hint}</p>
-    </div>
-  );
+/** The normalized split, so an option reads as a policy rather than as four
+ * numbers whose sum the reader has to work out. */
+function describeSplit(weights: ObjectiveWeights) {
+  const n = normalizeWeights(weights);
+  const pct = (v: number) => Math.round(v * 100);
+  return `condition ${pct(n.conditionImprovement)}%, risk ${pct(n.riskReduction)}%, life-cycle ${pct(
+    n.lifeCycleCost
+  )}%, criticality ${pct(n.criticality)}%`;
 }

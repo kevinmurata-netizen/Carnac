@@ -19,6 +19,7 @@ const schema = z.object({
   riskThreshold: z.coerce.number().min(0).max(25),
   strategy: z.string(),
   criticalityModelId: z.string().optional(),
+  weightSetId: z.string().optional(),
 });
 
 /** Percentages are entered as whole numbers in the form but stored as rates. */
@@ -27,6 +28,7 @@ function parseForm(formData: FormData): {
   description?: string;
   assumptions: ScenarioAssumptions;
   criticalityModelId: string | null;
+  weightSetId: string | null;
 } {
   const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
@@ -42,6 +44,8 @@ function parseForm(formData: FormData): {
     description: d.description,
     // An empty select means "follow the asset type", not "a formula with no id".
     criticalityModelId: d.criticalityModelId?.trim() || null,
+    // Likewise: empty means "the organization's default", not "no weighting".
+    weightSetId: d.weightSetId?.trim() || null,
     assumptions: {
       annualBudget: d.annualBudget,
       fundingGrowth: d.fundingGrowthPct / 100,
