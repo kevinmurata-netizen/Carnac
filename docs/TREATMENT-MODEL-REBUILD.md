@@ -590,16 +590,89 @@ is the obvious candidate and is not yet specified.
 
 ---
 
-## Phase 6 — Cleanup (one release after Phase 2)
+## Phase 6 — Cleanup
 
-- Drop `Treatment.applicableConditionMin/Max` and the `materials` /
-  `diameterMin` / `diameterMax` / `qualifyMode` keys from `applicability`.
+Superseded columns and tables, dropped once nothing reads them. Deliberately a
+separate release from the phases that replaced them: while the old columns
+still hold the truth, Phases 1–2 can be reverted. Dropping them is what cashes
+that insurance in, so it should not happen in the same release as anything
+still being watched.
+
+**This is not a migration-only phase.** Several of the columns below are still
+read by live code, so each one needs its readers rewritten first. Surveyed
+2026-09-08; check again before starting, since the survey is the part that goes
+stale.
+
+### 6.1 Applicability window → rules
+
+Superseded by Treatment Rules in Phase 1 and by the rule tree in Phase 5's
+first slice.
+
+| Drop | Blocked by |
+| --- | --- |
+| `Treatment.applicableConditionMin` / `Max` | Used as a **sort key** in `treatment-config.ts` (×2), `admin.ts` and `treatments.ts`, and rendered as a `conditionRange` string by `admin.ts` and `listTreatments` — which the Treatment Library table on Treatment Planning still shows |
+| `applicability.materials` / `diameterMin` / `diameterMax` | `listTreatments` renders `materials`; check `toDef` before dropping |
+| `Treatment.qualifyMode` | Superseded by `Treatment.ruleTree`; `getTreatmentRules` still falls back to it via `ruleTreeFromFlat` for treatments saved before the tree existed |
+
+Two traps here. The sort order has to be replaced with something meaningful —
+name, or category — rather than silently dropped, or the Treatments list
+reorders for no reason a reader can see. And `conditionRange` has no rule-based
+equivalent: a treatment gated by "Condition 20-55" *and* "Diameter at least 6"
+cannot be reduced to one range, so that column should be removed rather than
+recomputed.
+
+**`qualifyMode` is not only a treatment column.** `TreatmentCombination` has
+its own `qualifyMode` and it is live — `loadCombinations` reads it and
+`enumerateOptions` gates bundles on it. Drop the one on `Treatment`; leave the
+combination's alone.
+
+### 6.2 Cost columns → cost rates
+
+Superseded by `TreatmentCostRate` in Phase 2.
+
 - Drop `Treatment.unitCost`, `costUnit`, `mobilizationCost`,
-  `annualMaintenanceCost` once cost rows are the only reader.
-- Remove `fromLegacyTree` and the `LEGACY_RULE` path.
+  `annualMaintenanceCost`.
+- Readers: `listTreatments` (rendered on Treatment Planning's library table),
+  and `createTreatment` / `ensureTreatments`, which still write them.
+- `createTreatmentAction` copies the fallback rate into these columns on
+  create. That copy becomes dead and should go with them.
 
-Deliberately a separate release: if Phase 1 or 2 needs reverting, the old
-columns still hold the truth.
+### 6.3 Superseded tables
+
+- **`treatment_rules`** (`TreatmentRule`) — the pre-Phase-1 per-treatment rule
+  rows. Only surviving reader is a `deleteMany` in `deleteTreatment` and the
+  `rules: true` include in `listTreatments`.
+- **`treatment_costs`** (`TreatmentCost`) — the `Initial` / `Maintenance` pair
+  written at create time. Same shape: a `deleteMany` in `deleteTreatment`, and
+  the `costs: true` include.
+
+Both are still *written* by `ensureTreatments` and `createTreatment`. Stop
+writing them one release before dropping them, or a rollback lands on rows that
+no longer exist.
+
+### 6.4 Legacy decision trees
+
+- Remove `fromLegacyTree` in `decision-tree.ts`. Already unreferenced — this
+  one is a straight deletion.
+
+### 6.5 Rename the Decision Trees route
+
+The card is titled **Treatment Rules** and the page is at
+`/settings/decision-trees`. Closing that gap is cheap in code and expensive in
+data, because two tables key on the href:
+
+- `role_permissions.resource` stores `card:/settings/decision-trees`.
+  `resourceKey()` is `` `${kind}:${href}` ``, and `allResourceKeys()` rejects
+  anything not derived from a current card — so a rename orphans every stored
+  permission row for this card and silently drops the role restrictions on it.
+- `navigation_labels.href` stores any per-organization rename of the page
+  title, keyed the same way.
+
+So the rename needs: the route moved, a permanent redirect from the old path
+(external links and the rule-link deep links written in Phase 5 both use it),
+and a data migration updating both tables. Worth doing — but it is its own
+change with its own risk, and it does not belong in the same release as the
+column drops.
 
 ---
 
