@@ -51,13 +51,20 @@ export function SetBreadcrumb({ segment, label }: { segment: string; label: stri
 
 type Crumb = { key: string; href: string; label: string; isLast: boolean };
 
-export function Breadcrumbs() {
+/**
+ * The trail for the current URL.
+ *
+ * Split out from the rendering so that "go back one level" means exactly what
+ * the breadcrumb shows, rather than a second guess at the hierarchy that could
+ * drift away from it.
+ */
+function useCrumbs(): Crumb[] {
   const pathname = usePathname();
   const search = useSearchParams();
   const { labels, overrides } = useContext(BreadcrumbContext);
 
   const segments = pathname.split("/").filter(Boolean);
-  if (segments.length === 0) return null;
+  if (segments.length === 0) return [];
 
   const nameFor = (href: string, segment: string) =>
     overrides[href] ?? (isRecordId(segment) ? (labels[segment] ?? "…") : labelForSegment(segment));
@@ -81,7 +88,7 @@ export function Breadcrumbs() {
   if (pathname === "/settings") {
     const key = search.get("tab") ?? GENERAL_TAB.key;
     const tab = Object.values(TAB_FOR_PATH).find((t) => t.key === key) ?? GENERAL_TAB;
-    return <Trail crumbs={[settingsCrumb, tabCrumb(tab, true)]} />;
+    return [settingsCrumb, tabCrumb(tab, true)];
   }
 
   /**
@@ -97,33 +104,51 @@ export function Breadcrumbs() {
     const ownIndex = segments.findIndex((_, i) => TAB_FOR_PATH["/" + segments.slice(0, i + 1).join("/")]);
     const tail = segments.slice(ownIndex === -1 ? segments.length - 1 : ownIndex);
 
-    return (
-      <Trail
-        crumbs={[
-          settingsCrumb,
-          tabCrumb(tab, false),
-          ...tail.map((segment, i) => {
-            const href = "/" + segments.slice(0, segments.length - tail.length + i + 1).join("/");
-            return {
-              key: `page-${i}`,
-              href,
-              label: nameFor(href, segment),
-              isLast: i === tail.length - 1,
-            };
-          }),
-        ]}
-      />
-    );
+    return [
+      settingsCrumb,
+      tabCrumb(tab, false),
+      ...tail.map((segment, i) => {
+        const href = "/" + segments.slice(0, segments.length - tail.length + i + 1).join("/");
+        return {
+          key: `page-${i}`,
+          href,
+          label: nameFor(href, segment),
+          isLast: i === tail.length - 1,
+        };
+      }),
+    ];
   }
 
-  return (
-    <Trail
-      crumbs={segments.map((segment, i) => {
-        const href = "/" + segments.slice(0, i + 1).join("/");
-        return { key: href, href, label: nameFor(href, segment), isLast: i === segments.length - 1 };
-      })}
-    />
-  );
+  return segments.map((segment, i) => {
+    const href = "/" + segments.slice(0, i + 1).join("/");
+    return { key: href, href, label: nameFor(href, segment), isLast: i === segments.length - 1 };
+  });
+}
+
+export function Breadcrumbs() {
+  const crumbs = useCrumbs();
+  return crumbs.length === 0 ? null : <Trail crumbs={crumbs} />;
+}
+
+/**
+ * Where "back" goes from here: the nearest crumb that is not the page you are
+ * already looking at.
+ *
+ * Taken from the trail rather than from the URL, because the trail is what the
+ * reader can see — Cancel lands on the page named to its left. The comparison
+ * includes the query string, so closing a panel opened as `?rule=…` returns to
+ * the list behind it rather than skipping a level up.
+ */
+export function useParentHref(): string | null {
+  const crumbs = useCrumbs();
+  const pathname = usePathname();
+  const search = useSearchParams().toString();
+  const current = search ? `${pathname}?${search}` : pathname;
+
+  for (let i = crumbs.length - 1; i >= 0; i--) {
+    if (crumbs[i].href !== current) return crumbs[i].href;
+  }
+  return null;
 }
 
 function Trail({ crumbs }: { crumbs: Crumb[] }) {

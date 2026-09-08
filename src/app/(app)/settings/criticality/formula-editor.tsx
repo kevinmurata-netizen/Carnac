@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { EMPTY_SETTINGS_STATE, type SettingsActionState } from "../state";
 import { Check, CircleDot, Play, Plus, Trash2 } from "lucide-react";
 import type { FormulaField, FormulaPreview, CriticalityModelSummary, ValueMaps } from "@/server/criticality";
@@ -75,6 +76,15 @@ export function FormulaEditor({
     setEditing(BLANK);
     setResult(null);
   }
+
+  // What the formula on screen is being compared against: the stored version of
+  // whichever formula is open, or a blank one while writing a new formula. The
+  // models come from the server, so this follows a save without extra
+  // bookkeeping.
+  const stored = models.find((m) => m.id === editing.id) ?? BLANK;
+  const key = (f: { name: string; expression: string; valueMaps: ValueMaps }) =>
+    JSON.stringify({ name: f.name, expression: f.expression, valueMaps: f.valueMaps });
+  const dirty = key(editing) !== key(stored);
 
   const insert = (text: string) => {
     const el = box.current;
@@ -295,10 +305,13 @@ export function FormulaEditor({
                   {trying ? "Trying…" : `Try it on ${assetCount.toLocaleString()} assets`}
                 </Button>
                 {canEdit && (
-                  <Button type="submit" size="sm" disabled={!editing.name.trim() || !editing.expression.trim()}>
-                    <Check className="mr-1.5 h-3.5 w-3.5" />
-                    {editing.id ? "Save changes" : "Create formula"}
-                  </Button>
+                  <>
+                    <CancelOrDiscard dirty={dirty} onDiscard={() => setEditing(stored)} />
+                    <Button type="submit" size="sm" disabled={!editing.name.trim() || !editing.expression.trim()}>
+                      <Check className="mr-1.5 h-3.5 w-3.5" />
+                      {editing.id ? "Save changes" : "Create formula"}
+                    </Button>
+                  </>
                 )}
               </div>
 

@@ -215,6 +215,11 @@ export function PermissionMatrix({
 
           <SaveBar
             state={saveState.status === "idle" ? resetState : saveState}
+            // The ticks live in React state, so resetting the form alone would
+            // leave them where they are.
+            onDiscard={() =>
+              setAccess(Object.fromEntries(sections.flatMap((s) => s.rows.map((r) => [r.resource, r.access]))))
+            }
             label={`Save ${roleName} permissions`}
             hint="Anything left at the default — readable and visible, not writable — is stored as no row at all."
           />

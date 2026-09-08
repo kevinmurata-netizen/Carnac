@@ -1,9 +1,9 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { SectionGroup, CollapsibleSection } from "@/components/layout/collapsible-section";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { CostEditor } from "../[id]/cost-editor";
 import { RuleTreeEditor } from "../[id]/rule-tree-editor";
 import {
@@ -26,19 +26,20 @@ const SECTION_IDS = ["definition", "does", "costs", "rules"];
 /** A treatment starts with one price that applies to everything. Rates are
  * tried in order and the last one must match anything, so the very first rate
  * has to be that fallback — anything narrower would leave assets unpriceable. */
-const STARTING_RATES: CostRateRow[] = [
-  {
-    id: "starting",
-    name: "Standard",
-    sortOrder: 0,
-    ruleId: null,
-    ruleName: null,
-    ruleSummary: null,
-    unitCost: 0,
-    costUnit: "per LF",
-    mobilizationCost: 0,
-    annualMaintenanceCost: 0,
-  },
+const STARTING_RATE: CostRateInput = {
+  name: "Standard",
+  ruleId: null,
+  unitCost: 0,
+  costUnit: "per LF",
+  mobilizationCost: 0,
+  annualMaintenanceCost: 0,
+};
+
+const STARTING_RATES: CostRateInput[] = [STARTING_RATE];
+
+/** The same rate in the shape the cost editor reads, so the two cannot drift. */
+const STARTING_ROWS: CostRateRow[] = [
+  { id: "starting", sortOrder: 0, ruleName: null, ruleSummary: null, ...STARTING_RATE },
 ];
 
 export function NewTreatmentForm({
@@ -60,6 +61,19 @@ export function NewTreatmentForm({
   const [rates, setRates] = useState<CostRateInput[]>(STARTING_RATES);
   const [tree, setTree] = useState<RuleGroup>(emptyTree);
   const [blockIds, setBlockIds] = useState<string[]>([]);
+
+  // The prices and the arrangement are held by their own editors, which report
+  // upwards but keep their state. Remounting them is what actually empties
+  // them; bumping this key is the discard.
+  const [generation, setGeneration] = useState(0);
+
+  // Whether anything has been entered. The rule tree is compared by value like
+  // everything else, so removing what you added reads as untouched again.
+  const started =
+    JSON.stringify(draft) !== JSON.stringify(draftFromTreatment()) ||
+    JSON.stringify(rates) !== JSON.stringify(STARTING_RATES) ||
+    JSON.stringify(tree) !== JSON.stringify(emptyTree) ||
+    blockIds.length > 0;
 
   return (
     <div className="space-y-4">
@@ -97,8 +111,9 @@ export function NewTreatmentForm({
             description="Prices tried top to bottom — the first whose rule matches is charged."
           >
             <CostEditor
+              key={generation}
               treatmentName="this treatment"
-              initial={STARTING_RATES}
+              initial={STARTING_ROWS}
               rules={allRules}
               canEdit
               onChange={setRates}
@@ -111,6 +126,7 @@ export function NewTreatmentForm({
             description="How the rules combine to decide whether this treatment is considered. Click any rule to open it."
           >
             <RuleTreeEditor
+              key={generation}
               allRules={allRules}
               initialTree={emptyTree}
               initialBlockIds={[]}
@@ -125,11 +141,21 @@ export function NewTreatmentForm({
 
         {/* One button for all four sections, outside every one of them so it
             stays reachable however many are folded away. */}
-        <div className="flex justify-end gap-2">
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={<Link href="/settings/treatments">Cancel</Link>}
+        <div className="flex items-center justify-end gap-2">
+          {/* Nothing is stored yet, so "the saved state" here is the empty form
+              the page opened with. Discard clears it back to that, which is
+              also what makes leaving safe again. */}
+          <CancelOrDiscard
+            dirty={started}
+            onDiscard={() => {
+              setDraft(draftFromTreatment());
+              setRates(STARTING_RATES);
+              setTree(emptyTree);
+              setBlockIds([]);
+              setGeneration((g) => g + 1);
+            }}
+            disabled={pending}
+            size="default"
           />
           <Button type="submit" disabled={pending}>
             {pending ? "Creating…" : "Create Treatment"}
