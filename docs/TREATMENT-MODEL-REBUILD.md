@@ -493,17 +493,47 @@ normalization redistributes it in proportion, so a scenario that changes nothing
 gets the closest available analogue of today's ranking rather than an arbitrary
 new one. Set to 0.33 / 0.33 / 0.33 for a plain average.
 
-Where they live, mirroring how weights are already carried:
+**Where they are set today.** One place only: the **Generate Work Plan form** on
+`/work-plan`, as four number inputs — `wCondition`, `wRisk`, `wLcc`,
+`wCriticality` — validated 0–100 each in `work-plan/actions.ts`, with the sum
+required to be above zero. They are entered per generation run and passed
+straight into `generateWorkPlan`.
 
-- **Org default** on the objective-weights setting that `DEFAULT_WEIGHTS` backs.
-- **Per scenario**, so "what if we chased risk only" is a scenario rather than a
-  settings change with global blast radius. `wR = 1, wC = wL = 0` is a valid and
-  useful configuration.
+`DEFAULT_WEIGHTS` in `optimization.ts` is **not** a stored setting. It supplies
+the form's default values and the demo baseline plan (`ensureBaselineWorkPlan`),
+nothing more. There is no org-level objective-weights record, and `Scenario`
+carries `criticalityModelId` but no weights of its own.
+
+So this phase has to add somewhere for them to live. Three gaps, in the order
+they matter:
+
+1. **The generated plan does not record what produced it.** `WorkPlan` stores
+   `name`, `startYear`, `endYear` and its items — not the weights. The per-item
+   `reasonExplanation` captures them in prose via `explainPriority`, which is
+   how they are recoverable at all today, but nothing structured survives. Two
+   plans generated a week apart under different weights are indistinguishable as
+   data. **Store the weights on `WorkPlan`** — a small `Json` column, the same
+   shape the form submits. This is worth doing regardless of the rest.
+2. **A scenario cannot hold a weighting.** "What if we chased risk only" should
+   be a saved scenario, not a number retyped into a form each time and
+   remembered by whoever typed it. `Scenario.criticalityModelId` is the
+   precedent: nullable, meaning "use the default unless someone deliberately
+   made this scenario differ". **Add `Scenario.objectiveWeights Json?`** and let
+   the form inherit from the selected scenario.
+3. **An org default would be nice and is the least urgent.** Once 1 and 2 exist,
+   a shipped constant as the fallback is defensible; a settings screen for it is
+   a convenience, not a correctness fix.
+
+The form itself needs the criticality input removed once this ranking method is
+selected — the whole point is that criticality is no longer one weight among
+four. Since §5.2 keeps the existing weighted sum as a selectable alternative,
+the form shows four inputs for that method and three for this one.
 
 A guard worth having: **all three weights zero**. `normalizeWeights` returns the
-defaults when the total is ≤ 0, which is the right instinct, but for a
-three-term average it should say so in the reason string rather than silently
-substituting a different question than the one asked.
+defaults when the total is ≤ 0 and `work-plan/actions.ts` already rejects the
+submission, which between them is the right instinct — but for a three-term
+average the reason string should say a default was substituted rather than
+quietly answering a different question than the one asked.
 
 #### One normalization set, so one number decides both
 
