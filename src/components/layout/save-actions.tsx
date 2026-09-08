@@ -97,12 +97,16 @@ export function useFormDirty(resetKey: unknown, formId?: string) {
 
     baseline.current = snapshot();
 
+    // Listened for on the document, not on the form. A field can belong to a
+    // form by `form=` attribute while sitting somewhere else in the page —
+    // FormData still collects it, but its events bubble through where it
+    // actually sits and would never reach the form at all.
     const check = () => setDirty(snapshot() !== baseline.current);
-    form.addEventListener("input", check);
-    form.addEventListener("change", check);
+    document.addEventListener("input", check);
+    document.addEventListener("change", check);
     return () => {
-      form.removeEventListener("input", check);
-      form.removeEventListener("change", check);
+      document.removeEventListener("input", check);
+      document.removeEventListener("change", check);
     };
     // Re-baselined whenever the caller says the saved state moved — normally
     // the action's result, so a successful save makes the current values the
