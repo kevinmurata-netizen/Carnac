@@ -101,12 +101,14 @@ export default async function TreatmentPlanningPage() {
                 <TableHead>Category</TableHead>
                 <TableHead>Estimated Cost</TableHead>
                 <TableHead>Risk Reduction</TableHead>
+                <TableHead>Criticality</TableHead>
+                <TableHead>Expected Benefit</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {topRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
                     No treatments recommended.
                   </TableCell>
                 </TableRow>
@@ -136,6 +138,22 @@ export default async function TreatmentPlanningPage() {
                     </TableCell>
                     <TableCell>{formatCurrency(row.estimatedCost)}</TableCell>
                     <TableCell>{row.riskReductionPct != null ? `${row.riskReductionPct}%` : "—"}</TableCell>
+                    <TableCell>{row.criticalityScore}</TableCell>
+                    {/* The three terms are in the tooltip rather than three
+                        more columns: the score is the number you scan, and the
+                        decomposition is what you check when one surprises you. */}
+                    <TableCell
+                      title={`Condition +${Math.round(row.benefitTerms.conditionImprovement)} WCI · Risk −${
+                        Math.round(row.benefitTerms.riskReduction * 10) / 10
+                      } pts (criticality excluded) · Life-cycle saving ${formatCurrency(
+                        row.benefitTerms.lifeCycleSaving
+                      )} · ${formatCurrency(row.costPerUnit)} ${row.costBasis}`}
+                    >
+                      <span className="font-medium">{row.expectedBenefit}</span>
+                      {row.value != null && (
+                        <span className="ml-1.5 text-xs text-muted-foreground">value {row.value}</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -199,6 +217,17 @@ export default async function TreatmentPlanningPage() {
         Costs scale with diameter (normalized so 8&quot; = 1.0) and, for per-linear-foot treatments, with segment
         length. Estimates here are initial construction cost only — life-cycle cost including maintenance, failure
         and residual value arrives in Phase 6.
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        <strong className="font-medium text-foreground">Expected Benefit</strong> is a 0–100 weighted average of
+        condition improvement, risk reduction and life-cycle saving, rescaled across every recommendation in this run
+        — so the scores compare with each other, not with a previous run. Criticality is deliberately absent from it
+        and applied once, as the multiplier in <em>value = criticality × benefit ÷ cost per unit</em>. Hover a score
+        to see the three terms behind it. The weighting comes from{" "}
+        <Link href="/settings/scenario-weights" className="text-primary hover:underline">
+          Scenario Weights
+        </Link>
+        .
       </p>
     </div>
   );

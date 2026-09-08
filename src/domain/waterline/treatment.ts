@@ -748,6 +748,11 @@ export type AssetTreatmentContext = {
   /** Optional — only decision trees test it, so call sites that predate
    * trees need not supply it. */
   criticality?: string | null;
+  /** Optional, and read only by the criticality-free consequence score behind
+   * Expected Benefit. A call site that omits it gets the "Unknown" rating that
+   * `computeCofFactors` already applies to a missing value, which is the same
+   * treatment the stored risk score gives it. */
+  customerType?: string | null;
   /** Where the asset sits. Only rules test these, but they are required rather
    * than optional: a call site that quietly omitted a district would make every
    * district rule match nothing, and nothing would report that. */
