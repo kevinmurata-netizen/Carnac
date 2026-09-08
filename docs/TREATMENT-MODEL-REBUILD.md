@@ -375,6 +375,10 @@ Value = Criticality × Expected Benefit ÷ Cost per Unit
 Cost per Unit = total estimated cost ÷ asset length (ft)
 ```
 
+**Settled 2026-09-08.** Expected Benefit is a weighted average of three scores;
+Criticality is removed from those scores and applied once, as the multiplier.
+§5.3 specifies it.
+
 Guards this needs:
 
 - **Length null or zero** → fall back to cost per asset (unit = 1) and label the
@@ -391,6 +395,168 @@ the priority-score decomposition shown on each item. Swapping it silently would
 change every number on the dashboard with no way to explain why. Scenarios
 already carry their own criticality formula (`Scenario.criticalityModelId`);
 this follows the same pattern — `Scenario.rankingMethod`.
+
+### 5.3 Expected Benefit
+
+**Settled 2026-09-08.** Expected Benefit is what a treatment *achieves*.
+Criticality is what the asset is *worth*. Keeping them apart is the whole point
+of the formula's shape, and it is why criticality has to be taken out of the
+benefit side entirely rather than merely de-weighted.
+
+```
+Expected Benefit = wC · Condition improvement
+                 + wR · Risk reduction        ← computed criticality-free
+                 + wL · Life-cycle saving
+                   (wC + wR + wL normalized to 1)
+
+Value = Criticality × Expected Benefit ÷ Cost per Unit
+```
+
+#### The three components
+
+All three already exist as objectives in `optimization.ts` and are already
+min-max normalized to 0–100 across the candidate set. Nothing new is computed;
+what changes is which of them are in the average, and how risk is derived.
+
+| Component | Raw value | Comes from |
+| --- | --- | --- |
+| **Condition improvement** | WCI points restored | `conditionResetTo` / `conditionGain`, combined per §5.1 |
+| **Risk reduction** | Risk points removed | POF × COF, **with the Criticality factor excluded** — see below |
+| **Life-cycle saving** | Cost avoided vs. leaving the asset alone | The existing LCCA comparison |
+
+Condition earns its own term because risk points are blind to it:
+`riskReduction` moves only with `failureProbMultiplier`, so Cathodic Protection
+(×0.65, +10 points) and Coating (×0.6, reset to 65) score almost identically on
+risk despite very different outcomes. Dropping condition would make the model
+unable to tell a patch from a renewal.
+
+#### Taking criticality out of the risk score
+
+This is the part that makes the formula honest, and it is a step further than
+this document previously recommended. Zeroing the `criticality` **objective
+weight** removes the explicit term, but criticality would still be inside the
+risk term: `riskScore = POF × COF`, and `COF_WEIGHTS` includes
+`CRITICALITY: 0.3` (`risk.ts`). Left alone, `Criticality × RiskReduction` is
+roughly criticality squared, and large mains serving many customers dominate
+the ranking for a reason no reader could see in the decomposition.
+
+The fix needs no new arithmetic. `combineFactors` divides by the **sum of the
+weights present**, so passing a COF weight map with `CRITICALITY: 0`
+renormalizes the remaining three automatically:
+
+| Factor | Standard COF | Benefit-side COF |
+| --- | --- | --- |
+| Customers Served | 0.35 | 0.35 / 0.7 = **0.50** |
+| Criticality | 0.30 | **0** |
+| Diameter | 0.20 | 0.20 / 0.7 = **0.286** |
+| Customer Type | 0.15 | 0.15 / 0.7 = **0.214** |
+
+Only the benefit calculation uses this map. The stored `riskScore` on the asset,
+the risk bands, the Risk page and the dashboard all keep the standard weights —
+this is a different question being asked of the same inputs, not a redefinition
+of risk.
+
+Note what survives, deliberately: customers served and customer type stay in the
+benefit-side COF. They describe how much failure *hurts*, which is part of what a
+treatment averts. Only the Criticality factor moves to the multiplier, because
+only it is re-applied there.
+
+#### Criticality, the multiplier
+
+One value per asset, 0–100, from whichever source is active:
+
+- **A user formula**, when a `CriticalityModel` is active for the asset type —
+  or when the scenario names one in `Scenario.criticalityModelId`.
+- **The risk-based default** otherwise: `computeCriticalityScore` in `risk.ts`,
+  the weighted COF rescaled `(cof − 1) / 4 × 100`.
+
+Production today has no active formula, so the default applies. Worth stating
+plainly: that default *is* a rescale of the full COF, so under it the multiplier
+and the benefit-side risk term still share their other inputs. They are no
+longer the same number squared, which was the actual defect, but a scenario that
+wants criticality to mean something independent of risk should carry a formula
+that says so. The Criticality page exists for exactly that.
+
+#### The weights
+
+`wC`, `wR`, `wL` are user-assignable, normalized so that 30/40/20 and 3/4/2 rank
+identically — the rule `normalizeWeights` already follows.
+
+| Weight | Default | Why |
+| --- | --- | --- |
+| Condition improvement | **0.30** | Same as today's `DEFAULT_WEIGHTS` |
+| Risk reduction | **0.40** | Same as today |
+| Life-cycle saving | **0.20** | Same as today |
+
+Defaults are the current weights with criticality's 0.10 simply absent;
+normalization redistributes it in proportion, so a scenario that changes nothing
+gets the closest available analogue of today's ranking rather than an arbitrary
+new one. Set to 0.33 / 0.33 / 0.33 for a plain average.
+
+Where they live, mirroring how weights are already carried:
+
+- **Org default** on the objective-weights setting that `DEFAULT_WEIGHTS` backs.
+- **Per scenario**, so "what if we chased risk only" is a scenario rather than a
+  settings change with global blast radius. `wR = 1, wC = wL = 0` is a valid and
+  useful configuration.
+
+A guard worth having: **all three weights zero**. `normalizeWeights` returns the
+defaults when the total is ≤ 0, which is the right instinct, but for a
+three-term average it should say so in the reason string rather than silently
+substituting a different question than the one asked.
+
+#### One normalization set, so one number decides both
+
+Min-max normalization is relative to the set being compared, so the set has to
+be named. **Normalize across every option on every asset in the run** — not per
+asset, and not per treatment.
+
+This is what resolves finding 1 from Phase 4. `buildCandidates` currently picks
+one option per asset by highest life-cycle saving, then hands only that winner
+to an optimizer that ranks by a different objective — which is why a bundle that
+won 80 recommendations reached the work plan zero times. With a single
+normalization set, Expected Benefit decides *which option an asset gets* and
+`Value` decides *which assets get funded*, and the two can no longer disagree
+about what "best" means.
+
+The cost: adding one extreme asset rescales everyone, so scores are comparable
+within a run and not across runs. That is already true of the existing
+optimizer, so it is not a new property — but the ranking output should not be
+stored and compared against a later run's as though it were absolute.
+
+#### Units, and what the number is not
+
+Criticality (0–100) × Benefit (0–100) ÷ dollars-per-foot. `Value` is an ordinal
+ranking figure, not a rate of return and not a currency. It orders a candidate
+set; it does not mean anything on its own, and the UI should not print it
+without the decomposition beside it.
+
+#### Explainability
+
+SPEC §32 requires every recommendation to carry its reasoning, and
+`explainPriority` already decomposes a weighted sum into per-objective
+contributions. It extends to this with the terms it already has:
+
+```
+Priority 61/100 — Condition Improvement 18 pts (weight 30%),
+Risk Reduction 28 pts (weight 40%), Life Cycle Cost 15 pts (weight 20%);
+× Criticality 82 ÷ $310/ft → Value 16.1
+```
+
+The multiplier and the divisor are shown as themselves rather than folded in,
+which is the reason for applying criticality once and explicitly.
+
+#### Still open, and affected by this
+
+The **25% `MIN_RISK_REDUCTION_PCT` guard** (finding 2, Phase 4) is unresolved
+and interacts directly with this. It was calibrated against single treatments,
+and a bundle of cheap patches can clear it when neither member does. It is
+already live in production: Leak Repair + Spot Repair clears the bar at ~32%
+risk reduction for $26k and displaces Rehabilitation at 65% for $731k, because
+on cost-per-unit-benefit the bundle genuinely wins. Whether that is the right
+answer is a policy question this formula sharpens rather than settles — a guard
+expressed as a floor on absolute risk points removed, rather than a percentage,
+is the obvious candidate and is not yet specified.
 
 ---
 
@@ -427,10 +593,15 @@ Settings page, the role permissions grid, and the breadcrumb map.
 # 6. Decisions needed before Phase 5
 
 Phases 0–4 can proceed on the recommendations already stated. These five change
-what gets built and are worth settling first.
+what gets built and are worth settling first. **1 and 5 are settled; 2, 3 and 4
+remain open.**
 
-1. **Expected Benefit is undefined in the formula.** It needs one number.
-   Open as of 2026-09-05; two things found while investigating it:
+1. ~~**Expected Benefit is undefined in the formula.**~~ **Settled 2026-09-08:
+   a weighted average of condition improvement, risk reduction and life-cycle
+   saving, with criticality removed from all three and applied once as the
+   multiplier. The three weights are user-assignable. Specified in §5.3.**
+
+   Two things found while investigating it, both of which shaped the answer:
 
    - **Risk points are blind to condition.** `riskReduction` moves only with
      `failureProbMultiplier`; a treatment's `conditionResetTo` / `conditionGain`
@@ -446,14 +617,23 @@ what gets built and are worth settling first.
      large mains serving many customers would dominate for reasons no reader
      could see.
 
-   *Recommendation:* Benefit = the existing weighted score with criticality's
-   weight zeroed, leaving condition improvement, risk reduction and life-cycle
-   saving. The formula keeps its shape, criticality is applied once and
-   explicitly, and `explainPriority` already decomposes every term.
-   Alternatives: risk points alone with the Criticality multiplier dropped
-   (correct but condition-blind), or a user-written formula in the criticality
-   expression language (most power, most rope, and the units are yours to keep
-   commensurable).
+   *What was decided.* The recommendation had been to zero criticality's
+   **objective weight** and keep the other three terms. That was half the fix:
+   it removes the explicit criticality term but leaves criticality inside the
+   risk term via `COF_WEIGHTS.CRITICALITY`, so `Criticality × RiskReduction`
+   stays roughly criticality squared. The settled design takes criticality out
+   of the risk score as well — a COF weight map with `CRITICALITY: 0`, which
+   `combineFactors` renormalizes on its own — so criticality is applied exactly
+   once, where it can be read. The formula keeps its shape and
+   `explainPriority` still decomposes every term.
+
+   Two alternatives were not taken: risk points alone with the multiplier
+   dropped (correct on double-counting but condition-blind, so it cannot tell a
+   patch from a renewal), and a user-written formula in the criticality
+   expression language (most power, most rope, and keeping the units
+   commensurable becomes the author's problem). The weighted average with
+   user-assignable weights reaches most of the second option's flexibility while
+   the terms stay named and explainable.
 
 2. **District = `AssetLocation.serviceArea`?** It is the only district-shaped
    field stored, and the map and work plan already treat it that way. If
