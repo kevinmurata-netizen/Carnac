@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CircleDot } from "lucide-react";
 import { CollapsibleSection as Section, SectionDirty } from "@/components/layout/collapsible-section";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { saveTreatmentAction, deleteTreatmentAction } from "./actions";
 import {
   DefinitionFields,
@@ -93,6 +94,7 @@ export function TreatmentForm({ treatment }: { treatment: TreatmentAdminRow }) {
               Unsaved changes
             </span>
           )}
+          <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(stored)} disabled={pending} size="default" />
           <Button type="submit" disabled={pending || !dirty}>
             {pending ? "Saving…" : dirty ? "Save Treatment" : "Saved"}
           </Button>

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSectionDirty } from "@/components/layout/collapsible-section";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 
 import { Plus, Trash2, ArrowUp, ArrowDown, CircleDot } from "lucide-react";
 import type { CostRateRow } from "@/server/cost-rates";
@@ -62,8 +63,10 @@ export function CostEditor({
   const [rates, setRates] = useState<Draft[]>(initial.map(toDraft));
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [saved, setSaved] = useState(() => JSON.stringify(initial.map(toDraft)));
-  const dirty = JSON.stringify(rates) !== saved;
+  // The saved rates themselves, not just their serialisation — Discard has to
+  // put them back, not merely notice they differ.
+  const [saved, setSaved] = useState<Draft[]>(() => initial.map(toDraft));
+  const dirty = JSON.stringify(rates) !== JSON.stringify(saved);
 
   // The surrounding section shows the marker, so a price changed and then
   // folded away still says so.
@@ -111,7 +114,7 @@ export function CostEditor({
     const outcome = await onSave(rates);
     setResult(outcome);
     if (outcome.ok) {
-      setSaved(JSON.stringify(rates));
+      setSaved(rates);
       router.refresh();
     }
     setBusy(false);
@@ -145,9 +148,12 @@ export function CostEditor({
               Add a price
             </Button>
             {onSave && (
-              <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
-                {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
-              </Button>
+              <>
+                <CancelOrDiscard dirty={dirty} onDiscard={() => setRates(saved)} disabled={busy} />
+                <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
+                  {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
+                </Button>
+              </>
             )}
           </div>
         )}

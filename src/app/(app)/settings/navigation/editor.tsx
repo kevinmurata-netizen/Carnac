@@ -9,6 +9,7 @@ import { saveNavLabelsAction, resetNavLabelsAction } from "../actions";
 import { EMPTY_SETTINGS_STATE } from "../state";
 import { RotateCcw, Eye, EyeOff, CircleDot } from "lucide-react";
 import { StickyActionBar } from "@/components/layout/sticky-action-bar";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -205,6 +206,15 @@ export function NavigationEditor({ sections }: { sections: RenameableSection[] }
         }
       >
         <ResetButton action={resetAction} />
+        {/* Discard returns to what the server sent, which is not the same as
+            Reset to defaults sitting beside it — that one is a save. */}
+        <CancelOrDiscard
+          dirty={unsaved > 0}
+          onDiscard={() => {
+            setValues(stored);
+            setHidden(new Set(storedHidden));
+          }}
+        />
         <Button type="submit" form={RENAME_FORM_ID} disabled={unsaved === 0}>
           {unsaved === 0 ? "No changes" : "Save changes"}
         </Button>

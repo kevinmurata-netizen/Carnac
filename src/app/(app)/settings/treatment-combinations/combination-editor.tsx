@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { Trash2 } from "lucide-react";
 import type { RuleSummary } from "@/server/rules";
 
@@ -50,8 +51,10 @@ export function CombinationEditor({
   const [draft, setDraft] = useState<CombinationDraft>(initial);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [saved, setSaved] = useState(() => JSON.stringify(initial));
-  const dirty = JSON.stringify(draft) !== saved;
+  // The saved draft itself, so Discard can put it back rather than only
+  // noticing that something differs.
+  const [saved, setSaved] = useState<CombinationDraft>(initial);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   const memberOf = (id: string) => draft.members.find((m) => m.treatmentId === id);
 
@@ -81,7 +84,7 @@ export function CombinationEditor({
     const outcome = await onSave(draft);
     setResult(outcome);
     if (outcome.ok) {
-      setSaved(JSON.stringify(draft));
+      setSaved(draft);
       if (!draft.id && outcome.id) router.replace(`/settings/treatment-combinations?combination=${outcome.id}`);
       else router.refresh();
     }
@@ -127,6 +130,7 @@ export function CombinationEditor({
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           )}
+          <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(saved)} disabled={busy} />
           <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
             {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
           </Button>

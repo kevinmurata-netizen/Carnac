@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useSectionDirty } from "@/components/layout/collapsible-section";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { Plus, Trash2, FolderPlus, Ban, ExternalLink, CircleDot } from "lucide-react";
 import {
   addToRuleGroup,
@@ -60,8 +61,14 @@ export function RuleTreeEditor({
   const [blockIds, setBlockIds] = useState<string[]>(initialBlockIds);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
-  const [saved, setSaved] = useState(() => JSON.stringify({ tree: initialTree, blockIds: [...initialBlockIds].sort() }));
-  const dirty = JSON.stringify({ tree, blockIds: [...blockIds].sort() }) !== saved;
+  // The saved arrangement itself, not just its serialisation — Discard has to
+  // put it back, not merely notice it differs.
+  const [saved, setSaved] = useState<{ tree: RuleGroup; blockIds: string[] }>(() => ({
+    tree: initialTree,
+    blockIds: initialBlockIds,
+  }));
+  const key = (t: RuleGroup, b: string[]) => JSON.stringify({ tree: t, blockIds: [...b].sort() });
+  const dirty = key(tree, blockIds) !== key(saved.tree, saved.blockIds);
 
   // The surrounding section shows the marker, so an arrangement changed and
   // then folded away still says so.
@@ -91,7 +98,7 @@ export function RuleTreeEditor({
     const outcome = await onSave(tree, blockIds);
     setResult(outcome);
     if (outcome.ok) {
-      setSaved(JSON.stringify({ tree, blockIds: [...blockIds].sort() }));
+      setSaved({ tree, blockIds });
       router.refresh();
     }
     setBusy(false);
@@ -118,6 +125,14 @@ export function RuleTreeEditor({
                 Unsaved changes
               </span>
             )}
+            <CancelOrDiscard
+              dirty={dirty}
+              onDiscard={() => {
+                setTree(saved.tree);
+                setBlockIds(saved.blockIds);
+              }}
+              disabled={busy}
+            />
             <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
               {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
             </Button>

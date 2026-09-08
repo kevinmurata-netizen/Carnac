@@ -213,6 +213,9 @@ export function DeteriorationModelEditor({
 
           <SaveBar
             state={state}
+            // The curve numbers live in React state, so resetting the form
+            // alone would leave them where they are.
+            onDiscard={() => setDraft(model.curve)}
             label={changed ? "Save curve" : "Save"}
             hint={
               changed

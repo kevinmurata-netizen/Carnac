@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { Check, X, Trash2 } from "lucide-react";
 import {
   evaluateTree,
@@ -72,8 +73,10 @@ export function RuleEditor({
 
   // Comparing serialised state is enough: a draft is plain JSON, and this is
   // exactly what gets written.
-  const [saved, setSaved] = useState(() => JSON.stringify(initial));
-  const dirty = JSON.stringify(draft) !== saved;
+  // The saved draft itself, so Discard can put it back rather than only
+  // noticing that something differs.
+  const [saved, setSaved] = useState<RuleDraft>(initial);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   const sample = samples.find((s) => s.id === sampleId) ?? null;
   const asRule: Rule = useMemo(
@@ -90,7 +93,7 @@ export function RuleEditor({
     const outcome = await onSave(draft);
     setResult(outcome);
     if (outcome.ok) {
-      setSaved(JSON.stringify(draft));
+      setSaved(draft);
       // A rule that has just been created needs its own address, or Save
       // again would create a second one.
       if (!draft.id && outcome.id) router.replace(`/settings/decision-trees?rule=${outcome.id}`);
@@ -137,6 +140,7 @@ export function RuleEditor({
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             )}
+            <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(saved)} disabled={busy} />
             <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
               {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
             </Button>

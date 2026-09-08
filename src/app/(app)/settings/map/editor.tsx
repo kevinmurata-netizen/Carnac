@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StickyActionBar } from "@/components/layout/sticky-action-bar";
+import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { CircleDot, MapPin } from "lucide-react";
 import { saveMapPopupAction } from "./actions";
 import { EMPTY_SETTINGS_STATE } from "../state";
@@ -30,14 +31,15 @@ export function MapPopupEditor({
 }) {
   const [state, formAction] = useActionState(saveMapPopupAction, EMPTY_SETTINGS_STATE);
   const [chosen, setChosen] = useState<string[]>(selected);
-  const [saved, setSaved] = useState(() => JSON.stringify(selected));
+  // The saved selection itself, so Discard can put it back.
+  const [saved, setSaved] = useState<string[]>(selected);
   const [seen, setSeen] = useState(state);
 
-  const dirty = JSON.stringify(chosen) !== saved;
+  const dirty = JSON.stringify(chosen) !== JSON.stringify(saved);
 
   if (seen !== state) {
     setSeen(state);
-    if (state.status === "success") setSaved(JSON.stringify(chosen));
+    if (state.status === "success") setSaved(chosen);
   }
 
   const toggle = (key: string) =>
@@ -138,9 +140,12 @@ export function MapPopupEditor({
         }
       >
         {canEdit ? (
-          <Button type="submit" size="sm" disabled={!dirty}>
-            {dirty ? "Save changes" : "No changes"}
-          </Button>
+          <>
+            <CancelOrDiscard dirty={dirty} onDiscard={() => setChosen(saved)} />
+            <Button type="submit" size="sm" disabled={!dirty}>
+              {dirty ? "Save changes" : "No changes"}
+            </Button>
+          </>
         ) : (
           <span className="text-xs text-muted-foreground">Your role cannot change map settings</span>
         )}

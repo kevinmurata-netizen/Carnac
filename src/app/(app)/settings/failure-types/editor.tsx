@@ -9,6 +9,8 @@ import type { FailureTypeRow } from "@/server/settings";
 import { saveFailureTypesAction, createFailureTypeAction, deleteFailureTypeAction } from "../actions";
 import { EMPTY_SETTINGS_STATE, type SettingsActionState } from "../state";
 import { SaveBar } from "../save-bar";
+import { CancelOrDiscard, useFormDirty } from "@/components/layout/save-actions";
+import { CircleDot } from "lucide-react";
 import { formatNumber } from "@/lib/format";
 
 const input =
@@ -128,16 +130,29 @@ export function FailureTypeEditor({ types }: { types: FailureTypeRow[] }) {
  * The labels form is an empty sibling element, so this button targets it by id
  * and reports its own state instead. */
 function FormSaveBar({ formId, state }: { formId: string; state: SettingsActionState }) {
+  const { anchorRef, dirty, discard } = useFormDirty(state, formId);
+
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+    <div ref={anchorRef} className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
       <div className="min-w-0 text-xs">
         {state.status === "error" && <span className="text-destructive">{state.message}</span>}
-        {state.status === "success" && <span className="text-emerald-600">{state.message}</span>}
-        {state.status === "idle" && <span className="text-muted-foreground">Edit any label, then save.</span>}
+        {state.status === "success" && !dirty && <span className="text-emerald-600">{state.message}</span>}
+        {state.status === "idle" && !dirty && (
+          <span className="text-muted-foreground">Edit any label, then save.</span>
+        )}
       </div>
-      <Button type="submit" form={formId} className="shrink-0">
-        Save labels
-      </Button>
+      <div className="flex shrink-0 items-center gap-2">
+        {dirty && (
+          <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+            <CircleDot className="h-3 w-3" />
+            Unsaved changes
+          </span>
+        )}
+        <CancelOrDiscard dirty={dirty} onDiscard={discard} />
+        <Button type="submit" form={formId}>
+          Save labels
+        </Button>
+      </div>
     </div>
   );
 }
