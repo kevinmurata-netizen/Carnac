@@ -6,7 +6,7 @@ import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/
 import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { normalizeWeights } from "@/domain/waterline/optimization";
-import { STRATEGIES, STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
+import { STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
@@ -14,14 +14,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
-import { formatCurrency, formatNumber } from "@/lib/format";
-import {
-  ScenarioFields,
-  toPercent,
-  type CriticalityChoice,
-  type WeightSetChoice,
-} from "../scenario-fields";
+import { formatCurrency, formatDateTime, formatDuration, formatNumber, toPercent } from "@/lib/format";
+import type { CriticalityChoice, WeightSetChoice } from "../scenario-fields";
+import { ScenarioEditForm } from "../scenario-form";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
+import { RunProgressButton } from "../run-progress";
+import { estimateRunMs, type RunEstimate } from "@/server/run-estimate";
 import { AlertTriangle, Gauge, Layers, Wallet } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
@@ -32,11 +30,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects, criticalityChoices, weightSets] = await Promise.all([
+  const [scenario, projects, criticalityChoices, weightSets, estimate] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
+    estimateRunMs(organizationId, id),
   ]);
   if (!scenario) notFound();
 
@@ -81,9 +80,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               <>
                 <form action={rerunScenarioAction}>
                   <input type="hidden" name="scenarioId" value={scenario.id} />
-                  <Button type="submit" size="sm" variant="outline">
-                    Re-run
-                  </Button>
+                  <RunProgressButton estimate={estimate} label="Re-run" variant="outline" />
                 </form>
                 <form action={deleteScenarioAction}>
                   <input type="hidden" name="scenarioId" value={scenario.id} />
@@ -97,12 +94,22 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
         }
       />
 
+      {/* When the numbers below were produced. Results are stored, not live,
+          so a reader comparing two scenarios needs to know whether they were
+          computed against the same library. */}
+      {scenario.lastRunAt && (
+        <p className="-mt-2 mb-4 text-xs text-muted-foreground">
+          Last run {formatDateTime(scenario.lastRunAt)}
+          {scenario.lastRunMs != null && <> · took {formatDuration(scenario.lastRunMs)}</>}
+        </p>
+      )}
+
       {years.length === 0 ? (
         <>
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} estimate={estimate} />
         </>
       ) : (
         <>
@@ -138,7 +145,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} estimate={estimate} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -333,11 +340,13 @@ function AssumptionsCard({
   canEdit,
   criticalityChoices,
   weightSetChoices,
+  estimate,
 }: {
   scenario: ScenarioDetail;
   canEdit: boolean;
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
+  estimate: RunEstimate;
 }) {
   const a = scenario.assumptions;
 
@@ -348,52 +357,31 @@ function AssumptionsCard({
       </CardHeader>
       {canEdit ? (
         <CardContent>
-          <form action={updateScenarioAction} className="space-y-4">
-            <input type="hidden" name="scenarioId" value={scenario.id} />
-            {/* Remount the fields whenever a save lands. React does not
-                re-apply a changed defaultValue to already-mounted uncontrolled
-                inputs, so without this the form keeps showing the pre-save
-                values after the server action revalidates — and saving again
-                would silently write those stale values back. */}
-            <ScenarioFields
-              key={scenario.updatedAt.toISOString()}
-              idPrefix="edit-"
-              criticalityChoices={criticalityChoices}
-              weightSetChoices={weightSetChoices}
-              defaults={{
-                name: scenario.name,
-                description: scenario.description ?? "",
-                criticalityModelId: scenario.criticalityModelId ?? null,
-                weightSetId: scenario.weightSetId ?? null,
-                annualBudget: a.annualBudget,
-                fundingGrowthPct: toPercent(a.fundingGrowth),
-                discountRatePct: toPercent(a.discountRate),
-                analysisPeriodYears: a.analysisPeriodYears,
-                conditionTarget: a.conditionTarget,
-                riskThreshold: a.riskThreshold,
-                strategy: a.strategy,
-              }}
-            />
-            <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-              <div className="mb-1 font-medium text-foreground">Strategies</div>
-              <ul className="space-y-0.5">
-                {STRATEGIES.map((s) => (
-                  <li key={s}>
-                    <span className="font-medium">{s}</span> — {STRATEGY_DESCRIPTIONS[s]}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-xs text-muted-foreground">
-                Saving re-runs the simulation immediately — results and the funded project list are replaced, so what
-                you see always matches these parameters.
-              </p>
-              <Button type="submit" className="shrink-0">
-                Save &amp; Re-run
-              </Button>
-            </div>
-          </form>
+          {/* Remounted whenever a save lands, so the form's idea of "stored"
+              is the freshly stored values. Without the key it would keep
+              comparing against what was on screen before the save, and every
+              field would stay marked as changed. */}
+          <ScenarioEditForm
+            key={scenario.updatedAt.toISOString()}
+            scenarioId={scenario.id}
+            action={updateScenarioAction}
+            estimate={estimate}
+            criticalityChoices={criticalityChoices}
+            weightSetChoices={weightSetChoices}
+            defaults={{
+              name: scenario.name,
+              description: scenario.description ?? "",
+              criticalityModelId: scenario.criticalityModelId ?? null,
+              weightSetId: scenario.weightSetId ?? null,
+              annualBudget: a.annualBudget,
+              fundingGrowthPct: toPercent(a.fundingGrowth),
+              discountRatePct: toPercent(a.discountRate),
+              analysisPeriodYears: a.analysisPeriodYears,
+              conditionTarget: a.conditionTarget,
+              riskThreshold: a.riskThreshold,
+              strategy: a.strategy,
+            }}
+          />
         </CardContent>
       ) : (
         <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4 lg:grid-cols-7">

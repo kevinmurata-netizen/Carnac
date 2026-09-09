@@ -887,6 +887,19 @@ model Scenario {
   weightSetId String?
   weightSet   ScenarioWeightSet? @relation(fields: [weightSetId], references: [id], onDelete: SetNull)
 
+  /// Wall-clock milliseconds the last successful run took. The only honest
+  /// basis for telling someone how long the next one will take: a run is a
+  /// single synchronous call with no way to report its own progress, so the
+  /// alternative is a bar animated on a guess. Null until this scenario has
+  /// run once, when the estimate falls back to the rate other scenarios
+  /// achieved for comparable work.
+  lastRunMs Int?
+
+  /// When that run finished. Kept separately from updatedAt, which any edit
+  /// bumps — renaming a scenario should not make its results look fresher
+  /// than they are.
+  lastRunAt DateTime?
+
   assumptions ScenarioAssumption[]
   results     ScenarioResult[]
   workPlans   WorkPlan[]

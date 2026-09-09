@@ -61,7 +61,7 @@ export async function buildSimAssets(organizationId: string): Promise<SimAsset[]
   });
 }
 
-function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>): ScenarioAssumptions {
+export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>): ScenarioAssumptions {
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const strategy = String(map.strategy ?? DEFAULT_ASSUMPTIONS.strategy) as Strategy;
   return {
@@ -145,6 +145,7 @@ export async function updateScenario(
 
 /** Run the simulation and replace this scenario's stored results. */
 export async function runAndStoreScenario(organizationId: string, scenarioId: string): Promise<ScenarioRunResult> {
+  const startedAt = Date.now();
   const scenario = await prisma.scenario.findFirst({
     where: { id: scenarioId, organizationId },
     include: { assumptions: true },
@@ -172,7 +173,14 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
     ]),
   });
   await persistScenarioProgramme(scenarioId, scenario.name, result);
-  await prisma.scenario.update({ where: { id: scenarioId }, data: { updatedAt: new Date() } });
+  // Measured across everything the run actually did — loading, simulating and
+  // persisting — because that is what the person waiting experiences. Written
+  // only on success, so a failed run cannot poison the next estimate.
+  const finishedAt = new Date();
+  await prisma.scenario.update({
+    where: { id: scenarioId },
+    data: { updatedAt: finishedAt, lastRunAt: finishedAt, lastRunMs: Date.now() - startedAt },
+  });
 
   return result;
 }
@@ -314,6 +322,10 @@ export type ScenarioSummary = {
    * following the organization's default set. */
   weightSetId: string | null;
   weightSetName: string | null;
+  /** When the stored results were produced, and how long that took. Null until
+   * the scenario has run since these were recorded. */
+  lastRunAt: Date | null;
+  lastRunMs: number | null;
   updatedAt: Date;
 };
 
@@ -347,6 +359,8 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       criticalityModelName: s.criticalityModel?.name ?? null,
       weightSetId: s.weightSetId,
       weightSetName: s.weightSet?.name ?? null,
+      lastRunAt: s.lastRunAt,
+      lastRunMs: s.lastRunMs,
       finalAvgCondition: conditions.at(-1)?.metricValue ?? null,
       finalBacklog: backlogs.at(-1)?.metricValue ?? null,
       totalSpend: spends.length ? Math.round(spends.reduce((sum, r) => sum + r.metricValue, 0)) : null,

@@ -7,7 +7,7 @@ import { getConditionBand, type ConditionBand } from "@/domain/waterline/conditi
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart, type LineSeries } from "@/components/charts/simple-line-chart";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency, formatDateTime, formatDuration, formatNumber } from "@/lib/format";
 
 /** Colors are assigned by position in the full list, not by position among the
  * checked ones, so a scenario keeps the same line color as others are toggled. */
@@ -158,12 +158,13 @@ export function ScenarioComparison({
                   <TableHead>Expected Failures</TableHead>
                   <TableHead>Backlog at End</TableHead>
                   <TableHead>Total Spend</TableHead>
+                  <TableHead>Last Run</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {scenarios.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
                       No scenarios yet — create one below.
                     </TableCell>
                   </TableRow>
@@ -210,6 +211,21 @@ export function ScenarioComparison({
                         {s.finalBacklog != null ? formatCurrency(s.finalBacklog, { compact: true }) : "—"}
                       </TableCell>
                       <TableCell>{s.totalSpend != null ? formatCurrency(s.totalSpend, { compact: true }) : "—"}</TableCell>
+                      {/* Results are stored, not recomputed on view, so two
+                          rows can have been produced against different
+                          libraries. The date is what says so. */}
+                      <TableCell className="whitespace-nowrap text-xs">
+                        {s.lastRunAt ? (
+                          <>
+                            {formatDateTime(s.lastRunAt)}
+                            {s.lastRunMs != null && (
+                              <span className="block text-muted-foreground">took {formatDuration(s.lastRunMs)}</span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   );
                 })}
