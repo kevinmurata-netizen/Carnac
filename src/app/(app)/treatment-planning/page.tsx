@@ -185,8 +185,7 @@ export default async function TreatmentPlanningPage() {
               <TableRow>
                 <TableHead>Treatment</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>Condition Range</TableHead>
-                <TableHead>Materials</TableHead>
+                <TableHead>When it can be used</TableHead>
                 <TableHead>Unit Cost</TableHead>
                 <TableHead>Mobilization</TableHead>
                 <TableHead>Life Extension</TableHead>
@@ -204,10 +203,22 @@ export default async function TreatmentPlanningPage() {
                   <TableCell>
                     <Badge variant={CATEGORY_VARIANT[t.category] ?? "default"}>{t.category}</Badge>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">{t.conditionRange}</TableCell>
-                  <TableCell className="text-xs">{t.materials}</TableCell>
+                  <TableCell className="text-xs">
+                    {t.appliesWhen}
+                    {t.blockCount > 0 && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · {t.blockCount} blocking
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {formatCurrency(t.unitCost)} {t.costUnit}
+                    {/* More than one rate means this is the fallback, not the
+                        only price the asset could be charged. */}
+                    {t.rateCount > 1 && (
+                      <span className="text-xs text-muted-foreground"> +{t.rateCount - 1} more</span>
+                    )}
                   </TableCell>
                   <TableCell>{formatCurrency(t.mobilizationCost)}</TableCell>
                   <TableCell>{t.expectedLifeExtension > 0 ? `${t.expectedLifeExtension} yr` : "—"}</TableCell>

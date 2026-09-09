@@ -9,7 +9,7 @@ export type ConfigSummary = {
   conditionModels: Array<{ name: string; scale: string; bandCount: number; measurementCount: number }>;
   deteriorationModels: Array<{ name: string; type: string; predictionCount: number; active: boolean }>;
   riskModels: Array<{ name: string; assessmentCount: number; active: boolean }>;
-  treatments: Array<{ name: string; category: string; conditionRange: string; unitCost: number; costUnit: string }>;
+  treatments: Array<{ name: string }>;
   failureTypes: Array<{ code: string; label: string; eventCount: number }>;
 };
 
@@ -43,7 +43,10 @@ export async function getConfigSummary(organizationId: string): Promise<ConfigSu
       }),
       prisma.treatment.findMany({
         where: { assetType: { organizationId } },
-        orderBy: { applicableConditionMin: "asc" },
+        // By name: the old ordering was by the condition window, which no
+        // longer decides anything and is on its way out (Phase 6).
+        select: { name: true },
+        orderBy: { name: "asc" },
       }),
       prisma.failureType.findMany({
         where: { assetType: { organizationId } },
@@ -80,13 +83,10 @@ export async function getConfigSummary(organizationId: string): Promise<ConfigSu
       active: m.isActive,
     })),
     riskModels: riskModels.map((m) => ({ name: m.name, assessmentCount: m._count.assessments, active: m.isActive })),
-    treatments: treatments.map((t) => ({
-      name: t.name,
-      category: String((t.applicability as { category?: string } | null)?.category ?? "—"),
-      conditionRange: `${t.applicableConditionMin ?? 0}–${t.applicableConditionMax ?? 100}`,
-      unitCost: t.unitCost ?? 0,
-      costUnit: t.costUnit ?? "",
-    })),
+    // Only the count is read, on the Settings landing page. The category,
+    // condition range and cost fields this used to carry were never rendered
+    // anywhere and all came from columns Phase 6 removes.
+    treatments: treatments.map((t) => ({ name: t.name })),
     failureTypes: failureTypes.map((f) => ({ code: f.code, label: f.label, eventCount: f._count.events })),
   };
 }
