@@ -12,6 +12,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScenarioFields, toPercent } from "../scenario-fields";
 import { createScenarioAction } from "../actions";
+import { RunProgressButton } from "../run-progress";
+import { estimateNewRunMs } from "@/server/run-estimate";
 
 /**
  * Creating a scenario.
@@ -25,10 +27,14 @@ export default async function NewScenarioPage() {
   const organizationId = session!.user.organizationId;
   if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
-  const [annualBudget, criticalityChoices, weightSets] = await Promise.all([
+  const [annualBudget, criticalityChoices, weightSets, estimate] = await Promise.all([
     getAnnualBudget(organizationId),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
+    // The form's default period, since nothing has been entered yet. Whatever
+    // the reader picks, the first run measures itself and every later estimate
+    // for this scenario comes from that.
+    estimateNewRunMs(organizationId, DEFAULT_ASSUMPTIONS.analysisPeriodYears),
   ]);
 
   const weightSetChoices = weightSets.map((w) => {
@@ -91,7 +97,7 @@ export default async function NewScenarioPage() {
                 nativeButton={false}
                 render={<Link href="/scenario-planning">Cancel</Link>}
               />
-              <Button type="submit">Create &amp; Run Scenario</Button>
+              <RunProgressButton estimate={estimate} label="Create & Run Scenario" runningLabel="Creating and running…" size="default" />
             </div>
           </form>
         </CardContent>

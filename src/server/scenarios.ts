@@ -61,7 +61,7 @@ export async function buildSimAssets(organizationId: string): Promise<SimAsset[]
   });
 }
 
-function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>): ScenarioAssumptions {
+export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>): ScenarioAssumptions {
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const strategy = String(map.strategy ?? DEFAULT_ASSUMPTIONS.strategy) as Strategy;
   return {
@@ -145,6 +145,7 @@ export async function updateScenario(
 
 /** Run the simulation and replace this scenario's stored results. */
 export async function runAndStoreScenario(organizationId: string, scenarioId: string): Promise<ScenarioRunResult> {
+  const startedAt = Date.now();
   const scenario = await prisma.scenario.findFirst({
     where: { id: scenarioId, organizationId },
     include: { assumptions: true },
@@ -172,7 +173,13 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
     ]),
   });
   await persistScenarioProgramme(scenarioId, scenario.name, result);
-  await prisma.scenario.update({ where: { id: scenarioId }, data: { updatedAt: new Date() } });
+  // Measured across everything the run actually did — loading, simulating and
+  // persisting — because that is what the person waiting experiences. Written
+  // only on success, so a failed run cannot poison the next estimate.
+  await prisma.scenario.update({
+    where: { id: scenarioId },
+    data: { updatedAt: new Date(), lastRunMs: Date.now() - startedAt },
+  });
 
   return result;
 }

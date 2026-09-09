@@ -22,6 +22,8 @@ import {
   type WeightSetChoice,
 } from "../scenario-fields";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
+import { RunProgressButton } from "../run-progress";
+import { estimateRunMs, type RunEstimate } from "@/server/run-estimate";
 import { AlertTriangle, Gauge, Layers, Wallet } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
@@ -32,11 +34,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects, criticalityChoices, weightSets] = await Promise.all([
+  const [scenario, projects, criticalityChoices, weightSets, estimate] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
+    estimateRunMs(organizationId, id),
   ]);
   if (!scenario) notFound();
 
@@ -81,9 +84,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               <>
                 <form action={rerunScenarioAction}>
                   <input type="hidden" name="scenarioId" value={scenario.id} />
-                  <Button type="submit" size="sm" variant="outline">
-                    Re-run
-                  </Button>
+                  <RunProgressButton estimate={estimate} label="Re-run" variant="outline" />
                 </form>
                 <form action={deleteScenarioAction}>
                   <input type="hidden" name="scenarioId" value={scenario.id} />
@@ -102,7 +103,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} estimate={estimate} />
         </>
       ) : (
         <>
@@ -138,7 +139,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} estimate={estimate} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -333,11 +334,13 @@ function AssumptionsCard({
   canEdit,
   criticalityChoices,
   weightSetChoices,
+  estimate,
 }: {
   scenario: ScenarioDetail;
   canEdit: boolean;
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
+  estimate: RunEstimate;
 }) {
   const a = scenario.assumptions;
 
@@ -389,9 +392,14 @@ function AssumptionsCard({
                 Saving re-runs the simulation immediately — results and the funded project list are replaced, so what
                 you see always matches these parameters.
               </p>
-              <Button type="submit" className="shrink-0">
-                Save &amp; Re-run
-              </Button>
+              <div className="shrink-0">
+                <RunProgressButton
+                  estimate={estimate}
+                  label="Save & Re-run"
+                  runningLabel="Saving and running…"
+                  size="default"
+                />
+              </div>
             </div>
           </form>
         </CardContent>
