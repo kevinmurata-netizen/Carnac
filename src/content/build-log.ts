@@ -29,6 +29,127 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-09",
+    title: "Scenario runs show their progress, and say when they last ran",
+    pr: 48,
+    summary:
+      "A scenario run gave no sign it was working. It now draws a progress bar against how long the last run actually took, and every scenario records when it was last computed.",
+    changes: [
+      "Re-run, Save & Re-run and Create & Run Scenario all show a bar while the run is in flight, with an estimate of the time left.",
+      "The estimate is measured, not guessed: each successful run records its own duration and the next run is predicted from it. A scenario that has never run borrows the rate other scenarios achieved for comparable work, and says so.",
+      "The bar stops short of the end while the estimate holds, because the run is finished when the page reloads rather than when the arithmetic runs out. If it overruns, it stops predicting, turns amber, and reports how long it has actually been waiting.",
+      "Scenario Planning gains a Last Run column, and a scenario's own page shows when its results were produced and how long that took. Results are stored rather than recalculated on view, so this is what tells you whether two scenarios were computed against the same treatment library.",
+      "Editing a scenario now marks each changed field in amber and counts them — \"2 unsaved changes\" — with a Discard changes button beside Save. Saving re-runs the simulation, so it is worth knowing what you changed before spending a run on it.",
+    ],
+    fixes: [
+      "Making the scenario form track changes moved it to the browser, which broke both scenario pages until a shared helper was moved out of it. Caught by loading the page, not by the type checker.",
+    ],
+    note: "Needed two migrations. Scenarios that ran before this show a dash rather than a made-up date — the first figure any of them shows will be real.",
+  },
+  {
+    date: "2026-09-09",
+    title: "The dashboard map gets its hover card back",
+    pr: 47,
+    summary:
+      "Hovering a segment on the dashboard map showed nothing, while the same map on the Network page showed a full card. Both now read the same setting.",
+    changes: [
+      "The dashboard map's hover card shows whatever Settings › Map is configured to show — the same fields, in the same order, as the Network page.",
+      "On the Treatment Rules page, editing a rule now marks the fields you changed in amber and shows an Unsaved changes badge. A rule's conditions can sit several screens below its name, so knowing something changed is not much use without knowing what.",
+    ],
+    note: "No migration. The dashboard was asking the database for only the three fields it drew lines with, so the card had nothing to display.",
+  },
+  {
+    date: "2026-09-09",
+    title: "The Treatment Library reads the current model",
+    pr: 46,
+    summary:
+      "The library table on Treatment Planning still described treatments using the old condition window and the old single price, both replaced months ago. It now shows the rules and rates that actually decide things.",
+    changes: [
+      "Condition Range and Materials are replaced by one When it can be used column naming the real rules — \"Condition 40-85 · Material - Cast Iron, Ductile Iron, Steel, Copper\" — plus a count of any blocking rules.",
+      "There is deliberately no rule-derived condition range. A treatment gated by a condition rule and a material rule cannot be reduced to a span of numbers, and the old column quietly dropped the material and diameter gates entirely.",
+      "Unit cost now comes from the treatment's fallback rate, and says when there are narrower rates behind it.",
+      "The library sorts by name rather than by a condition window that no longer decides anything.",
+    ],
+    note: "No migration. The old columns still hold their data and nothing reads them any more — dropping them is a separate release, so this one can be reverted freely.",
+  },
+  {
+    date: "2026-09-08",
+    title: "Life-cycle saving was overstating every treatment",
+    pr: 44,
+    summary:
+      "Doing nothing eventually forces an emergency replacement. The model charged for that replacement but never credited the new pipe it bought, so every treatment compared against it looked better than it was.",
+    changes: [
+      "A forced replacement now carries the value of the asset it installs, and its unused life at the end of the analysis period is credited back — exactly as a planned replacement's already was.",
+      "The credit is based on the planned price rather than the emergency price, because the premium buys speed, not a better pipe.",
+    ],
+    note: "This moves real numbers. On the worst-condition main in the network, replacing it scored a $70,304 saving and now scores −$21,823, and its Costs tab names Do nothing as the cheapest option. That is the honest arithmetic: deferring a $1.31M job by ten years is worth roughly $440k at a 4% real rate, which the emergency premium and avoided failures do not quite offset. Recommendations themselves did not move, because the engine that picks them does not read life-cycle cost.",
+  },
+  {
+    date: "2026-09-08",
+    title: "Every recommendation now shows what it achieves and what the asset is worth",
+    pr: 42,
+    summary:
+      "Treatment Planning gains an Expected Benefit score and a Criticality score for every segment, plus the value the two produce together.",
+    changes: [
+      "Expected Benefit is a 0–100 score combining condition improvement, risk reduction and life-cycle saving, weighted by the scenario weighting in use. Hover it to see the three figures behind it.",
+      "Criticality is shown as its own column — the active formula's score, or the risk-based default where no formula is set.",
+      "Both are deliberately separate. Criticality is removed from the benefit score entirely, including from the risk half of it, so that multiplying the two does not count the same thing twice.",
+      "Scores are comparable within a run rather than across runs, because each is scaled against every other recommendation in the same run.",
+    ],
+    fixes: [
+      "The benefit score and the value beside it were separated only by a margin, so screen readers and copied text ran them together as \"73.7value 11.03\".",
+    ],
+    note: "No migration, and nothing is ranked by this yet — it is shown, not applied. Worth looking at before it drives anything: dividing by cost per foot means a $13,500 patch currently outscores a $1.49M replacement twentyfold.",
+  },
+  {
+    date: "2026-09-08",
+    title: "Weightings have names, and scenarios are created on their own page",
+    pr: 41,
+    summary:
+      "How much condition, risk and life-cycle cost each count was four numbers typed into the work plan form and stored nowhere. They are now named sets you pick from a list.",
+    changes: [
+      "New Settings › Scenario Weights card. A weighting has a name and a description — \"Risk First\", not 15/65/10/10 — and the editor shows each weight's share of the ranking as you type.",
+      "Three are set up to begin with: Balanced (the weighting every work plan already used), Risk First, and Lowest Life-Cycle Cost. All three are ordinary rows you can edit or delete.",
+      "The Generate Work Plan form and the scenario form both choose a weighting from a dropdown instead of asking for four numbers.",
+      "A generated work plan now records which weighting produced it, and a copy of the values — so a saved plan can still explain its own ranking after the set is edited.",
+      "Deleting a weighting still in use is refused, naming what uses it. The default cannot be deleted at all.",
+      "Creating a scenario moved out of the bottom of Scenario Planning onto its own page, reached from Add New Scenario above the comparison grid.",
+    ],
+    note: "Needed a migration. Your existing weighting is seeded as Balanced, so nothing about how work plans rank changed.",
+  },
+  {
+    date: "2026-09-08",
+    title: "Cancel and Discard changes, on every page with a Save button",
+    pr: 39,
+    summary:
+      "Leaving an edit page meant reaching for the sidebar, and a page holding unsaved work looked exactly like one that did not.",
+    changes: [
+      "Every page with a Save button now has a second button beside it. With nothing changed it is Cancel and goes back to the page named to its left in the breadcrumb; once something is changed it becomes Discard changes.",
+      "One control rather than two, because a Cancel and a Discard side by side would leave you working out which one loses your work.",
+      "Settings pages that had no notion of unsaved changes at all — role permissions, condition models, risk weights, deterioration curves, configuration, failure types — now show an Unsaved changes marker.",
+    ],
+    fixes: [
+      "A refused save used to empty every field on the form, losing what you typed at exactly the moment the error asked you to fix it.",
+      "The failure-type labels bar never noticed edits, because those fields live outside the form they save into.",
+    ],
+    note: "No migration. Asset and inspection records already worked this way and were left alone.",
+  },
+  {
+    date: "2026-09-07",
+    title: "Creating a treatment is its own page",
+    pr: 38,
+    summary:
+      "The Treatments page ended in three empty sections that could only ever offer half of what a treatment needs. Creating one moved to a page of its own.",
+    changes: [
+      "Add new Treatment sits above the library and opens a page with the same four sections as an existing treatment: Treatment Definition, What it does, What it costs, and When it can be used.",
+      "All four are saved together, so a new treatment arrives priced and gated rather than being considered for every inspected asset until someone goes back and finishes it.",
+      "Everything is checked before anything is written, and the treatment is removed again if a later step fails — a half-built treatment would quietly change what the model recommends.",
+      "Blocking rules are chosen from a searchable dropdown instead of a tick box beside every block ever written.",
+      "Adding a rule now says so: the section header, the page and the button all show an Unsaved changes marker, and a section folded shut keeps its marker.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-09-07",
     title: "Arrange the rules that decide when a treatment can be used",
     summary:
