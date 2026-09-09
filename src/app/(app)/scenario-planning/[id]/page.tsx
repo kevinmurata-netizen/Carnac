@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency, formatDateTime, formatDuration, formatNumber } from "@/lib/format";
 import {
   ScenarioFields,
   toPercent,
@@ -97,6 +97,16 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           </div>
         }
       />
+
+      {/* When the numbers below were produced. Results are stored, not live,
+          so a reader comparing two scenarios needs to know whether they were
+          computed against the same library. */}
+      {scenario.lastRunAt && (
+        <p className="-mt-2 mb-4 text-xs text-muted-foreground">
+          Last run {formatDateTime(scenario.lastRunAt)}
+          {scenario.lastRunMs != null && <> · took {formatDuration(scenario.lastRunMs)}</>}
+        </p>
+      )}
 
       {years.length === 0 ? (
         <>

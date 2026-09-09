@@ -176,9 +176,10 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
   // Measured across everything the run actually did — loading, simulating and
   // persisting — because that is what the person waiting experiences. Written
   // only on success, so a failed run cannot poison the next estimate.
+  const finishedAt = new Date();
   await prisma.scenario.update({
     where: { id: scenarioId },
-    data: { updatedAt: new Date(), lastRunMs: Date.now() - startedAt },
+    data: { updatedAt: finishedAt, lastRunAt: finishedAt, lastRunMs: Date.now() - startedAt },
   });
 
   return result;
@@ -321,6 +322,10 @@ export type ScenarioSummary = {
    * following the organization's default set. */
   weightSetId: string | null;
   weightSetName: string | null;
+  /** When the stored results were produced, and how long that took. Null until
+   * the scenario has run since these were recorded. */
+  lastRunAt: Date | null;
+  lastRunMs: number | null;
   updatedAt: Date;
 };
 
@@ -354,6 +359,8 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       criticalityModelName: s.criticalityModel?.name ?? null,
       weightSetId: s.weightSetId,
       weightSetName: s.weightSet?.name ?? null,
+      lastRunAt: s.lastRunAt,
+      lastRunMs: s.lastRunMs,
       finalAvgCondition: conditions.at(-1)?.metricValue ?? null,
       finalBacklog: backlogs.at(-1)?.metricValue ?? null,
       totalSpend: spends.length ? Math.round(spends.reduce((sum, r) => sum + r.metricValue, 0)) : null,

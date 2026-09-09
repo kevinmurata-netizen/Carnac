@@ -43,6 +43,32 @@ export function formatDate(date: Date | null | undefined): string {
   }).format(date);
 }
 
+/** A date with its time. UTC like formatDate, and labelled as such rather than
+ * left to be misread as local — a run timestamp is a moment, and a server
+ * rendering it in one zone while the reader assumes another is worse than
+ * saying which zone it is. */
+export function formatDateTime(date: Date | null | undefined): string {
+  if (!date) return "—";
+  const time = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(date);
+  return `${formatDate(date)} at ${time} UTC`;
+}
+
+/** A duration in the units a person would say it in. Sub-second runs get one
+ * decimal, because "0s" reads as though nothing happened. */
+export function formatDuration(ms: number | null | undefined): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms} ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${Math.round(seconds % 60)}s`;
+}
+
 /** The value a `<input type="date">` needs, in the same frame formatDate reads. */
 export function toDateInputValue(date: Date | null | undefined): string {
   return date ? date.toISOString().slice(0, 10) : "";

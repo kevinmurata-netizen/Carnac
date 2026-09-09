@@ -895,6 +895,11 @@ model Scenario {
   /// achieved for comparable work.
   lastRunMs Int?
 
+  /// When that run finished. Kept separately from updatedAt, which any edit
+  /// bumps — renaming a scenario should not make its results look fresher
+  /// than they are.
+  lastRunAt DateTime?
+
   assumptions ScenarioAssumption[]
   results     ScenarioResult[]
   workPlans   WorkPlan[]
