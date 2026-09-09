@@ -782,9 +782,12 @@ export function isApplicable(def: TreatmentDef, ctx: AssetTreatmentContext): boo
 /** The same decision, with the trace that produced it. */
 export function explainApplicability(def: TreatmentDef, ctx: AssetTreatmentContext): RuleOutcome {
   const rules = def.rules ?? [];
-  // A treatment with no stored arrangement falls back to the flat reading, so
-  // the seed library and a fresh install still evaluate a tree.
-  const tree = def.ruleTree ?? ruleTreeFromFlat(rules, def.qualifyMode ?? "all");
+  // A treatment with no stored arrangement falls back to "all of these must
+  // hold", which is what a converted condition window always meant. Every
+  // stored treatment carries a tree since the Phase 5 migration backfilled
+  // them, so this is a floor for the in-memory seed library rather than a
+  // path real data takes.
+  const tree = def.ruleTree ?? ruleTreeFromFlat(rules, "all");
   return qualifiesUnderRules(rules, tree, toDecisionInput(ctx));
 }
 

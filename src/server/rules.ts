@@ -209,7 +209,6 @@ export function newRuleDraft(): RuleInput {
 export type TreatmentRuleSelection = {
   treatmentId: string;
   treatmentName: string;
-  qualifyMode: "any" | "all";
   attached: RuleSummary[];
   /** How the allow rules are arranged. Synthesised from the flat list when
    * nothing is stored, so the editor always has a tree to show. */
@@ -235,18 +234,19 @@ export async function getTreatmentRules(
   const attached = treatment.ruleLinks
     .map((l) => toSummary(l.rule))
     .sort((a, b) => a.name.localeCompare(b.name));
-  const mode = treatment.qualifyMode === "any" ? ("any" as const) : ("all" as const);
-
+  // Every stored treatment carries a tree — the Phase 5 migration backfilled
+  // them and both writers set one — so the flat reading is a floor for a row
+  // written by something older, not a path real data takes. It assumes "all",
+  // which is what a converted condition window always meant.
   const stored = treatment.ruleTree;
   const tree =
     isValidRuleNode(stored) && (stored as RuleGroup).kind === "group"
       ? (stored as RuleGroup)
-      : ruleTreeFromFlat(parseRules(treatment.ruleLinks.map((l) => l.rule)), mode);
+      : ruleTreeFromFlat(parseRules(treatment.ruleLinks.map((l) => l.rule)), "all");
 
   return {
     treatmentId: treatment.id,
     treatmentName: treatment.name,
-    qualifyMode: mode,
     attached,
     tree,
     blocks: attached.filter((r) => r.effect === "block"),
@@ -304,35 +304,5 @@ export async function setTreatmentRuleTree(
       ? [prisma.treatmentRuleLink.createMany({ data: all.map((ruleId) => ({ treatmentId, ruleId })) })]
       : []),
     prisma.treatment.update({ where: { id: treatmentId }, data: { ruleTree: tree as object } }),
-  ]);
-}
-
-export async function setTreatmentRules(
-  organizationId: string,
-  treatmentId: string,
-  ruleIds: string[],
-  qualifyMode: "any" | "all"
-) {
-  const treatment = await prisma.treatment.findFirst({
-    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
-    select: { id: true },
-  });
-  if (!treatment) throw new Error("That treatment no longer exists");
-
-  const unique = [...new Set(ruleIds)];
-  // Checked against this organization's rules rather than trusted, so a
-  // crafted request cannot attach another tenant's rule.
-  const valid = await prisma.rule.findMany({
-    where: { id: { in: unique }, organizationId },
-    select: { id: true },
-  });
-  if (valid.length !== unique.length) throw new Error("One of those rules no longer exists");
-
-  await prisma.$transaction([
-    prisma.treatmentRuleLink.deleteMany({ where: { treatmentId } }),
-    ...(unique.length > 0
-      ? [prisma.treatmentRuleLink.createMany({ data: unique.map((ruleId) => ({ treatmentId, ruleId })) })]
-      : []),
-    prisma.treatment.update({ where: { id: treatmentId }, data: { qualifyMode } }),
   ]);
 }

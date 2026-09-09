@@ -18,8 +18,10 @@ import {
   type CostBasis,
 } from "@/domain/waterline/benefit";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
+import { emptyRuleGroup, newRuleRef } from "@/domain/waterline/decision-tree";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
+import { parseRules } from "@/server/rules";
 import { createStandardRate } from "@/server/cost-rates";
 import { loadCombinations } from "@/server/combinations";
 import { buildLccaEvaluator } from "@/server/lcca-evaluator";
@@ -51,13 +53,8 @@ export async function ensureTreatments(organizationId: string) {
         assetTypeId: assetType.id,
         name: def.name,
         description: def.description,
-        applicableConditionMin: def.applicableConditionMin,
-        applicableConditionMax: def.applicableConditionMax,
         applicability: {
           category: def.category,
-          materials: def.applicableMaterials ?? null,
-          diameterMin: def.applicableDiameterMin ?? null,
-          diameterMax: def.applicableDiameterMax ?? null,
           constraints: def.implementationConstraints ?? null,
           // Record which kind of condition effect this is; effectOnCondition
           // below is a single number and cannot express the difference.
@@ -67,20 +64,7 @@ export async function ensureTreatments(organizationId: string) {
         expectedLifeExtension: def.expectedLifeExtension,
         effectOnCondition: def.conditionResetTo ?? def.conditionGain ?? 0,
         effectOnFailureProb: def.failureProbMultiplier,
-        unitCost: def.unitCost,
-        costUnit: def.costUnit,
-        mobilizationCost: def.mobilizationCost,
-        annualMaintenanceCost: def.annualMaintenanceCost,
         usefulLife: def.usefulLife,
-        // Rules are combined with AND, matching how the window checks these
-        // were converted from used to be applied.
-        qualifyMode: "all",
-        costs: {
-          create: [
-            { costType: "Initial", amount: def.unitCost },
-            { costType: "Maintenance", amount: def.annualMaintenanceCost },
-          ],
-        },
       },
       select: { id: true },
     });
@@ -97,6 +81,7 @@ export async function ensureTreatments(organizationId: string) {
     // Shared by name, so "Condition 0-45" is one row linked to Replacement and
     // Upsizing rather than a copy inside each — which is the whole point of
     // rules being organization-owned.
+    const allowIds: string[] = [];
     for (const rule of rulesFromWindow(def)) {
       const row = await prisma.rule.upsert({
         where: { organizationId_name: { organizationId, name: rule.name } },
@@ -113,30 +98,69 @@ export async function ensureTreatments(organizationId: string) {
         select: { id: true },
       });
       await prisma.treatmentRuleLink.create({ data: { treatmentId: created.id, ruleId: row.id } });
+      if (rule.effect === "allow") allowIds.push(row.id);
     }
+
+    // Write the arrangement rather than leaving it to be synthesised. A window
+    // converts to "all of these must hold", which is what the tree says — and
+    // storing it means a freshly seeded database never depends on the
+    // qualifyMode fallback that Phase 6 removes. Blocks stay out of the tree;
+    // they apply regardless of how the allow rules combine.
+    const tree = emptyRuleGroup("AND");
+    tree.children = allowIds.map((ruleId) => newRuleRef(ruleId));
+    await prisma.treatment.update({ where: { id: created.id }, data: { ruleTree: tree as object } });
   }
 }
 
+/**
+ * The library, as the Treatment Planning page shows it.
+ *
+ * Reads the current model throughout: what gates a treatment comes from its
+ * attached rules, and what it costs comes from its rate rows. The condition
+ * window and the treatment's own cost columns are no longer consulted — see
+ * docs/TREATMENT-MODEL-REBUILD.md §6.
+ *
+ * There is no rule-derived equivalent of the old "condition range" and it
+ * would be dishonest to invent one: a treatment gated by "Condition 20-55"
+ * *and* "Diameter at least 6" cannot be reduced to a range. The rules are
+ * named instead, which is both accurate and more informative.
+ */
 export async function listTreatments(organizationId: string) {
   const treatments = await prisma.treatment.findMany({
     where: { assetType: { code: "WATERLINE", organizationId } },
-    include: { rules: true, costs: true },
-    orderBy: { applicableConditionMin: "asc" },
+    include: {
+      ruleLinks: { include: { rule: true } },
+      costRates: { orderBy: { sortOrder: "asc" } },
+    },
+    orderBy: { name: "asc" },
   });
-  return treatments.map((t) => ({
-    id: t.id,
-    name: t.name,
-    description: t.description,
-    category: String((t.applicability as { category?: string } | null)?.category ?? "—"),
-    conditionRange: `${t.applicableConditionMin ?? 0}–${t.applicableConditionMax ?? 100}`,
-    materials: ((t.applicability as { materials?: string[] | null } | null)?.materials ?? null)?.join(", ") ?? "All",
-    unitCost: t.unitCost ?? 0,
-    costUnit: t.costUnit ?? "",
-    mobilizationCost: t.mobilizationCost ?? 0,
-    expectedLifeExtension: t.expectedLifeExtension ?? 0,
-    failureProbMultiplier: t.effectOnFailureProb ?? 1,
-    constraints: (t.applicability as { constraints?: string | null } | null)?.constraints ?? null,
-  }));
+
+  return treatments.map((t) => {
+    const parsed = parseRules(t.ruleLinks.map((l) => l.rule));
+    const allows = parsed.filter((r) => r.effect === "allow");
+    const blocks = parsed.filter((r) => r.effect === "block");
+
+    // Rates are tried in order and the last one matches everything, so the
+    // fallback is what an asset costs when no narrower rate claims it.
+    const fallback = t.costRates.find((r) => r.ruleId == null) ?? t.costRates[t.costRates.length - 1];
+
+    return {
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      category: String((t.applicability as { category?: string } | null)?.category ?? "—"),
+      appliesWhen: allows.length > 0 ? allows.map((r) => r.name).join(" · ") : "Every inspected asset",
+      blockCount: blocks.length,
+      unitCost: fallback?.unitCost ?? 0,
+      costUnit: fallback?.costUnit ?? "",
+      mobilizationCost: fallback?.mobilizationCost ?? 0,
+      /** More than one means the headline price is only the fallback. */
+      rateCount: t.costRates.length,
+      expectedLifeExtension: t.expectedLifeExtension ?? 0,
+      failureProbMultiplier: t.effectOnFailureProb ?? 1,
+      constraints: (t.applicability as { constraints?: string | null } | null)?.constraints ?? null,
+    };
+  });
 }
 
 const TEN_YEARS_MS = 10 * 365.25 * 24 * 60 * 60 * 1000;

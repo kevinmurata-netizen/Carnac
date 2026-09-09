@@ -294,17 +294,7 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
       expectedLifeExtension: input.expectedLifeExtension,
       effectOnCondition: input.conditionResetTo ?? input.conditionGain ?? 0,
       effectOnFailureProb: input.failureProbMultiplier,
-      unitCost: input.unitCost,
-      costUnit: input.costUnit,
-      mobilizationCost: input.mobilizationCost,
-      annualMaintenanceCost: input.annualMaintenanceCost,
       usefulLife: input.usefulLife,
-      costs: {
-        create: [
-          { costType: "Initial", amount: input.unitCost },
-          { costType: "Maintenance", amount: input.annualMaintenanceCost },
-        ],
-      },
     },
     select: { id: true },
   });
