@@ -1,18 +1,16 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getAnnualBudget } from "@/server/scenarios";
 import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { normalizeWeights } from "@/domain/waterline/optimization";
-import { STRATEGIES, STRATEGY_DESCRIPTIONS, DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
+import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ScenarioFields, toPercent } from "../scenario-fields";
+import { toPercent } from "@/lib/format";
+import { ScenarioCreateForm } from "../scenario-form";
 import { createScenarioAction } from "../actions";
-import { RunProgressButton } from "../run-progress";
 import { estimateNewRunMs } from "@/server/run-estimate";
 
 /**
@@ -59,47 +57,25 @@ export default async function NewScenarioPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <form action={createScenarioAction} className="space-y-4">
-            <ScenarioFields
-              criticalityChoices={criticalityChoices}
-              weightSetChoices={weightSetChoices}
-              defaults={{
-                name: "",
-                description: "",
-                criticalityModelId: null,
-                weightSetId: weightSets.find((w) => w.isDefault)?.id ?? null,
-                annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
-                fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),
-                discountRatePct: toPercent(DEFAULT_ASSUMPTIONS.discountRate),
-                analysisPeriodYears: DEFAULT_ASSUMPTIONS.analysisPeriodYears,
-                conditionTarget: DEFAULT_ASSUMPTIONS.conditionTarget,
-                riskThreshold: DEFAULT_ASSUMPTIONS.riskThreshold,
-                strategy: "risk-based",
-              }}
-            />
-
-            <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-              <div className="mb-1 font-medium text-foreground">Strategies</div>
-              <ul className="space-y-0.5">
-                {STRATEGIES.map((s) => (
-                  <li key={s}>
-                    <span className="font-medium">{s}</span> — {STRATEGY_DESCRIPTIONS[s]}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Creating runs the scenario immediately, so there is nothing
-                half-made to come back to — Cancel is simply "not this". */}
-            <div className="flex items-center justify-end gap-2 border-t pt-4">
-              <Button
-                variant="outline"
-                nativeButton={false}
-                render={<Link href="/scenario-planning">Cancel</Link>}
-              />
-              <RunProgressButton estimate={estimate} label="Create & Run Scenario" runningLabel="Creating and running…" size="default" />
-            </div>
-          </form>
+          <ScenarioCreateForm
+            action={createScenarioAction}
+            estimate={estimate}
+            criticalityChoices={criticalityChoices}
+            weightSetChoices={weightSetChoices}
+            defaults={{
+              name: "",
+              description: "",
+              criticalityModelId: null,
+              weightSetId: weightSets.find((w) => w.isDefault)?.id ?? null,
+              annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
+              fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),
+              discountRatePct: toPercent(DEFAULT_ASSUMPTIONS.discountRate),
+              analysisPeriodYears: DEFAULT_ASSUMPTIONS.analysisPeriodYears,
+              conditionTarget: DEFAULT_ASSUMPTIONS.conditionTarget,
+              riskThreshold: DEFAULT_ASSUMPTIONS.riskThreshold,
+              strategy: "risk-based",
+            }}
+          />
         </CardContent>
       </Card>
     </div>

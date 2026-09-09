@@ -43,6 +43,17 @@ export function formatDate(date: Date | null | undefined): string {
   }).format(date);
 }
 
+/**
+ * A stored rate as the percentage a form shows. Rounding matters: 0.035 * 100
+ * is 3.4999999999999996, which a number input renders in full.
+ *
+ * Here rather than beside the scenario form, which is a client component — a
+ * server page building that form's defaults cannot import from one.
+ */
+export function toPercent(rate: number) {
+  return Math.round(rate * 10000) / 100;
+}
+
 /** A date with its time. UTC like formatDate, and labelled as such rather than
  * left to be misread as local — a run timestamp is a moment, and a server
  * rendering it in one zone while the reader assumes another is worse than

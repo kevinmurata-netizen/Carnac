@@ -6,7 +6,7 @@ import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/
 import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { normalizeWeights } from "@/domain/waterline/optimization";
-import { STRATEGIES, STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
+import { STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
@@ -14,13 +14,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
-import { formatCurrency, formatDateTime, formatDuration, formatNumber } from "@/lib/format";
-import {
-  ScenarioFields,
-  toPercent,
-  type CriticalityChoice,
-  type WeightSetChoice,
-} from "../scenario-fields";
+import { formatCurrency, formatDateTime, formatDuration, formatNumber, toPercent } from "@/lib/format";
+import type { CriticalityChoice, WeightSetChoice } from "../scenario-fields";
+import { ScenarioEditForm } from "../scenario-form";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
 import { RunProgressButton } from "../run-progress";
 import { estimateRunMs, type RunEstimate } from "@/server/run-estimate";
@@ -361,57 +357,31 @@ function AssumptionsCard({
       </CardHeader>
       {canEdit ? (
         <CardContent>
-          <form action={updateScenarioAction} className="space-y-4">
-            <input type="hidden" name="scenarioId" value={scenario.id} />
-            {/* Remount the fields whenever a save lands. React does not
-                re-apply a changed defaultValue to already-mounted uncontrolled
-                inputs, so without this the form keeps showing the pre-save
-                values after the server action revalidates — and saving again
-                would silently write those stale values back. */}
-            <ScenarioFields
-              key={scenario.updatedAt.toISOString()}
-              idPrefix="edit-"
-              criticalityChoices={criticalityChoices}
-              weightSetChoices={weightSetChoices}
-              defaults={{
-                name: scenario.name,
-                description: scenario.description ?? "",
-                criticalityModelId: scenario.criticalityModelId ?? null,
-                weightSetId: scenario.weightSetId ?? null,
-                annualBudget: a.annualBudget,
-                fundingGrowthPct: toPercent(a.fundingGrowth),
-                discountRatePct: toPercent(a.discountRate),
-                analysisPeriodYears: a.analysisPeriodYears,
-                conditionTarget: a.conditionTarget,
-                riskThreshold: a.riskThreshold,
-                strategy: a.strategy,
-              }}
-            />
-            <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
-              <div className="mb-1 font-medium text-foreground">Strategies</div>
-              <ul className="space-y-0.5">
-                {STRATEGIES.map((s) => (
-                  <li key={s}>
-                    <span className="font-medium">{s}</span> — {STRATEGY_DESCRIPTIONS[s]}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-xs text-muted-foreground">
-                Saving re-runs the simulation immediately — results and the funded project list are replaced, so what
-                you see always matches these parameters.
-              </p>
-              <div className="shrink-0">
-                <RunProgressButton
-                  estimate={estimate}
-                  label="Save & Re-run"
-                  runningLabel="Saving and running…"
-                  size="default"
-                />
-              </div>
-            </div>
-          </form>
+          {/* Remounted whenever a save lands, so the form's idea of "stored"
+              is the freshly stored values. Without the key it would keep
+              comparing against what was on screen before the save, and every
+              field would stay marked as changed. */}
+          <ScenarioEditForm
+            key={scenario.updatedAt.toISOString()}
+            scenarioId={scenario.id}
+            action={updateScenarioAction}
+            estimate={estimate}
+            criticalityChoices={criticalityChoices}
+            weightSetChoices={weightSetChoices}
+            defaults={{
+              name: scenario.name,
+              description: scenario.description ?? "",
+              criticalityModelId: scenario.criticalityModelId ?? null,
+              weightSetId: scenario.weightSetId ?? null,
+              annualBudget: a.annualBudget,
+              fundingGrowthPct: toPercent(a.fundingGrowth),
+              discountRatePct: toPercent(a.discountRate),
+              analysisPeriodYears: a.analysisPeriodYears,
+              conditionTarget: a.conditionTarget,
+              riskThreshold: a.riskThreshold,
+              strategy: a.strategy,
+            }}
+          />
         </CardContent>
       ) : (
         <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4 lg:grid-cols-7">
