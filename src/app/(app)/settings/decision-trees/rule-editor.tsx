@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CancelOrDiscard } from "@/components/layout/save-actions";
-import { Check, X, Trash2 } from "lucide-react";
+import { Check, CircleDot, X, Trash2 } from "lucide-react";
 import {
   evaluateTree,
   describeNode,
@@ -78,6 +78,11 @@ export function RuleEditor({
   const [saved, setSaved] = useState<RuleDraft>(initial);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
+  /** An amber ring on a field whose value differs from the saved one. Compared
+   * by value, so typing something and typing it back clears the mark. */
+  const changed = (key: "name" | "description" | "effect" | "enabled") =>
+    JSON.stringify(draft[key]) !== JSON.stringify(saved[key]) ? "border-amber-500" : "";
+
   const sample = samples.find((s) => s.id === sampleId) ?? null;
   const asRule: Rule = useMemo(
     () => ({ id: draft.id ?? "draft", name: draft.name, enabled: draft.enabled, effect: draft.effect, root: draft.root }),
@@ -119,22 +124,31 @@ export function RuleEditor({
       <Card>
         <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
           <div className="min-w-0 flex-1 space-y-2">
+            {/* Edited fields are ringed, so "something changed" also answers
+                "what changed" — the conditions below can be several screens
+                from the name at the top. */}
             <input
               value={draft.name}
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
               aria-label="Rule name"
               placeholder="Name this rule, e.g. Condition 0-30"
-              className={`${control} w-full max-w-md font-medium`}
+              className={`${control} w-full max-w-md font-medium ${changed("name")}`}
             />
             <input
               value={draft.description}
               onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
               aria-label="Rule description"
               placeholder="Why this rule exists (optional)"
-              className={`${control} w-full max-w-lg`}
+              className={`${control} w-full max-w-lg ${changed("description")}`}
             />
           </div>
           <div className="flex items-center gap-2">
+            {dirty && (
+              <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+                <CircleDot className="h-3 w-3" />
+                Unsaved changes
+              </span>
+            )}
             {draft.id && (
               <Button type="button" size="sm" variant="ghost" onClick={remove} disabled={busy} aria-label="Delete rule">
                 <Trash2 className="h-3.5 w-3.5" />
@@ -154,7 +168,7 @@ export function RuleEditor({
               value={draft.effect}
               onChange={(e) => setDraft((d) => ({ ...d, effect: e.target.value as RuleEffect }))}
               aria-label="What a match means"
-              className={control}
+              className={`${control} ${changed("effect")}`}
             >
               <option value="allow">allowed this treatment</option>
               <option value="block">refused this treatment</option>

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getNetworkSummary } from "@/server/assets";
 import { getNetworkGeoJSON } from "@/server/geo";
+import { getPopupFieldsWithLabels } from "@/server/map-settings";
 import { getConditionSummary } from "@/server/condition";
 import { getRiskSummary } from "@/server/risk";
 import { getNetworkForecast } from "@/server/deterioration";
@@ -28,9 +29,15 @@ export default async function DashboardPage() {
   const pageTitle = await getPageName(organizationId, "/dashboard", "Executive Dashboard");
   const conditionBands = await getConditionBands(organizationId);
 
+  // The hover card is configured once under Settings › Map and should read the
+  // same on every map. The fields have to be fetched before the geojson,
+  // because they decide which properties each feature carries — without them
+  // the dashboard's map had a card with nothing in it.
+  const popupFields = await getPopupFieldsWithLabels(organizationId);
+
   const [summary, geojson, condition, risk, forecast, treatments, annualBudget] = await Promise.all([
     getNetworkSummary(organizationId),
-    getNetworkGeoJSON(organizationId),
+    getNetworkGeoJSON(organizationId, undefined, popupFields.map((f) => f.key)),
     getConditionSummary(organizationId),
     getRiskSummary(organizationId),
     getNetworkForecast(organizationId),
@@ -97,7 +104,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="relative h-[420px] overflow-hidden rounded-md border">
-              <NetworkMap geojson={geojson} className="h-full w-full" />
+              <NetworkMap geojson={geojson} popupFields={popupFields} className="h-full w-full" />
               <StatusMapLegend />
             </div>
             <div className="mt-2 text-right">
