@@ -11,6 +11,7 @@ import {
   Layers,
   Map as MapIcon,
   Palette,
+  Ruler,
   ListChecks,
   ListTodo,
   Scale,
@@ -227,6 +228,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     icon: Layers,
     detail:
       "Treatments you would apply together on one asset in one year, so the model can price the bundle instead of only the parts.",
+  },
+  {
+    key: "scale-factor",
+    href: "/settings/scale-factor",
+    tab: "modeling",
+    title: "Scale Factor",
+    icon: Ruler,
+    detail:
+      "How big a piece of work each asset represents, written as a formula over its own fields. Multiplies the Priority Score, so a long main is not outranked by a short one for the same job.",
   },
   {
     key: "scenario-weights",

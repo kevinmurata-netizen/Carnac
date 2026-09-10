@@ -5,10 +5,28 @@ import { getPageName } from "@/server/navigation";
 import { getFormulaFields, listCriticalityModels } from "@/server/criticality";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
-import { FormulaEditor } from "./formula-editor";
+import { FormulaEditor, type FormulaVocabulary } from "@/components/formula/formula-editor";
+import { CriticalityPreview } from "./criticality-preview";
 import { RecomputeButton } from "../recompute-button";
 import { recomputeRiskAction } from "../actions";
 import { saveFormulaAction, activateFormulaAction, deleteFormulaAction, previewFormulaAction } from "./actions";
+
+const CRITICALITY_WORDS: FormulaVocabulary = {
+  noun: "formula",
+  plural: "Formulas",
+  resultLabel: "Score, clamped to 0–100",
+  namePlaceholder: "Customers and criticality",
+  expressionPlaceholder: "clamp((CUSTOMERS_SERVED / 20) + CRITICALITY * 8 + if(DIAMETER > 12, 15, 0), 0, 100)",
+  emptyState: (
+    <>
+      No formula yet. Until one is active, criticality stays what it has always been here — a rescale of the{" "}
+      <Link href="/settings/risk-models" className="text-primary hover:underline">
+        risk model&apos;s
+      </Link>{" "}
+      consequence-of-failure rating.
+    </>
+  ),
+};
 
 /**
  * Criticality formulas, one asset type at a time.
@@ -106,6 +124,8 @@ export default async function CriticalityPage({
               activate={activateFormulaAction}
               remove={deleteFormulaAction}
               preview={previewFormulaAction}
+              vocabulary={CRITICALITY_WORDS}
+              renderPreview={CriticalityPreview}
             />
           )}
         </>
