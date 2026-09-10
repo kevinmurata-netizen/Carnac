@@ -1,5 +1,6 @@
 // Expected Benefit and the Criticality × Benefit ÷ Cost ranking.
-// See docs/TREATMENT-MODEL-REBUILD.md §5.3, which this implements.
+// See docs/TREATMENT-MODEL-REBUILD.md §5.3 (Expected Benefit) and §5.4
+// (the Priority Score), which this implements.
 //
 // The shape of the formula is the whole argument: Expected Benefit is what a
 // treatment *achieves*, Criticality is what the asset is *worth*, and the two
@@ -8,6 +9,7 @@
 // large mains dominate for a reason no reader can see.
 
 import { COF_WEIGHTS, combineFactors, computeCofFactors, type CofInputs } from "./risk";
+import type { TreatmentOption } from "./treatment";
 
 /**
  * The COF weighting used for benefit, with the Criticality factor removed.
@@ -37,6 +39,43 @@ export type BenefitTerms = {
   /** Life-cycle cost avoided versus leaving the asset alone, in dollars. */
   lifeCycleSaving: number;
 };
+
+/**
+ * What one option achieves on one asset, in natural units.
+ *
+ * Written once and shared, because two call sites computing "risk points
+ * removed" slightly differently is exactly the kind of divergence nobody
+ * notices until two screens disagree about the same treatment.
+ *
+ * `lifeCycleSaving` arrives as a number rather than being worked out here: it
+ * needs the LCCA evaluator, which needs deterioration curves and the database,
+ * and none of that belongs in the domain.
+ */
+export function optionTerms(
+  option: TreatmentOption,
+  ctx: { conditionScore: number | null; pof: number | null },
+  cofWithoutCriticality: number,
+  lifeCycleSaving: number
+): BenefitTerms {
+  const conditionNow = ctx.conditionScore ?? 0;
+  const conditionImprovement = Math.max(0, option.projectedCondition - conditionNow);
+
+  // Recomputed against the criticality-free consequence rather than read off
+  // the stored risk score, so criticality is not counted twice — once here and
+  // once as the multiplier. §5.3.
+  const pof = ctx.pof ?? 0;
+  const riskNow = pof * cofWithoutCriticality;
+  // A treatment that removes the asset entirely removes all of its risk; every
+  // other one leaves a floor, because a pipe in the ground can always fail.
+  const riskAfter =
+    option.failureProbMultiplier === 0 ? 0 : Math.max(1, pof * option.failureProbMultiplier) * cofWithoutCriticality;
+
+  return {
+    conditionImprovement,
+    riskReduction: Math.max(0, riskNow - riskAfter),
+    lifeCycleSaving: Math.max(0, lifeCycleSaving),
+  };
+}
 
 export type BenefitWeights = {
   conditionImprovement: number;
@@ -139,33 +178,55 @@ export function scoreBenefits<T>(
   });
 }
 
-export type CostBasis = "per foot" | "per asset";
+/** Every term behind one Priority Score, kept together so the number can
+ * always be decomposed into the five things that produced it. */
+export type PriorityTerms = {
+  /** What the asset is worth, 0-100. */
+  criticality: number;
+  /** How big a piece of work this is. A multiplier, unclamped. */
+  scaleFactor: number;
+  /** How far the scenario leans toward this kind of work. 1 is neutral. */
+  categoryWeight: number;
+  /** What the treatment achieves, 0-100. */
+  benefit: number;
+  /** The option's own price, in dollars. */
+  totalCost: number;
+};
 
 /**
- * Cost per unit, and what the unit turned out to be.
+ * `Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost`.
  *
- * A segment with no recorded length cannot be priced per foot, and dividing by
- * zero would rank it infinitely well. It falls back to cost per asset and says
- * so, following `criticality-formula.ts` in returning a defensible value
- * rather than an impossible one.
+ * See docs/TREATMENT-MODEL-REBUILD.md §5.4, which this implements.
+ *
+ * An ordinal ranking figure — not a rate of return, not a currency. It orders a
+ * candidate set and means nothing on its own, so callers should not print it
+ * without the decomposition beside it.
+ *
+ * Null rather than Infinity when the cost is zero or missing. A free option
+ * would otherwise rank above every real one, and "we could not price this"
+ * is not the same statement as "this is the best thing to do".
  */
-export function costPerUnit(cost: number, lengthFt: number | null): { value: number; basis: CostBasis } {
-  if (lengthFt != null && lengthFt > 0) {
-    return { value: Math.round((cost / lengthFt) * 100) / 100, basis: "per foot" };
-  }
-  return { value: cost, basis: "per asset" };
+export function priorityScore(terms: PriorityTerms): number | null {
+  const { criticality, scaleFactor, categoryWeight, benefit, totalCost } = terms;
+  if (!Number.isFinite(totalCost) || totalCost <= 0) return null;
+
+  const raw = (criticality * scaleFactor * categoryWeight * benefit) / totalCost;
+  if (!Number.isFinite(raw)) return null;
+  return Math.round(raw * 10000) / 10000;
 }
 
-/**
- * `Criticality × Expected Benefit ÷ Cost per Unit`.
- *
- * An ordinal ranking figure, not a rate of return and not a currency: it orders
- * a candidate set and means nothing on its own. Callers should not print it
- * without the decomposition beside it.
- */
-export function rankingValue(criticality: number, benefit: number, unitCost: number): number | null {
-  if (!Number.isFinite(unitCost) || unitCost <= 0) return null;
-  return Math.round(((criticality * benefit) / unitCost) * 100) / 100;
+/** Why one option scored what it did, in the terms it was scored by. */
+export function explainPriority(terms: PriorityTerms, score: number | null): string {
+  if (score == null) {
+    return "No priority score — this option could not be priced, so there is nothing to divide by.";
+  }
+  const parts = [
+    `criticality ${Math.round(terms.criticality * 10) / 10}`,
+    `scale ${Math.round(terms.scaleFactor * 100) / 100}`,
+    ...(terms.categoryWeight === 1 ? [] : [`category ×${terms.categoryWeight}`]),
+    `benefit ${terms.benefit}`,
+  ];
+  return `Priority ${score} — ${parts.join(" × ")} ÷ $${Math.round(terms.totalCost).toLocaleString("en-US")}.`;
 }
 
 /** Why a candidate ranked where it did, in the terms it was ranked by. */

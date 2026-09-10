@@ -30,6 +30,25 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-10",
+    title: "The new Priority Score, and every option ranked by it",
+    summary:
+      "The ranking formula now reads Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost, and it is applied to every treatment and every combination on every segment rather than to one pre-chosen option per segment.",
+    changes: [
+      "Total cost replaces cost per foot. With Scale Factor in the numerator the arithmetic is the same, but the length assumption is now a formula someone chose rather than a step buried in the code.",
+      "Scale Factor and Category Weight are read by the ranking for the first time. Both shipped neutral, so switching them on moves nothing until someone changes one.",
+      "Treatment Planning gains a Ranked Options card: 1,364 options across 218 segments on the seed network, 191 of them combinations, scored in about two thirds of a second. Every score can be decomposed — hover it to see the five terms that produced it.",
+      "A combination is now ranked against the treatments it is made of, on equal footing. Before, only whatever the segment's own recommendation had already picked carried a score, so a bundle that would have won never got the chance to.",
+      "The segment's own recommendation is unchanged and still marked. It answers a different question and carries professional overrides — a patch may not headline on a failing main — that no arithmetic ranking should quietly discard.",
+      "npm run qa:priority prints what the ranking actually contains: the category mix at the top, where each category first appears, and the median cost, benefit and score per category.",
+    ],
+    fixes: [
+      "Both screens now compute what a treatment achieves through one shared function. They agreed before, but by coincidence rather than construction.",
+    ],
+    note:
+      "No migration. Read the caveat: dividing by total cost hands the top of the ranking to the cheapest work — on the seed network the top 100 options are all repairs, and the first renewal is at rank 543. That is the cost spread showing through, not a finding about the network, and the card says so above the table. The fix is a shared effectiveness floor and is not built yet; docs/TREATMENT-MODEL-REBUILD.md §5.4 records the measurements.",
+  },
+  {
+    date: "2026-09-10",
     title: "Category Weight: say which kinds of work a scenario leans toward",
     summary:
       "Scenario Weights is now two weightings, not one. Benefit Weight says what makes a treatment good; the new Category Weight says which kinds of work you want to do anyway.",

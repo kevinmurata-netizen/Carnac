@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getNetworkRecommendations, listTreatments } from "@/server/treatments";
+import { rankOptions } from "@/server/priority";
+import { RankedOptions } from "./ranked-options";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,9 +31,10 @@ export default async function TreatmentPlanningPage() {
   const pageTitle = await getPageName(organizationId, "/treatment-planning", "Treatment Planning");
   const conditionBands = await getConditionBands(organizationId);
 
-  const [recommendations, library] = await Promise.all([
+  const [recommendations, library, ranking] = await Promise.all([
     getNetworkRecommendations(organizationId),
     listTreatments(organizationId),
+    rankOptions(organizationId),
   ]);
 
   const renewalCount = recommendations.rows.filter((r) => r.category === "Renew").length;
@@ -147,7 +150,13 @@ export default async function TreatmentPlanningPage() {
                         Math.round(row.benefitTerms.riskReduction * 10) / 10
                       } pts (criticality excluded) · Life-cycle saving ${formatCurrency(
                         row.benefitTerms.lifeCycleSaving
-                      )} · ${formatCurrency(row.costPerUnit)} ${row.costBasis}`}
+                      )}
+
+Priority = criticality ${row.criticalityScore} × scale ${
+                        Math.round(row.scaleFactor * 100) / 100
+                      }${row.categoryWeight === 1 ? "" : ` × category ×${row.categoryWeight}`} × benefit ${
+                        row.expectedBenefit
+                      } ÷ ${formatCurrency(row.estimatedCost)}`}
                     >
                       <span className="font-medium">{row.expectedBenefit}</span>
                       {/* A real space, not just the margin: the gap has to
@@ -156,7 +165,7 @@ export default async function TreatmentPlanningPage() {
                       {row.value != null && (
                         <>
                           {" "}
-                          <span className="text-xs text-muted-foreground">value {row.value}</span>
+                          <span className="text-xs text-muted-foreground">priority {row.value}</span>
                         </>
                       )}
                     </TableCell>
@@ -174,6 +183,8 @@ export default async function TreatmentPlanningPage() {
           )}
         </CardContent>
       </Card>
+
+      <RankedOptions ranking={ranking} />
 
       <Card className="mt-4">
         <CardHeader>

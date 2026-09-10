@@ -18,7 +18,7 @@ import { assertAssetTypeInOrg, validateExpression, validateFormulaName } from "@
  * not clamped, and the preview reports the spread of a magnitude rather than
  * the distribution of a score.
  *
- * See docs/TREATMENT-MODEL-REBUILD.md §5.2.
+ * See docs/TREATMENT-MODEL-REBUILD.md §5.4.
  */
 
 export type ScaleFactorSummary = {
@@ -75,6 +75,39 @@ export function scaleAssets(
       missing: used.filter((f) => !(f in asset.values)),
     };
   });
+}
+
+/**
+ * Every asset's scale factor under whatever formula is active, keyed by id.
+ *
+ * An empty map means no formula is active, which every caller reads as the
+ * neutral factor for all of them. That is deliberately the same outcome as a
+ * formula that no longer parses: the ranking degrades to "size is not
+ * considered", never to "nothing can be ranked".
+ *
+ * `missing` marks an asset the formula could not be worked out for, so a run
+ * can report how much of its ranking is resting on absent data rather than
+ * quietly averaging it away.
+ */
+export async function assetScaleFactors(
+  organizationId: string,
+  assetTypeId: string
+): Promise<{ factors: Map<string, { factor: number; missing: boolean }>; name: string | null }> {
+  const model = await getActiveScaleFactor(assetTypeId);
+  if (!model) return { factors: new Map(), name: null };
+
+  const values = await loadAssetValues(organizationId, assetTypeId, model.valueMaps);
+  const factors = new Map<string, { factor: number; missing: boolean }>();
+
+  for (const asset of values) {
+    const result = evaluate(model.tree, asset.values);
+    factors.set(asset.assetId, {
+      factor: result.ok ? toScaleFactor(result.value) : NEUTRAL_SCALE_FACTOR,
+      missing: !result.ok,
+    });
+  }
+
+  return { factors, name: model.name };
 }
 
 export type ScaleFactorPreview = {

@@ -626,6 +626,57 @@ project.
 - **Total cost zero or negative** keeps §5.2's rule: never divide by zero, return
   a defensible value and say so in the reason string.
 
+#### Measured 2026-09-10, and unresolved
+
+Implemented and run against the 260-segment network, the formula ranks **1,364
+options over 218 segments (191 of them combinations) in about 660 ms**. It also
+does something the specification did not anticipate, and this is the most
+important thing in this section:
+
+| Category | Options | Median cost | Median benefit | Median priority |
+| --- | --- | --- | --- | --- |
+| Repair | 538 | $11,145 | 5.6 | **55.8** |
+| Rehabilitate | 465 | $329,370 | 17 | 6.0 |
+| Renew | 140 | $699,446 | 42 | 5.9 |
+| Retire | 3 | $100,585 | 27.8 | 20.9 |
+| Assess | 218 | $18,236 | 0 | 0 |
+
+**The top 100 is 100 Repair.** The first Rehabilitate is at rank 443, the first
+Renew at rank 543.
+
+The cause is not a bug, it is the arithmetic meeting the data. Cost varies
+**63-fold** between a median repair and a median renewal. Benefit varies
+**7.5-fold**, because Expected Benefit is min-max normalized onto 0–100 and that
+compresses the range. Dividing a compressed numerator by an uncompressed
+denominator hands the ranking to whatever is cheapest, by roughly the ratio of
+the two spreads.
+
+**Category Weight cannot fix this.** It was the obvious lever and it was
+measured: `Renewal Push` (Renew ×1.6) moves the first renewal from rank 543 to
+375. Closing a gap this size would need a multiplier near 10, at which point the
+weighting is not expressing policy, it is cancelling an artefact.
+
+**Ranking by cost-efficiency is not self-evidently wrong.** Under a budget, a
+hundred repairs at 5.6 benefit genuinely beat one renewal at 42. The defect is
+narrower and sharper than "cheap work wins": it is that **a patch on a failing
+main does not fix the main**, and the Priority Score has no equivalent of the
+override `recommendTreatment` already carries for exactly this
+(`MIN_RISK_REDUCTION_PCT`, §5.3 "Still open"). The treatment *rules* already gate
+patches out of the very worst assets — on WL-0225 at WCI 2.2 the only priced
+options are Replacement and Inspection, and Replacement wins — but between
+roughly WCI 25 and 50 the patches are still applicable and they dominate.
+
+**The candidate fix**, not yet specified or built: the Priority Score inherits
+the effectiveness floor, so an option that cuts risk by less than the floor
+cannot be the priority pick on an asset in Poor condition or worse. That makes
+it one guard shared by both rankings rather than one ranking quietly ignoring
+the other's professional judgement. Expressing the floor in absolute risk points
+rather than a percentage remains the open question it already was.
+
+Until that is settled, the ranked list is shown with its category mix above it,
+because a list of a hundred patches is a statement about the cost spread and
+should not be read as a finding about the network.
+
 **A mixed-category bundle** reports the category of its most committing member
 (`CATEGORY_RANK` in `treatment.ts`), so a bundle containing a replacement is
 weighted as renewal. This is already how combinations report their category

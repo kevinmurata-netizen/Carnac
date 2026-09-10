@@ -10,12 +10,11 @@ import {
 } from "@/domain/waterline/treatment";
 import {
   benefitCof,
-  costPerUnit,
-  rankingValue,
+  optionTerms,
+  priorityScore,
   scoreBenefits,
   type BenefitTerms,
   type BenefitWeights,
-  type CostBasis,
 } from "@/domain/waterline/benefit";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
 import { emptyRuleGroup, newRuleRef } from "@/domain/waterline/decision-tree";
@@ -27,6 +26,10 @@ import { loadCombinations } from "@/server/combinations";
 import { buildLccaEvaluator } from "@/server/lcca-evaluator";
 import { getMaterialCurves } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
+import { resolveCategoryWeights } from "@/server/category-weight-sets";
+import { assetScaleFactors } from "@/server/scale-factors";
+import { categoryWeight } from "@/domain/waterline/category-weight";
+import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 
 /**
  * Idempotently write the treatment library, and the rules that decide what
@@ -250,10 +253,12 @@ export type NetworkRecommendationRow = {
   /** What the asset is worth, 0–100 — the active formula's score, or the
    * risk-based default. */
   criticalityScore: number;
-  /** Criticality × Benefit ÷ Cost per Unit. Null when the cost is zero. */
+  /** Criticality × Scale Factor × Category Weight × Benefit ÷ Total Cost.
+   * Null when the option could not be priced. §5.4. */
   value: number | null;
-  costPerUnit: number;
-  costBasis: CostBasis;
+  /** The two terms the reader cannot work out from the other columns. */
+  scaleFactor: number;
+  categoryWeight: number;
 };
 
 export type NetworkRecommendations = {
@@ -265,11 +270,20 @@ export type NetworkRecommendations = {
 
 export async function getNetworkRecommendations(organizationId: string): Promise<NetworkRecommendations> {
   const contexts = await buildContexts(organizationId);
-  const [library, combinations, curves, chosen] = await Promise.all([
+  const assetType = await prisma.assetType.findFirst({
+    where: { organizationId, code: "WATERLINE" },
+    select: { id: true },
+  });
+
+  const [library, combinations, curves, chosen, chosenCategories, scale] = await Promise.all([
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
     getMaterialCurves(organizationId),
     resolveWeights(organizationId),
+    resolveCategoryWeights(organizationId),
+    assetType
+      ? assetScaleFactors(organizationId, assetType.id)
+      : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
   ]);
 
   // Criticality is deliberately absent from these weights: it multiplies the
@@ -292,7 +306,8 @@ export async function getNetworkRecommendations(organizationId: string): Promise
     estimatedCost: number;
     riskReductionPct: number | null;
     criticalityScore: number;
-    lengthFt: number | null;
+    scaleFactor: number;
+    categoryWeight: number;
   };
 
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
@@ -318,23 +333,28 @@ export async function getNetworkRecommendations(organizationId: string): Promise
       (o) => o.label === rec.recommended!.name
     );
 
-    const conditionNow = ctx.conditionScore ?? 0;
-    const conditionImprovement = option
-      ? Math.max(0, option.projectedCondition - conditionNow)
-      : Math.max(0, (rec.recommended.projectedCondition ?? conditionNow) - conditionNow);
-
-    // Risk points removed, recomputed against the criticality-free consequence
-    // rather than read off the stored risk score.
-    const pof = ctx.pof ?? 0;
-    const riskNow = pof * cofNoCriticality;
-    const riskAfter = option ? Math.max(1, pof * option.failureProbMultiplier) * cofNoCriticality : riskNow;
-    const riskReduction = Math.max(0, riskNow - (option?.failureProbMultiplier === 0 ? 0 : riskAfter));
-
     const lcca =
       ctx.conditionScore != null
         ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curves, fallbackReplacement)
         : null;
-    const lifeCycleSaving = lcca && option ? Math.max(0, lcca.savingFor(option)) : 0;
+
+    // The same arithmetic the full ranking uses, so this table and the ranked
+    // list can never disagree about what one treatment achieves.
+    //
+    // `option` is normally found: it is the very option recommendTreatment
+    // chose. It can be absent only if the two disagree about labels, in which
+    // case the recommendation's own projected condition is the best available
+    // answer and risk is treated as unchanged rather than guessed at.
+    const terms = option
+      ? optionTerms(option, ctx, cofNoCriticality, lcca ? lcca.savingFor(option) : 0)
+      : {
+          conditionImprovement: Math.max(
+            0,
+            (rec.recommended.projectedCondition ?? (ctx.conditionScore ?? 0)) - (ctx.conditionScore ?? 0)
+          ),
+          riskReduction: 0,
+          lifeCycleSaving: 0,
+        };
 
     pending.push({
       item: {
@@ -354,16 +374,16 @@ export async function getNetworkRecommendations(organizationId: string): Promise
             diameterInches: ctx.diameterInches,
             customerType: ctx.customerType ?? null,
           }).score,
-        lengthFt: ctx.lengthFt,
+        scaleFactor: scale.factors.get(asset.id)?.factor ?? NEUTRAL_SCALE_FACTOR,
+        categoryWeight: categoryWeight(chosenCategories.weights, rec.recommended.category),
       },
-      terms: { conditionImprovement, riskReduction, lifeCycleSaving },
+      terms,
     });
   }
 
   // Normalized across every recommendation in this run, so two assets' scores
   // mean the same thing. §5.3.
   const rows: NetworkRecommendationRow[] = scoreBenefits(pending, benefitWeights).map((s) => {
-    const unit = costPerUnit(s.item.estimatedCost, s.item.lengthFt);
     return {
       assetId: s.item.assetId,
       assetCode: s.item.assetCode,
@@ -376,9 +396,15 @@ export async function getNetworkRecommendations(organizationId: string): Promise
       expectedBenefit: s.benefit,
       benefitTerms: s.raw,
       criticalityScore: Math.round(s.item.criticalityScore * 10) / 10,
-      value: rankingValue(s.item.criticalityScore, s.benefit, unit.value),
-      costPerUnit: unit.value,
-      costBasis: unit.basis,
+      value: priorityScore({
+        criticality: s.item.criticalityScore,
+        scaleFactor: s.item.scaleFactor,
+        categoryWeight: s.item.categoryWeight,
+        benefit: s.benefit,
+        totalCost: s.item.estimatedCost,
+      }),
+      scaleFactor: s.item.scaleFactor,
+      categoryWeight: s.item.categoryWeight,
     };
   });
 

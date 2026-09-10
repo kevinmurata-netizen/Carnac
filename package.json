@@ -21,7 +21,8 @@
     "vercel:prune": "tsx scripts/prune-deployments.ts",
     "qa:matrix": "tsx scripts/qualification-matrix.ts",
     "qa:options": "tsx scripts/check-option-arithmetic.ts",
-    "qa:raw": "tsx scripts/check-raw-queries.ts"
+    "qa:raw": "tsx scripts/check-raw-queries.ts",
+    "qa:priority": "tsx scripts/priority-ranking.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
