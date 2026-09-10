@@ -13,6 +13,7 @@ import {
   deleteWorkPlan,
 } from "@/server/workplans";
 import { resolveWeights } from "@/server/weight-sets";
+import { resolveCategoryWeights } from "@/server/category-weight-sets";
 
 const generateSchema = z.object({
   name: z.string().min(1, "Plan name is required"),
@@ -22,6 +23,7 @@ const generateSchema = z.object({
   fundingGrowthPct: z.coerce.number().min(-50).max(50),
   /** Empty means "whatever the organization's default set says". */
   weightSetId: z.string().optional(),
+  categoryWeightSetId: z.string().optional(),
 });
 
 async function requireEditor() {
@@ -44,6 +46,10 @@ export async function generateWorkPlanAction(formData: FormData) {
   // and a missing or unknown set falls back to the default instead of failing
   // a generation run over a dropdown.
   const chosen = await resolveWeights(session.user.organizationId, d.weightSetId?.trim() || null);
+  const categories = await resolveCategoryWeights(
+    session.user.organizationId,
+    d.categoryWeightSetId?.trim() || null
+  );
 
   const result = await generateWorkPlan(session.user.organizationId, {
     name: d.name,
@@ -53,6 +59,8 @@ export async function generateWorkPlanAction(formData: FormData) {
     fundingGrowth: d.fundingGrowthPct / 100,
     weights: chosen.weights,
     weightSetId: chosen.weightSetId,
+    caps: categories.caps,
+    categoryWeightSetId: categories.categoryWeightSetId,
   });
 
   redirect(`/work-plan/${result.workPlanId}`);

@@ -25,6 +25,8 @@ import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { loadCombinations } from "@/server/combinations";
 import { getMaterialCurves } from "@/server/settings";
+import { budgetLedger, UNCAPPED, type CategoryCaps } from "@/domain/waterline/category-weight";
+import { clearsEffectivenessFloor } from "@/domain/waterline/treatment";
 
 export type GenerateWorkPlanInput = {
   name: string;
@@ -36,6 +38,10 @@ export type GenerateWorkPlanInput = {
   /** Which named set the weights came from, for provenance. Null when they
    * came from the built-in defaults. */
   weightSetId?: string | null;
+  /** The most of each year's budget each category may take. Defaulted to
+   * uncapped, so a caller that does not pass one keeps today's behaviour. */
+  caps?: CategoryCaps;
+  categoryWeightSetId?: string | null;
   scenarioId?: string | null;
 };
 
@@ -259,15 +265,28 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
   });
   const treatmentIdByName = new Map(treatmentRows.map((t) => [t.name, t.id]));
 
+  const caps = input.caps ?? UNCAPPED;
+
   for (let i = 0; i < input.years; i++) {
     const year = input.startYear + i;
     const budget = input.annualBudget * Math.pow(1 + input.fundingGrowth, i);
-    let spend = 0;
+    const ledger = budgetLedger(budget, caps);
 
     for (let idx = 0; idx < remaining.length; ) {
       const candidate = remaining[idx];
       const c = candidate.item;
-      if (spend + c.cost > budget) {
+
+      // The effectiveness floor, shared with the recommendation and with the
+      // Priority Score ranking. A patch that leaves a failing main failing is
+      // not funded whatever it scores per dollar; it stays in the backlog,
+      // where a year with room for real work will find something better.
+      const riskPct = c.riskNow > 0 ? ((c.riskNow - c.riskAfter) / c.riskNow) * 100 : null;
+      if (!clearsEffectivenessFloor(c.conditionNow, riskPct)) {
+        idx++;
+        continue;
+      }
+
+      if (!ledger.canAfford(c.option.category, c.cost)) {
         idx++;
         continue;
       }
@@ -280,7 +299,7 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
         continue;
       }
 
-      spend += c.cost;
+      ledger.commit(c.option.category, c.cost);
       // Condition at the time the work is actually scheduled, not today —
       // deferring a year means the asset is worse when the crew arrives.
       const curve = curveFor(c.material, curves);

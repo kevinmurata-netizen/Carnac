@@ -10,6 +10,7 @@ import {
   CATEGORY_KEYS,
   CATEGORY_DESCRIPTIONS,
   NEUTRAL_CATEGORY_WEIGHTS,
+  UNCAPPED,
 } from "@/domain/waterline/category-weight";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 import type { CategoryWeightSetRow } from "@/server/category-weight-sets";
@@ -20,9 +21,22 @@ type Draft = {
   name: string;
   description: string;
   weights: Record<TreatmentCategory, number>;
+  /** Whole percentages in the form; stored as fractions. */
+  caps: Record<TreatmentCategory, number>;
 };
 
-const BLANK: Draft = { id: "", name: "", description: "", weights: { ...NEUTRAL_CATEGORY_WEIGHTS } };
+const asPercent = (fraction: number) => Math.round(fraction * 100);
+
+const BLANK: Draft = {
+  id: "",
+  name: "",
+  description: "",
+  weights: { ...NEUTRAL_CATEGORY_WEIGHTS },
+  caps: Object.fromEntries(CATEGORY_KEYS.map((k) => [k, asPercent(UNCAPPED[k])])) as Record<
+    TreatmentCategory,
+    number
+  >,
+};
 
 function toDraft(set: CategoryWeightSetRow): Draft {
   return {
@@ -30,6 +44,10 @@ function toDraft(set: CategoryWeightSetRow): Draft {
     name: set.name,
     description: set.description ?? "",
     weights: { ...set.weights },
+    caps: Object.fromEntries(CATEGORY_KEYS.map((k) => [k, asPercent(set.caps[k])])) as Record<
+      TreatmentCategory,
+      number
+    >,
   };
 }
 
@@ -67,15 +85,22 @@ export function CategoryWeightList({
               Category Weight <span className="text-muted-foreground">({sets.length})</span>
             </CardTitle>
             {canEdit && (
-              <Button type="button" size="sm" onClick={() => setEditing({ ...BLANK, weights: { ...BLANK.weights } })}>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setEditing({ ...BLANK, weights: { ...BLANK.weights }, caps: { ...BLANK.caps } })}
+              >
                 <Plus className="mr-1 h-4 w-4" />
                 New category weighting
               </Button>
             )}
           </div>
           <p className="text-sm font-normal text-muted-foreground">
-            How much a scenario leans toward one kind of work. Multipliers on the Priority Score, not shares — 1 leaves
-            a category exactly where the merits put it, 1.5 makes it worth half again as much, 0 takes it off the table.
+            Two levers per category. The <span className="font-medium">weight</span> decides what ranks first — a
+            multiplier, where 1 leaves a category exactly where its merits put it. The{" "}
+            <span className="font-medium">budget cap</span> decides what actually gets paid for: the most of one
+            year&apos;s budget that category may take. Ranking alone cannot stop a plan spending everything on cheap
+            repairs, because cheap repairs genuinely do remove more risk per dollar — they just never renew anything.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -120,6 +145,21 @@ export function CategoryWeightList({
                         </span>
                       ))}
                     </p>
+
+                    {set.capped.length > 0 && (
+                      <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Budget caps</span>
+                        {CATEGORY_KEYS.filter((k) => set.caps[k] < 1).map((k) => (
+                          <span key={k}>
+                            {k} ≤ {Math.round(set.caps[k] * 100)}%
+                          </span>
+                        ))}
+                        <span>
+                          {CATEGORY_KEYS.filter((k) => set.caps[k] >= 1).join(", ")} uncapped — they absorb what the
+                          rest leave
+                        </span>
+                      </p>
+                    )}
 
                     {set.excluded.length > 0 && (
                       <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-500">
@@ -196,6 +236,12 @@ function CategoryWeightEditor({
   const dirty = JSON.stringify(values) !== JSON.stringify(draft);
   const setWeight = (key: TreatmentCategory, v: number) =>
     setValues((prev) => ({ ...prev, weights: { ...prev.weights, [key]: v } }));
+  const setCap = (key: TreatmentCategory, v: number) =>
+    setValues((prev) => ({ ...prev, caps: { ...prev.caps, [key]: v } }));
+
+  const capTotal = CATEGORY_KEYS.reduce((sum, k) => sum + values.caps[k], 0);
+  const uncapped = CATEGORY_KEYS.filter((k) => values.caps[k] >= 100);
+  const allCappedToZero = CATEGORY_KEYS.every((k) => values.caps[k] === 0);
 
   const allZero = CATEGORY_KEYS.every((k) => values.weights[k] === 0);
   const zeroed = CATEGORY_KEYS.filter((k) => values.weights[k] === 0);
@@ -235,34 +281,80 @@ function CategoryWeightEditor({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {CATEGORY_KEYS.map((key) => (
-              <div className="space-y-1.5" key={key}>
-                <Label htmlFor={`cw-${key}`}>{key}</Label>
-                <input
-                  id={`cw-${key}`}
-                  name={key}
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.1}
-                  value={values.weights[key]}
-                  onChange={(e) => setWeight(key, Number(e.target.value))}
-                  className={values.weights[key] === 0 ? `${input} border-amber-500` : input}
-                />
-                <p className="text-xs text-muted-foreground">{CATEGORY_DESCRIPTIONS[key]}</p>
-                <p className="text-xs font-medium text-foreground">
-                  {values.weights[key] === 0
-                    ? "Never funded"
-                    : values.weights[key] === 1
-                      ? "Counts as it stands"
-                      : values.weights[key] > 1
-                        ? `Worth ${times(values.weights[key])} as much`
-                        : `Worth ${times(values.weights[key])} — held back`}
-                </p>
+              <div className="space-y-3 rounded-md border p-3" key={key}>
+                <div>
+                  <Label htmlFor={`cw-${key}`}>{key}</Label>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{CATEGORY_DESCRIPTIONS[key]}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor={`cw-${key}`} className="text-xs text-muted-foreground">
+                    Weight
+                  </Label>
+                  <input
+                    id={`cw-${key}`}
+                    name={key}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
+                    value={values.weights[key]}
+                    onChange={(e) => setWeight(key, Number(e.target.value))}
+                    className={values.weights[key] === 0 ? `${input} border-amber-500` : input}
+                  />
+                  <p className="text-xs font-medium text-foreground">
+                    {values.weights[key] === 0
+                      ? "Never funded"
+                      : values.weights[key] === 1
+                        ? "Counts as it stands"
+                        : values.weights[key] > 1
+                          ? `Worth ${times(values.weights[key])} as much`
+                          : `Worth ${times(values.weights[key])} — held back`}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <Label htmlFor={`cw-${key}-cap`} className="text-xs text-muted-foreground">
+                    Budget cap (% / year)
+                  </Label>
+                  <input
+                    id={`cw-${key}-cap`}
+                    name={`${key}Cap`}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={values.caps[key]}
+                    onChange={(e) => setCap(key, Number(e.target.value))}
+                    className={values.caps[key] < 100 ? `${input} border-primary/60` : input}
+                  />
+                  <p className="text-xs font-medium text-foreground">
+                    {values.caps[key] >= 100
+                      ? "Uncapped — absorbs what the rest leave"
+                      : values.caps[key] === 0
+                        ? "Never funded, whatever it scores"
+                        : `At most ${values.caps[key]}% of the year`}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
+
+          {allCappedToZero ? (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              Every category is capped at 0%, so a plan using this would fund nothing at all.
+            </p>
+          ) : (
+            uncapped.length === 0 && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-500">
+                Every category is capped, and they add up to {capTotal}% of the year. Nothing absorbs what the others
+                leave, so any shortfall simply goes unspent. Leaving one category — usually renewal — at 100% is what
+                lets the rollover land somewhere.
+              </p>
+            )
+          )}
 
           {allZero ? (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -294,7 +386,7 @@ function CategoryWeightEditor({
                 Cancel
               </Button>
             )}
-            <Button type="submit" size="sm" disabled={allZero}>
+            <Button type="submit" size="sm" disabled={allZero || allCappedToZero}>
               {draft.id ? "Save category weighting" : "Create category weighting"}
             </Button>
           </div>
