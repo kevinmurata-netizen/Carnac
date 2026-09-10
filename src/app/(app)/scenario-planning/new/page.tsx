@@ -5,6 +5,7 @@ import { getAnnualBudget } from "@/server/scenarios";
 import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
+import { getScenarioOptionCatalogue } from "@/server/scenario-options";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
@@ -26,11 +27,12 @@ export default async function NewScenarioPage() {
   const organizationId = session!.user.organizationId;
   if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
-  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, estimate] = await Promise.all([
+  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, catalogue, estimate] = await Promise.all([
     getAnnualBudget(organizationId),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
+    getScenarioOptionCatalogue(organizationId),
     // The form's default period, since nothing has been entered yet. Whatever
     // the reader picks, the first run measures itself and every later estimate
     // for this scenario comes from that.
@@ -67,6 +69,8 @@ export default async function NewScenarioPage() {
             criticalityChoices={criticalityChoices}
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
+            treatmentChoices={catalogue.treatments}
+            combinationChoices={catalogue.combinations}
             defaults={{
               name: "",
               description: "",

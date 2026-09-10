@@ -6,6 +6,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { createScenario, updateScenario, runAndStoreScenario, deleteScenario } from "@/server/scenarios";
+import { setScenarioOptions } from "@/server/scenario-options";
 import { STRATEGIES, type Strategy, type ScenarioAssumptions } from "@/domain/waterline/scenario";
 
 const schema = z.object({
@@ -22,6 +23,21 @@ const schema = z.object({
   weightSetId: z.string().optional(),
   categoryWeightSetId: z.string().optional(),
 });
+
+/**
+ * What the scenario may consider, off the checkbox lists.
+ *
+ * `getAll` rather than `get`: a checkbox group posts one entry per ticked box
+ * and nothing at all when none are ticked, which is exactly the shape wanted
+ * here — no ticks with the limit on genuinely means "consider nothing".
+ */
+function parseSelection(formData: FormData) {
+  return {
+    limitsOptions: String(formData.get("limitsOptions") ?? "") === "on",
+    treatments: formData.getAll("treatmentOption").map(String),
+    combinations: formData.getAll("combinationOption").map(String),
+  };
+}
 
 /** Percentages are entered as whole numbers in the form but stored as rates. */
 function parseForm(formData: FormData): {
@@ -68,6 +84,9 @@ export async function createScenarioAction(formData: FormData) {
   }
 
   const scenario = await createScenario(session.user.organizationId, parseForm(formData));
+  // Written before the run, so the first run already honours the selection
+  // rather than producing results the scenario's own settings contradict.
+  await setScenarioOptions(session.user.organizationId, scenario.id, parseSelection(formData));
 
   await runAndStoreScenario(session.user.organizationId, scenario.id);
   redirect(`/scenario-planning/${scenario.id}`);
@@ -87,6 +106,7 @@ export async function updateScenarioAction(formData: FormData) {
   if (!id) throw new Error("Scenario id is required");
 
   await updateScenario(session.user.organizationId, id, parseForm(formData));
+  await setScenarioOptions(session.user.organizationId, id, parseSelection(formData));
   await runAndStoreScenario(session.user.organizationId, id);
 
   revalidatePath(`/scenario-planning/${id}`);

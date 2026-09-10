@@ -17,6 +17,7 @@ import {
 } from "./deterioration";
 import { annualFailureProbability, failureEventCost, presentValue } from "./lcca";
 import { budgetLedger, UNCAPPED, type CategoryCaps } from "./category-weight";
+import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import {
   WATERLINE_TREATMENTS,
   MIN_RISK_REDUCTION_PCT,
@@ -210,14 +211,22 @@ function candidateFor(
   asset: SimAsset,
   assumptions: ScenarioAssumptions,
   library: TreatmentDef[],
-  combinations: CombinationDef[] = []
+  combinations: CombinationDef[] = [],
+  selection: OptionSelection = CONSIDER_ALL
 ): Candidate | null {
   const strategy = assumptions.strategy;
   const ctx = buildContext(asset);
   // An option that cannot be priced never appears here — enumerateOptions
   // drops it — so nothing below can treat missing cost as free.
-  let options = enumerateOptions(ctx, library, combinations).filter(
-    (o) => o.category !== "Assess" && o.category !== "Retire"
+  //
+  // The scenario's own selection is applied here rather than by narrowing
+  // `library`, so a scenario can name a combination without naming its
+  // members. See domain/waterline/option-selection.ts.
+  let options = filterOptions(
+    selection,
+    enumerateOptions(ctx, library, combinations).filter(
+      (o) => o.category !== "Assess" && o.category !== "Retire"
+    )
   );
 
   if (strategy === "replacement-only") {
@@ -315,7 +324,14 @@ export function runScenario(
    * reordering fixes that, because the preference is real — a patch genuinely
    * does remove more risk per dollar. What it does not do is renew anything.
    */
-  caps: CategoryCaps = UNCAPPED
+  caps: CategoryCaps = UNCAPPED,
+  /**
+   * Which treatments and combinations this scenario may consider. Null — the
+   * default — is the whole library, which is what every run did before a
+   * scenario could narrow itself.
+   */
+  selection: OptionSelection = CONSIDER_ALL,
+  combinations: CombinationDef[] = []
 ): ScenarioRunResult {
   // Work on copies so a scenario run never mutates caller state.
   const state: SimAsset[] = assets.map((a) => ({ ...a }));
@@ -337,7 +353,7 @@ export function runScenario(
     const candidates: Candidate[] = [];
     for (const asset of state) {
       if (!isEligible(asset, assumptions)) continue;
-      const candidate = candidateFor(asset, assumptions, library);
+      const candidate = candidateFor(asset, assumptions, library, combinations, selection);
       if (candidate) candidates.push(candidate);
     }
 

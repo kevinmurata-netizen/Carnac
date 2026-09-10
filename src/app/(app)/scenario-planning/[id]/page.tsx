@@ -6,6 +6,11 @@ import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/
 import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
+import {
+  describeSelection,
+  getScenarioOptionCatalogue,
+  type ScenarioOptionCatalogue,
+} from "@/server/scenario-options";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
@@ -31,12 +36,13 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects, criticalityChoices, weightSets, categoryWeightSets, estimate] = await Promise.all([
+  const [scenario, projects, criticalityChoices, weightSets, categoryWeightSets, catalogue, estimate] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
+    getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
   ]);
   if (!scenario) notFound();
@@ -113,7 +119,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} estimate={estimate} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} catalogue={catalogue} estimate={estimate} />
         </>
       ) : (
         <>
@@ -149,7 +155,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} estimate={estimate} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} catalogue={catalogue} estimate={estimate} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -345,6 +351,7 @@ function AssumptionsCard({
   criticalityChoices,
   weightSetChoices,
   categoryWeightSetChoices,
+  catalogue,
   estimate,
 }: {
   scenario: ScenarioDetail;
@@ -352,6 +359,7 @@ function AssumptionsCard({
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
+  catalogue: ScenarioOptionCatalogue;
   estimate: RunEstimate;
 }) {
   const a = scenario.assumptions;
@@ -375,6 +383,13 @@ function AssumptionsCard({
             criticalityChoices={criticalityChoices}
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
+            treatmentChoices={catalogue.treatments}
+            combinationChoices={catalogue.combinations}
+            savedOptions={{
+              limitsOptions: catalogue.limitsOptions,
+              treatments: catalogue.selectedTreatments,
+              combinations: catalogue.selectedCombinations,
+            }}
             defaults={{
               name: scenario.name,
               description: scenario.description ?? "",
@@ -400,6 +415,10 @@ function AssumptionsCard({
           <Field label="Analysis Period" value={`${a.analysisPeriodYears} yr`} />
           <Field label="Condition Target" value={String(a.conditionTarget)} />
           <Field label="Risk Threshold" value={String(a.riskThreshold)} />
+          {/* Read-only readers need this most: a scenario funding nothing but
+              relining looks like a badly performing scenario until you know
+              that is what it was asked to do. */}
+          <Field label="Considers" value={describeSelection(catalogue)} />
         </CardContent>
       )}
     </Card>

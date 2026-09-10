@@ -28,6 +28,8 @@ import { getMaterialCurves } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
 import { assetScaleFactors } from "@/server/scale-factors";
+import { resolveOptionSelection } from "@/server/scenario-options";
+import { CONSIDER_ALL, filterOptions } from "@/domain/waterline/option-selection";
 
 /**
  * Every treatment option on every asset, scored and ranked.
@@ -124,6 +126,8 @@ export type PriorityRanking = {
    * still scored — at zero — so the plan can say what it excluded rather than
    * silently omitting it. */
   excludedCategories: TreatmentCategory[];
+  /** Whether a scenario's own selection narrowed what was ranked. */
+  limitedToSelection: boolean;
   ms: number;
 };
 
@@ -131,6 +135,9 @@ export type PriorityOptions = {
   /** Null falls back to the organization's default set. */
   weightSetId?: string | null;
   categoryWeightSetId?: string | null;
+  /** Rank as one scenario would: only what that scenario considers, weighted
+   * and capped the way it is. Null ranks the whole library. */
+  scenarioId?: string | null;
 };
 
 export async function rankOptions(
@@ -144,17 +151,19 @@ export async function rankOptions(
     select: { id: true },
   });
 
-  const [contexts, library, combinations, curves, chosen, chosenCategories, scale] = await Promise.all([
+  const [contexts, library, combinations, curves, chosen, chosenCategories, selection, scale] =
+    await Promise.all([
     buildContexts(organizationId),
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
     getMaterialCurves(organizationId),
     resolveWeights(organizationId, options.weightSetId),
     resolveCategoryWeights(organizationId, options.categoryWeightSetId),
+    resolveOptionSelection(organizationId, options.scenarioId),
     assetType
       ? assetScaleFactors(organizationId, assetType.id)
       : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
-  ]);
+    ]);
 
   // Criticality is absent from these weights on purpose: it multiplies the
   // benefit rather than forming part of it. §5.3.
@@ -174,7 +183,9 @@ export async function rankOptions(
   let scaleFactorFallbacks = 0;
 
   for (const { asset, ctx } of contexts) {
-    const opts = enumerateOptions(ctx, library, combinations);
+    // Narrowed to what this scenario considers, on the built option rather
+    // than the library, so a combination can be selected without its members.
+    const opts = filterOptions(selection, enumerateOptions(ctx, library, combinations));
     if (opts.length === 0) continue;
 
     const cofNoCriticality = benefitCof({
@@ -288,6 +299,7 @@ export async function rankOptions(
     excludedCategories: (Object.keys(categoryWeights) as TreatmentCategory[]).filter(
       (k) => categoryWeights[k] === 0
     ),
+    limitedToSelection: selection !== CONSIDER_ALL,
     ms: Date.now() - startedAt,
   };
 }
