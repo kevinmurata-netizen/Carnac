@@ -6,6 +6,7 @@ import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { getScenarioOptionCatalogue } from "@/server/scenario-options";
+import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
@@ -27,17 +28,19 @@ export default async function NewScenarioPage() {
   const organizationId = session!.user.organizationId;
   if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
-  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, catalogue, estimate] = await Promise.all([
+  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate] =
+    await Promise.all([
     getAnnualBudget(organizationId),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
+    listFundingPlans(organizationId),
     getScenarioOptionCatalogue(organizationId),
     // The form's default period, since nothing has been entered yet. Whatever
     // the reader picks, the first run measures itself and every later estimate
     // for this scenario comes from that.
     estimateNewRunMs(organizationId, DEFAULT_ASSUMPTIONS.analysisPeriodYears),
-  ]);
+    ]);
 
   const weightSetChoices = weightSets.map((w) => {
     const n = normalizeWeights(w.weights);
@@ -53,6 +56,12 @@ export default async function NewScenarioPage() {
   });
 
   const categoryWeightSetChoices = categoryWeightSets.map(toCategoryChoice);
+  const fundingPlanChoices = fundingPlans.map((p) => ({
+    id: p.id,
+    name: p.name,
+    isDefault: p.isDefault,
+    summary: describeFundingPlan(p),
+  }));
 
   return (
     <div>
@@ -69,6 +78,7 @@ export default async function NewScenarioPage() {
             criticalityChoices={criticalityChoices}
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
+            fundingPlanChoices={fundingPlanChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}
             defaults={{
@@ -77,6 +87,7 @@ export default async function NewScenarioPage() {
               criticalityModelId: null,
               weightSetId: weightSets.find((w) => w.isDefault)?.id ?? null,
               categoryWeightSetId: categoryWeightSets.find((c) => c.isDefault)?.id ?? null,
+              categoryFundingPlanId: fundingPlans.find((p) => p.isDefault)?.id ?? null,
               annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
               fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),
               discountRatePct: toPercent(DEFAULT_ASSUMPTIONS.discountRate),

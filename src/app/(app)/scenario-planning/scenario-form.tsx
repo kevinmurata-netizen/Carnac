@@ -13,6 +13,7 @@ import {
   type CriticalityChoice,
   type WeightSetChoice,
   type CategoryWeightSetChoice,
+  type FundingPlanChoice,
 } from "./scenario-fields";
 import { RunProgressButton } from "./run-progress";
 import { OptionPicker, type OptionPickerValue } from "./option-picker";
@@ -50,6 +51,7 @@ export function ScenarioEditForm({
   criticalityChoices,
   weightSetChoices,
   categoryWeightSetChoices,
+  fundingPlanChoices,
   treatmentChoices,
   combinationChoices,
   savedOptions,
@@ -61,6 +63,7 @@ export function ScenarioEditForm({
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
+  fundingPlanChoices: FundingPlanChoice[];
   treatmentChoices: OptionChoice[];
   combinationChoices: OptionChoice[];
   savedOptions: OptionPickerValue;
@@ -99,6 +102,7 @@ export function ScenarioEditForm({
         criticalityChoices={criticalityChoices}
         weightSetChoices={weightSetChoices}
         categoryWeightSetChoices={categoryWeightSetChoices}
+        fundingPlanChoices={fundingPlanChoices}
       />
 
       <Strategies />
@@ -161,6 +165,7 @@ export function ScenarioCreateForm({
   criticalityChoices,
   weightSetChoices,
   categoryWeightSetChoices,
+  fundingPlanChoices,
   treatmentChoices,
   combinationChoices,
 }: {
@@ -170,6 +175,7 @@ export function ScenarioCreateForm({
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
+  fundingPlanChoices: FundingPlanChoice[];
   treatmentChoices: OptionChoice[];
   combinationChoices: OptionChoice[];
 }) {
@@ -189,6 +195,7 @@ export function ScenarioCreateForm({
         criticalityChoices={criticalityChoices}
         weightSetChoices={weightSetChoices}
         categoryWeightSetChoices={categoryWeightSetChoices}
+        fundingPlanChoices={fundingPlanChoices}
       />
 
       <Strategies />

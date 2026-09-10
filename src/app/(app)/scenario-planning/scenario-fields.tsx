@@ -27,6 +27,7 @@ export type ScenarioValues = {
   criticalityModelId: string;
   weightSetId: string;
   categoryWeightSetId: string;
+  categoryFundingPlanId: string;
 };
 
 export type ScenarioFieldDefaults = {
@@ -42,6 +43,7 @@ export type ScenarioFieldDefaults = {
   criticalityModelId: string | null;
   weightSetId: string | null;
   categoryWeightSetId: string | null;
+  categoryFundingPlanId: string | null;
 };
 
 export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
@@ -58,6 +60,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     criticalityModelId: d.criticalityModelId ?? "",
     weightSetId: d.weightSetId ?? "",
     categoryWeightSetId: d.categoryWeightSetId ?? "",
+    categoryFundingPlanId: d.categoryFundingPlanId ?? "",
   };
 }
 
@@ -77,6 +80,10 @@ export type CategoryWeightSetChoice = {
   summary: string;
   excluded: string[];
 };
+
+/** The named funding plans this scenario can spend by. `summary` is the order
+ * itself, because the order is the thing being chosen. */
+export type FundingPlanChoice = { id: string; name: string; isDefault: boolean; summary: string };
 
 /**
  * The scenario parameter inputs, shared by the create and edit forms so the two
@@ -100,6 +107,7 @@ export function ScenarioFields({
   criticalityChoices = [],
   weightSetChoices = [],
   categoryWeightSetChoices = [],
+  fundingPlanChoices = [],
 }: {
   values: ScenarioValues;
   onChange: (patch: Partial<ScenarioValues>) => void;
@@ -109,6 +117,7 @@ export function ScenarioFields({
   criticalityChoices?: CriticalityChoice[];
   weightSetChoices?: WeightSetChoice[];
   categoryWeightSetChoices?: CategoryWeightSetChoice[];
+  fundingPlanChoices?: FundingPlanChoice[];
 }) {
   const id = (name: string) => `${idPrefix}${name}`;
   const mark = (key: keyof ScenarioValues) =>
@@ -286,6 +295,35 @@ export function ScenarioFields({
             How far this scenario leans toward one kind of work — repair over renewal, or the other way about. A
             multiplier on the Priority Score, so leaving every category at 1 ranks purely on the merits. Edit the sets
             under Settings &rsaquo; Scenario Weights.
+          </p>
+        </div>
+      )}
+
+      {/* Separate from the category weighting directly above it, and the copy
+          has to work to keep them apart: one changes what ranks first, the
+          other what the money buys. */}
+      {fundingPlanChoices.length > 0 && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("categoryFundingPlanId")}>Category funding</Label>
+          <select
+            id={id("categoryFundingPlanId")}
+            name="categoryFundingPlanId"
+            value={values.categoryFundingPlanId}
+            onChange={(e) => onChange({ categoryFundingPlanId: e.target.value })}
+            className={mark("categoryFundingPlanId")}
+          >
+            <option value="">No category order — one pass down the ranked list</option>
+            {fundingPlanChoices.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.isDefault ? " (default)" : ""} — {p.summary}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            How much of each year goes to each kind of work, and which kind is funded first. Unlike the weighting
+            above, this does not change what ranks highest — it decides what the money buys. Edit the plans under
+            Settings &rsaquo; Category Funding.
           </p>
         </div>
       )}
