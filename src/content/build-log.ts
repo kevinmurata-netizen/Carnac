@@ -30,9 +30,24 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-10",
+    title: "Export the planning tables to Excel",
+    summary:
+      "Three tables people work through offline now download as real spreadsheets, and the British spelling of “programme” is gone.",
+    changes: [
+      "Funded Projects on a scenario exports every funded project across every year, with condition and risk before and after.",
+      "Recommended Treatments exports all 218 segments rather than the 25 on screen, including the three terms behind each benefit score so the figure can be checked rather than taken on trust.",
+      "Ranked Options exports all 1,364 options with every term of the Priority Score in its own column — including the ones the effectiveness floor rules out, marked as not fundable. They are hidden on screen because they cannot be funded, but someone checking why a cheap option was passed over needs to find it rather than conclude it was never considered.",
+      "Real .xlsx, not a CSV with a different extension: costs arrive as currency and scores as numbers, so a column sorts and sums properly instead of ordering 10 before 8.",
+      "“Programme” is now “Program” everywhere it appears.",
+    ],
+    note:
+      "No migration. A scenario's stored work plan is named after it — those still read “Funded Programme” until the scenario next runs, when the name is rewritten along with the results.",
+  },
+  {
+    date: "2026-09-10",
     title: "Choose which treatments a scenario is allowed to consider",
     summary:
-      "A scenario could only ever be run against the whole library. It can now be narrowed to a handful of treatments, or to one, so you can ask what a relining-only programme would actually buy.",
+      "A scenario could only ever be run against the whole library. It can now be narrowed to a handful of treatments, or to one, so you can ask what a relining-only program would actually buy.",
     changes: [
       "Both the New Scenario page and a scenario's own page gain a \"What this scenario considers\" section. Off by default — the whole library stays on the table until you say otherwise.",
       "Turning it on reveals both lists already fully ticked, so narrowing is a matter of unticking rather than starting from an empty screen. Select all and Clear on each list.",

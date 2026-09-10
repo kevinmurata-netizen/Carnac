@@ -77,7 +77,7 @@ export function OptionPicker({
         </div>
         <p className="text-sm font-normal text-muted-foreground">
           By default a scenario may fund anything in the library. Narrow it to answer a specific question — what would
-          a relining-only programme buy, or what gets picked if the only option is replacement.
+          a relining-only program buy, or what gets picked if the only option is replacement.
         </p>
       </CardHeader>
 

@@ -724,7 +724,7 @@ and stays in the backlog, still ranked, for a year with room.
 
 Renewal is normally left at 100%. A cap of 100% costs nothing on its own — the
 budget already binds — but it makes that category the one that absorbs whatever
-the capped categories leave, which is exactly what a capital programme wants.
+the capped categories leave, which is exactly what a capital program wants.
 A set where *every* category is capped leaves any shortfall unspent, and the
 editor says so.
 
@@ -751,7 +751,7 @@ Both defaults are inert: the shipped `Even-handed` set caps nothing, and
 ### 5.6 What a scenario considers
 
 **Settled 2026-09-10.** Every scenario considered the whole library, so the
-only way to ask "what would a relining-only programme fund?" was to disable
+only way to ask "what would a relining-only program fund?" was to disable
 treatments globally and remember to put them back — which changes what every
 other scenario means and cannot be compared against anything.
 

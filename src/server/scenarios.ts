@@ -192,7 +192,7 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       { scenarioId, year: y.year, metricKey: "belowTargetCount", metricValue: y.belowTargetCount },
     ]),
   });
-  await persistScenarioProgramme(scenarioId, scenario.name, result);
+  await persistScenarioProgram(scenarioId, scenario.name, result);
   // Measured across everything the run actually did — loading, simulating and
   // persisting — because that is what the person waiting experiences. Written
   // only on success, so a failed run cannot poison the next estimate.
@@ -208,11 +208,11 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
 /**
  * Materialize the projects a run actually funded as a WorkPlan linked to the
  * scenario. The schema already carries WorkPlan.scenarioId for exactly this;
- * a scenario run *is* a programme of work, so storing it as one means the
+ * a scenario run *is* a program of work, so storing it as one means the
  * project list is queryable and shows up wherever work plans do, rather than
  * being summarized away into yearly totals.
  */
-async function persistScenarioProgramme(
+async function persistScenarioProgram(
   scenarioId: string,
   scenarioName: string,
   result: ScenarioRunResult
@@ -233,7 +233,7 @@ async function persistScenarioProgramme(
   const workPlan = await prisma.workPlan.create({
     data: {
       scenarioId,
-      name: `${scenarioName} — Funded Programme`,
+      name: `${scenarioName} — Funded Program`,
       startYear: years[0].year,
       endYear: years[years.length - 1].year,
     },
@@ -453,7 +453,7 @@ export async function deleteScenario(organizationId: string, scenarioId: string)
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
   if (!scenario) throw new Error("Scenario not found");
 
-  // The funded programme a run materializes holds a scenarioId FK, so it has to
+  // The funded program a run materializes holds a scenarioId FK, so it has to
   // go before the scenario itself does.
   const plans = await prisma.workPlan.findMany({ where: { scenarioId }, select: { id: true } });
   const planIds = plans.map((p) => p.id);

@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { PriorityRanking } from "@/server/priority";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
+import { ExportButton } from "@/components/layout/export-button";
 
 const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   Assess: "secondary",
@@ -15,7 +16,7 @@ const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
 };
 
 const SHOWN = 25;
-/** The window the mix is measured over. Long enough to be a real programme,
+/** The window the mix is measured over. Long enough to be a real program,
  * short enough that it is the part of the ranking anyone would fund. */
 const MIX_WINDOW = 100;
 
@@ -51,9 +52,17 @@ export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
   return (
     <Card className="mt-4">
       <CardHeader>
-        <CardTitle>
-          Ranked Options <span className="text-muted-foreground">({formatNumber(ranking.optionsScored)})</span>
-        </CardTitle>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <CardTitle>
+            Ranked Options <span className="text-muted-foreground">({formatNumber(ranking.optionsScored)})</span>
+          </CardTitle>
+          <ExportButton
+            href="/treatment-planning/export?list=ranked"
+            title={`All ${formatNumber(ranking.optionsScored)} options, including the ${formatNumber(
+              ranking.belowFloor
+            )} the effectiveness floor rules out`}
+          />
+        </div>
         <p className="text-sm text-muted-foreground">
           Every applicable treatment and combination on every segment, scored as criticality × scale × category ×
           benefit ÷ total cost. {formatNumber(ranking.combinationsScored)} of them are combinations.

@@ -16,6 +16,7 @@ import { CheckCircle2, DollarSign, Hammer, Wrench } from "lucide-react";
 import { ASSET_LABEL } from "@/config/labels";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
+import { ExportButton } from "@/components/layout/export-button";
 
 const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   Assess: "secondary",
@@ -90,8 +91,12 @@ export default async function TreatmentPlanningPage() {
       </Card>
 
       <Card className="mt-4">
-        <CardHeader>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle>Recommended Treatments — Highest Risk First</CardTitle>
+          <ExportButton
+            href="/treatment-planning/export"
+            title={`All ${formatNumber(recommendations.rows.length)} segments with a recommendation, not the 25 shown`}
+          />
         </CardHeader>
         <CardContent className="p-0">
           <Table>

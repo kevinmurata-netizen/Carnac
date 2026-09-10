@@ -310,7 +310,7 @@ export const REPORTS: ReportDefinition[] = [
   {
     id: "work-plan",
     name: "Work Plan",
-    description: "Multi-year capital programme with priority, cost and justification.",
+    description: "Multi-year capital program with priority, cost and justification.",
     category: "Planning",
     columns: [
       { key: "plan", label: "Plan" },

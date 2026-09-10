@@ -3,7 +3,7 @@ import type { TreatmentOption } from "./treatment";
 /**
  * Which options a scenario is allowed to consider.
  *
- * The question this answers is "what would a relining-only programme fund?",
+ * The question this answers is "what would a relining-only program fund?",
  * and until now the only way to ask it was to disable treatments across the
  * whole library and remember to put them back — which changes what every other
  * scenario means and cannot be compared against anything.
