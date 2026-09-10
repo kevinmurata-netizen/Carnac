@@ -245,7 +245,7 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     title: "Scenario Weights",
     icon: Scale,
     detail:
-      "Named weightings — how much condition, risk and life-cycle cost each count when work is ranked. Chosen on a scenario or a work plan rather than retyped each time.",
+      "Two named weightings. Benefit Weight is how much condition, risk and life-cycle cost each count toward a treatment's worth; Category Weight is how far a scenario leans toward repair, renewal or retirement. Chosen on a scenario rather than retyped each time.",
   },
   {
     key: "deterioration-models",

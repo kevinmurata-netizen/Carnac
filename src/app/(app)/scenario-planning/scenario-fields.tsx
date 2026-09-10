@@ -26,6 +26,7 @@ export type ScenarioValues = {
   strategy: string;
   criticalityModelId: string;
   weightSetId: string;
+  categoryWeightSetId: string;
 };
 
 export type ScenarioFieldDefaults = {
@@ -40,6 +41,7 @@ export type ScenarioFieldDefaults = {
   strategy: string;
   criticalityModelId: string | null;
   weightSetId: string | null;
+  categoryWeightSetId: string | null;
 };
 
 export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
@@ -55,6 +57,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     strategy: d.strategy,
     criticalityModelId: d.criticalityModelId ?? "",
     weightSetId: d.weightSetId ?? "",
+    categoryWeightSetId: d.categoryWeightSetId ?? "",
   };
 }
 
@@ -63,6 +66,17 @@ export type CriticalityChoice = { id: string; name: string; assetTypeName: strin
 
 /** The named weightings this scenario can rank by. */
 export type WeightSetChoice = { id: string; name: string; isDefault: boolean; summary: string };
+
+/** The named category weightings this scenario can lean by. `excluded` names
+ * the categories a set switches off entirely, which is worth saying in the
+ * dropdown rather than leaving to be discovered from an empty plan. */
+export type CategoryWeightSetChoice = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  summary: string;
+  excluded: string[];
+};
 
 /**
  * The scenario parameter inputs, shared by the create and edit forms so the two
@@ -85,6 +99,7 @@ export function ScenarioFields({
   idPrefix = "",
   criticalityChoices = [],
   weightSetChoices = [],
+  categoryWeightSetChoices = [],
 }: {
   values: ScenarioValues;
   onChange: (patch: Partial<ScenarioValues>) => void;
@@ -93,6 +108,7 @@ export function ScenarioFields({
   idPrefix?: string;
   criticalityChoices?: CriticalityChoice[];
   weightSetChoices?: WeightSetChoice[];
+  categoryWeightSetChoices?: CategoryWeightSetChoice[];
 }) {
   const id = (name: string) => `${idPrefix}${name}`;
   const mark = (key: keyof ScenarioValues) =>
@@ -240,6 +256,36 @@ export function ScenarioFields({
           <p className="text-xs text-muted-foreground">
             How much condition, risk and life-cycle cost each count when this scenario&apos;s work is ranked. Edit the
             sets themselves under Settings › Scenario Weights.
+          </p>
+        </div>
+      )}
+
+      {/* Sits directly under the benefit weighting because the two are read
+          together: one says what makes a treatment good, the other says which
+          kinds of work this scenario wants anyway. */}
+      {categoryWeightSetChoices.length > 0 && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("categoryWeightSetId")}>Category weighting</Label>
+          <select
+            id={id("categoryWeightSetId")}
+            name="categoryWeightSetId"
+            value={values.categoryWeightSetId}
+            onChange={(e) => onChange({ categoryWeightSetId: e.target.value })}
+            className={mark("categoryWeightSetId")}
+          >
+            <option value="">The organization&apos;s default category weighting</option>
+            {categoryWeightSetChoices.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.isDefault ? " (default)" : ""} — {c.summary}
+                {c.excluded.length > 0 ? ` — no ${c.excluded.join(", ")}` : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            How far this scenario leans toward one kind of work — repair over renewal, or the other way about. A
+            multiplier on the Priority Score, so leaving every category at 1 ranks purely on the merits. Edit the sets
+            under Settings &rsaquo; Scenario Weights.
           </p>
         </div>
       )}

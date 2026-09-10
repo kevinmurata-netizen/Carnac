@@ -4,6 +4,7 @@ import { canRecordFieldData } from "@/lib/permissions";
 import { getAnnualBudget } from "@/server/scenarios";
 import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
+import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
@@ -25,10 +26,11 @@ export default async function NewScenarioPage() {
   const organizationId = session!.user.organizationId;
   if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
-  const [annualBudget, criticalityChoices, weightSets, estimate] = await Promise.all([
+  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, estimate] = await Promise.all([
     getAnnualBudget(organizationId),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
+    listCategoryWeightSets(organizationId),
     // The form's default period, since nothing has been entered yet. Whatever
     // the reader picks, the first run measures itself and every later estimate
     // for this scenario comes from that.
@@ -48,6 +50,8 @@ export default async function NewScenarioPage() {
     };
   });
 
+  const categoryWeightSetChoices = categoryWeightSets.map(toCategoryChoice);
+
   return (
     <div>
       <PageHeader
@@ -62,11 +66,13 @@ export default async function NewScenarioPage() {
             estimate={estimate}
             criticalityChoices={criticalityChoices}
             weightSetChoices={weightSetChoices}
+            categoryWeightSetChoices={categoryWeightSetChoices}
             defaults={{
               name: "",
               description: "",
               criticalityModelId: null,
               weightSetId: weightSets.find((w) => w.isDefault)?.id ?? null,
+              categoryWeightSetId: categoryWeightSets.find((c) => c.isDefault)?.id ?? null,
               annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
               fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),
               discountRatePct: toPercent(DEFAULT_ASSUMPTIONS.discountRate),

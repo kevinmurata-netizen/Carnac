@@ -6,46 +6,45 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { CircleDot, Plus, Star, Trash2 } from "lucide-react";
-import { OBJECTIVE_LABELS, OBJECTIVE_DESCRIPTIONS, normalizeWeights } from "@/domain/waterline/optimization";
-import type { WeightSetRow } from "@/server/weight-sets";
+import {
+  CATEGORY_KEYS,
+  CATEGORY_DESCRIPTIONS,
+  NEUTRAL_CATEGORY_WEIGHTS,
+} from "@/domain/waterline/category-weight";
+import type { TreatmentCategory } from "@/domain/waterline/treatment";
+import type { CategoryWeightSetRow } from "@/server/category-weight-sets";
 import { Feedback, EMPTY, firstSpoken, inputClass as input, type Action } from "./shared";
 
-/** Whole numbers read better than fractions, and normalization makes the two
- * identical. Rounded because 0.3 × 100 is not always 30 in binary. */
-const pct = (v: number) => Math.round(v * 1000) / 10;
-
-const BLANK = {
-  id: "",
-  name: "",
-  description: "",
-  conditionImprovement: 30,
-  riskReduction: 40,
-  lifeCycleCost: 20,
-  criticality: 10,
+type Draft = {
+  id: string;
+  name: string;
+  description: string;
+  weights: Record<TreatmentCategory, number>;
 };
 
-type Draft = typeof BLANK;
+const BLANK: Draft = { id: "", name: "", description: "", weights: { ...NEUTRAL_CATEGORY_WEIGHTS } };
 
-function toDraft(set: WeightSetRow): Draft {
+function toDraft(set: CategoryWeightSetRow): Draft {
   return {
     id: set.id,
     name: set.name,
     description: set.description ?? "",
-    conditionImprovement: pct(set.weights.conditionImprovement),
-    riskReduction: pct(set.weights.riskReduction),
-    lifeCycleCost: pct(set.weights.lifeCycleCost),
-    criticality: pct(set.weights.criticality),
+    weights: { ...set.weights },
   };
 }
 
-export function WeightSetList({
+/** "×1.6" reads as a multiplier; "1.6" on its own invites being read as a
+ * percentage of something. */
+const times = (v: number) => `×${Number.isInteger(v) ? v : v.toFixed(2).replace(/0$/, "")}`;
+
+export function CategoryWeightList({
   sets,
   canEdit,
   onSave,
   onSetDefault,
   onDelete,
 }: {
-  sets: WeightSetRow[];
+  sets: CategoryWeightSetRow[];
   canEdit: boolean;
   onSave: Action;
   onSetDefault: Action;
@@ -55,8 +54,6 @@ export function WeightSetList({
   const [defaultState, makeDefault] = useActionState(onSetDefault, EMPTY);
   const [deleteState, remove] = useActionState(onDelete, EMPTY);
 
-  // Which set is open in the editor. Null means none; a blank draft means a new
-  // one is being written.
   const [editing, setEditing] = useState<Draft | null>(null);
 
   return (
@@ -67,29 +64,29 @@ export function WeightSetList({
         <CardHeader className="space-y-1">
           <div className="flex flex-row items-center justify-between">
             <CardTitle>
-              Benefit Weight <span className="text-muted-foreground">({sets.length})</span>
+              Category Weight <span className="text-muted-foreground">({sets.length})</span>
             </CardTitle>
             {canEdit && (
-              <Button type="button" size="sm" onClick={() => setEditing({ ...BLANK })}>
+              <Button type="button" size="sm" onClick={() => setEditing({ ...BLANK, weights: { ...BLANK.weights } })}>
                 <Plus className="mr-1 h-4 w-4" />
-                New weighting
+                New category weighting
               </Button>
             )}
           </div>
           <p className="text-sm font-normal text-muted-foreground">
-            How much condition, risk reduction and life-cycle saving each count toward a treatment&apos;s Expected
-            Benefit. Shares of one score, so 3/4/2/1 ranks identically to 30/40/20/10.
+            How much a scenario leans toward one kind of work. Multipliers on the Priority Score, not shares — 1 leaves
+            a category exactly where the merits put it, 1.5 makes it worth half again as much, 0 takes it off the table.
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
           {sets.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No weightings yet. Without one, ranking falls back to the built-in 30/40/20/10.
+              No category weightings yet. Without one every category counts the same, which is what the model did
+              before this existed.
             </p>
           )}
 
           {sets.map((set) => {
-            const n = normalizeWeights(set.weights);
             const used = set.scenarioCount + set.workPlanCount;
             return (
               <div key={set.id} className="rounded-md border p-3">
@@ -110,16 +107,27 @@ export function WeightSetList({
                         </span>
                       )}
                     </div>
-                    {set.description && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">{set.description}</p>
-                    )}
-                    {/* The normalized split, because that is what actually
-                        ranks — a set entered as 15/65/10/10 is not obviously
-                        65% risk until it is shown that way. */}
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Condition {pct(n.conditionImprovement)}% · Risk {pct(n.riskReduction)}% · Life-cycle{" "}
-                      {pct(n.lifeCycleCost)}% · Criticality {pct(n.criticality)}%
+                    {set.description && <p className="mt-0.5 text-xs text-muted-foreground">{set.description}</p>}
+
+                    {/* Every category, always, including the ones left at 1 —
+                        a list that showed only the adjusted ones would read as
+                        if the rest were missing rather than deliberately
+                        untouched. */}
+                    <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                      {CATEGORY_KEYS.map((k) => (
+                        <span key={k} className={set.weights[k] === 1 ? "" : "font-medium text-foreground"}>
+                          {k} {times(set.weights[k])}
+                        </span>
+                      ))}
                     </p>
+
+                    {set.excluded.length > 0 && (
+                      <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-500">
+                        {set.excluded.join(", ")} {set.excluded.length === 1 ? "is" : "are"} at zero, so no{" "}
+                        {set.excluded.length === 1 ? "treatment of that kind" : "treatments of those kinds"} can ever be
+                        funded by a scenario using this.
+                      </p>
+                    )}
                   </div>
 
                   {canEdit && (
@@ -164,7 +172,7 @@ export function WeightSetList({
       </Card>
 
       {editing && canEdit && (
-        <WeightSetEditor
+        <CategoryWeightEditor
           key={editing.id || "new"}
           draft={editing}
           action={save}
@@ -175,7 +183,7 @@ export function WeightSetList({
   );
 }
 
-function WeightSetEditor({
+function CategoryWeightEditor({
   draft,
   action,
   onClose,
@@ -185,37 +193,17 @@ function WeightSetEditor({
   onClose: () => void;
 }) {
   const [values, setValues] = useState(draft);
-  const patch = (change: Partial<Draft>) => setValues((v) => ({ ...v, ...change }));
   const dirty = JSON.stringify(values) !== JSON.stringify(draft);
+  const setWeight = (key: TreatmentCategory, v: number) =>
+    setValues((prev) => ({ ...prev, weights: { ...prev.weights, [key]: v } }));
 
-  const total =
-    values.conditionImprovement + values.riskReduction + values.lifeCycleCost + values.criticality;
-
-  const field = (key: keyof typeof OBJECTIVE_LABELS) => (
-    <div className="space-y-1.5" key={key}>
-      <Label htmlFor={key}>{OBJECTIVE_LABELS[key]}</Label>
-      <input
-        id={key}
-        name={key}
-        type="number"
-        min={0}
-        max={100}
-        step={1}
-        value={values[key as keyof Draft] as number}
-        onChange={(e) => patch({ [key]: Number(e.target.value) } as Partial<Draft>)}
-        className={input}
-      />
-      <p className="text-xs text-muted-foreground">{OBJECTIVE_DESCRIPTIONS[key]}</p>
-      <p className="text-xs font-medium text-foreground">
-        {total > 0 ? `${Math.round(((values[key as keyof Draft] as number) / total) * 1000) / 10}% of the ranking` : "—"}
-      </p>
-    </div>
-  );
+  const allZero = CATEGORY_KEYS.every((k) => values.weights[k] === 0);
+  const zeroed = CATEGORY_KEYS.filter((k) => values.weights[k] === 0);
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{draft.id ? `Edit ${draft.name}` : "New weighting"}</CardTitle>
+        <CardTitle>{draft.id ? `Edit ${draft.name}` : "New category weighting"}</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={action} className="space-y-4">
@@ -223,42 +211,71 @@ function WeightSetEditor({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="cw-name">Name</Label>
               <input
-                id="name"
+                id="cw-name"
                 name="name"
                 required
-                placeholder="e.g. Risk First"
+                placeholder="e.g. Renewal Push"
                 value={values.name}
-                onChange={(e) => patch({ name: e.target.value })}
+                onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
                 className={input}
               />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="cw-description">Description</Label>
               <input
-                id="description"
+                id="cw-description"
                 name="description"
                 placeholder="When you would choose this weighting"
                 value={values.description}
-                onChange={(e) => patch({ description: e.target.value })}
+                onChange={(e) => setValues((v) => ({ ...v, description: e.target.value }))}
                 className={input}
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {field("conditionImprovement")}
-            {field("riskReduction")}
-            {field("lifeCycleCost")}
-            {field("criticality")}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {CATEGORY_KEYS.map((key) => (
+              <div className="space-y-1.5" key={key}>
+                <Label htmlFor={`cw-${key}`}>{key}</Label>
+                <input
+                  id={`cw-${key}`}
+                  name={key}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  value={values.weights[key]}
+                  onChange={(e) => setWeight(key, Number(e.target.value))}
+                  className={values.weights[key] === 0 ? `${input} border-amber-500` : input}
+                />
+                <p className="text-xs text-muted-foreground">{CATEGORY_DESCRIPTIONS[key]}</p>
+                <p className="text-xs font-medium text-foreground">
+                  {values.weights[key] === 0
+                    ? "Never funded"
+                    : values.weights[key] === 1
+                      ? "Counts as it stands"
+                      : values.weights[key] > 1
+                        ? `Worth ${times(values.weights[key])} as much`
+                        : `Worth ${times(values.weights[key])} — held back`}
+                </p>
+              </div>
+            ))}
           </div>
 
-          {total <= 0 && (
+          {allZero ? (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              Every weight is zero, so this set says nothing. Ranking would fall back to the built-in defaults rather
-              than to what this says.
+              Every category is zero, so this weighting funds nothing at all. Leave at least one above zero.
             </p>
+          ) : (
+            zeroed.length > 0 && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-500">
+                {zeroed.join(", ")} {zeroed.length === 1 ? "is" : "are"} at zero. A scenario using this weighting can
+                never fund that work, whatever its condition or risk says — which is a stronger statement than counting
+                it less.
+              </p>
+            )
           )}
 
           <div className="flex items-center justify-end gap-2 border-t pt-4">
@@ -268,8 +285,6 @@ function WeightSetEditor({
                 Unsaved changes
               </span>
             )}
-            {/* Closing the editor is the local "back" here — the list is still
-                on screen behind it, so leaving the page would overshoot. */}
             {dirty ? (
               <Button type="button" size="sm" variant="outline" onClick={() => setValues(draft)}>
                 Discard changes
@@ -279,8 +294,8 @@ function WeightSetEditor({
                 Cancel
               </Button>
             )}
-            <Button type="submit" size="sm" disabled={total <= 0}>
-              {draft.id ? "Save weighting" : "Create weighting"}
+            <Button type="submit" size="sm" disabled={allZero}>
+              {draft.id ? "Save category weighting" : "Create category weighting"}
             </Button>
           </div>
         </form>

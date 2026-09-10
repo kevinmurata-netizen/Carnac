@@ -30,6 +30,22 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-10",
+    title: "Category Weight: say which kinds of work a scenario leans toward",
+    summary:
+      "Scenario Weights is now two weightings, not one. Benefit Weight says what makes a treatment good; the new Category Weight says which kinds of work you want to do anyway.",
+    changes: [
+      "Settings › Scenario Weights splits into two cards on one page. The old Weightings section becomes Benefit Weight — the same condition / risk / life-cycle / criticality numbers, unchanged.",
+      "Category Weight is new: a multiplier per treatment category — Assess, Repair, Rehabilitate, Renew, Retire. Named and saved the same way, with one default, and chosen from a dropdown on a scenario.",
+      "These are multipliers, not shares. 1 leaves a category exactly where its merits put it, 1.5 makes it worth half again as much, 0 takes it off the table entirely. Benefit weights are normalized and these deliberately are not, because 1 has to keep meaning \"leave this alone\".",
+      "A category at zero is called out in the editor and in the list — that is an exclusion, not a preference, and it should not be something you discover from an empty plan. A negative weight is refused: it would rank the best option in that category last.",
+      "Ships with three category weightings: Even-handed (all ones, the default), Renewal Push, and Buy Time. The default reproduces exactly what the ranking did before, so installing this moves nothing.",
+      "A bundle takes the category of its most committing member, so a combination containing a replacement is weighted as renewal — the same rule combinations already use everywhere else.",
+    ],
+    note:
+      "Needs one migration. This is the second of four changes building the new Priority Score: Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost. Both Scale Factor and Category Weight are now defined and stored, but neither is read by the ranking yet — the third change switches the formula on, and both ship neutral so nothing moves when it does.",
+  },
+  {
+    date: "2026-09-10",
     title: "Scale Factor: say how big a piece of work each asset is",
     summary:
       "How much work an asset represents was assumed to be its length, buried in the ranking code. It is now a formula you write, on its own Settings card, alongside criticality.",

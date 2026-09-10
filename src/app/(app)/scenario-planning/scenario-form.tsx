@@ -12,6 +12,7 @@ import {
   type ScenarioValues,
   type CriticalityChoice,
   type WeightSetChoice,
+  type CategoryWeightSetChoice,
 } from "./scenario-fields";
 import { RunProgressButton } from "./run-progress";
 import type { RunEstimate } from "@/server/run-estimate";
@@ -46,6 +47,7 @@ export function ScenarioEditForm({
   estimate,
   criticalityChoices,
   weightSetChoices,
+  categoryWeightSetChoices,
 }: {
   scenarioId: string;
   defaults: ScenarioFieldDefaults;
@@ -53,6 +55,7 @@ export function ScenarioEditForm({
   estimate: RunEstimate;
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
+  categoryWeightSetChoices: CategoryWeightSetChoice[];
 }) {
   // The stored values, and what is in the boxes now. Both start from the same
   // place; the component is remounted by its caller after a save, which is
@@ -77,6 +80,7 @@ export function ScenarioEditForm({
         saved={saved}
         criticalityChoices={criticalityChoices}
         weightSetChoices={weightSetChoices}
+        categoryWeightSetChoices={categoryWeightSetChoices}
       />
 
       <Strategies />
@@ -121,12 +125,14 @@ export function ScenarioCreateForm({
   estimate,
   criticalityChoices,
   weightSetChoices,
+  categoryWeightSetChoices,
 }: {
   defaults: ScenarioFieldDefaults;
   action: (formData: FormData) => void;
   estimate: RunEstimate;
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
+  categoryWeightSetChoices: CategoryWeightSetChoice[];
 }) {
   const [values, setValues] = useState<ScenarioValues>(() => toValues(defaults));
   const patch = (change: Partial<ScenarioValues>) => setValues((v) => ({ ...v, ...change }));
@@ -138,6 +144,7 @@ export function ScenarioCreateForm({
         onChange={patch}
         criticalityChoices={criticalityChoices}
         weightSetChoices={weightSetChoices}
+        categoryWeightSetChoices={categoryWeightSetChoices}
       />
 
       <Strategies />

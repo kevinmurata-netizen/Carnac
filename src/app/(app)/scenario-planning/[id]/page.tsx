@@ -5,6 +5,7 @@ import { canRecordFieldData } from "@/lib/permissions";
 import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/scenarios";
 import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
+import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
@@ -15,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { formatCurrency, formatDateTime, formatDuration, formatNumber, toPercent } from "@/lib/format";
-import type { CriticalityChoice, WeightSetChoice } from "../scenario-fields";
+import type { CriticalityChoice, WeightSetChoice, CategoryWeightSetChoice } from "../scenario-fields";
 import { ScenarioEditForm } from "../scenario-form";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
 import { RunProgressButton } from "../run-progress";
@@ -30,11 +31,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects, criticalityChoices, weightSets, estimate] = await Promise.all([
+  const [scenario, projects, criticalityChoices, weightSets, categoryWeightSets, estimate] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
+    listCategoryWeightSets(organizationId),
     estimateRunMs(organizationId, id),
   ]);
   if (!scenario) notFound();
@@ -51,6 +53,8 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
       )}%`,
     };
   });
+
+  const categoryWeightSetChoices: CategoryWeightSetChoice[] = categoryWeightSets.map(toCategoryChoice);
 
   const projectsByYear = new Map<number, typeof projects>();
   for (const p of projects) {
@@ -109,7 +113,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} estimate={estimate} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} estimate={estimate} />
         </>
       ) : (
         <>
@@ -145,7 +149,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} estimate={estimate} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} estimate={estimate} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -340,12 +344,14 @@ function AssumptionsCard({
   canEdit,
   criticalityChoices,
   weightSetChoices,
+  categoryWeightSetChoices,
   estimate,
 }: {
   scenario: ScenarioDetail;
   canEdit: boolean;
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
+  categoryWeightSetChoices: CategoryWeightSetChoice[];
   estimate: RunEstimate;
 }) {
   const a = scenario.assumptions;
@@ -368,11 +374,13 @@ function AssumptionsCard({
             estimate={estimate}
             criticalityChoices={criticalityChoices}
             weightSetChoices={weightSetChoices}
+            categoryWeightSetChoices={categoryWeightSetChoices}
             defaults={{
               name: scenario.name,
               description: scenario.description ?? "",
               criticalityModelId: scenario.criticalityModelId ?? null,
               weightSetId: scenario.weightSetId ?? null,
+              categoryWeightSetId: scenario.categoryWeightSetId ?? null,
               annualBudget: a.annualBudget,
               fundingGrowthPct: toPercent(a.fundingGrowth),
               discountRatePct: toPercent(a.discountRate),

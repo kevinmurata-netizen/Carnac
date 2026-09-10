@@ -9,6 +9,8 @@ import { getWishlistSummary } from "@/server/wishlist";
 import { listSavedFilters } from "@/server/saved-filters";
 import { listRules } from "@/server/rules";
 import { listScaleFactors } from "@/server/scale-factors";
+import { listWeightSets } from "@/server/weight-sets";
+import { listCategoryWeightSets } from "@/server/category-weight-sets";
 import { ENTRIES, latestEntry } from "@/content/build-log";
 import { ASSET_LABEL } from "@/config/labels";
 import { SETTINGS_CARDS, SETTINGS_TABS, type SettingsTabKey } from "@/config/settings-cards";
@@ -54,6 +56,8 @@ export default async function SettingsPage({
     filters,
     rules,
     scaleFactors,
+    weightSets,
+    categoryWeightSets,
     permissions,
   ] = await Promise.all([
     getConfigSummary(organizationId),
@@ -68,6 +72,8 @@ export default async function SettingsPage({
     listSavedFilters(organizationId),
     listRules(organizationId),
     listScaleFactors(organizationId),
+    listWeightSets(organizationId),
+    listCategoryWeightSets(organizationId),
     getSessionPermissions(session!),
   ]);
 
@@ -120,6 +126,9 @@ export default async function SettingsPage({
       activeRules === 0
         ? "No rules written yet"
         : `${formatNumber(activeRules)} rules · ${formatNumber(attachedRules)} attached to a treatment`,
+    "scenario-weights": `${weightSets.length} benefit · ${categoryWeightSets.length} category weighting${
+      categoryWeightSets.length === 1 ? "" : "s"
+    }`,
     "scale-factor":
       liveScaleFactors.length === 0
         ? "None active — every asset scales at 1"

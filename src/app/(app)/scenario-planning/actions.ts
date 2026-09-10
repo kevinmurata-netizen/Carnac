@@ -20,6 +20,7 @@ const schema = z.object({
   strategy: z.string(),
   criticalityModelId: z.string().optional(),
   weightSetId: z.string().optional(),
+  categoryWeightSetId: z.string().optional(),
 });
 
 /** Percentages are entered as whole numbers in the form but stored as rates. */
@@ -29,6 +30,7 @@ function parseForm(formData: FormData): {
   assumptions: ScenarioAssumptions;
   criticalityModelId: string | null;
   weightSetId: string | null;
+  categoryWeightSetId: string | null;
 } {
   const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
@@ -46,6 +48,7 @@ function parseForm(formData: FormData): {
     criticalityModelId: d.criticalityModelId?.trim() || null,
     // Likewise: empty means "the organization's default", not "no weighting".
     weightSetId: d.weightSetId?.trim() || null,
+    categoryWeightSetId: d.categoryWeightSetId?.trim() || null,
     assumptions: {
       annualBudget: d.annualBudget,
       fundingGrowth: d.fundingGrowthPct / 100,
