@@ -748,6 +748,43 @@ that had not yet shipped.
 Both defaults are inert: the shipped `Even-handed` set caps nothing, and
 `UNCAPPED` is what every caller gets that does not pass a set.
 
+### 5.6 What a scenario considers
+
+**Settled 2026-09-10.** Every scenario considered the whole library, so the
+only way to ask "what would a relining-only programme fund?" was to disable
+treatments globally and remember to put them back — which changes what every
+other scenario means and cannot be compared against anything.
+
+A scenario now carries `limitsOptions` plus two join tables,
+`scenario_treatments` and `scenario_combinations`.
+
+**Why a flag and not "no rows means everything".** An empty selection is
+genuinely ambiguous, and the silent reading is the harmful one: someone unticks
+every box, expects an empty plan, and gets the full library. With the flag,
+unticking everything means what it says, and the picker warns that the scenario
+will fund nothing.
+
+**Why join tables and not an array of ids.** A deleted treatment removes itself
+from every scenario that named it. An array would keep pointing at something
+gone, and a scenario would quietly narrow without saying why.
+
+**Filtering happens on the built option, not on the library.** `allowsOption`
+in `domain/waterline/option-selection.ts` matches `t:<name>` and `combo:<id>`
+against the selection *after* `enumerateOptions` has run. Narrowing the inputs
+instead would mean a combination could only be considered when every one of its
+members was also selected, so "run this bundle and nothing else" — one of the
+things someone most wants to ask — would be inexpressible.
+
+Applied in three places, all defaulting to the whole library so nothing that
+does not pass a selection changes: the scenario simulation, the Priority Score
+ranking, and work plan generation.
+
+**Measured.** Restricting *Current Funding* to Relining alone: 152 projects
+funded, every one of them a relining, final condition 66.8 → 53.5, backlog
+$12.0M → $0. The backlog collapses because only the segments relining applies
+to are candidates at all, and the budget covers them — which is exactly the
+shape of answer the question was asking for.
+
 #### Still open
 
 Whether the floor should be an absolute number of risk points rather than a

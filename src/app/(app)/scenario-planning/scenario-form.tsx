@@ -15,7 +15,9 @@ import {
   type CategoryWeightSetChoice,
 } from "./scenario-fields";
 import { RunProgressButton } from "./run-progress";
+import { OptionPicker, type OptionPickerValue } from "./option-picker";
 import type { RunEstimate } from "@/server/run-estimate";
+import type { OptionChoice } from "@/server/scenario-options";
 
 function Strategies() {
   return (
@@ -48,6 +50,9 @@ export function ScenarioEditForm({
   criticalityChoices,
   weightSetChoices,
   categoryWeightSetChoices,
+  treatmentChoices,
+  combinationChoices,
+  savedOptions,
 }: {
   scenarioId: string;
   defaults: ScenarioFieldDefaults;
@@ -56,6 +61,9 @@ export function ScenarioEditForm({
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
+  treatmentChoices: OptionChoice[];
+  combinationChoices: OptionChoice[];
+  savedOptions: OptionPickerValue;
 }) {
   // The stored values, and what is in the boxes now. Both start from the same
   // place; the component is remounted by its caller after a save, which is
@@ -64,9 +72,19 @@ export function ScenarioEditForm({
   const [values, setValues] = useState<ScenarioValues>(saved);
   const patch = (change: Partial<ScenarioValues>) => setValues((v) => ({ ...v, ...change }));
 
-  const changedCount = (Object.keys(values) as Array<keyof ScenarioValues>).filter(
+  const [options, setOptions] = useState<OptionPickerValue>(savedOptions);
+
+  const fieldChanges = (Object.keys(values) as Array<keyof ScenarioValues>).filter(
     (k) => values[k] !== saved[k]
   ).length;
+  // The picker counts as one change however many boxes moved: "8 unsaved
+  // changes" because someone unticked eight treatments would drown out the
+  // budget edit sitting next to it.
+  const optionsChanged =
+    savedOptions.limitsOptions !== options.limitsOptions ||
+    !sameSet(savedOptions.treatments, options.treatments) ||
+    !sameSet(savedOptions.combinations, options.combinations);
+  const changedCount = fieldChanges + (optionsChanged ? 1 : 0);
   const dirty = changedCount > 0;
 
   return (
@@ -85,6 +103,15 @@ export function ScenarioEditForm({
 
       <Strategies />
 
+      <OptionPicker
+        idPrefix="edit-"
+        treatments={treatmentChoices}
+        combinations={combinationChoices}
+        value={options}
+        onChange={setOptions}
+        saved={savedOptions}
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground">
           Saving re-runs the simulation immediately — results and the funded project list are replaced, so what you
@@ -98,7 +125,15 @@ export function ScenarioEditForm({
             </span>
           )}
           {dirty && (
-            <Button type="button" size="sm" variant="outline" onClick={() => setValues(saved)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setValues(saved);
+                setOptions(savedOptions);
+              }}
+            >
               Discard changes
             </Button>
           )}
@@ -126,6 +161,8 @@ export function ScenarioCreateForm({
   criticalityChoices,
   weightSetChoices,
   categoryWeightSetChoices,
+  treatmentChoices,
+  combinationChoices,
 }: {
   defaults: ScenarioFieldDefaults;
   action: (formData: FormData) => void;
@@ -133,9 +170,16 @@ export function ScenarioCreateForm({
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
+  treatmentChoices: OptionChoice[];
+  combinationChoices: OptionChoice[];
 }) {
   const [values, setValues] = useState<ScenarioValues>(() => toValues(defaults));
   const patch = (change: Partial<ScenarioValues>) => setValues((v) => ({ ...v, ...change }));
+  const [options, setOptions] = useState<OptionPickerValue>({
+    limitsOptions: false,
+    treatments: [],
+    combinations: [],
+  });
 
   return (
     <form action={action} className="space-y-4">
@@ -148,6 +192,13 @@ export function ScenarioCreateForm({
       />
 
       <Strategies />
+
+      <OptionPicker
+        treatments={treatmentChoices}
+        combinations={combinationChoices}
+        value={options}
+        onChange={setOptions}
+      />
 
       {/* Creating runs the scenario immediately, so there is nothing
           half-made to come back to — Cancel is simply "not this". */}
@@ -162,4 +213,11 @@ export function ScenarioCreateForm({
       </div>
     </form>
   );
+}
+
+/** Order-insensitive comparison; the picker appends rather than sorting. */
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((v) => set.has(v));
 }

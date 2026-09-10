@@ -30,6 +30,22 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-10",
+    title: "Choose which treatments a scenario is allowed to consider",
+    summary:
+      "A scenario could only ever be run against the whole library. It can now be narrowed to a handful of treatments, or to one, so you can ask what a relining-only programme would actually buy.",
+    changes: [
+      "Both the New Scenario page and a scenario's own page gain a \"What this scenario considers\" section. Off by default — the whole library stays on the table until you say otherwise.",
+      "Turning it on reveals both lists already fully ticked, so narrowing is a matter of unticking rather than starting from an empty screen. Select all and Clear on each list.",
+      "A combination can be selected on its own. Its members do not also have to be, so \"this bundle and nothing else\" is a question you can ask.",
+      "Untick everything and the page says plainly that the scenario will fund nothing and the budget will go unspent, rather than quietly falling back to the full library.",
+      "The scope shows on the scenario for anyone who cannot edit it — a scenario funding nothing but relining looks like a badly performing scenario until you know that is what it was asked to do.",
+      "A disabled combination cannot be ticked, and Select all skips it: the run would not include it, so the box would be a promise the model does not keep.",
+    ],
+    note:
+      "Needs one migration. Existing scenarios are unrestricted and stay that way. Restricting Current Funding to relining alone funds 152 relinings, moves final condition from 66.8 to 53.5, and drops the backlog to zero — only the segments relining applies to are candidates at all, and the budget covers them.",
+  },
+  {
+    date: "2026-09-10",
     title: "Two guards on what gets funded: an effectiveness floor and category budget caps",
     summary:
       "Ranking by value for money reliably prefers cheap work, because cheap work really does remove more risk per dollar — it just never renews anything. Two separate guards now stop that becoming a plan that patches forever.",

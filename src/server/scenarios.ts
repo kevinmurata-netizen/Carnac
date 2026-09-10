@@ -15,6 +15,8 @@ import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
+import { resolveOptionSelection } from "@/server/scenario-options";
+import { loadCombinations } from "@/server/combinations";
 import { getMaterialCurves } from "@/server/settings";
 
 /** Snapshot the current network into simulation inputs. Condition comes from
@@ -162,16 +164,19 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
   if (!scenario) throw new Error("Scenario not found");
 
   const assumptions = assumptionsFromRows(scenario.assumptions);
-  const [simAssets, library, categories] = await Promise.all([
+  const [simAssets, library, combinations, categories, selection] = await Promise.all([
     buildSimAssets(organizationId),
     // Run against the configured library so edited treatments and decision
     // trees change what a scenario is allowed to fund.
     loadTreatmentDefs(organizationId),
+    loadCombinations(organizationId),
     // The scenario's own category policy, or the organization's default. The
     // caps are what stop a run spending the whole year on cheap patches.
     resolveCategoryWeights(organizationId, scenario.categoryWeightSetId),
+    // And what it is allowed to consider at all. Null means the whole library.
+    resolveOptionSelection(organizationId, scenarioId),
   ]);
-  const result = runScenario(simAssets, assumptions, library, categories.caps);
+  const result = runScenario(simAssets, assumptions, library, categories.caps, selection, combinations);
 
   await prisma.scenarioResult.deleteMany({ where: { scenarioId } });
   await prisma.scenarioResult.createMany({

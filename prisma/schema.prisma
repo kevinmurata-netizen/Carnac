@@ -685,6 +685,7 @@ model Treatment {
   costs                  TreatmentCost[]
   costRates              TreatmentCostRate[]
   workPlanItems          WorkPlanItem[]
+  scenarioOptions        ScenarioTreatment[]
   rules                  TreatmentRule[]
   ruleLinks              TreatmentRuleLink[]
   combinationMemberships CombinationMember[]
@@ -724,8 +725,9 @@ model TreatmentCombination {
   /// members already carry.
   qualifyMode String @default("all")
 
-  members CombinationMember[]
-  rules   CombinationRuleLink[]
+  members         CombinationMember[]
+  rules           CombinationRuleLink[]
+  scenarioOptions ScenarioCombination[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -978,6 +980,20 @@ model Scenario {
   categoryWeightSetId String?
   categoryWeightSet   CategoryWeightSet? @relation(fields: [categoryWeightSetId], references: [id], onDelete: SetNull)
 
+  /// Whether this scenario considers only the treatments and combinations it
+  /// names, rather than the whole library.
+  ///
+  /// A flag rather than "no rows means everything", because an empty selection
+  /// is genuinely ambiguous and the silent reading is the harmful one: someone
+  /// unticks every box, expects an empty plan, and gets the full library.
+  limitsOptions Boolean @default(false)
+
+  /// What it considers when it does. Ignored entirely while limitsOptions is
+  /// false, so unticking everything and turning the limit off restores the
+  /// library rather than losing the selection.
+  treatmentOptions   ScenarioTreatment[]
+  combinationOptions ScenarioCombination[]
+
   /// Wall-clock milliseconds the last successful run took. The only honest
   /// basis for telling someone how long the next one will take: a run is a
   /// single synchronous call with no way to report its own progress, so the
@@ -999,6 +1015,32 @@ model Scenario {
   updatedAt DateTime @updatedAt
 
   @@map("scenarios")
+}
+
+/// One treatment a scenario is allowed to consider.
+model ScenarioTreatment {
+  scenarioId  String
+  scenario    Scenario  @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  treatmentId String
+  treatment   Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@id([scenarioId, treatmentId])
+  @@index([treatmentId])
+  @@map("scenario_treatments")
+}
+
+/// One combination a scenario is allowed to consider. Selecting a combination
+/// does not require selecting its members: filtering happens on the built
+/// option, so "run this bundle and nothing else" is expressible.
+model ScenarioCombination {
+  scenarioId    String
+  scenario      Scenario             @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  combinationId String
+  combination   TreatmentCombination @relation(fields: [combinationId], references: [id], onDelete: Cascade)
+
+  @@id([scenarioId, combinationId])
+  @@index([combinationId])
+  @@map("scenario_combinations")
 }
 
 model ScenarioAssumption {
