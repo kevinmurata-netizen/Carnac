@@ -18,8 +18,8 @@ import {
   type TreatmentOption,
 } from "@/domain/waterline/treatment";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
-import { buildLccaEvaluator } from "@/server/lcca-evaluator";
-import { curveFor } from "@/domain/waterline/scenario";
+import { buildLccaEvaluator } from "@/domain/waterline/lcca-evaluator";
+import { curveFor } from "@/domain/waterline/deterioration";
 import { effectiveAgeForCondition, evaluateCurve } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";

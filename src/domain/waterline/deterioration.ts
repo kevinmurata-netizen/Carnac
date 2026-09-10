@@ -144,3 +144,17 @@ export function forecastFromMarkov(
 
 export const FORECAST_HORIZON_YEARS = 10;
 export const NETWORK_CONDITION_TARGET = 70;
+
+/**
+ * The curve for a material, or the default.
+ *
+ * Lives here rather than in scenario.ts because the curves do, and because
+ * the life-cycle evaluator needs it without needing the simulation — which,
+ * while this sat in scenario.ts, meant a cycle between the two.
+ */
+export function curveFor(
+  material: string | null,
+  curves: Record<string, CurveParams> = MATERIAL_CURVES
+): CurveParams {
+  return (material && curves[material]) || DEFAULT_CURVE;
+}

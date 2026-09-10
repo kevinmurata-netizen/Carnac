@@ -9,18 +9,33 @@
 // on top of this.
 
 import {
-  MATERIAL_CURVES,
-  DEFAULT_CURVE,
+  curveFor,
   evaluateCurve,
   effectiveAgeForCondition,
+  MATERIAL_CURVES,
   type CurveParams,
 } from "./deterioration";
+
+export { curveFor };
 import { annualFailureProbability, failureEventCost, presentValue } from "./lcca";
-import { budgetLedger, UNCAPPED, type CategoryCaps } from "./category-weight";
+import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
+import { type FundingPlan } from "./category-funding";
+import { selectForYear } from "./selection";
+import { buildLccaEvaluator } from "./lcca-evaluator";
+import {
+  benefitCof,
+  optionTerms,
+  priorityScore,
+  scoreBenefits,
+  DEFAULT_BENEFIT_WEIGHTS,
+  type BenefitTerms,
+  type BenefitWeights,
+} from "./benefit";
 import {
   WATERLINE_TREATMENTS,
   MIN_RISK_REDUCTION_PCT,
+  clearsEffectivenessFloor,
   enumerateOptions,
   type AssetTreatmentContext,
   type TreatmentDef,
@@ -88,6 +103,21 @@ export type SimAsset = {
   criticality: string | null;
   serviceArea: string | null;
   pressureZone: string | null;
+
+  /** What the asset is worth, 0-100 — the Priority Score's first term. Fixed
+   * for the run: criticality describes what the asset serves, which treating
+   * the pipe does not change. */
+  criticalityScore: number;
+
+  /** How big a piece of work this asset is — the Priority Score's second
+   * term. Also fixed: it is a formula over length, diameter and the like,
+   * none of which a treatment alters. */
+  scaleFactor: number;
+
+  /** Customer type, for the criticality-free consequence behind Expected
+   * Benefit. Null gets the same "Unknown" rating a missing value gets
+   * everywhere else. */
+  customerType: string | null;
 };
 
 /** A single funded project inside a scenario run. */
@@ -154,12 +184,6 @@ export type AssetOutcome = {
 
 /** `curves` is injected so forecasts run against the deterioration models
  * configured in Settings; it defaults to the seeded material curves. */
-export function curveFor(
-  material: string | null,
-  curves: Record<string, CurveParams> = MATERIAL_CURVES
-): CurveParams {
-  return (material && curves[material]) || DEFAULT_CURVE;
-}
 
 /** POF rating 1-5 implied by current condition. Mirrors the Phase 3 risk
  * model's condition factor so scenario risk stays comparable to stored
@@ -174,6 +198,10 @@ export function pofFromCondition(condition: number): number {
 }
 
 type Candidate = {
+  /** Duplicated from `asset` so the candidate satisfies `Rankable`, which the
+   * selection engine is written against and which knows nothing about
+   * simulation state. */
+  assetId: string;
   asset: SimAsset;
   option: TreatmentOption;
   cost: number;
@@ -181,7 +209,13 @@ type Candidate = {
   riskNow: number;
   riskAfter: number;
   riskReduction: number;
-  riskReductionPerDollar: number;
+  /** Criticality x Scale Factor x Category Weight x Expected Benefit / Total
+   * Cost. Null when the option could not be priced. */
+  priority: number | null;
+  /** The three terms behind the benefit half, kept so a funded project can
+   * explain itself. */
+  terms: BenefitTerms;
+  benefit: number;
 };
 
 function buildContext(asset: SimAsset): AssetTreatmentContext {
@@ -199,76 +233,162 @@ function buildContext(asset: SimAsset): AssetTreatmentContext {
     ageYears: Math.round(asset.effectiveAge),
     expectedUsefulLife: asset.curve.serviceLife,
     criticality: asset.criticality,
+    customerType: asset.customerType,
     serviceArea: asset.serviceArea,
     pressureZone: asset.pressureZone,
   };
 }
 
-/** The single option this strategy would apply to this asset, if any. An
- * option is one treatment or a configured bundle; only the price and effect
- * matter here, and both come off the option already combined. */
-function candidateFor(
-  asset: SimAsset,
+/**
+ * Every option on every eligible asset, scored and sorted highest first.
+ *
+ * This is the Priority Score applied inside the simulation, and it is
+ * deliberately the same arithmetic as `server/priority.ts` uses for the whole
+ * network: Expected Benefit is min-max normalized across the entire set of
+ * options considered this year, then multiplied by criticality, scale and
+ * category weight and divided by total cost.
+ *
+ * Normalizing across the year's whole set rather than per asset is what makes
+ * two assets' benefit scores comparable, which is the only reason ranking them
+ * against each other means anything. It also means a score is relative to the
+ * year it was computed in — fine for ordering within a year, which is all it
+ * is used for, and not to be compared across years.
+ */
+function rankCandidates(
+  state: SimAsset[],
   assumptions: ScenarioAssumptions,
-  library: TreatmentDef[],
-  combinations: CombinationDef[] = [],
-  selection: OptionSelection = CONSIDER_ALL
-): Candidate | null {
-  const strategy = assumptions.strategy;
-  const ctx = buildContext(asset);
-  // An option that cannot be priced never appears here — enumerateOptions
-  // drops it — so nothing below can treat missing cost as free.
-  //
-  // The scenario's own selection is applied here rather than by narrowing
-  // `library`, so a scenario can name a combination without naming its
-  // members. See domain/waterline/option-selection.ts.
-  let options = filterOptions(
-    selection,
-    enumerateOptions(ctx, library, combinations).filter(
-      (o) => o.category !== "Assess" && o.category !== "Retire"
-    )
-  );
-
-  if (strategy === "replacement-only") {
-    options = options.filter((o) => o.category === "Renew");
+  ctx: {
+    library: TreatmentDef[];
+    combinations: CombinationDef[];
+    selection: OptionSelection;
+    benefitWeights: BenefitWeights;
+    categoryWeights: CategoryWeights;
+    curves: Record<string, CurveParams>;
+    fallbackReplacement: TreatmentDef;
   }
-  if (options.length === 0) return null;
+): Candidate[] {
+  type Pending = Omit<Candidate, "priority" | "benefit" | "terms">;
+  const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
 
-  const pof = ctx.pof ?? pofFromCondition(asset.condition);
-  const riskNow = pof * asset.cof;
+  for (const asset of state) {
+    if (!isEligible(asset, assumptions)) continue;
 
-  // Pick the most cost-effective qualifying option for this asset; the
-  // strategy then decides which *assets* get funded.
-  const scored = options.map((option) => {
-    const cost = option.cost;
-    const riskAfter = Math.max(1, pof * option.failureProbMultiplier) * asset.cof;
-    const riskReduction = Math.max(0, riskNow - riskAfter);
-    return {
-      asset,
-      option,
-      cost,
-      projectedCondition: option.projectedCondition,
-      riskNow,
-      riskAfter,
-      riskReduction,
-      riskReductionPerDollar: cost > 0 ? riskReduction / cost : 0,
-    };
-  });
-  if (scored.length === 0) return null;
+    const assetCtx = buildContext(asset);
+    let options = filterOptions(ctx.selection, enumerateOptions(assetCtx, ctx.library, ctx.combinations));
 
-  // A treatment only counts as addressing a below-target asset if it either
-  // lifts it to the target or cuts risk materially. Without this, per-dollar
-  // ranking always picks a ~$5k patch that adds +3 condition, so a
-  // well-funded scenario perpetually patches instead of renewing and its
-  // budget goes unspent while the network slowly decays.
-  const meaningful = scored.filter(
-    (s) =>
-      s.projectedCondition >= assumptions.conditionTarget ||
-      (s.riskReduction / (s.riskNow || 1)) * 100 >= MIN_RISK_REDUCTION_PCT
+    // Assessment buys information rather than condition, and retirement is a
+    // decision about service rather than a capital project. Neither belongs in
+    // a budget-constrained condition simulation; both remain available to the
+    // network-wide ranking, which is not spending money.
+    options = options.filter((o) => o.category !== "Assess" && o.category !== "Retire");
+    if (assumptions.strategy === "replacement-only") {
+      options = options.filter((o) => o.category === "Renew");
+    }
+    if (options.length === 0) continue;
+
+    const pof = assetCtx.pof ?? pofFromCondition(asset.condition);
+    const riskNow = pof * asset.cof;
+
+    // Criticality-free consequence, so the multiplier is not also hiding
+    // inside the risk term. §5.3.
+    const cofNoCriticality = benefitCof({
+      customersServed: asset.customersServed,
+      criticality: asset.criticality,
+      diameterInches: asset.diameterInches,
+      customerType: asset.customerType,
+    });
+
+    // One evaluator per asset per year, reused across its options: building it
+    // per option would repeat the whole deterioration walk for every
+    // candidate, and this loop already runs once a year for twenty years.
+    const lcca = buildLccaEvaluator(assetCtx, asset.condition, ctx.library, ctx.curves, ctx.fallbackReplacement);
+
+    for (const option of options) {
+      const riskAfter =
+        option.failureProbMultiplier === 0 ? 0 : Math.max(1, pof * option.failureProbMultiplier) * asset.cof;
+
+      pending.push({
+        item: {
+          assetId: asset.id,
+          asset,
+          option,
+          cost: option.cost,
+          projectedCondition: option.projectedCondition,
+          riskNow,
+          riskAfter,
+          riskReduction: Math.max(0, riskNow - riskAfter),
+        },
+        terms: optionTerms(option, assetCtx, cofNoCriticality, lcca ? lcca.savingFor(option) : 0),
+      });
+    }
+  }
+
+  const scored = scoreBenefits(pending, ctx.benefitWeights).map<Candidate>((s) => ({
+    ...s.item,
+    terms: s.raw,
+    benefit: s.benefit,
+    priority: priorityScore({
+      criticality: s.item.asset.criticalityScore,
+      scaleFactor: s.item.asset.scaleFactor,
+      categoryWeight: categoryWeight(ctx.categoryWeights, s.item.option.category),
+      benefit: s.benefit,
+      totalCost: s.item.cost,
+    }),
+  }));
+
+  const riskPct = (c: Candidate) =>
+    c.riskNow > 0 ? ((c.riskNow - c.riskAfter) / c.riskNow) * 100 : null;
+
+  // Two filters, and both matter.
+  //
+  // The effectiveness floor is shared with the recommendation and the
+  // network-wide ranking: a patch that leaves a failing main failing is not
+  // funded whatever it scores per dollar. §5.5.
+  //
+  // The meaningfulness test is older and, in a simulation that runs the same
+  // network forward twenty times, does more work. A treatment only counts as
+  // addressing an asset if it either lifts it to the condition target or cuts
+  // risk materially. Without it, ranking by value for money buys a small
+  // improvement on the same segment over and over: each pass looks like the
+  // best available spend, and the network decays while the budget is fully
+  // committed to churn. Measured on the seed network, dropping it cost 30 WCI
+  // points while spending twice as much.
+  // Three tests, and the simulation needs all of them. Each was added because
+  // the run misbehaved without it, and the misbehaviour is recorded so nobody
+  // removes one on the grounds that it looks redundant.
+  //
+  //  * **It must pay for itself.** Life-cycle saving over the horizon must be
+  //    positive. Without this the model buys $336,000 of lining every year for
+  //    eighteen years to hold one segment at 70 WCI, because the Priority
+  //    Score's benefit term is min-max normalized: in a year when everything
+  //    left is marginal, the best of a marginal set still scores near 100, and
+  //    criticality x scale then swamps the fact that the gain was 1.5 points.
+  //    Measured, dropping this test cost 27 WCI points across the network
+  //    while spending the entire budget.
+  //
+  //  * **It must do something.** Lift the asset to the condition target, or
+  //    cut risk by at least MIN_RISK_REDUCTION_PCT. Older than the rest, and
+  //    it stops per-dollar ranking preferring a cheap patch that adds three
+  //    points to a failing main.
+  //
+  //  * **It must clear the effectiveness floor**, below §5.5's condition line.
+  //    Shared with the recommendation and the network-wide ranking.
+  //
+  // The first two are ANDed on purpose. Requiring only material risk reduction
+  // lets the expensive marginal work back in — measured at 49.3 WCI against
+  // 71.4 — because a big lining job on a middling asset does clear 25%.
+  const worthDoing = scored.filter(
+    (c) =>
+      c.terms.lifeCycleSaving > 0 &&
+      (c.projectedCondition >= assumptions.conditionTarget ||
+        (riskPct(c) ?? 0) >= MIN_RISK_REDUCTION_PCT)
   );
-  const pool = meaningful.length > 0 ? meaningful : scored;
 
-  return pool.sort((a, b) => b.riskReductionPerDollar - a.riskReductionPerDollar)[0];
+  const fundable = (worthDoing.length > 0 ? worthDoing : scored).filter((c) =>
+    clearsEffectivenessFloor(c.asset.condition, riskPct(c))
+  );
+
+  return fundable.sort((a, b) => (b.priority ?? -1) - (a.priority ?? -1));
 }
 
 function isEligible(asset: SimAsset, a: ScenarioAssumptions): boolean {
@@ -288,51 +408,60 @@ function isEligible(asset: SimAsset, a: ScenarioAssumptions): boolean {
   }
 }
 
-function prioritize(candidates: Candidate[], strategy: Strategy): Candidate[] {
-  const sorted = [...candidates];
-  switch (strategy) {
-    case "risk-based":
-      sorted.sort((a, b) => b.riskNow - a.riskNow);
-      break;
-    case "condition-based":
-      sorted.sort((a, b) => a.asset.condition - b.asset.condition);
-      break;
-    case "lowest-lifecycle-cost":
-      sorted.sort((a, b) => b.riskReductionPerDollar - a.riskReductionPerDollar);
-      break;
-    case "replacement-only":
-      sorted.sort((a, b) => b.riskNow - a.riskNow);
-      break;
-    case "preventive":
-      // Cheapest effective intervention first — treat more assets earlier.
-      sorted.sort((a, b) => a.cost - b.cost);
-      break;
-  }
-  return sorted;
-}
+/**
+ * What a run needs beyond the assets and the assumptions.
+ *
+ * An object rather than seven positional parameters: this grew one argument at
+ * a time as scale factors, category weights, option selection and funding
+ * order arrived, and a call site reading `runScenario(a, b, c, d, e, f, g)`
+ * tells the reader nothing about which is which.
+ */
+export type ScenarioRunOptions = {
+  library?: TreatmentDef[];
+  combinations?: CombinationDef[];
+  /** Which treatments and combinations this scenario may consider. Null is
+   * the whole library. */
+  selection?: OptionSelection;
+  /** How much condition, risk reduction and life-cycle saving each count
+   * toward Expected Benefit. */
+  benefitWeights?: BenefitWeights;
+  /** How far the scenario leans toward each kind of work, as a multiplier on
+   * the Priority Score. */
+  categoryWeights?: CategoryWeights;
+  /** The share of each year each category may take, and the order they take
+   * it in. Null means one pass down the ranked list, ignoring category. */
+  fundingPlan?: FundingPlan;
+  /** Deterioration curves by material. */
+  curves?: Record<string, CurveParams>;
+};
 
+/**
+ * Run the network forward under a budget, choosing each year's work by
+ * Priority Score.
+ *
+ * The year is a closed loop, and that is the point: options are enumerated
+ * from the network's *current* condition, scored, selected, applied, and then
+ * everything deteriorates a year before the next pass. A treatment bought in
+ * year 3 changes what is worth buying in year 4, and an asset left alone gets
+ * worse until it is. Nothing is decided once and replayed.
+ *
+ * See docs/TREATMENT-MODEL-REBUILD.md §5.7.
+ */
 export function runScenario(
   assets: SimAsset[],
   assumptions: ScenarioAssumptions,
-  library: TreatmentDef[] = WATERLINE_TREATMENTS,
-  /**
-   * The most of each year's budget each category may take.
-   *
-   * Defaulted to uncapped so every existing caller keeps its behaviour
-   * exactly. A cap is what stops a run spending the whole year on cheap
-   * patches: ranking by value for money reliably prefers them, and no
-   * reordering fixes that, because the preference is real — a patch genuinely
-   * does remove more risk per dollar. What it does not do is renew anything.
-   */
-  caps: CategoryCaps = UNCAPPED,
-  /**
-   * Which treatments and combinations this scenario may consider. Null — the
-   * default — is the whole library, which is what every run did before a
-   * scenario could narrow itself.
-   */
-  selection: OptionSelection = CONSIDER_ALL,
-  combinations: CombinationDef[] = []
+  options: ScenarioRunOptions = {}
 ): ScenarioRunResult {
+  const library = options.library ?? WATERLINE_TREATMENTS;
+  const combinations = options.combinations ?? [];
+  const selection = options.selection ?? CONSIDER_ALL;
+  const benefitWeights = options.benefitWeights ?? DEFAULT_BENEFIT_WEIGHTS;
+  const categoryWeights = options.categoryWeights ?? NEUTRAL_CATEGORY_WEIGHTS;
+  const fundingPlan = options.fundingPlan ?? null;
+  const curves = options.curves ?? MATERIAL_CURVES;
+  const fallbackReplacement =
+    library.find((d) => d.name === "Replacement") ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
+
   // Work on copies so a scenario run never mutates caller state.
   const state: SimAsset[] = assets.map((a) => ({ ...a }));
   const startCondition = new Map(assets.map((a) => [a.id, a.condition]));
@@ -349,31 +478,27 @@ export function runScenario(
     const year = startYear + i;
     const budget = assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, i);
 
-    // 1. Identify this year's candidate work.
-    const candidates: Candidate[] = [];
-    for (const asset of state) {
-      if (!isEligible(asset, assumptions)) continue;
-      const candidate = candidateFor(asset, assumptions, library, combinations, selection);
-      if (candidate) candidates.push(candidate);
-    }
+    // 1. Every option on every eligible asset, priced and scored against this
+    //    year's condition. Rebuilt each year on purpose — last year's work
+    //    and a year of deterioration both change what is worth doing.
+    const candidates = rankCandidates(state, assumptions, {
+      library,
+      combinations,
+      selection,
+      benefitWeights,
+      categoryWeights,
+      curves,
+      fallbackReplacement,
+    });
 
-    // 2. Fund down the priority list until the budget is exhausted.
-    const ordered = prioritize(candidates, assumptions.strategy);
-    const ledger = budgetLedger(budget, caps);
+    // 2. Choose what the year buys: categories in the plan's order, one
+    //    treatment per asset, a combination preferred over its parts. §5.7.
+    const outcome = selectForYear(candidates, budget, fundingPlan);
+
     let treatedCount = 0;
-    let cappedOut = 0;
     const treated = new Set<string>();
     const selected: ScenarioProject[] = [];
-    for (const candidate of ordered) {
-      const category = candidate.option.category;
-      if (!ledger.canAfford(category, candidate.cost)) {
-        // Distinguish "no money left" from "this category is full" — the
-        // second is the cap doing its job and is worth reporting, the first
-        // is just the budget.
-        if (ledger.total + candidate.cost <= budget) cappedOut += candidate.cost;
-        continue; // skip; a cheaper one, or one in another category, may fit
-      }
-      ledger.commit(category, candidate.cost);
+    for (const candidate of outcome.selected) {
       treatedCount++;
       treatmentCount.set(candidate.asset.id, (treatmentCount.get(candidate.asset.id) ?? 0) + 1);
       treated.add(candidate.asset.id);
@@ -409,15 +534,22 @@ export function runScenario(
       failureCost += rate * failureEventCost(asset).total;
     }
 
-    // 5. Unfunded-but-needed work becomes backlog.
-    const backlogItems = ordered.filter((c) => !treated.has(c.asset.id));
-    const backlog = backlogItems.reduce((sum, c) => sum + c.cost, 0);
+    // 5. Unfunded-but-needed work becomes backlog: the best option on every
+    //    asset that went untreated, not every option on it. Counting all of
+    //    them would report the same segment several times over and inflate the
+    //    figure by whatever the library happens to offer.
+    const backlogBest = new Map<string, number>();
+    for (const candidate of candidates) {
+      if (treated.has(candidate.assetId)) continue;
+      if (!backlogBest.has(candidate.assetId)) backlogBest.set(candidate.assetId, candidate.cost);
+    }
+    const backlog = [...backlogBest.values()].reduce((sum, cost) => sum + cost, 0);
 
     const avgCondition = state.reduce((s, a) => s + a.condition, 0) / (state.length || 1);
     const avgRisk =
       state.reduce((s, a) => s + pofFromCondition(a.condition) * a.cof, 0) / (state.length || 1);
 
-    const spend = ledger.total;
+    const spend = outcome.totalSpent;
     totalSpend += spend;
     totalFailureCost += failureCost;
     totalFailures += expectedFailures;
@@ -431,7 +563,7 @@ export function runScenario(
       avgCondition: Math.round(avgCondition * 10) / 10,
       avgRisk: Math.round(avgRisk * 10) / 10,
       backlog: Math.round(backlog),
-      backlogCount: backlogItems.length,
+      backlogCount: backlogBest.size,
       expectedFailures: Math.round(expectedFailures * 10) / 10,
       failureCost: Math.round(failureCost),
       belowTargetCount: state.filter((a) => a.condition < assumptions.conditionTarget).length,
@@ -439,12 +571,12 @@ export function runScenario(
         (a) => pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold
       ).length,
       selected,
-      byCategory: ledger.byCategory().map((r) => ({
+      byCategory: outcome.byCategory.map((r) => ({
         category: r.category,
         spent: Math.round(r.spent),
         cap: Math.round(r.cap),
       })),
-      cappedOut: Math.round(cappedOut),
+      cappedOut: Math.round(outcome.cappedOut),
     });
   }
 
