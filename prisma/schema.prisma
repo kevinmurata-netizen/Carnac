@@ -900,6 +900,44 @@ model ScenarioWeightSet {
   @@map("scenario_weight_sets")
 }
 
+/// Named weights per treatment category, supplying the Category Weight term of
+/// the Priority Score.
+///
+/// Unlike ScenarioWeightSet these are NOT normalized. Those four numbers are
+/// shares of one ranking, so 3/4/2/1 must rank identically to 30/40/20/10.
+/// These are multipliers, so 1 has to keep meaning "leave this category alone"
+/// and 1.5 "worth half again as much" — normalizing would make both untrue.
+model CategoryWeightSet {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  /// One per TreatmentCategory in domain/waterline/treatment.ts. Columns
+  /// rather than a JSON map because the set is closed and defined in code — a
+  /// mistyped key in a map would read as a silent neutral weight rather than
+  /// failing to compile.
+  assess       Float @default(1)
+  repair       Float @default(1)
+  rehabilitate Float @default(1)
+  renew        Float @default(1)
+  retire       Float @default(1)
+
+  /// What is used when nobody chose. At most one per organization, enforced in
+  /// `setDefaultCategoryWeightSet` for the same reason as ScenarioWeightSet:
+  /// "exactly one" is a transition, not a row-level fact.
+  isDefault Boolean @default(false)
+
+  scenarios Scenario[]
+  workPlans WorkPlan[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("category_weight_sets")
+}
+
 model Scenario {
   id             String  @id @default(cuid())
   organizationId String
@@ -917,6 +955,11 @@ model Scenario {
   /// differs only where someone made it differ.
   weightSetId String?
   weightSet   ScenarioWeightSet? @relation(fields: [weightSetId], references: [id], onDelete: SetNull)
+
+  /// Which categories of work this scenario leans toward. Null means the
+  /// organization's default set — same convention as the two fields above.
+  categoryWeightSetId String?
+  categoryWeightSet   CategoryWeightSet? @relation(fields: [categoryWeightSetId], references: [id], onDelete: SetNull)
 
   /// Wall-clock milliseconds the last successful run took. The only honest
   /// basis for telling someone how long the next one will take: a run is a
@@ -979,6 +1022,13 @@ model WorkPlan {
   /// reproducible, and until now nothing recorded what produced its ranking
   /// beyond the prose in each item's reasonExplanation.
   objectiveWeights Json?
+
+  /// Which category weighting was chosen, and the numbers it held at the time.
+  /// Same provenance argument as the two fields above — a plan has to stay
+  /// reproducible after the set it used is edited.
+  categoryWeightSetId String?
+  categoryWeightSet   CategoryWeightSet? @relation(fields: [categoryWeightSetId], references: [id], onDelete: SetNull)
+  categoryWeights     Json?
 
   items WorkPlanItem[]
 

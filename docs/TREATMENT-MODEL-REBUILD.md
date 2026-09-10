@@ -370,6 +370,8 @@ naming both.
 
 ### 5.2 The ranking objective
 
+**Superseded 2026-09-10 by §5.4.** The original form was:
+
 ```
 Value = Criticality × Expected Benefit ÷ Cost per Unit
 Cost per Unit = total estimated cost ÷ asset length (ft)
@@ -575,6 +577,60 @@ Risk Reduction 28 pts (weight 40%), Life Cycle Cost 15 pts (weight 20%);
 
 The multiplier and the divisor are shown as themselves rather than folded in,
 which is the reason for applying criticality once and explicitly.
+
+### 5.4 The Priority Score
+
+**Settled 2026-09-10.** §5.2's `÷ Cost per Unit` divided by length to keep the
+ranking from preferring whatever was cheapest. That worked, but it buried two
+separate judgements — what counts as "a big piece of work", and which kinds of
+work the utility wants — inside one hard-coded division. Both are now terms a
+user sets:
+
+```
+Priority Score = Criticality × Scale Factor × Category Weight × Expected Benefit
+                 ÷ Total Cost
+```
+
+| Term | Where it is set | Shape |
+| --- | --- | --- |
+| Criticality | Settings › Criticality, or the risk-based default | 0–100 score |
+| Scale Factor | Settings › Scale Factor | Formula over the asset's fields; a multiplier, not clamped |
+| Category Weight | Settings › Scenario Weights, chosen per scenario | Multiplier per treatment category, 1 = neutral |
+| Expected Benefit | §5.3, weighted by Benefit Weight | 0–100 score |
+| Total Cost | The option's own price | Dollars |
+
+**Why total cost rather than cost per unit.** With Scale Factor in the numerator,
+`× length ÷ total cost` is arithmetically what `÷ (total cost ÷ length)` always
+was. Writing it this way makes the length assumption a value someone chose
+rather than a step in a formula, and lets an organization that measures size by
+customers served, diameter, or a blend say so.
+
+**Day one is neutral.** Scale Factor ships seeded as `LENGTH` and active;
+Category Weight ships seeded as all-ones and default. Both reproduce §5.2
+exactly, so turning the new formula on does not by itself move a single
+project.
+
+**Guards.**
+
+- **Scale Factor unavailable** — no active formula, an expression that no longer
+  parses, or an asset missing a field it reads — falls back to 1, never 0. A gap
+  in the data should cost an asset its size advantage, not its place in the
+  plan.
+- **Category Weight is not normalized**, unlike Benefit Weight. Those are shares
+  of one score, so 3/4/2/1 must rank identically to 30/40/20/10. These are
+  multipliers, so 1 has to keep meaning "leave this category alone".
+- **Zero is a real answer** for a category weight: the option scores nothing and
+  is never funded. That is an exclusion expressed as a weight, and the UI says
+  so out loud rather than leaving it to be discovered from an empty plan.
+  Negative is refused — it would flip the sign and rank the best option last.
+- **Total cost zero or negative** keeps §5.2's rule: never divide by zero, return
+  a defensible value and say so in the reason string.
+
+**A mixed-category bundle** reports the category of its most committing member
+(`CATEGORY_RANK` in `treatment.ts`), so a bundle containing a replacement is
+weighted as renewal. This is already how combinations report their category
+everywhere else; a cost-weighted blend across members was considered and
+rejected as harder to explain than it is accurate.
 
 #### Still open, and affected by this
 

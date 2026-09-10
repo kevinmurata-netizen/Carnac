@@ -87,6 +87,9 @@ export async function createScenario(
     /** Which named weighting ranks this scenario's work plans. Null uses the
      * organization's default set. */
     weightSetId?: string | null;
+    /** Which named category weighting this scenario leans by. Null uses the
+     * organization's default set. */
+    categoryWeightSetId?: string | null;
   }
 ) {
   return prisma.scenario.create({
@@ -96,6 +99,7 @@ export async function createScenario(
       description: input.description || null,
       criticalityModelId: input.criticalityModelId || null,
       weightSetId: input.weightSetId || null,
+      categoryWeightSetId: input.categoryWeightSetId || null,
       assumptions: {
         create: Object.entries(input.assumptions).map(([key, value]) => ({ key, value })),
       },
@@ -120,6 +124,9 @@ export async function updateScenario(
     /** Which named weighting ranks this scenario's work plans. Null uses the
      * organization's default set. */
     weightSetId?: string | null;
+    /** Which named category weighting this scenario leans by. Null uses the
+     * organization's default set. */
+    categoryWeightSetId?: string | null;
   }
 ) {
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
@@ -134,6 +141,7 @@ export async function updateScenario(
         description: input.description?.trim() || null,
         criticalityModelId: input.criticalityModelId || null,
         weightSetId: input.weightSetId || null,
+        categoryWeightSetId: input.categoryWeightSetId || null,
       },
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
@@ -322,6 +330,10 @@ export type ScenarioSummary = {
    * following the organization's default set. */
   weightSetId: string | null;
   weightSetName: string | null;
+  /** The named category weighting this scenario leans by, when it names one
+   * rather than following the organization's default set. */
+  categoryWeightSetId: string | null;
+  categoryWeightSetName: string | null;
   /** When the stored results were produced, and how long that took. Null until
    * the scenario has run since these were recorded. */
   lastRunAt: Date | null;
@@ -337,6 +349,7 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       results: true,
       criticalityModel: { select: { name: true } },
       weightSet: { select: { name: true } },
+      categoryWeightSet: { select: { name: true } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -359,6 +372,8 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       criticalityModelName: s.criticalityModel?.name ?? null,
       weightSetId: s.weightSetId,
       weightSetName: s.weightSet?.name ?? null,
+      categoryWeightSetId: s.categoryWeightSetId,
+      categoryWeightSetName: s.categoryWeightSet?.name ?? null,
       lastRunAt: s.lastRunAt,
       lastRunMs: s.lastRunMs,
       finalAvgCondition: conditions.at(-1)?.metricValue ?? null,
