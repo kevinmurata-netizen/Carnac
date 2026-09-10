@@ -30,6 +30,25 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-10",
+    title: "Two guards on what gets funded: an effectiveness floor and category budget caps",
+    summary:
+      "Ranking by value for money reliably prefers cheap work, because cheap work really does remove more risk per dollar — it just never renews anything. Two separate guards now stop that becoming a plan that patches forever.",
+    changes: [
+      "The effectiveness floor is now shared. On a segment below WCI 50, a treatment must cut risk by at least 25% before anything will fund it. That rule already existed inside the per-segment recommendation; the new ranking and the work plan ignored it, so the same system would refuse to recommend a weak patch and then rank it first.",
+      "An option below the floor keeps its score and stays visible as an alternative. It simply cannot be picked. On the seed network 333 of 1,364 options fall below it, and the top of the ranking shifts from 20%-effective spot repairs to 28%-effective dig-once bundles.",
+      "Category budget caps are new: on each category weighting, set the most of one year's budget that category may take. Work that would breach its cap is passed over and stays in the backlog, still ranked, for a year with room.",
+      "Renewal is normally left at 100%. A cap of 100% constrains nothing on its own, but it makes that category the one that absorbs whatever the capped categories leave — which is the point.",
+      "Both apply to scenario runs and to generated work plans. Measured over a 10 year run, changing only the caps moved renewal from 54% of spend to 18%.",
+      "Set every category below 100% and the editor warns you: nothing is left to absorb the rollover, so any shortfall simply goes unspent.",
+    ],
+    fixes: [
+      "The 25% rule existed in three places with the number written out separately in each. It is one exported function now, so the recommendation, the ranking, the work plan and the scenario simulation cannot drift apart on what counts as effective.",
+    ],
+    note:
+      "Needs one migration. Everything ships inert: the default category weighting caps nothing, so a scenario keeps behaving exactly as it did until someone lowers a cap. Worth knowing what the caps did and did not fix — the scenario simulation was already spending 54% on renewal, because it picks one treatment per segment and had its own effectiveness filter. The runaway patching was in the new ranking, which had not yet shipped.",
+  },
+  {
+    date: "2026-09-10",
     title: "The new Priority Score, and every option ranked by it",
     summary:
       "The ranking formula now reads Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost, and it is applied to every treatment and every combination on every segment rather than to one pre-chosen option per segment.",

@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import {
+  clearsEffectivenessFloor,
   enumerateOptions,
   recommendTreatment,
+  riskEffectOf,
+  MATERIAL_INTERVENTION_CONDITION,
+  MIN_RISK_REDUCTION_PCT,
   WATERLINE_TREATMENTS,
   type TreatmentCategory,
 } from "@/domain/waterline/treatment";
@@ -77,6 +81,21 @@ export type PriorityOptionRow = {
   /** Null when the option could not be priced. */
   priority: number | null;
 
+  /** What this option does to the asset's risk score, as a percentage. Null
+   * where risk has never been assessed. */
+  riskReductionPct: number | null;
+
+  /**
+   * Whether this option may actually be funded.
+   *
+   * False only when the effectiveness floor rejects it: the asset is in Poor
+   * condition or worse and this option would cut risk by less than
+   * MIN_RISK_REDUCTION_PCT. It keeps its score and its place in the list —
+   * a rejected option is a real alternative someone may want to see — but
+   * nothing that allocates money may pick it.
+   */
+  eligible: boolean;
+
   /** What `recommendTreatment` would pick for this asset on its own terms. */
   isRecommended: boolean;
 };
@@ -89,6 +108,12 @@ export type PriorityRanking = {
   combinationsScored: number;
   /** Options that could not be priced and so carry no score. */
   unpriced: number;
+  /** Options the effectiveness floor rules out. Scored and listed, but never
+   * funded. */
+  belowFloor: number;
+  /** The floor itself, so a screen can state the rule rather than describe it
+   * in prose that can drift from the constant. */
+  floor: { conditionBelow: number; minRiskReductionPct: number };
   /** Assets whose scale factor fell back to 1 because a field the formula
    * reads is missing. */
   scaleFactorFallbacks: number;
@@ -190,6 +215,7 @@ export async function rankOptions(
 
     for (const option of opts) {
       const lifeCycleSaving = lcca ? lcca.savingFor(option) : 0;
+      const riskEffect = riskEffectOf(option, ctx);
 
       pending.push({
         item: {
@@ -208,6 +234,8 @@ export async function rankOptions(
           scaleFactorMissing: scaleMissing,
           categoryWeight: categoryWeight(categoryWeights, option.category),
           isRecommended: option.label === recommended,
+          riskReductionPct: riskEffect?.pct ?? null,
+          eligible: clearsEffectivenessFloor(ctx.conditionScore, riskEffect?.pct ?? null),
         },
         terms: optionTerms(option, ctx, cofNoCriticality, lifeCycleSaving),
       });
@@ -229,10 +257,13 @@ export async function rankOptions(
     }),
   }));
 
-  // Ranked descending, unpriced options last rather than dropped — an option
-  // nobody could price is a fact about the cost rules, and hiding it makes
-  // that fact invisible.
+  // Ranked descending. Two kinds of option sink to the bottom rather than
+  // being dropped: ones the effectiveness floor rules out, and ones nobody
+  // could price. Both are facts — about policy and about the cost rules — and
+  // removing them from the list would make those facts invisible while
+  // leaving the plan looking complete.
   rows.sort((a, b) => {
+    if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
     if (a.priority == null && b.priority == null) return 0;
     if (a.priority == null) return 1;
     if (b.priority == null) return -1;
@@ -245,6 +276,11 @@ export async function rankOptions(
     optionsScored: rows.length,
     combinationsScored: rows.filter((r) => r.isCombination).length,
     unpriced: rows.filter((r) => r.priority == null).length,
+    belowFloor: rows.filter((r) => !r.eligible).length,
+    floor: {
+      conditionBelow: MATERIAL_INTERVENTION_CONDITION,
+      minRiskReductionPct: MIN_RISK_REDUCTION_PCT,
+    },
     scaleFactorFallbacks,
     weightSetName: chosen.name,
     categoryWeightSetName: chosenCategories.name,

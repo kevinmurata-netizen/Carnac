@@ -2,7 +2,10 @@ import { prisma } from "@/lib/prisma";
 import {
   CATEGORY_KEYS,
   NEUTRAL_CATEGORY_WEIGHTS,
+  UNCAPPED,
+  cappedCategories,
   excludedCategories,
+  type CategoryCaps,
   type CategoryWeights,
 } from "@/domain/waterline/category-weight";
 
@@ -24,9 +27,13 @@ export type CategoryWeightSetRow = {
   description: string | null;
   isDefault: boolean;
   weights: CategoryWeights;
+  /** The most of one year's budget each category may take. */
+  caps: CategoryCaps;
   /** Categories this set switches off, so the list can say so rather than
    * leaving someone to discover it from an empty plan. */
   excluded: string[];
+  /** Categories this set limits the spend on, as distinct from switching off. */
+  capped: string[];
   scenarioCount: number;
   workPlanCount: number;
 };
@@ -41,6 +48,11 @@ type Row = {
   rehabilitate: number;
   renew: number;
   retire: number;
+  assessCap: number;
+  repairCap: number;
+  rehabilitateCap: number;
+  renewCap: number;
+  retireCap: number;
   _count?: { scenarios: number; workPlans: number };
 };
 
@@ -54,27 +66,45 @@ function toWeights(r: Row): CategoryWeights {
   };
 }
 
+function toCaps(r: Row): CategoryCaps {
+  return {
+    Assess: r.assessCap,
+    Repair: r.repairCap,
+    Rehabilitate: r.rehabilitateCap,
+    Renew: r.renewCap,
+    Retire: r.retireCap,
+  };
+}
+
 /** The column names are the category names lower-cased; kept in one place so
  * the mapping is written once rather than at every call site. */
-function toColumns(weights: CategoryWeights) {
+function toColumns(weights: CategoryWeights, caps: CategoryCaps) {
   return {
     assess: weights.Assess,
     repair: weights.Repair,
     rehabilitate: weights.Rehabilitate,
     renew: weights.Renew,
     retire: weights.Retire,
+    assessCap: caps.Assess,
+    repairCap: caps.Repair,
+    rehabilitateCap: caps.Rehabilitate,
+    renewCap: caps.Renew,
+    retireCap: caps.Retire,
   };
 }
 
 function toRow(r: Row): CategoryWeightSetRow {
   const weights = toWeights(r);
+  const caps = toCaps(r);
   return {
     id: r.id,
     name: r.name,
     description: r.description,
     isDefault: r.isDefault,
     weights,
+    caps,
     excluded: excludedCategories(weights),
+    capped: cappedCategories(caps),
     scenarioCount: r._count?.scenarios ?? 0,
     workPlanCount: r._count?.workPlans ?? 0,
   };
@@ -111,7 +141,12 @@ export async function getCategoryWeightSet(
 export async function resolveCategoryWeights(
   organizationId: string,
   categoryWeightSetId?: string | null
-): Promise<{ weights: CategoryWeights; categoryWeightSetId: string | null; name: string }> {
+): Promise<{
+  weights: CategoryWeights;
+  caps: CategoryCaps;
+  categoryWeightSetId: string | null;
+  name: string;
+}> {
   const row = categoryWeightSetId
     ? await prisma.categoryWeightSet.findFirst({ where: { id: categoryWeightSetId, organizationId } })
     : await prisma.categoryWeightSet.findFirst({ where: { organizationId, isDefault: true } });
@@ -119,11 +154,12 @@ export async function resolveCategoryWeights(
   if (!row) {
     return {
       weights: { ...NEUTRAL_CATEGORY_WEIGHTS },
+      caps: { ...UNCAPPED },
       categoryWeightSetId: null,
       name: "Even-handed (built-in)",
     };
   }
-  return { weights: toWeights(row), categoryWeightSetId: row.id, name: row.name };
+  return { weights: toWeights(row), caps: toCaps(row), categoryWeightSetId: row.id, name: row.name };
 }
 
 /**
@@ -137,16 +173,22 @@ export async function resolveCategoryWeights(
  */
 export function toCategoryChoice(set: CategoryWeightSetRow) {
   const adjusted = CATEGORY_KEYS.filter((k) => set.weights[k] !== 1 && set.weights[k] !== 0);
+  const caps = CATEGORY_KEYS.filter((k) => set.caps[k] < 1).map(
+    (k) => `${k} ≤ ${Math.round(set.caps[k] * 100)}%`
+  );
+
+  const weightPart =
+    adjusted.length === 0
+      ? set.excluded.length > 0
+        ? "otherwise even"
+        : "every category even"
+      : adjusted.map((k) => `${k} ×${set.weights[k]}`).join(", ");
+
   return {
     id: set.id,
     name: set.name,
     isDefault: set.isDefault,
-    summary:
-      adjusted.length === 0
-        ? set.excluded.length > 0
-          ? "otherwise even"
-          : "every category even"
-        : adjusted.map((k) => `${k} ×${set.weights[k]}`).join(", "),
+    summary: caps.length === 0 ? weightPart : `${weightPart}; ${caps.join(", ")}`,
     excluded: set.excluded,
   };
 }
@@ -155,6 +197,7 @@ export type CategoryWeightSetInput = {
   name: string;
   description: string | null;
   weights: CategoryWeights;
+  caps: CategoryCaps;
 };
 
 /**
@@ -179,6 +222,19 @@ function validate(input: CategoryWeightSetInput) {
     if (v > 100) {
       throw new Error(`${key} is ${v}, which is almost certainly a typo. Weights are multipliers, not percentages.`);
     }
+  }
+
+  for (const key of CATEGORY_KEYS) {
+    const c = input.caps[key];
+    if (!Number.isFinite(c) || c < 0 || c > 1) {
+      throw new Error(`${key}'s budget cap must be between 0% and 100% of the annual budget`);
+    }
+  }
+
+  if (CATEGORY_KEYS.every((k) => input.caps[k] === 0)) {
+    throw new Error(
+      "Every category is capped at 0% of the budget, so a plan using this weighting would fund nothing at all."
+    );
   }
 
   if (CATEGORY_KEYS.every((k) => input.weights[k] === 0)) {
@@ -213,7 +269,7 @@ export async function createCategoryWeightSet(
       organizationId,
       name,
       description: input.description?.trim() || null,
-      ...toColumns(input.weights),
+      ...toColumns(input.weights, input.caps),
     },
     select: { id: true },
   });
@@ -236,7 +292,7 @@ export async function updateCategoryWeightSet(
 
   await prisma.categoryWeightSet.update({
     where: { id },
-    data: { name, description: input.description?.trim() || null, ...toColumns(input.weights) },
+    data: { name, description: input.description?.trim() || null, ...toColumns(input.weights, input.caps) },
   });
 }
 

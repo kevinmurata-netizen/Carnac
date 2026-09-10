@@ -16,8 +16,10 @@ import {
   type CurveParams,
 } from "./deterioration";
 import { annualFailureProbability, failureEventCost, presentValue } from "./lcca";
+import { budgetLedger, UNCAPPED, type CategoryCaps } from "./category-weight";
 import {
   WATERLINE_TREATMENTS,
+  MIN_RISK_REDUCTION_PCT,
   enumerateOptions,
   type AssetTreatmentContext,
   type TreatmentDef,
@@ -116,6 +118,13 @@ export type ScenarioYearResult = {
   aboveRiskThresholdCount: number;
   /** The actual projects funded this year, in the order they were selected. */
   selected: ScenarioProject[];
+  /** What each category took, and what it was allowed to take. Present so a
+   * plan can show that renewal absorbed what the capped categories left,
+   * rather than leaving that to be inferred from the project list. */
+  byCategory: Array<{ category: string; spent: number; cap: number }>;
+  /** Cost of work skipped this year because its category was full, though the
+   * budget was not. Zero when nothing is capped. */
+  cappedOut: number;
 };
 
 export type ScenarioRunResult = {
@@ -244,7 +253,9 @@ function candidateFor(
   // well-funded scenario perpetually patches instead of renewing and its
   // budget goes unspent while the network slowly decays.
   const meaningful = scored.filter(
-    (s) => s.projectedCondition >= assumptions.conditionTarget || s.riskReduction / (s.riskNow || 1) >= 0.25
+    (s) =>
+      s.projectedCondition >= assumptions.conditionTarget ||
+      (s.riskReduction / (s.riskNow || 1)) * 100 >= MIN_RISK_REDUCTION_PCT
   );
   const pool = meaningful.length > 0 ? meaningful : scored;
 
@@ -294,7 +305,17 @@ function prioritize(candidates: Candidate[], strategy: Strategy): Candidate[] {
 export function runScenario(
   assets: SimAsset[],
   assumptions: ScenarioAssumptions,
-  library: TreatmentDef[] = WATERLINE_TREATMENTS
+  library: TreatmentDef[] = WATERLINE_TREATMENTS,
+  /**
+   * The most of each year's budget each category may take.
+   *
+   * Defaulted to uncapped so every existing caller keeps its behaviour
+   * exactly. A cap is what stops a run spending the whole year on cheap
+   * patches: ranking by value for money reliably prefers them, and no
+   * reordering fixes that, because the preference is real — a patch genuinely
+   * does remove more risk per dollar. What it does not do is renew anything.
+   */
+  caps: CategoryCaps = UNCAPPED
 ): ScenarioRunResult {
   // Work on copies so a scenario run never mutates caller state.
   const state: SimAsset[] = assets.map((a) => ({ ...a }));
@@ -322,13 +343,21 @@ export function runScenario(
 
     // 2. Fund down the priority list until the budget is exhausted.
     const ordered = prioritize(candidates, assumptions.strategy);
-    let spend = 0;
+    const ledger = budgetLedger(budget, caps);
     let treatedCount = 0;
+    let cappedOut = 0;
     const treated = new Set<string>();
     const selected: ScenarioProject[] = [];
     for (const candidate of ordered) {
-      if (spend + candidate.cost > budget) continue; // skip; may fit a cheaper one
-      spend += candidate.cost;
+      const category = candidate.option.category;
+      if (!ledger.canAfford(category, candidate.cost)) {
+        // Distinguish "no money left" from "this category is full" — the
+        // second is the cap doing its job and is worth reporting, the first
+        // is just the budget.
+        if (ledger.total + candidate.cost <= budget) cappedOut += candidate.cost;
+        continue; // skip; a cheaper one, or one in another category, may fit
+      }
+      ledger.commit(category, candidate.cost);
       treatedCount++;
       treatmentCount.set(candidate.asset.id, (treatmentCount.get(candidate.asset.id) ?? 0) + 1);
       treated.add(candidate.asset.id);
@@ -372,6 +401,7 @@ export function runScenario(
     const avgRisk =
       state.reduce((s, a) => s + pofFromCondition(a.condition) * a.cof, 0) / (state.length || 1);
 
+    const spend = ledger.total;
     totalSpend += spend;
     totalFailureCost += failureCost;
     totalFailures += expectedFailures;
@@ -393,6 +423,12 @@ export function runScenario(
         (a) => pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold
       ).length,
       selected,
+      byCategory: ledger.byCategory().map((r) => ({
+        category: r.category,
+        spent: Math.round(r.spent),
+        cap: Math.round(r.cap),
+      })),
+      cappedOut: Math.round(cappedOut),
     });
   }
 

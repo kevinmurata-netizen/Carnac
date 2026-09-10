@@ -838,22 +838,43 @@ export type TreatmentEvaluation = {
  * the arithmetic a lone treatment is. The combining rules live in
  * `buildOption`; nothing about "several treatments" leaks in here.
  */
+/**
+ * What this option does to the asset's risk score, as a percentage and in
+ * points.
+ *
+ * Split out of `evaluateOption` so the Priority Score ranking can ask the same
+ * question without building a whole evaluation. Both rankings then apply the
+ * effectiveness floor to the identical number, which is the only way the two
+ * can be relied on to agree about whether a patch is good enough.
+ *
+ * Null when risk has never been assessed: an unknown risk is not a zero
+ * reduction, and the floor lets an unrated asset through rather than judging
+ * it on data that does not exist.
+ */
+export function riskEffectOf(
+  option: TreatmentOption,
+  ctx: Pick<AssetTreatmentContext, "pof" | "cof" | "riskScore">
+): { projectedRisk: number; reduction: number; pct: number } | null {
+  if (ctx.pof == null || ctx.cof == null || ctx.riskScore == null || ctx.riskScore <= 0) return null;
+
+  const projectedPof = Math.max(1, ctx.pof * option.failureProbMultiplier);
+  // Abandonment removes the asset from service entirely: no residual risk.
+  const projectedRisk =
+    option.failureProbMultiplier === 0 ? 0 : Math.round(projectedPof * ctx.cof * 10) / 10;
+  const reduction = ctx.riskScore - projectedRisk;
+
+  return { projectedRisk, reduction, pct: Math.round((reduction / ctx.riskScore) * 1000) / 10 };
+}
+
 export function evaluateOption(option: TreatmentOption, ctx: AssetTreatmentContext): TreatmentEvaluation {
   const estimatedCost = option.cost;
   const projectedCondition = option.projectedCondition;
 
-  let projectedRisk: number | null = null;
-  let riskReductionPct: number | null = null;
-  let riskReductionPerThousand: number | null = null;
-  if (ctx.pof != null && ctx.cof != null && ctx.riskScore != null && ctx.riskScore > 0) {
-    const projectedPof = Math.max(1, ctx.pof * option.failureProbMultiplier);
-    projectedRisk = Math.round(projectedPof * ctx.cof * 10) / 10;
-    // Abandonment removes the asset from service entirely: no residual risk.
-    if (option.failureProbMultiplier === 0) projectedRisk = 0;
-    const reduction = ctx.riskScore - projectedRisk;
-    riskReductionPct = Math.round((reduction / ctx.riskScore) * 1000) / 10;
-    riskReductionPerThousand = estimatedCost > 0 ? Math.round((reduction / (estimatedCost / 1000)) * 1000) / 1000 : null;
-  }
+  const effect = riskEffectOf(option, ctx);
+  const projectedRisk = effect?.projectedRisk ?? null;
+  const riskReductionPct = effect?.pct ?? null;
+  const riskReductionPerThousand =
+    effect && estimatedCost > 0 ? Math.round((effect.reduction / (estimatedCost / 1000)) * 1000) / 1000 : null;
 
   return {
     name: option.label,
@@ -890,11 +911,32 @@ function bandLabel(condition: number): string {
 
 /** Below this WCI an asset is Poor or worse, and a treatment must materially
  * address its condition rather than merely be cheap. */
-const MATERIAL_INTERVENTION_CONDITION = 50;
+export const MATERIAL_INTERVENTION_CONDITION = 50;
 /** Minimum risk reduction for a treatment to headline on such an asset. This
  * cleanly separates work that resets condition (lining, rehabilitation,
  * relining, replacement) from patches (valve/leak/spot/emergency repair). */
-const MIN_RISK_REDUCTION_PCT = 25;
+export const MIN_RISK_REDUCTION_PCT = 25;
+
+/**
+ * Whether an option clears the effectiveness floor on this asset.
+ *
+ * Exported because two rankings need the same answer. `recommendTreatment`
+ * uses it below to decide what may headline; the Priority Score
+ * (docs/TREATMENT-MODEL-REBUILD.md §5.4) uses it to decide what may be funded.
+ * Before this was shared, the arithmetic ranking silently ignored the
+ * professional judgement the recommendation was applying two functions away.
+ *
+ * The floor only engages on an asset already in Poor condition or worse.
+ * Above that line a cheap patch is a perfectly reasonable thing to buy; below
+ * it, a patch scores well per dollar and leaves a failing main failing.
+ */
+export function clearsEffectivenessFloor(
+  conditionScore: number | null,
+  riskReductionPct: number | null
+): boolean {
+  if (conditionScore == null || conditionScore >= MATERIAL_INTERVENTION_CONDITION) return true;
+  return (riskReductionPct ?? 0) >= MIN_RISK_REDUCTION_PCT;
+}
 
 /**
  * Ranks applicable treatments by risk reduction per $1,000 (a transparent,
@@ -958,7 +1000,7 @@ export function recommendTreatment(
   const needsMaterialIntervention =
     ctx.conditionScore != null && ctx.conditionScore < MATERIAL_INTERVENTION_CONDITION;
   if (needsMaterialIntervention) {
-    const effective = physical.filter((e) => (e.riskReductionPct ?? 0) >= MIN_RISK_REDUCTION_PCT);
+    const effective = physical.filter((e) => clearsEffectivenessFloor(ctx.conditionScore, e.riskReductionPct));
     if (effective.length > 0) {
       const cheaper = physical[0];
       if (cheaper && !effective.includes(cheaper)) {

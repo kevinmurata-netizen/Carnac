@@ -9,7 +9,7 @@ import {
   setDefaultCategoryWeightSet,
   type CategoryWeightSetInput,
 } from "@/server/category-weight-sets";
-import { CATEGORY_KEYS, type CategoryWeights } from "@/domain/waterline/category-weight";
+import { CATEGORY_KEYS, type CategoryCaps, type CategoryWeights } from "@/domain/waterline/category-weight";
 
 /** Same card, same bar: a category weighting decides what kind of work gets
  * funded. */
@@ -33,17 +33,28 @@ function revalidateAffected() {
  */
 function parse(form: FormData): CategoryWeightSetInput {
   const weights = {} as CategoryWeights;
+  const caps = {} as CategoryCaps;
+
   for (const key of CATEGORY_KEYS) {
     const raw = String(form.get(key) ?? "").trim();
     const n = raw === "" ? 1 : Number(raw);
     if (!Number.isFinite(n)) throw new Error(`"${key}" must be a number`);
     weights[key] = n;
+
+    // Caps are entered as whole percentages and stored as fractions, the same
+    // way funding growth and discount rate are. An empty box means 100%:
+    // "no ceiling", which is the neutral answer rather than "spend nothing".
+    const rawCap = String(form.get(`${key}Cap`) ?? "").trim();
+    const pct = rawCap === "" ? 100 : Number(rawCap);
+    if (!Number.isFinite(pct)) throw new Error(`"${key}" budget cap must be a number`);
+    caps[key] = Math.round(pct) / 100;
   }
 
   return {
     name: String(form.get("name") ?? ""),
     description: String(form.get("description") ?? "").trim() || null,
     weights,
+    caps,
   };
 }
 

@@ -626,7 +626,7 @@ project.
 - **Total cost zero or negative** keeps §5.2's rule: never divide by zero, return
   a defensible value and say so in the reason string.
 
-#### Measured 2026-09-10, and unresolved
+#### Measured 2026-09-10
 
 Implemented and run against the 260-segment network, the formula ranks **1,364
 options over 218 segments (191 of them combinations) in about 660 ms**. It also
@@ -673,15 +673,88 @@ it one guard shared by both rankings rather than one ranking quietly ignoring
 the other's professional judgement. Expressing the floor in absolute risk points
 rather than a percentage remains the open question it already was.
 
-Until that is settled, the ranked list is shown with its category mix above it,
-because a list of a hundred patches is a statement about the cost spread and
-should not be read as a finding about the network.
-
 **A mixed-category bundle** reports the category of its most committing member
 (`CATEGORY_RANK` in `treatment.ts`), so a bundle containing a replacement is
 weighted as renewal. This is already how combinations report their category
 everywhere else; a cost-weighted blend across members was considered and
 rejected as harder to explain than it is accurate.
+
+### 5.5 The two guards
+
+**Settled 2026-09-10.** The measurements above are two problems wearing one
+symptom, and they need two different answers.
+
+#### The effectiveness floor
+
+`recommendTreatment` already carried one, as module-private constants: below
+WCI 50, an option must cut risk by at least `MIN_RISK_REDUCTION_PCT` (25%) to
+be the headline pick. The arithmetic rankings ignored it, so the same system
+would refuse to *recommend* a 20%-effective patch on a failing main and happily
+*rank it first*.
+
+It is now one exported predicate, `clearsEffectivenessFloor`, applied in three
+places: the recommendation, the Priority Score ranking, and work plan
+allocation. The scenario simulation had a fourth copy of the number written
+inline as `0.25`; it now reads the constant.
+
+An option below the floor keeps its score and its place in the list. It is not
+deleted — it is a real alternative someone may want to see — but nothing that
+allocates money may pick it. On the seed network 333 of 1,364 options fail it,
+and the top of the ranking changes from 19.7%-effective Spot Repairs to
+28%-effective Dig-once bundles.
+
+**What it does not do** is change the category mix. With the floor applied the
+top 100 is still 100 Repair; the first Rehabilitate moves from #443 to #250 and
+the first Renew from #543 to #324. The option that clears the bar is usually
+another repair. This was worth stating plainly because the obvious reading —
+"the floor is the fix" — is wrong.
+
+#### Category budget caps
+
+The concentration is not a ranking problem and cannot be fixed by reordering,
+because the preference the ranking expresses is *true*: a patch genuinely does
+remove more risk per dollar. What it never does is renew anything. Ranking
+answers "what is best value"; it cannot answer "and how much of the year may
+that kind of work take".
+
+So the ceiling goes where the money is. Each category carries a maximum share
+of one year's budget, held on the same named set as the category weights and
+chosen per scenario. Work that would breach its category's cap is passed over
+and stays in the backlog, still ranked, for a year with room.
+
+Renewal is normally left at 100%. A cap of 100% costs nothing on its own — the
+budget already binds — but it makes that category the one that absorbs whatever
+the capped categories leave, which is exactly what a capital programme wants.
+A set where *every* category is capped leaves any shortfall unspent, and the
+editor says so.
+
+Measured over a 10-year run on the seed network, changing only the caps:
+
+| Weighting | Renew | Rehabilitate | Repair | Final WCI |
+| --- | --- | --- | --- | --- |
+| Even-handed (uncapped) | 54% | 45% | 1% | 59.2 |
+| Buy Time (Renew ≤ 20%) | 18% | 81% | 1% | 58.9 |
+| Renewal Push (Repair ≤ 20%, Rehab ≤ 50%) | 59% | 40% | 1% | 60.0 |
+
+Two things this measurement settles. First, the caps work: renewal moves from
+54% of spend to 18% on nothing but a ceiling. Second — and this corrects the
+framing above — **the scenario simulation was never the screen with the
+problem.** It picks one option per asset through `candidateFor`, which already
+applied its own effectiveness filter, so it was spending 54% on renewal before
+any of this. The runaway-patching failure was in the new Priority Score
+ranking. The caps are worth having on both, but they are a fix for something
+that had not yet shipped.
+
+Both defaults are inert: the shipped `Even-handed` set caps nothing, and
+`UNCAPPED` is what every caller gets that does not pass a set.
+
+#### Still open
+
+Whether the floor should be an absolute number of risk points rather than a
+percentage — the question §5.3 already raised — is unchanged. So is whether
+the floor's two constants should be configurable rather than shipped. Nobody
+has asked to move them yet, and a constant that has never needed changing is
+not yet a setting.
 
 #### Still open, and affected by this
 

@@ -30,8 +30,12 @@ const MIX_WINDOW = 100;
  * of a hundred patches is a statement about cost spread, not about the network.
  */
 export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
-  const top = ranking.rows.slice(0, SHOWN);
-  const window = ranking.rows.slice(0, MIX_WINDOW);
+  // The mix and the table both read the fundable list. An option the
+  // effectiveness floor rules out is still scored and still findable, but
+  // showing it at the top would suggest it is on the table when it is not.
+  const fundable = ranking.rows.filter((r) => r.eligible);
+  const top = fundable.slice(0, SHOWN);
+  const window = fundable.slice(0, MIX_WINDOW);
 
   const mix = new Map<TreatmentCategory, { count: number; cost: number }>();
   for (const row of window) {
@@ -51,7 +55,7 @@ export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
           Ranked Options <span className="text-muted-foreground">({formatNumber(ranking.optionsScored)})</span>
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Every applicable treatment and combination on every {"segment"}, scored as criticality × scale × category ×
+          Every applicable treatment and combination on every segment, scored as criticality × scale × category ×
           benefit ÷ total cost. {formatNumber(ranking.combinationsScored)} of them are combinations.
         </p>
         <p className="text-xs text-muted-foreground">
@@ -67,6 +71,14 @@ export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
           )}
           {ranking.unpriced > 0 && <> · {formatNumber(ranking.unpriced)} could not be priced</>}
         </p>
+        {ranking.belowFloor > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {formatNumber(ranking.belowFloor)} options are not shown: on a segment below WCI{" "}
+            {ranking.floor.conditionBelow} they would cut risk by less than {ranking.floor.minRiskReductionPct}%, which
+            leaves a failing main failing whatever they score per dollar. They stay visible on the segment&apos;s own
+            page as alternatives.
+          </p>
+        )}
       </CardHeader>
 
       <CardContent className="border-t pt-4">
@@ -88,8 +100,14 @@ export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
             <p className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">
               {dominant[1].count} of the top {window.length} are {dominant[0]}. Dividing by total cost rewards whatever
               is cheapest per point of benefit, and cost varies far more across categories than benefit does — so this
-              is the cost spread showing through, not a finding about the network. A category weighting can lean against
-              it; it cannot overturn a gap this size on its own.
+              is the cost spread showing through, not a finding about the network. Reordering cannot fix it, because
+              the preference is real: cheap work genuinely does remove more risk per dollar, it just never renews
+              anything. What fixes it is a budget cap, set per category on the scenario&apos;s{" "}
+              <Link href="/settings/scenario-weights" className="underline">
+                category weighting
+              </Link>{" "}
+              — a ceiling on how much of a year each category may take, with renewal usually left at 100% so it
+              absorbs whatever the capped categories leave.
             </p>
           )}
         </div>
@@ -170,9 +188,9 @@ export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
           </Table>
         </div>
 
-        {ranking.optionsScored > top.length && (
+        {fundable.length > top.length && (
           <p className="border-t pt-3 text-xs text-muted-foreground">
-            Showing the {top.length} highest-scoring of {formatNumber(ranking.optionsScored)} options across{" "}
+            Showing the {top.length} highest-scoring of {formatNumber(fundable.length)} fundable options across{" "}
             {formatNumber(ranking.assetsWithOptions)} segments. Choosing which of these a scenario actually considers,
             and fitting them to a budget, is what Scenario Planning does with them.
           </p>

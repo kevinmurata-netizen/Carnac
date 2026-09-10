@@ -923,6 +923,23 @@ model CategoryWeightSet {
   renew        Float @default(1)
   retire       Float @default(1)
 
+  /// The most of one year's budget each category may take, as a fraction.
+  ///
+  /// A weight decides what ranks first; a cap decides what actually gets paid
+  /// for. They are separate because ranking cannot solve an allocation
+  /// problem: cheap work wins on cost-efficiency by roughly the ratio of the
+  /// cost spread to the benefit spread, and no weighting closes a gap that
+  /// size without becoming a fudge factor.
+  ///
+  /// 1 = 100% = no ceiling of its own beyond the budget. That is the usual
+  /// setting for renewal: with the other categories capped, whatever they
+  /// leave unspent rolls into it rather than going unspent.
+  assessCap       Float @default(1)
+  repairCap       Float @default(1)
+  rehabilitateCap Float @default(1)
+  renewCap        Float @default(1)
+  retireCap       Float @default(1)
+
   /// What is used when nobody chose. At most one per organization, enforced in
   /// `setDefaultCategoryWeightSet` for the same reason as ScenarioWeightSet:
   /// "exactly one" is a transition, not a row-level fact.
