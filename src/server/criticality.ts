@@ -7,6 +7,7 @@ import {
   FormulaError,
   type Node,
 } from "@/domain/waterline/criticality-formula";
+import { assertAssetTypeInOrg, validateExpression, validateFormulaName } from "@/server/formula";
 
 /**
  * Criticality formulas: the field catalogue they can read, and running one.
@@ -353,44 +354,13 @@ export async function listFormulaChoices(
   );
 }
 
-async function assertAssetTypeInOrg(organizationId: string, assetTypeId: string) {
-  const type = await prisma.assetType.findFirst({ where: { id: assetTypeId, organizationId } });
-  if (!type) throw new Error("Asset type not found");
-  return type;
-}
-
-function validateName(name: string): string {
-  const trimmed = name.trim().replace(/\s+/g, " ");
-  if (!trimmed) throw new Error("Give the formula a name");
-  if (trimmed.length > 60) throw new Error("Keep formula names under 60 characters");
-  return trimmed;
-}
-
-/** Parses and checks every field exists, so an unusable formula is never
- * stored — the model run should not be where a typo first shows up. */
-async function validateExpression(assetTypeId: string, expression: string) {
-  let tree: Node;
-  try {
-    tree = parse(expression);
-  } catch (e) {
-    if (e instanceof FormulaError) throw new Error(`${e.message} (at character ${e.at + 1})`);
-    throw e;
-  }
-  const fields = await getFormulaFields(assetTypeId);
-  const known = new Set(fields.map((f) => f.code));
-  const unknown = fieldsUsed(tree).filter((f) => !known.has(f));
-  if (unknown.length > 0) {
-    throw new Error(`No field called ${unknown.map((u) => `"${u}"`).join(", ")} on this asset type`);
-  }
-  return tree;
-}
 
 export async function saveCriticalityModel(
   organizationId: string,
   input: { id?: string; assetTypeId: string; name: string; expression: string; valueMaps: ValueMaps }
 ) {
   await assertAssetTypeInOrg(organizationId, input.assetTypeId);
-  const name = validateName(input.name);
+  const name = validateFormulaName(input.name);
   await validateExpression(input.assetTypeId, input.expression);
 
   const clash = await prisma.criticalityModel.findFirst({

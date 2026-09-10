@@ -1,14 +1,13 @@
 "use client";
 
 import { useActionState, useRef, useState, useTransition } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { CancelOrDiscard } from "@/components/layout/save-actions";
-import { EMPTY_SETTINGS_STATE, type SettingsActionState } from "../state";
+import { EMPTY_SETTINGS_STATE, type SettingsActionState } from "@/app/(app)/settings/state";
 import { Check, CircleDot, Play, Plus, Trash2 } from "lucide-react";
-import type { FormulaField, FormulaPreview, CriticalityModelSummary, ValueMaps } from "@/server/criticality";
+import type { ReactNode } from "react";
+import type { FormulaField, ValueMaps } from "@/server/criticality";
 import { FUNCTIONS } from "@/domain/waterline/criticality-formula";
 
 type Action = (prev: SettingsActionState, form: FormData) => Promise<SettingsActionState>;
@@ -16,7 +15,7 @@ type Action = (prev: SettingsActionState, form: FormData) => Promise<SettingsAct
 const BLANK = { id: "", name: "", expression: "", valueMaps: {} as ValueMaps };
 
 /**
- * Writing a criticality formula, with the answer visible while you write it.
+ * Writing a formula, with the answer visible while you write it.
  *
  * The preview is the point of the screen. A formula that parses can still be
  * wrong in the way that matters — everything scoring 100, or a dropdown value
@@ -25,7 +24,31 @@ const BLANK = { id: "", name: "", expression: "", valueMaps: {} as ValueMaps };
  * scorers, and the count of assets missing an input all sit next to the box
  * you are typing in.
  */
-export function FormulaEditor({
+export type FormulaModel = {
+  id: string;
+  assetTypeId: string;
+  name: string;
+  expression: string;
+  valueMaps: ValueMaps;
+  isActive: boolean;
+};
+
+/** The words one instance of this editor uses. Everything else about writing a
+ * formula is identical whatever it computes. */
+export type FormulaVocabulary = {
+  /** "formula", "scale factor" — used in buttons and empty states. */
+  noun: string;
+  /** Its plural, spelled out rather than derived: "Formulas", "Scale factors". */
+  plural: string;
+  /** Shown above the expression box: what the answer means. */
+  resultLabel: string;
+  namePlaceholder: string;
+  expressionPlaceholder: string;
+  /** Shown when nothing is defined yet. */
+  emptyState: ReactNode;
+};
+
+export function FormulaEditor<TPreview>({
   assetTypeId,
   assetTypeName,
   assetCount,
@@ -36,21 +59,25 @@ export function FormulaEditor({
   activate,
   remove,
   preview,
+  vocabulary,
+  renderPreview,
 }: {
   assetTypeId: string;
   assetTypeName: string;
   assetCount: number;
   fields: FormulaField[];
-  models: CriticalityModelSummary[];
+  models: FormulaModel[];
   canEdit: boolean;
   save: Action;
   activate: Action;
   remove: Action;
-  preview: (
-    assetTypeId: string,
-    expression: string,
-    valueMaps: ValueMaps
-  ) => Promise<FormulaPreview>;
+  preview: (assetTypeId: string, expression: string, valueMaps: ValueMaps) => Promise<TPreview>;
+  /** What this formula is called and how it reads, so one editor can serve
+   * criticality, scale factor and whatever comes next. */
+  vocabulary: FormulaVocabulary;
+  /** Each formula reports a different kind of answer, so the caller draws the
+   * result. A 0–100 score wants a histogram; a multiplier wants a spread. */
+  renderPreview: (result: TPreview, assetCount: number) => ReactNode;
 }) {
   const [saveState, saveAction] = useActionState(save, EMPTY_SETTINGS_STATE);
   const [activateState, activateAction] = useActionState(activate, EMPTY_SETTINGS_STATE);
@@ -59,7 +86,7 @@ export function FormulaEditor({
   const [editing, setEditing] = useState<{ id: string; name: string; expression: string; valueMaps: ValueMaps }>(
     models[0] ?? BLANK
   );
-  const [result, setResult] = useState<FormulaPreview | null>(null);
+  const [result, setResult] = useState<TPreview | null>(null);
   const [trying, startTry] = useTransition();
   const box = useRef<HTMLTextAreaElement>(null);
 
@@ -129,7 +156,9 @@ export function FormulaEditor({
     <div className="space-y-4">
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-          <CardTitle className="text-base">Formulas for {assetTypeName}</CardTitle>
+          <CardTitle className="text-base">
+            {vocabulary.plural} for {assetTypeName}
+          </CardTitle>
           {canEdit && (
             <Button
               type="button"
@@ -147,13 +176,7 @@ export function FormulaEditor({
         </CardHeader>
         <CardContent className="border-t pt-4">
           {models.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No formula yet. Until one is active, criticality stays what it has always been here — a rescale of the{" "}
-              <Link href="/settings/risk-models" className="text-primary hover:underline">
-                risk model&apos;s
-              </Link>{" "}
-              consequence-of-failure rating.
-            </p>
+            <p className="text-sm text-muted-foreground">{vocabulary.emptyState}</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {models.map((m) => {
@@ -242,7 +265,7 @@ export function FormulaEditor({
                     onChange={(e) => setEditing((p) => ({ ...p, name: e.target.value }))}
                     disabled={!canEdit}
                     maxLength={60}
-                    placeholder="Customers and criticality"
+                    placeholder={vocabulary.namePlaceholder}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                   />
                 </label>
@@ -250,7 +273,7 @@ export function FormulaEditor({
 
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-muted-foreground">
-                  Score, clamped to 0–100
+                  {vocabulary.resultLabel}
                 </span>
                 <textarea
                   ref={box}
@@ -260,7 +283,7 @@ export function FormulaEditor({
                   disabled={!canEdit}
                   spellCheck={false}
                   rows={4}
-                  placeholder={"clamp((CUSTOMERS_SERVED / 20) + CRITICALITY * 8 + if(DIAMETER > 12, 15, 0), 0, 100)"}
+                  placeholder={vocabulary.expressionPlaceholder}
                   className="w-full resize-y rounded-md border border-input bg-background p-3 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
                 />
               </label>
@@ -325,7 +348,7 @@ export function FormulaEditor({
         </Card>
       </form>
 
-      {result && <PreviewPanel result={result} assetCount={assetCount} />}
+      {result != null && renderPreview(result, assetCount)}
 
       {canEdit && editing.id && (
         <div className="flex flex-wrap items-center gap-2">
@@ -354,106 +377,3 @@ export function FormulaEditor({
   );
 }
 
-function PreviewPanel({ result, assetCount }: { result: FormulaPreview; assetCount: number }) {
-  if (!result.ok) {
-    return (
-      <Card className="border-destructive/40">
-        <CardContent className="py-4">
-          <p className="text-sm text-destructive">{result.error}</p>
-          {result.errorAt != null && (
-            <p className="mt-1 text-xs text-muted-foreground">At character {result.errorAt + 1}.</p>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const peak = Math.max(1, ...(result.histogram ?? [1]));
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          Tried on {result.assetsScored?.toLocaleString()} assets
-          <span className="ml-2 text-sm font-normal text-muted-foreground">
-            lowest {result.min} · average {result.average} · highest {result.max}
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 border-t pt-4">
-        {result.assetsMissingInputs != null && result.assetsMissingInputs > 0 && (
-          <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            {result.assetsMissingInputs.toLocaleString()} of {assetCount.toLocaleString()} assets are missing a value
-            this formula reads — usually a dropdown value with no number set. They score as if it were zero, which
-            will drag them down the ranking.
-          </p>
-        )}
-
-        <div>
-          <div className="mb-1 text-xs text-muted-foreground">How the scores spread, in tens</div>
-          {/* Bars and labels are separate rows: a percentage height only
-              resolves against a parent with a definite height, and a column
-              that also holds its own label has neither. */}
-          <div className="flex h-24 items-end gap-1">
-            {(result.histogram ?? []).map((count, i) => (
-              <div
-                key={i}
-                className="flex-1 rounded-t bg-primary/70"
-                style={{ height: `${Math.max((count / peak) * 100, count > 0 ? 3 : 0)}%` }}
-                title={`${count} asset${count === 1 ? "" : "s"} scored ${i * 10}–${i * 10 + 9}`}
-              />
-            ))}
-          </div>
-          <div className="mt-1 flex gap-1">
-            {(result.histogram ?? []).map((count, i) => (
-              <div key={i} className="flex-1 text-center">
-                <div className="text-[10px] text-foreground">{count}</div>
-                <div className="text-[9px] text-muted-foreground">{i * 10}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <ScoreList title="Would rank first" rows={result.highest ?? []} />
-          <ScoreList title="Would rank last" rows={result.lowest ?? []} />
-        </div>
-
-        {result.fieldsUsed && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Reads:</span>
-            {result.fieldsUsed.map((f) => (
-              <Badge key={f} variant="secondary" className="font-mono text-[10px] font-normal">
-                {f}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ScoreList({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: Array<{ assetId: string; assetCode: string; score: number }>;
-}) {
-  return (
-    <div>
-      <div className="mb-1 text-xs font-medium text-muted-foreground">{title}</div>
-      <ul className="rounded-md border">
-        {rows.map((r) => (
-          <li key={r.assetId} className="flex items-center justify-between border-b px-3 py-1.5 text-xs last:border-b-0">
-            <Link href={`/assets/${r.assetId}`} className="font-medium text-primary hover:underline">
-              {r.assetCode}
-            </Link>
-            <span className="font-mono">{r.score}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}

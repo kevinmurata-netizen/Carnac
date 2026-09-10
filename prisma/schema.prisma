@@ -133,6 +133,7 @@ model AssetType {
   deteriorationModels  DeteriorationModel[]
   riskModels           RiskModel[]
   criticalityModels    CriticalityModel[]
+  scaleFactorModels    ScaleFactorModel[]
   treatments           Treatment[]
   failureTypes         FailureType[]
 
@@ -571,6 +572,36 @@ model RiskFactor {
 /// one is ever run. An asset type with no active formula keeps the older
 /// behaviour where criticality is derived from the risk model's
 /// consequence-of-failure side, so this changes nothing until it is used.
+/// A user-written formula for the scale of an asset — what makes one segment
+/// a bigger piece of work than another.
+///
+/// Deliberately the same language and the same field access as
+/// CriticalityModel, because it answers a question of the same shape. What
+/// differs is the range: criticality is a 0-100 rating, while a scale factor
+/// is a multiplier and is not clamped. "LENGTH" is the obvious formula and the
+/// one seeded, but an organization that prices by diameter, by customers
+/// served, or by some blend of them can say so.
+model ScaleFactorModel {
+  id          String    @id @default(cuid())
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id], onDelete: Cascade)
+
+  name       String
+  expression String
+
+  /// What each value of a dropdown field is worth, keyed by field code — the
+  /// same shape CriticalityModel uses, because the same evaluator reads it.
+  valueMaps Json @default("{}")
+
+  isActive Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([assetTypeId, name])
+  @@map("scale_factor_models")
+}
+
 model CriticalityModel {
   id          String    @id @default(cuid())
   assetTypeId String

@@ -29,6 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-10",
+    title: "Scale Factor: say how big a piece of work each asset is",
+    summary:
+      "How much work an asset represents was assumed to be its length, buried in the ranking code. It is now a formula you write, on its own Settings card, alongside criticality.",
+    changes: [
+      "Settings › Modeling gains a Scale Factor card. Write a formula over any field on the asset type — LENGTH is the obvious one, but CUSTOMERS_SERVED, a diameter band, or a blend of several are all fair game — save it, and activate the one that should run.",
+      "It uses the same editor as Criticality: click a field to insert it, the same if / min / max / clamp / round functions, and the same way of saying what each dropdown value is worth.",
+      "Trying a formula out reports the smallest, median and largest factor across the real network, the spread between the extremes, and names the five assets at each end. The spread is the number that matters — a factor spanning 400× reorders the whole plan, one spanning 1.4× barely touches it.",
+      "Unlike a criticality score, a scale factor is not squeezed onto 0–100. A segment 1,959 ft long scores 1,959, because it is a multiplier rather than a rating.",
+      "An asset missing a field the formula reads falls back to a factor of 1 rather than 0, so a gap in the data never removes it from consideration. The preview counts how many assets that affects and suggests flooring the formula instead.",
+    ],
+    note:
+      "Needs one migration. It ships with 'Segment length' (LENGTH) already active for Waterline, which is exactly what the ranking assumed before — so nothing moves on day one.",
+  },
+  {
     date: "2026-09-09",
     title: "Scenario runs show their progress, and say when they last ran",
     pr: 48,

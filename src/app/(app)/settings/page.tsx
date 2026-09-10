@@ -8,6 +8,7 @@ import { getSessionPermissions, resourceKey } from "@/server/permissions";
 import { getWishlistSummary } from "@/server/wishlist";
 import { listSavedFilters } from "@/server/saved-filters";
 import { listRules } from "@/server/rules";
+import { listScaleFactors } from "@/server/scale-factors";
 import { ENTRIES, latestEntry } from "@/content/build-log";
 import { ASSET_LABEL } from "@/config/labels";
 import { SETTINGS_CARDS, SETTINGS_TABS, type SettingsTabKey } from "@/config/settings-cards";
@@ -52,6 +53,7 @@ export default async function SettingsPage({
     wishlist,
     filters,
     rules,
+    scaleFactors,
     permissions,
   ] = await Promise.all([
     getConfigSummary(organizationId),
@@ -65,6 +67,7 @@ export default async function SettingsPage({
     getWishlistSummary(organizationId),
     listSavedFilters(organizationId),
     listRules(organizationId),
+    listScaleFactors(organizationId),
     getSessionPermissions(session!),
   ]);
 
@@ -75,6 +78,7 @@ export default async function SettingsPage({
   const activeRules = rules.filter((r) => r.enabled).length;
   const attachedRules = rules.filter((r) => r.enabled && r.usedBy.length > 0).length;
   const latest = latestEntry();
+  const liveScaleFactors = scaleFactors.flatMap((g) => g.models.filter((m) => m.isActive).map((m) => m.name));
 
   /** One line per card, keyed the same way the registry is. */
   const summaries: Record<string, string> = {
@@ -116,6 +120,10 @@ export default async function SettingsPage({
       activeRules === 0
         ? "No rules written yet"
         : `${formatNumber(activeRules)} rules · ${formatNumber(attachedRules)} attached to a treatment`,
+    "scale-factor":
+      liveScaleFactors.length === 0
+        ? "None active — every asset scales at 1"
+        : `${[...new Set(liveScaleFactors)].join(" · ")} — active`,
     "deterioration-models": `${activeCurves} of ${deterioration.length} active`,
     "risk-models": `${Object.keys(riskModel.pof).length} probability · ${
       Object.keys(riskModel.cof).length
