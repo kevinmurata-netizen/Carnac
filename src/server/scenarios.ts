@@ -93,6 +93,9 @@ export async function createScenario(
     /** Which named category weighting this scenario leans by. Null uses the
      * organization's default set. */
     categoryWeightSetId?: string | null;
+    /** How its budget is divided between categories, and in what order. Null
+     * means no category order at all. */
+    categoryFundingPlanId?: string | null;
   }
 ) {
   return prisma.scenario.create({
@@ -103,6 +106,7 @@ export async function createScenario(
       criticalityModelId: input.criticalityModelId || null,
       weightSetId: input.weightSetId || null,
       categoryWeightSetId: input.categoryWeightSetId || null,
+      categoryFundingPlanId: input.categoryFundingPlanId || null,
       assumptions: {
         create: Object.entries(input.assumptions).map(([key, value]) => ({ key, value })),
       },
@@ -130,6 +134,9 @@ export async function updateScenario(
     /** Which named category weighting this scenario leans by. Null uses the
      * organization's default set. */
     categoryWeightSetId?: string | null;
+    /** How its budget is divided between categories, and in what order. Null
+     * means no category order at all. */
+    categoryFundingPlanId?: string | null;
   }
 ) {
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
@@ -145,6 +152,7 @@ export async function updateScenario(
         criticalityModelId: input.criticalityModelId || null,
         weightSetId: input.weightSetId || null,
         categoryWeightSetId: input.categoryWeightSetId || null,
+        categoryFundingPlanId: input.categoryFundingPlanId || null,
       },
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
@@ -346,6 +354,10 @@ export type ScenarioSummary = {
    * rather than following the organization's default set. */
   categoryWeightSetId: string | null;
   categoryWeightSetName: string | null;
+  /** The named funding plan this scenario spends by, when it names one. Null
+   * means no category order: one pass down the ranked list. */
+  categoryFundingPlanId: string | null;
+  categoryFundingPlanName: string | null;
   /** When the stored results were produced, and how long that took. Null until
    * the scenario has run since these were recorded. */
   lastRunAt: Date | null;
@@ -362,6 +374,7 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       criticalityModel: { select: { name: true } },
       weightSet: { select: { name: true } },
       categoryWeightSet: { select: { name: true } },
+      categoryFundingPlan: { select: { name: true } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -386,6 +399,8 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       weightSetName: s.weightSet?.name ?? null,
       categoryWeightSetId: s.categoryWeightSetId,
       categoryWeightSetName: s.categoryWeightSet?.name ?? null,
+      categoryFundingPlanId: s.categoryFundingPlanId,
+      categoryFundingPlanName: s.categoryFundingPlan?.name ?? null,
       lastRunAt: s.lastRunAt,
       lastRunMs: s.lastRunMs,
       finalAvgCondition: conditions.at(-1)?.metricValue ?? null,

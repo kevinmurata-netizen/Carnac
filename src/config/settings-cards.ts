@@ -15,6 +15,7 @@ import {
   ListChecks,
   ListTodo,
   Scale,
+  ListOrdered,
   ShieldAlert,
   ScrollText,
   ShieldCheck,
@@ -246,6 +247,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     icon: Scale,
     detail:
       "Two named weightings. Benefit Weight is how much condition, risk and life-cycle cost each count toward a treatment's worth; Category Weight is how far a scenario leans toward repair, renewal or retirement. Chosen on a scenario rather than retyped each time.",
+  },
+  {
+    key: "category-funding",
+    href: "/settings/category-funding",
+    tab: "modeling",
+    title: "Category Funding",
+    icon: ListOrdered,
+    detail:
+      "How a year's budget is divided between repair, rehabilitation and renewal — and, because the order decides what is bought first, which of them spends before the others.",
   },
   {
     key: "deterioration-models",

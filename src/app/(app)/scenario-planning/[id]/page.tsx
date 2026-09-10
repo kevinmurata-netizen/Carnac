@@ -6,6 +6,7 @@ import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/
 import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
+import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import {
   describeSelection,
   getScenarioOptionCatalogue,
@@ -21,7 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { formatCurrency, formatDateTime, formatDuration, formatNumber, toPercent } from "@/lib/format";
-import type { CriticalityChoice, WeightSetChoice, CategoryWeightSetChoice } from "../scenario-fields";
+import type {
+  CriticalityChoice,
+  WeightSetChoice,
+  CategoryWeightSetChoice,
+  FundingPlanChoice,
+} from "../scenario-fields";
 import { ScenarioEditForm } from "../scenario-form";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
 import { RunProgressButton } from "../run-progress";
@@ -37,15 +43,17 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects, criticalityChoices, weightSets, categoryWeightSets, catalogue, estimate] = await Promise.all([
+  const [scenario, projects, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate] =
+    await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
+    listFundingPlans(organizationId),
     getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
-  ]);
+    ]);
   if (!scenario) notFound();
 
   const weightSetChoices: WeightSetChoice[] = weightSets.map((w) => {
@@ -62,6 +70,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   });
 
   const categoryWeightSetChoices: CategoryWeightSetChoice[] = categoryWeightSets.map(toCategoryChoice);
+  const fundingPlanChoices: FundingPlanChoice[] = fundingPlans.map((p) => ({
+    id: p.id,
+    name: p.name,
+    isDefault: p.isDefault,
+    summary: describeFundingPlan(p),
+  }));
 
   const projectsByYear = new Map<number, typeof projects>();
   for (const p of projects) {
@@ -120,7 +134,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} catalogue={catalogue} estimate={estimate} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} catalogue={catalogue} estimate={estimate} />
         </>
       ) : (
         <>
@@ -156,7 +170,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} catalogue={catalogue} estimate={estimate} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} catalogue={catalogue} estimate={estimate} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -358,6 +372,7 @@ function AssumptionsCard({
   criticalityChoices,
   weightSetChoices,
   categoryWeightSetChoices,
+  fundingPlanChoices,
   catalogue,
   estimate,
 }: {
@@ -366,6 +381,7 @@ function AssumptionsCard({
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
+  fundingPlanChoices: FundingPlanChoice[];
   catalogue: ScenarioOptionCatalogue;
   estimate: RunEstimate;
 }) {
@@ -390,6 +406,7 @@ function AssumptionsCard({
             criticalityChoices={criticalityChoices}
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
+            fundingPlanChoices={fundingPlanChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}
             savedOptions={{
@@ -403,6 +420,7 @@ function AssumptionsCard({
               criticalityModelId: scenario.criticalityModelId ?? null,
               weightSetId: scenario.weightSetId ?? null,
               categoryWeightSetId: scenario.categoryWeightSetId ?? null,
+              categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
               annualBudget: a.annualBudget,
               fundingGrowthPct: toPercent(a.fundingGrowth),
               discountRatePct: toPercent(a.discountRate),

@@ -22,6 +22,7 @@ const schema = z.object({
   criticalityModelId: z.string().optional(),
   weightSetId: z.string().optional(),
   categoryWeightSetId: z.string().optional(),
+  categoryFundingPlanId: z.string().optional(),
 });
 
 /**
@@ -47,6 +48,7 @@ function parseForm(formData: FormData): {
   criticalityModelId: string | null;
   weightSetId: string | null;
   categoryWeightSetId: string | null;
+  categoryFundingPlanId: string | null;
 } {
   const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
@@ -65,6 +67,9 @@ function parseForm(formData: FormData): {
     // Likewise: empty means "the organization's default", not "no weighting".
     weightSetId: d.weightSetId?.trim() || null,
     categoryWeightSetId: d.categoryWeightSetId?.trim() || null,
+    // Empty means "no category order", which is a real choice here rather
+    // than a missing one — it is how allocation worked before order existed.
+    categoryFundingPlanId: d.categoryFundingPlanId?.trim() || null,
     assumptions: {
       annualBudget: d.annualBudget,
       fundingGrowth: d.fundingGrowthPct / 100,

@@ -29,6 +29,22 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-11",
+    title: "Category Funding: how the year is divided, and what spends first",
+    summary:
+      "The per-category budget caps have moved out of Category Weights onto their own card, and gained the thing they were missing — an order. Categories are now funded one at a time, in an order you set by dragging.",
+    changes: [
+      "Settings › Modeling › Category Funding. Name a plan, list the categories in the order they should spend, and give each a share of the year.",
+      "The order is the new part and it changes what a budget buys. “Repair 20%, then Rehabilitate 50%, then Renew 100%” buys a fifth of a year of patching, then up to half a year of relining, then puts everything still unspent into replacement.",
+      "Drag a row to reorder it, or use the arrows — a drag is unusable by keyboard and awkward on a touchpad, and reordering five rows is not worth making anyone fight for.",
+      "Remove a category entirely and it is never funded. The list says so rather than leaving it to be worked out from an empty column.",
+      "Shares are of the whole year, not of each other, so they need not total 100%. If they total less and none is 100%, the page says how much of every year cannot be spent by anything.",
+      "Chosen on a scenario from its own dropdown, separately from the category weighting. The two look similar and do different jobs: a weighting changes what ranks first, a funding plan changes what the money buys.",
+    ],
+    note:
+      "Needs one migration. The caps set on each category weighting are carried across into a plan of the same name, so nothing is lost — but none of them is made the default, because an ordered plan whose first category is uncapped would hand it the whole budget. Until a plan is chosen, a scenario makes one pass down the ranked list exactly as before. The caps still on the weightings are no longer read by anything.",
+  },
+  {
     date: "2026-09-10",
     title: "Export the planning tables to Excel",
     summary:

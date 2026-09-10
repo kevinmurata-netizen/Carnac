@@ -957,6 +957,61 @@ model CategoryWeightSet {
   @@map("category_weight_sets")
 }
 
+/// An ordered list of categories, each with a share of the year's budget.
+///
+/// Separate from CategoryWeightSet because the two answer different questions.
+/// A weight multiplies the Priority Score and changes the order of the ranked
+/// list. A funding share changes nothing about the ranking and everything
+/// about what gets bought — how much of the year that kind of work may take,
+/// and which kind of work is bought first.
+///
+/// See docs/TREATMENT-MODEL-REBUILD.md §5.7.
+model CategoryFundingPlan {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  isDefault      Boolean @default(false)
+
+  steps CategoryFundingStep[]
+
+  scenarios Scenario[]
+  workPlans WorkPlan[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("category_funding_plans")
+}
+
+/// One category's turn: how much of the year it may take, and when it takes it.
+///
+/// Rows rather than columns on the plan, because the order is a decision
+/// someone makes by dragging. Five fixed columns could hold the percentages
+/// but could never hold "Repair, then Rehabilitate, then Renew".
+model CategoryFundingStep {
+  id     String              @id @default(cuid())
+  planId String
+  plan   CategoryFundingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  /// A TreatmentCategory from domain/waterline/treatment.ts.
+  category String
+
+  /// The most of one year's budget this category may take, as a fraction.
+  /// 1 means no ceiling of its own, so it absorbs whatever the categories
+  /// before it left.
+  maxPct Float @default(1)
+
+  /// Where it sits in the spending order. Contiguous from 0 within a plan,
+  /// rewritten wholesale whenever the list is saved.
+  position Int
+
+  @@unique([planId, category])
+  @@index([planId, position])
+  @@map("category_funding_steps")
+}
+
 model Scenario {
   id             String  @id @default(cuid())
   organizationId String
@@ -979,6 +1034,12 @@ model Scenario {
   /// organization's default set — same convention as the two fields above.
   categoryWeightSetId String?
   categoryWeightSet   CategoryWeightSet? @relation(fields: [categoryWeightSetId], references: [id], onDelete: SetNull)
+
+  /// How this scenario's budget is divided between categories, and in what
+  /// order they are funded. Null means no order at all: one pass down the
+  /// ranked list, which is what allocation did before order existed.
+  categoryFundingPlanId String?
+  categoryFundingPlan   CategoryFundingPlan? @relation(fields: [categoryFundingPlanId], references: [id], onDelete: SetNull)
 
   /// Whether this scenario considers only the treatments and combinations it
   /// names, rather than the whole library.
@@ -1088,6 +1149,9 @@ model WorkPlan {
   categoryWeightSetId String?
   categoryWeightSet   CategoryWeightSet? @relation(fields: [categoryWeightSetId], references: [id], onDelete: SetNull)
   categoryWeights     Json?
+
+  categoryFundingPlanId String?
+  categoryFundingPlan   CategoryFundingPlan? @relation(fields: [categoryFundingPlanId], references: [id], onDelete: SetNull)
 
   items WorkPlanItem[]
 
