@@ -35,7 +35,7 @@ export default async function WorkPlanPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description="Multi-year capital programme built by weighted multi-objective prioritization under a budget constraint"
+        description="Multi-year capital program built by weighted multi-objective prioritization under a budget constraint"
       />
 
       <Card>

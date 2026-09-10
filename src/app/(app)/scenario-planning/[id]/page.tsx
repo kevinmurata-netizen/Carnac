@@ -28,6 +28,7 @@ import { RunProgressButton } from "../run-progress";
 import { estimateRunMs, type RunEstimate } from "@/server/run-estimate";
 import { AlertTriangle, Gauge, Layers, Wallet } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
+import { ExportButton } from "@/components/layout/export-button";
 import { getConditionBands } from "@/server/settings";
 
 export default async function ScenarioDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -222,11 +223,17 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           </div>
 
           <Card className="mt-4">
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle>
                 Funded Projects{" "}
                 <span className="text-muted-foreground">({formatNumber(projects.length)})</span>
               </CardTitle>
+              {projects.length > 0 && (
+                <ExportButton
+                  href={`/scenario-planning/${scenario.id}/export`}
+                  title={`All ${formatNumber(projects.length)} funded projects across every year of this run`}
+                />
+              )}
             </CardHeader>
             <CardContent className="p-0">
               {projects.length === 0 ? (

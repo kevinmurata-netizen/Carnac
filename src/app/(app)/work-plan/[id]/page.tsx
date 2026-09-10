@@ -66,7 +66,7 @@ export default async function WorkPlanDetailPage({ params }: { params: Promise<{
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Projects" value={formatNumber(plan.itemCount)} sublabel="Across all years" icon={ListChecks} />
         <KpiCard
-          label="Total Programme Cost"
+          label="Total Program Cost"
           value={formatCurrency(plan.totalCost, { compact: true })}
           sublabel={`${plan.endYear - plan.startYear + 1}-year plan`}
           icon={DollarSign}
