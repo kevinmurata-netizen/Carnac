@@ -785,7 +785,103 @@ $12.0M → $0. The backlog collapses because only the segments relining applies
 to are candidates at all, and the budget covers them — which is exactly the
 shape of answer the question was asking for.
 
+### 5.7 Choosing a year's work
+
+**Settled 2026-09-11.** The simulation used to pick one option per asset by
+risk reduction per dollar, rank the assets by the scenario's strategy, and fund
+down that list. The Priority Score played no part in it, so the ranking shown
+on Treatment Planning and the work a scenario actually funded were arrived at
+two different ways.
+
+They are now one way. Each year:
+
+1. Every applicable treatment and combination on every eligible asset is
+   enumerated **from the network's current condition**, priced, and scored by
+   the Priority Score (§5.4).
+2. The list is sorted highest first.
+3. Categories spend **in the order the funding plan sets** (§5.6 is the option
+   selection; the plan is `category_funding_plans`). The first takes what it
+   can up to its share of the year, then the second.
+4. Within a category, on one asset, the best option wins and its siblings are
+   passed over — they are alternatives to each other, not a shopping list.
+5. **A combination beats a single treatment on the same asset**, even when it
+   scores lower, provided it fits what is left. Doing two things in one visit
+   is worth something the Priority Score does not measure: the second
+   excavation, the second shutdown, the second round of customer notices.
+6. **One treatment per asset per year**, across every category. A segment is
+   not relined in March and replaced in September.
+7. The chosen work is applied, then the whole network deteriorates a year, and
+   the next year starts from step 1.
+
+Step 7 is why the loop is closed rather than a plan computed once and replayed:
+a treatment bought in year 3 changes what is worth buying in year 4, and an
+asset left alone gets worse until it is not.
+
+#### Three gates, and why each is there
+
+A run rebuilt this way misbehaved twice before it behaved, and both failures
+are recorded because both fixes look removable.
+
+**It must pay for itself.** Life-cycle saving over the horizon must be
+positive. Without this the model bought $336,012 of lining on one segment
+*every year for eighteen years* to hold it at 70 WCI — a 1.5-point gain each
+time. The cause is §5.4's normalization seen from a new angle: benefit is
+min-max scaled across the year's option set, so in a year when everything left
+is marginal, the best of a marginal set still scores near 100, and criticality
+× scale then swamps the fact that almost nothing was gained. Measured, dropping
+this gate cost **27 WCI points across the network while spending the entire
+budget** — 44.4 against 71.4.
+
+**It must do something.** Reach the condition target, or cut risk by at least
+`MIN_RISK_REDUCTION_PCT`. Older than the rest; it stops per-dollar ranking
+preferring a cheap patch that adds three points to a failing main.
+
+**It must clear the effectiveness floor** (§5.5), below that section's
+condition line.
+
+The first two are ANDed deliberately. Requiring only material risk reduction
+lets the expensive marginal work straight back in — **49.3 WCI against 71.4** —
+because a large lining job on a middling asset does clear 25%.
+
+#### What changed, measured
+
+Same four scenarios, same assumptions, 20 years, no funding plan:
+
+| Scenario | Old final WCI | New final WCI | Old spend | New spend | New backlog |
+| --- | --- | --- | --- | --- | --- |
+| Current Funding | 73.7 | 71.4 | $55.1M | $49.4M | $0 |
+| Increased Funding (+50%) | 73.4 | 70.9 | $84.9M | $49.7M | $0 |
+| Reduced Funding (−40%) | 58.2 | 72.3 | $64.4M | $48.8M | $0 |
+| Worst-First (Condition) | 76.4 | 71.4 | $101.2M | $49.4M | $0 |
+
+**Two things to notice, and the second is a problem.**
+
+The mix moved to Renew 57%, Repair 35%, Rehabilitate 8%, and comparable
+condition is reached for substantially less money — most visibly on Worst-First,
+which spent $101M to reach 76.4 and now spends $49M to reach 71.4.
+
+But the four scenarios have **converged**. Their budgets differ by a factor of
+two and a half and they now produce nearly the same answer, because the binding
+constraint is no longer money — it is the supply of work that pays for itself.
+Every one of them ends with zero backlog and spend well below budget. That is a
+true statement about this network under these assumptions, and it is visible
+rather than hidden: backlog reads $0 and spend reads under budget. But it makes
+Scenario Planning much worse at its actual job, which is telling two funding
+levels apart.
+
 #### Still open
+
+Whether the "must pay for itself" gate is the right instrument, given what it
+does to scenario comparison. A softer form — allowing negative-saving work once
+the paying work is exhausted, so surplus budget is spent on the next-best thing
+rather than not at all — would restore budget sensitivity without bringing the
+churn back. It is not specified or built.
+
+Whether the five prioritization strategies still mean what their descriptions
+say. They now govern **eligibility** (`isEligible`) and, for `replacement-only`,
+which categories are considered — but no longer the order, which is the Priority
+Score's. "Fund the worst-condition segments first" now reads as a filter rather
+than a sort, and the copy on the scenario form has not been rewritten to match.
 
 Whether the floor should be an absolute number of risk points rather than a
 percentage — the question §5.3 already raised — is unchanged. So is whether

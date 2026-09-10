@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { rankOptions } from "@/server/priority";
 import { listCategoryWeightSets } from "@/server/category-weight-sets";
+import { listFundingPlans } from "@/server/category-funding";
 import { buildSimAssets } from "@/server/scenarios";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { runScenario, DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
+import { loadCombinations } from "@/server/combinations";
+import { getMaterialCurves } from "@/server/settings";
 
 /**
  * What the Priority Score actually ranks, measured against the real network.
@@ -85,12 +88,22 @@ async function main() {
   }
 
   // What the budget caps do, which is the question ranking cannot answer.
-  console.log("\nA 10-year run under each category weighting — where the money actually goes:");
-  const [simAssets, library] = await Promise.all([buildSimAssets(org.id), loadTreatmentDefs(org.id)]);
+  console.log("\nA 10-year run under each category funding plan — where the money actually goes:");
+  // Curves must be the configured ones, the same set buildSimAssets used to
+  // place each asset on its curve. Letting the evaluator fall back to the
+  // built-in defaults while the assets carry the database's makes the run
+  // internally inconsistent, and the numbers it prints unusable.
+  const [simAssets, library, combos, curves] = await Promise.all([
+    buildSimAssets(org.id),
+    loadTreatmentDefs(org.id),
+    loadCombinations(org.id),
+    getMaterialCurves(org.id),
+  ]);
   const assumptions = { ...DEFAULT_ASSUMPTIONS, analysisPeriodYears: 10 };
 
-  for (const set of sets) {
-    const run = runScenario(simAssets, assumptions, library, set.caps);
+  const plans = await listFundingPlans(org.id);
+  for (const set of [{ name: "No category order", plan: null }, ...plans.map((p) => ({ name: p.name, plan: p.steps }))]) {
+    const run = runScenario(simAssets, assumptions, { library, combinations: combos, curves, fundingPlan: set.plan });
     const spentByCategory = new Map<string, number>();
     for (const year of run.years) {
       for (const project of year.selected) {

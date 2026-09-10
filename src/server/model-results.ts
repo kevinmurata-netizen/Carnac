@@ -96,7 +96,7 @@ export async function getWciFlow(organizationId: string, scenarioId: string): Pr
     getConditionBands(organizationId),
   ]);
 
-  const result = runScenario(simAssets, summary.assumptions, library);
+  const result = runScenario(simAssets, summary.assumptions, { library });
   const outcomes = result.assetOutcomes;
   if (outcomes.length === 0) return null;
 

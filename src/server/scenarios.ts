@@ -15,9 +15,14 @@ import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
+import { resolveFundingPlan } from "@/server/category-funding";
+import { resolveWeights } from "@/server/weight-sets";
 import { resolveOptionSelection } from "@/server/scenario-options";
 import { loadCombinations } from "@/server/combinations";
 import { getMaterialCurves } from "@/server/settings";
+import { assetScaleFactors } from "@/server/scale-factors";
+import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
+import { computeCriticalityScore } from "@/domain/waterline/risk";
 
 /** Snapshot the current network into simulation inputs. Condition comes from
  * the latest measurement; uninspected assets fall back to their curve position
@@ -29,13 +34,27 @@ export async function buildSimAssets(organizationId: string): Promise<SimAsset[]
       attributeValues: { include: { definition: true } },
       conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
       riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+      criticalityScores: { orderBy: { calculatedAt: "desc" }, take: 1, select: { score: true } },
       location: { select: { serviceArea: true, pressureZone: true } },
     },
   });
 
   // Curves come from the configured deterioration models, so editing one in
   // Settings changes every forecast this simulation produces.
-  const curves = await getMaterialCurves(organizationId);
+  //
+  // Scale factors are read once, here, rather than each year inside the run:
+  // the formula is over length, diameter and the like, none of which a
+  // treatment changes.
+  const assetType = await prisma.assetType.findFirst({
+    where: { organizationId, code: "WATERLINE" },
+    select: { id: true },
+  });
+  const [curves, scale] = await Promise.all([
+    getMaterialCurves(organizationId),
+    assetType
+      ? assetScaleFactors(organizationId, assetType.id)
+      : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
+  ]);
 
   return assets.map((asset) => {
     const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
@@ -58,6 +77,19 @@ export async function buildSimAssets(organizationId: string): Promise<SimAsset[]
       effectiveAge: effectiveAgeForCondition(curve, condition),
       curve,
       criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+      // The stored score where the model has run, otherwise the risk-based
+      // default — the same fallback the network-wide ranking uses, so a
+      // scenario and Treatment Planning agree about what an asset is worth.
+      criticalityScore:
+        asset.criticalityScores[0]?.score ??
+        computeCriticalityScore({
+          customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
+          criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+          diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
+          customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+        }).score,
+      scaleFactor: scale.factors.get(asset.id)?.factor ?? NEUTRAL_SCALE_FACTOR,
       serviceArea: asset.location?.serviceArea ?? null,
       pressureZone: asset.location?.pressureZone ?? null,
     };
@@ -172,19 +204,40 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
   if (!scenario) throw new Error("Scenario not found");
 
   const assumptions = assumptionsFromRows(scenario.assumptions);
-  const [simAssets, library, combinations, categories, selection] = await Promise.all([
+  const [simAssets, library, combinations, weights, categories, funding, selection, curves] = await Promise.all([
     buildSimAssets(organizationId),
     // Run against the configured library so edited treatments and decision
     // trees change what a scenario is allowed to fund.
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
-    // The scenario's own category policy, or the organization's default. The
-    // caps are what stop a run spending the whole year on cheap patches.
+    // What makes one treatment better than another on the merits.
+    resolveWeights(organizationId, scenario.weightSetId),
+    // How far this scenario leans toward each kind of work, as a multiplier
+    // on the Priority Score.
     resolveCategoryWeights(organizationId, scenario.categoryWeightSetId),
+    // How its budget is divided between categories, and in what order they
+    // spend. Null means one pass down the ranked list.
+    resolveFundingPlan(organizationId, scenario.categoryFundingPlanId),
     // And what it is allowed to consider at all. Null means the whole library.
     resolveOptionSelection(organizationId, scenarioId),
+    getMaterialCurves(organizationId),
   ]);
-  const result = runScenario(simAssets, assumptions, library, categories.caps, selection, combinations);
+
+  const result = runScenario(simAssets, assumptions, {
+    library,
+    combinations,
+    selection,
+    // Criticality is deliberately absent: it multiplies the benefit rather
+    // than forming part of it. §5.3.
+    benefitWeights: {
+      conditionImprovement: weights.weights.conditionImprovement,
+      riskReduction: weights.weights.riskReduction,
+      lifeCycleSaving: weights.weights.lifeCycleCost,
+    },
+    categoryWeights: categories.weights,
+    fundingPlan: funding.plan,
+    curves,
+  });
 
   await prisma.scenarioResult.deleteMany({ where: { scenarioId } });
   await prisma.scenarioResult.createMany({

@@ -3,21 +3,26 @@ import {
   type AssetTreatmentContext,
   type TreatmentDef,
   type TreatmentOption,
-} from "@/domain/waterline/treatment";
+} from "./treatment";
 
-import { computeLcca, DEFAULT_LCCA_ASSUMPTIONS, EMERGENCY_COST_PREMIUM } from "@/domain/waterline/lcca";
-import { curveFor } from "@/domain/waterline/scenario";
-import { effectiveAgeForCondition, type CurveParams } from "@/domain/waterline/deterioration";
+import { computeLcca, DEFAULT_LCCA_ASSUMPTIONS, EMERGENCY_COST_PREMIUM } from "./lcca";
+import { curveFor } from "./deterioration";
+import { effectiveAgeForCondition, type CurveParams } from "./deterioration";
 
 /**
  * Life-cycle saving for one asset's options: what leaving it alone costs over
  * the horizon, minus what treating it costs.
  *
- * Extracted because two paths now need the same number — the work plan, which
- * ranks assets by it, and Treatment Planning, which shows it as one of the
- * three terms behind Expected Benefit. Two copies of this arithmetic would
- * drift, and the ranking would then disagree with the figure printed beside
- * the recommendation it produced.
+ * Extracted because several paths now need the same number — the work plan,
+ * which ranks assets by it; Treatment Planning, which shows it as one of the
+ * three terms behind Expected Benefit; and the scenario simulation, which
+ * recomputes it every year. Copies of this arithmetic would drift, and the
+ * ranking would then disagree with the figure printed beside the
+ * recommendation it produced.
+ *
+ * Pure, and now in the domain layer where that is enforced. It reads nothing
+ * but its arguments, which is what lets the simulation call it inside a loop
+ * that must not touch the database.
  */
 export type LccaEvaluator = {
   /** Saving versus doing nothing. Positive means the treatment pays for

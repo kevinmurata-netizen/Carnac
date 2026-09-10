@@ -23,7 +23,7 @@ import { computeCriticalityScore } from "@/domain/waterline/risk";
 import { buildContexts } from "@/server/treatments";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { loadCombinations } from "@/server/combinations";
-import { buildLccaEvaluator } from "@/server/lcca-evaluator";
+import { buildLccaEvaluator } from "@/domain/waterline/lcca-evaluator";
 import { getMaterialCurves } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";

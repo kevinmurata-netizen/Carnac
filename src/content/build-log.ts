@@ -30,6 +30,24 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-11",
+    title: "Scenarios now choose their work by Priority Score",
+    summary:
+      "A scenario used to pick one treatment per segment by risk reduction per dollar, then rank the segments by its strategy. It now ranks every treatment and every combination by Priority Score and funds down that list, category by category, in the order the funding plan sets.",
+    changes: [
+      "Every year is rebuilt from scratch: options are enumerated from the network's condition that year, scored, chosen, applied, and then everything deteriorates a year before the next pass. Work bought in year 3 changes what is worth buying in year 4.",
+      "Categories spend in the funding plan's order. The first takes what it can up to its share, then the second.",
+      "On one segment, the best option in a category wins and its alternatives are passed over — and a combination beats a single treatment even when it scores lower, provided it fits. Doing two things in one visit saves a second excavation and a second shutdown, which the score does not measure.",
+      "One treatment per segment per year, across every category. A segment is not relined in March and replaced in September.",
+      "A treatment must now pay for itself over the horizon to be funded. Without that test the model bought $336,012 of lining on the same segment every year for eighteen years to hold it at 70 — a 1.5-point gain each time.",
+    ],
+    fixes: [
+      "Treatment Planning's ranking and what a scenario actually funded were arrived at two different ways. They are one way now.",
+    ],
+    note:
+      "No migration, but every scenario's numbers move — re-run them. On the seed network the same four scenarios reach comparable condition for substantially less money: Worst-First spent $101M to reach 76.4 WCI and now spends $49M to reach 71.4. Worth knowing before reading too much into that: the four scenarios have also converged, because the constraint is no longer the budget but the supply of work that pays for itself. Backlog reads $0 and spend reads under budget on all of them, which is the model saying so out loud.",
+  },
+  {
+    date: "2026-09-11",
     title: "Category Funding: how the year is divided, and what spends first",
     summary:
       "The per-category budget caps have moved out of Category Weights onto their own card, and gained the thing they were missing — an order. Categories are now funded one at a time, in an order you set by dragging.",

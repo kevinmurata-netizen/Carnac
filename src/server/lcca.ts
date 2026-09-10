@@ -14,7 +14,7 @@ import {
   resolveTreatmentCost,
   type AssetTreatmentContext,
 } from "@/domain/waterline/treatment";
-import { curveFor } from "@/domain/waterline/scenario";
+import { curveFor } from "@/domain/waterline/deterioration";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
