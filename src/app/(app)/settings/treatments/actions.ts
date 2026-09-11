@@ -58,6 +58,9 @@ function parseInput(form: FormData): TreatmentInput {
   return {
     name: String(form.get("name") ?? ""),
     description: String(form.get("description") ?? ""),
+    // Empty means "use the shipped default", not "no limit" — so an
+    // administrator who never opens this box still gets the backstop.
+    retreatmentIntervalYears: optionalNum(form, "retreatmentIntervalYears"),
     category: CATEGORIES.includes(category) ? category : "Repair",
     conditionResetTo: effectMode === "reset" ? effectValue : null,
     conditionGain: effectMode === "gain" ? effectValue : null,

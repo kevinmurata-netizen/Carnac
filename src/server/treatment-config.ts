@@ -134,6 +134,7 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
     mobilizationCost: row.mobilizationCost ?? 0,
     annualMaintenanceCost: row.annualMaintenanceCost ?? 0,
     usefulLife: row.usefulLife ?? 0,
+    retreatmentIntervalYears: row.retreatmentIntervalYears,
     implementationConstraints: applicability.constraints ?? undefined,
     rules: parseRules(row.ruleLinks.map((l) => l.rule)),
     ruleTree: parseRuleTree(row.ruleTree),
@@ -224,6 +225,8 @@ export type TreatmentInput = {
   mobilizationCost: number;
   annualMaintenanceCost: number;
   usefulLife: number;
+  /** Null keeps the shipped default rather than meaning "no limit". */
+  retreatmentIntervalYears: number | null;
   implementationConstraints: string | null;
 };
 
@@ -271,6 +274,7 @@ export async function updateTreatment(organizationId: string, id: string, input:
       // price now, the edit form no longer asks about it, and writing the
       // form's empty defaults here would blank what these columns still hold.
       usefulLife: input.usefulLife,
+      retreatmentIntervalYears: input.retreatmentIntervalYears,
     },
   });
 }
@@ -295,6 +299,7 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
       effectOnCondition: input.conditionResetTo ?? input.conditionGain ?? 0,
       effectOnFailureProb: input.failureProbMultiplier,
       usefulLife: input.usefulLife,
+      retreatmentIntervalYears: input.retreatmentIntervalYears,
     },
     select: { id: true },
   });

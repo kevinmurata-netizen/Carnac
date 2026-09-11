@@ -39,6 +39,10 @@ export type Rankable = {
   /** Priority Score. Null means it could not be priced; such an option is
    * never selected. */
   priority: number | null;
+  /** Whether the work pays for itself over the horizon. Options that do are
+   * bought before options that do not — including for the combination
+   * preference below, which must not reach past a tier to find a bundle. */
+  paysForItself: boolean;
 };
 
 export type SelectionResult<T extends Rankable> = {
@@ -105,11 +109,21 @@ export function selectForYear<T extends Rankable>(
         totalSpent + c.cost <= budget &&
         categorySpent + c.cost <= cap;
 
-      // Rule 4 before rule 3: a combination that fits wins even from further
-      // down the list. Among combinations, still the best-scoring one.
-      const chosen =
-        onAsset.find((c) => c.option.members.length > 1 && affordable(c)) ??
-        onAsset.find((c) => affordable(c));
+      // Rule 4 before rule 3 — but inside a tier, never across one.
+      //
+      // The preference for a bundle is about avoiding a second visit, and that
+      // is worth giving up some Priority Score for. It is not worth giving up
+      // the difference between work that pays for itself and work that does
+      // not. Measured before this was tiered: on one segment at 69 WCI the
+      // engine kept buying a $336,012 bundle whose life-cycle saving was
+      // −$277,402, passing over a $9,880 valve replacement that saved $81,403,
+      // because the bundle was a bundle and reached first.
+      const pick = (pool: T[]) =>
+        pool.find((c) => c.option.members.length > 1 && affordable(c)) ?? pool.find((c) => affordable(c));
+
+      const paying = onAsset.filter((c) => c.paysForItself);
+      const rest = onAsset.filter((c) => !c.paysForItself);
+      const chosen = pick(paying) ?? pick(rest);
 
       if (!chosen) {
         // Nothing on this asset fits. Report it as capped out only when the

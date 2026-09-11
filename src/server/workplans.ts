@@ -193,8 +193,17 @@ async function buildCandidates(
       if (!best || info.lccSavings > best.lccSavings) best = info;
     }
 
-    // Only plan work that is actually worth doing on life-cycle terms.
-    if (best && best.lccSavings > 0) candidates.push(best);
+    // Every asset with a priced option becomes a candidate, including ones
+    // whose best option does not pay for itself over the horizon.
+    //
+    // Those used to be dropped here. That looked like prudence and was
+    // actually a hole: an asset excluded this way never entered `remaining`,
+    // so it was not scheduled *and* not counted as backlog — it simply
+    // vanished from the plan, and nothing on the page said a hundred segments
+    // had been considered and silently set aside. They are now ranked below
+    // everything that does pay for itself, so a budget that runs out before
+    // reaching them leaves them in the backlog where they can be seen.
+    if (best) candidates.push(best);
   }
 
   return candidates;
@@ -223,10 +232,18 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
 
   const candidates = await buildCandidates(organizationId, scenarioCriticality);
 
+  // Paying for itself is a tier, not a filter — the same rule the scenario
+  // simulation follows. Work that pays back is scheduled first; work that does
+  // not is still available to a budget that has exhausted it.
   const scored = scoreCandidates(
     candidates.map((c) => ({ item: c, raw: objectiveValues(c) })),
     weights
-  ).sort((a, b) => b.priorityScore - a.priorityScore);
+  ).sort((a, b) => {
+    const aPays = a.item.lccSavings > 0;
+    const bPays = b.item.lccSavings > 0;
+    if (aPays !== bPays) return aPays ? -1 : 1;
+    return b.priorityScore - a.priorityScore;
+  });
 
   const workPlan = await prisma.workPlan.create({
     data: {

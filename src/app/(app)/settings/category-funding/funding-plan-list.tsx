@@ -242,6 +242,12 @@ function FundingPlanEditor({
   const total = values.steps.reduce((sum, s) => sum + s.pct, 0);
   const allZero = values.steps.length > 0 && values.steps.every((s) => s.pct === 0);
   const strands = total < 100 && values.steps.length > 0 && values.steps.every((s) => s.pct < 100);
+  // An uncapped category early in the order can take the whole year before
+  // anything below it is reached. "Every category at 100%" reads as neutral
+  // and is not: it is "the first category, exhaustively". Measured on the seed
+  // network, an all-100% plan spent 85% on rehabilitation and 2% on renewal.
+  const starvesFrom = values.steps.findIndex((s) => s.pct >= 100);
+  const starves = starvesFrom >= 0 && starvesFrom < values.steps.length - 1;
 
   return (
     <Card>
@@ -401,6 +407,19 @@ function FundingPlanEditor({
               </div>
             )}
           </div>
+
+          {starves && !allZero && (
+            <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-500">
+              <span className="font-medium">{values.steps[starvesFrom].category} is uncapped and not last.</span> It
+              may take the whole year before{" "}
+              {values.steps
+                .slice(starvesFrom + 1)
+                .map((s) => s.category)
+                .join(", ")}{" "}
+              {values.steps.length - starvesFrom === 2 ? "is" : "are"} reached at all. A category at 100% is usually
+              meant to go last, where it absorbs whatever the ones before it left.
+            </p>
+          )}
 
           {allZero ? (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">

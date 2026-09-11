@@ -125,7 +125,7 @@ async function main() {
       )} · ${share}`
     );
     console.log(
-      `  ${"".padEnd(14)} final condition ${run.finalAvgCondition} · backlog ${money(run.finalBacklog)}` +
+      `  ${"".padEnd(14)} final condition ${run.finalAvgCondition} · backlog ${money(run.finalBacklog)} · ${Math.round(run.totalFailures)} failures` +
         (cappedOut > 0 ? ` · ${money(cappedOut)} passed over because its category was full` : "")
     );
   }
