@@ -648,19 +648,18 @@ model Treatment {
   assetTypeId String
   assetType   AssetType @relation(fields: [assetTypeId], references: [id])
 
-  name                   String // "Replacement", "Relining", "Spot Repair"
-  description            String?
-  applicableConditionMin Float?
-  applicableConditionMax Float?
-  applicability          Json? // material/diameter constraints etc.
-  expectedLifeExtension  Int? // years
-  effectOnCondition      Float? // condition improvement, e.g. reset to 95
-  effectOnFailureProb    Float? // multiplier/reduction
-  unitCost               Float?
-  costUnit               String? // "per LF", "per each"
-  mobilizationCost       Float?
-  annualMaintenanceCost  Float?
-  usefulLife             Int?
+  name        String // "Replacement", "Relining", "Spot Repair"
+  description String?
+
+  /// Category, the condition-effect discriminator and the implementation note.
+  /// The material and diameter constraints it used to also carry became rules
+  /// in Phase 1 and were dropped in Phase 6b.
+  applicability Json?
+
+  expectedLifeExtension Int? // years
+  effectOnCondition     Float? // condition improvement, e.g. reset to 95
+  effectOnFailureProb   Float? // multiplier/reduction
+  usefulLife            Int?
 
   /// Shortest time before this treatment may be applied again to the same
   /// asset. Null reads as the shipped default (5 years).
@@ -671,11 +670,6 @@ model Treatment {
   /// that admitted it. Per-treatment rather than per-asset, so a lockout on
   /// relining does not also forbid a spot repair next year.
   retreatmentIntervalYears Int?
-
-  /// Superseded by `ruleTree`, which can express the same thing and more.
-  /// Kept for one release so the conversion can be checked and reverted;
-  /// dropped in Phase 6.
-  qualifyMode String @default("any")
 
   /// How this treatment's "allow" rules combine, as a tree: groups joined by
   /// AND or OR, with rules at the leaves. A flat list and a single any/all
@@ -692,11 +686,9 @@ model Treatment {
   /// one from the attached allow rules so the engine always evaluates a tree.
   ruleTree Json?
 
-  costs                  TreatmentCost[]
   costRates              TreatmentCostRate[]
   workPlanItems          WorkPlanItem[]
   scenarioOptions        ScenarioTreatment[]
-  rules                  TreatmentRule[]
   ruleLinks              TreatmentRuleLink[]
   combinationMemberships CombinationMember[]
 
@@ -706,16 +698,6 @@ model Treatment {
 /// Superseded by Rule + TreatmentRuleLink. Kept for one release so Phase 1
 /// can be reverted without losing the trees it was migrated from; dropped in
 /// Phase 6. Nothing reads it after the Phase 1 migration.
-model TreatmentRule {
-  id          String    @id @default(cuid())
-  treatmentId String
-  treatment   Treatment @relation(fields: [treatmentId], references: [id])
-  ruleType    String // "condition-triggered", "risk-triggered", "age-triggered"
-  condition   Json // expressible rule definition, transparent not black-box
-
-  @@map("treatment_rules")
-}
-
 /// Treatments an organization is willing to apply together on one asset in
 /// one year — "relining, spot repair and cathodic protection on the same
 /// main". Predefining them is what keeps the model from having to search
@@ -827,17 +809,6 @@ model TreatmentRuleLink {
 /// Superseded by TreatmentCostRate. Written but never read even before that;
 /// left in place so the release running before the Phase 2 migration keeps
 /// working. Dropped in Phase 6.
-model TreatmentCost {
-  id            String    @id @default(cuid())
-  treatmentId   String
-  treatment     Treatment @relation(fields: [treatmentId], references: [id])
-  costType      String // "Initial", "Maintenance", "Emergency"
-  amount        Float
-  effectiveDate DateTime?
-
-  @@map("treatment_costs")
-}
-
 /// One priced way of doing a treatment, and the rule saying when that price
 /// applies — "Replacement costs $340/LF in District 3, $290/LF elsewhere".
 ///

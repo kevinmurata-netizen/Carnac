@@ -74,11 +74,14 @@ export async function ensureTreatments(organizationId: string) {
 
     // A treatment with no rate cannot be priced and so is never recommended.
     // Seeded with the single fallback its own columns amount to.
+    // Always present on the shipped library; defaulted so a definition that
+    // somehow lacks a price seeds a visibly zero rate rather than NaN costs
+    // that would propagate through every ranking.
     await createStandardRate(created.id, {
-      unitCost: def.unitCost,
-      costUnit: def.costUnit,
-      mobilizationCost: def.mobilizationCost,
-      annualMaintenanceCost: def.annualMaintenanceCost,
+      unitCost: def.unitCost ?? 0,
+      costUnit: def.costUnit ?? "per each",
+      mobilizationCost: def.mobilizationCost ?? 0,
+      annualMaintenanceCost: def.annualMaintenanceCost ?? 0,
     });
 
     // Shared by name, so "Condition 0-45" is one row linked to Replacement and

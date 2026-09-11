@@ -66,10 +66,9 @@ function parseInput(form: FormData): TreatmentInput {
     conditionGain: effectMode === "gain" ? effectValue : null,
     failureProbMultiplier: num(form, "failureProbMultiplier", 1),
     expectedLifeExtension: num(form, "expectedLifeExtension", 0),
-    unitCost: num(form, "unitCost", 0),
-    costUnit: String(form.get("costUnit") ?? "per each") === "per LF" ? "per LF" : "per each",
-    mobilizationCost: num(form, "mobilizationCost", 0),
-    annualMaintenanceCost: num(form, "annualMaintenanceCost", 0),
+    // No cost fields: the form has not asked about them since prices moved to
+    // cost rates, so reading them here only ever produced zeroes. The create
+    // path supplies the fallback rate explicitly instead.
     usefulLife: num(form, "usefulLife", 0),
     implementationConstraints: String(form.get("implementationConstraints") ?? "").trim() || null,
   };

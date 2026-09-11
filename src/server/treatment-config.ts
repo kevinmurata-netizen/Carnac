@@ -9,7 +9,6 @@ import {
 import {
   countConditions,
   isValidRuleNode,
-  type QualifyMode,
   type Rule,
   type RuleGroup,
 } from "@/domain/waterline/decision-tree";
@@ -66,18 +65,26 @@ function toCostRates(
   });
 }
 
-/** The single fallback rate a treatment's own columns amount to. Used for the
- * seed library, which has no database rows behind it. */
+/**
+ * The single fallback rate a seed definition's prices amount to.
+ *
+ * Only ever called with the shipped library, which always carries prices —
+ * a treatment read back from the database has real rate rows instead, and
+ * since Phase 6b has no prices of its own to fall back on. The defaults are
+ * here so that stays true by construction rather than by assumption: a
+ * priceless definition yields a zero rate, which is visibly wrong, rather than
+ * NaN costs that propagate silently through every ranking.
+ */
 export function standardRateFor(def: TreatmentDef): CostRate {
   return {
     id: `seed-${def.name}`,
     name: "Standard",
     sortOrder: 0,
     rule: null,
-    unitCost: def.unitCost,
-    costUnit: def.costUnit,
-    mobilizationCost: def.mobilizationCost,
-    annualMaintenanceCost: def.annualMaintenanceCost,
+    unitCost: def.unitCost ?? 0,
+    costUnit: def.costUnit ?? "per each",
+    mobilizationCost: def.mobilizationCost ?? 0,
+    annualMaintenanceCost: def.annualMaintenanceCost ?? 0,
   };
 }
 
@@ -85,7 +92,10 @@ function fetchTreatments(organizationId: string) {
   return prisma.treatment.findMany({
     where: { assetType: { code: "WATERLINE", organizationId } },
     include: withRules,
-    orderBy: { applicableConditionMin: "asc" },
+    // Was the condition window, which no longer exists. Name, because a
+    // treatment library is a list someone looks things up in, and category
+    // would group Repair together while scattering the alphabet inside it.
+    orderBy: { name: "asc" },
   });
 }
 
@@ -120,26 +130,23 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
     name: row.name,
     description: row.description ?? "",
     category: (applicability.category as TreatmentCategory) ?? "Repair",
-    applicableConditionMin: row.applicableConditionMin ?? 0,
-    applicableConditionMax: row.applicableConditionMax ?? 100,
-    applicableMaterials: applicability.materials ?? undefined,
-    applicableDiameterMin: applicability.diameterMin ?? undefined,
-    applicableDiameterMax: applicability.diameterMax ?? undefined,
+    // The window is absent on purpose. It described what a treatment applied
+    // to before rules did, and the columns behind it are gone — a stored
+    // treatment is gated by its rules and nothing else. The fields survive on
+    // TreatmentDef because the shipped library still uses them, once, to
+    // generate those rules at seed time.
     conditionResetTo: resetTo ?? undefined,
     conditionGain: gain ?? undefined,
     failureProbMultiplier: row.effectOnFailureProb ?? 1,
     expectedLifeExtension: row.expectedLifeExtension ?? 0,
-    unitCost: row.unitCost ?? 0,
-    costUnit: (row.costUnit as "per LF" | "per each") ?? "per each",
-    mobilizationCost: row.mobilizationCost ?? 0,
-    annualMaintenanceCost: row.annualMaintenanceCost ?? 0,
+    // No prices either: cost rates own them, and `costRates` below carries
+    // the real ones.
     usefulLife: row.usefulLife ?? 0,
     retreatmentIntervalYears: row.retreatmentIntervalYears,
     implementationConstraints: applicability.constraints ?? undefined,
     rules: parseRules(row.ruleLinks.map((l) => l.rule)),
     ruleTree: parseRuleTree(row.ruleTree),
     costRates: toCostRates(row.costRates),
-    qualifyMode: (row.qualifyMode === "any" ? "any" : "all") as QualifyMode,
   };
 }
 
@@ -159,7 +166,6 @@ export async function loadTreatmentDefs(organizationId: string): Promise<Treatme
       ...def,
       rules: rulesFromWindow(def),
       costRates: [standardRateFor(def)],
-      qualifyMode: "all" as const,
     }));
   }
   return rows.map(toDef);
@@ -191,7 +197,7 @@ export async function listTreatmentsForAdmin(organizationId: string): Promise<Tr
   const rows = await prisma.treatment.findMany({
     where: { assetType: { code: "WATERLINE", organizationId } },
     include: { ...withRules, _count: { select: { workPlanItems: true } } },
-    orderBy: [{ applicableConditionMin: "asc" }, { name: "asc" }],
+    orderBy: { name: "asc" },
   });
   return rows.map(toAdminRow);
 }
@@ -212,18 +218,26 @@ export type TreatmentInput = {
   description: string;
   category: TreatmentCategory;
   // The condition window, material list and diameter bounds are absent on
-  // purpose: they are rules now, edited on the treatment's own page. The
-  // columns behind them still hold what they last held, and this form no
-  // longer writes to them, so nothing rewrites history on an unrelated edit.
+  // purpose: they are rules now, edited on the treatment's own page, and as of
+  // Phase 6b the columns behind them are gone too.
   /** Exactly one of these is used; the other must be null. */
   conditionResetTo: number | null;
   conditionGain: number | null;
   failureProbMultiplier: number;
   expectedLifeExtension: number;
-  unitCost: number;
-  costUnit: "per LF" | "per each";
-  mobilizationCost: number;
-  annualMaintenanceCost: number;
+
+  /**
+   * The fallback rate a newly created treatment starts with.
+   *
+   * Optional because only the create path supplies them, and only to seed one
+   * TreatmentCostRate. They used to be columns on the treatment as well; the
+   * edit form has not asked about them since Phase 2, and `updateTreatment`
+   * never wrote them.
+   */
+  unitCost?: number;
+  costUnit?: "per LF" | "per each";
+  mobilizationCost?: number;
+  annualMaintenanceCost?: number;
   usefulLife: number;
   /** Null keeps the shipped default rather than meaning "no limit". */
   retreatmentIntervalYears: number | null;
@@ -238,7 +252,9 @@ function validate(input: TreatmentInput) {
   if (input.conditionResetTo != null && input.conditionGain != null) {
     throw new Error("Choose either a condition reset or a condition gain, not both");
   }
-  if (input.unitCost < 0 || input.mobilizationCost < 0) throw new Error("Costs cannot be negative");
+  if ((input.unitCost ?? 0) < 0 || (input.mobilizationCost ?? 0) < 0) {
+    throw new Error("Costs cannot be negative");
+  }
 }
 
 // `existing` is spread first and the applicability keys are no longer written,
@@ -308,10 +324,10 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
   // absent from every recommendation. Created here so a new treatment is
   // usable the moment it exists, with the price just entered as its fallback.
   await createStandardRate(created.id, {
-    unitCost: input.unitCost,
-    costUnit: input.costUnit,
-    mobilizationCost: input.mobilizationCost,
-    annualMaintenanceCost: input.annualMaintenanceCost,
+    unitCost: input.unitCost ?? 0,
+    costUnit: input.costUnit ?? "per each",
+    mobilizationCost: input.mobilizationCost ?? 0,
+    annualMaintenanceCost: input.annualMaintenanceCost ?? 0,
   });
 
   return created.id;
@@ -330,8 +346,6 @@ export async function deleteTreatment(organizationId: string, id: string) {
     );
   }
 
-  await prisma.treatmentRule.deleteMany({ where: { treatmentId: id } });
-  await prisma.treatmentCost.deleteMany({ where: { treatmentId: id } });
   await prisma.treatment.delete({ where: { id } });
 }
 
