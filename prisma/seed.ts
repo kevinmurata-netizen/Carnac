@@ -145,8 +145,6 @@ async function main() {
   await prisma.cost.deleteMany({});
   await prisma.project.deleteMany({});
   await prisma.budget.deleteMany({});
-  await prisma.treatmentRule.deleteMany({});
-  await prisma.treatmentCost.deleteMany({});
   await prisma.treatment.deleteMany({});
   await prisma.deteriorationPrediction.deleteMany({});
   await prisma.deteriorationParameter.deleteMany({});

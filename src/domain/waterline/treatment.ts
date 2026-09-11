@@ -34,12 +34,15 @@ export type TreatmentDef = {
   /**
    * The old technical window. Since Phase 1 of the treatment model rebuild
    * these no longer decide anything — `rulesFromWindow` turns them into the
-   * named rules that do, and the stored columns behind them are read only to
-   * seed a fresh install. Phase 6 removes them.
+   * named rules that do, once, when a fresh install is seeded. That is why the
+   * shipped constants below still carry a window.
+   *
+   * Optional since Phase 6b dropped the columns that stored it on a treatment.
+   * A definition read back from the database has no window at all, and is
+   * gated by its rules and nothing else.
    */
-  /** Inclusive WCI window in which this treatment makes sense. */
-  applicableConditionMin: number;
-  applicableConditionMax: number;
+  applicableConditionMin?: number;
+  applicableConditionMax?: number;
   /** Empty = all materials. */
   applicableMaterials?: string[];
   applicableDiameterMin?: number;
@@ -51,10 +54,21 @@ export type TreatmentDef = {
   /** Multiplier applied to probability-of-failure (1 = no effect). */
   failureProbMultiplier: number;
   expectedLifeExtension: number;
-  unitCost: number;
-  costUnit: "per LF" | "per each";
-  mobilizationCost: number;
-  annualMaintenanceCost: number;
+
+  /**
+   * The shipped library's prices, and only its own.
+   *
+   * A stored treatment is priced by its cost rates, which have been the truth
+   * since Phase 2; the columns that duplicated them on the treatment row were
+   * dropped in Phase 6b. These survive because the seed constants below need
+   * somewhere to put a price before any rate row exists — `standardRateFor`
+   * turns them into the fallback rate a freshly seeded treatment gets.
+   */
+  unitCost?: number;
+  costUnit?: "per LF" | "per each";
+  mobilizationCost?: number;
+  annualMaintenanceCost?: number;
+
   usefulLife: number;
   /** Shortest time before this may be applied again to the same asset. Absent
    * reads as DEFAULT_RETREATMENT_INTERVAL_YEARS. See ./retreatment.ts. */
@@ -68,9 +82,6 @@ export type TreatmentDef = {
   /** How the allow rules are arranged: groups joined by AND or OR with rules
    * at the leaves. Absent means the flat reading below still applies. */
   ruleTree?: RuleGroup;
-  /** Superseded by ruleTree; read only when no tree is stored. Blocks
-   * ignore this and always apply. */
-  qualifyMode?: QualifyMode;
   /** Set for treatments loaded from the database. */
   id?: string;
 };
@@ -368,9 +379,11 @@ export function rulesFromWindow(def: TreatmentDef): Rule[] {
   const rules: Rule[] = [];
 
   // A 0-100 window constrains nothing, so it produces no rule.
-  if (def.applicableConditionMin > 0 || def.applicableConditionMax < 100) {
-    const lo = num(def.applicableConditionMin);
-    const hi = num(def.applicableConditionMax);
+  const windowMin = def.applicableConditionMin ?? 0;
+  const windowMax = def.applicableConditionMax ?? 100;
+  if (windowMin > 0 || windowMax < 100) {
+    const lo = num(windowMin);
+    const hi = num(windowMax);
     rules.push(
       makeRule(`Condition ${lo}-${hi}`, "The condition window this treatment was written for.", "allow", {
         field: "condition",

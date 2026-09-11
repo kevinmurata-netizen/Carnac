@@ -997,6 +997,20 @@ read by live code, so each one needs its readers rewritten first. Surveyed
 2026-09-08; check again before starting, since the survey is the part that goes
 stale.
 
+> **6.1–6.4 done 2026-09-11**, migration `20260911160000_phase_6b_cleanup`.
+> The warning above earned itself: re-running the survey found that most of
+> what follows had already been dealt with. `conditionRange` and the materials
+> render were gone, `fromLegacyTree` was already deleted, nothing wrote the
+> cost columns any more, and both `qualifyMode` fallbacks had been hardcoded to
+> `"all"`. What actually remained was two `orderBy` clauses, `toDef`, two
+> `deleteMany` calls and the schema itself. The notes below are left as
+> written, because a plan that turned out to be half-stale is worth being able
+> to see.
+>
+> **6.5 is deliberately still open.** It needs a redirect and a data migration
+> over two tables, and this section already says it should not share a release
+> with the column drops.
+
 ### 6.1 Applicability window → rules
 
 Superseded by Treatment Rules in Phase 1 and by the rule tree in Phase 5's
@@ -1048,6 +1062,36 @@ no longer exist.
 
 - Remove `fromLegacyTree` in `decision-tree.ts`. Already unreferenced — this
   one is a straight deletion.
+
+Already gone by the time 6b ran.
+
+### What 6b actually discarded
+
+Worth recording, because this is the step that cashes in the revert insurance
+Phases 1–2 were carrying.
+
+| | Rows on the seed network |
+| --- | --- |
+| `treatment_rules` | 0 |
+| `treatment_costs` | 24 |
+| Treatments still carrying `unitCost` | 12 of 13 |
+| Treatments still carrying a condition window | 12 of 13 |
+
+The 24 `treatment_costs` rows were the pre-Phase-2 Initial/Maintenance pairs,
+superseded by the 13 rows in `treatment_cost_rates`. Nothing had read them
+since Phase 2, but they were real rows and they are now gone.
+
+Two consequences in code worth knowing about:
+
+- **`TreatmentDef`'s window and prices became optional.** They describe the
+  shipped seed library, which still needs somewhere to put a window before
+  `rulesFromWindow` converts it and a price before `standardRateFor` does. A
+  definition read back from the database now carries neither — it is gated by
+  its rules and priced by its rates, and the type says so.
+- **The Treatments list sorts by name.** It sorted by the condition window,
+  which no longer exists. Category was the alternative and would have grouped
+  Repair together while scattering the alphabet inside it; a library is a list
+  people look things up in.
 
 ### 6.5 Rename the Decision Trees route
 

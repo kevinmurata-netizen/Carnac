@@ -30,6 +30,23 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-11",
+    title: "Phase 6b: remove what the treatment model rebuild replaced",
+    summary:
+      "The columns and tables superseded during the rebuild are gone. Nothing had read them for several releases; they were kept so the earlier phases could be reverted, and this is the release that gives that up.",
+    changes: [
+      "Dropped the condition window, the material and diameter limits, and the any/all switch from each treatment. Rules decide what a treatment applies to, and have since the rules feature shipped.",
+      "Dropped the price columns from each treatment. Cost rates have owned the price since they arrived; the treatment form stopped asking about it then, and nothing has written those columns since.",
+      "Dropped the two superseded tables behind them.",
+      "The Treatments library now sorts by name. It sorted by the condition window, which no longer exists — category was the alternative and would have grouped Repair together while scattering the alphabet inside it.",
+    ],
+    fixes: [
+      "The plan for this was written three days ago and most of it had already been done. Re-surveying first meant the change was a quarter the size it looked — worth the hour it cost.",
+    ],
+    note:
+      "Needs one migration, and it is the irreversible one. On the seed network it discarded 24 superseded cost rows and cleared the old window and price values from 12 of 13 treatments. Nothing reads any of it, and the replacements have been live for several releases — but from here the earlier phases cannot be rolled back. The Treatment Rules page is still at its old address; moving it needs its own release because two tables key on that URL.",
+  },
+  {
+    date: "2026-09-11",
     title: "Stop the model buying the same work twice, and spend the surplus",
     summary:
       "Two problems from the last change, fixed together. A treatment can no longer be repeated on the same segment for a set number of years, and work that does not pay for itself is now ranked last rather than refused outright.",
