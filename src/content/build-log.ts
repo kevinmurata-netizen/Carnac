@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-11",
+    title: "Filter the build log by date, and choose the order",
+    summary:
+      "The log is long enough now that reading it end to end is no longer how anyone uses it. Bound it to a date range, and read it forwards or backwards.",
+    changes: [
+      "From and To boxes, both inclusive. Leave either empty for no bound on that end; the page says what range actually exists so you cannot ask for a date the log never had.",
+      "Order: newest first, or oldest first. Oldest first is what you want when reading a stretch of work in the sequence it happened.",
+      "The filter lives in the address, so a filtered log can be sent to someone and arrives as the same view. It also survives a refresh and renders on the server, with no flash of the full list first.",
+      "Enter the dates the wrong way round and they are swapped rather than refused — with a line saying so, because silently showing a different range than the one typed would be worse than either.",
+      "A range with nothing in it says so plainly and offers a way back, rather than looking like a page that failed to load.",
+    ],
+    note: "No migration. Entries are written in the repository alongside the change they describe, so nothing here is stored.",
+  },
+  {
+    date: "2026-09-11",
     title: "Phase 6b: remove what the treatment model rebuild replaced",
     summary:
       "The columns and tables superseded during the rebuild are gone. Nothing had read them for several releases; they were kept so the earlier phases could be reverted, and this is the release that gives that up.",
