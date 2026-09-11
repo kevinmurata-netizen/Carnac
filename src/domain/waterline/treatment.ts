@@ -56,6 +56,9 @@ export type TreatmentDef = {
   mobilizationCost: number;
   annualMaintenanceCost: number;
   usefulLife: number;
+  /** Shortest time before this may be applied again to the same asset. Absent
+   * reads as DEFAULT_RETREATMENT_INTERVAL_YEARS. See ./retreatment.ts. */
+  retreatmentIntervalYears?: number | null;
   implementationConstraints?: string;
   /** Priced ways of doing this treatment, in the order they are tried. */
   costRates?: CostRate[];

@@ -2,6 +2,7 @@
 
 import { Label } from "@/components/ui/label";
 import type { TreatmentAdminRow } from "@/server/treatment-config";
+import { DEFAULT_RETREATMENT_INTERVAL_YEARS } from "@/domain/waterline/retreatment";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type { TreatmentActionState } from "./state";
 
@@ -32,6 +33,7 @@ export type TreatmentDraft = {
   name: string;
   category: string;
   usefulLife: string;
+  retreatmentIntervalYears: string;
   description: string;
   implementationConstraints: string;
   effectMode: "reset" | "gain";
@@ -47,6 +49,10 @@ export function draftFromTreatment(treatment?: TreatmentAdminRow): TreatmentDraf
     name: treatment?.name ?? "",
     category: treatment?.category ?? "Repair",
     usefulLife: str(treatment?.usefulLife ?? 0),
+    // Blank rather than the default's number, so the box shows that nothing
+    // has been decided rather than implying someone chose five.
+    retreatmentIntervalYears:
+      treatment?.retreatmentIntervalYears == null ? "" : str(treatment.retreatmentIntervalYears),
     description: treatment?.description ?? "",
     implementationConstraints: treatment?.implementationConstraints ?? "",
     effectMode: treatment?.conditionResetTo != null ? "reset" : "gain",
@@ -123,6 +129,25 @@ export function DefinitionFields({ draft, onChange }: FieldProps) {
             onChange={(e) => onChange({ usefulLife: e.target.value })}
             className={input}
           />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="retreatmentIntervalYears">Repeat no sooner than (yr)</Label>
+          <input
+            id="retreatmentIntervalYears"
+            name="retreatmentIntervalYears"
+            type="number"
+            min={0}
+            placeholder={String(DEFAULT_RETREATMENT_INTERVAL_YEARS)}
+            value={draft.retreatmentIntervalYears}
+            onChange={(e) => onChange({ retreatmentIntervalYears: e.target.value })}
+            className={input}
+          />
+          <p className="text-xs text-muted-foreground">
+            A backstop, not the mechanism. What should really stop this being bought again is its own effect — a
+            treatment that lifts an asset out of the window its rules test will not re-qualify until the asset decays
+            back. Raise this where a model has been seen to repeat work it should not. Blank uses{" "}
+            {DEFAULT_RETREATMENT_INTERVAL_YEARS} years.
+          </p>
         </div>
         <div className="space-y-1.5 sm:col-span-4">
           <Label htmlFor="description">Description</Label>

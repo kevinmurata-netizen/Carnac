@@ -1,0 +1,27 @@
+-- The shortest time before a treatment may be repeated on the same asset.
+--
+-- A backstop, not the mechanism. In a well-built library the rules already
+-- prevent re-treatment: relining resets condition to 85 and the relining rule
+-- only fires between 20 and 55, so a segment cannot re-qualify until it has
+-- decayed back down. That is how the real thing works, and it is what an
+-- organization should be investing in.
+--
+-- But a model whose rules are looser than its author intended will happily
+-- buy the same work every year, and the simulation has no way to know that
+-- was not meant. Measured on the seed network before this existed: $336,012
+-- of lining on one segment every year for eighteen years, gaining 1.5
+-- condition points each time.
+--
+-- Null reads as DEFAULT_RETREATMENT_INTERVAL_YEARS (5) rather than "no
+-- limit", so an existing library gets the backstop without anyone editing
+-- thirteen treatments. Five is deliberately short: it is there to catch a
+-- pathology, not to express policy. Anything longer is a statement about this
+-- treatment, and is worth someone typing.
+--
+-- Deliberately per-treatment rather than per-asset. "This segment is done for
+-- fifty years" would forbid a spot repair in year three that might be exactly
+-- the right call; "you do not reline a segment you lined three years ago"
+-- says nothing about what else you might do to it.
+
+-- AlterTable
+ALTER TABLE "treatments" ADD COLUMN "retreatmentIntervalYears" INTEGER;

@@ -30,6 +30,26 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-11",
+    title: "Stop the model buying the same work twice, and spend the surplus",
+    summary:
+      "Two problems from the last change, fixed together. A treatment can no longer be repeated on the same segment for a set number of years, and work that does not pay for itself is now ranked last rather than refused outright.",
+    changes: [
+      "Every treatment gains “Repeat no sooner than” — the shortest time before it can be applied again to the same segment. Blank means five years, so nothing needs editing to get the protection.",
+      "It is per treatment, not per segment. A lockout on relining does not forbid a spot repair next year, which is the whole point: you might well want something else done in the meantime.",
+      "A combination counts as all of its parts. Applying one locks every treatment in it, and any locked part blocks the whole bundle — otherwise relining a segment and then buying a bundle containing relining gets the same work done twice under a different name.",
+      "It is a backstop, and the field says so. What should really stop a treatment being repeated is its own effect: a treatment that lifts a segment out of the window its rules test will not re-qualify until the segment decays back.",
+      "Paying for itself is now a tier rather than a gate. Work that pays back is bought first; work that does not stays on the list, so a budget bigger than the paying work spends the surplus on the next best thing instead of leaving it idle.",
+    ],
+    fixes: [
+      "A combination could beat a single treatment across that tier, not just within it. On one segment the model kept buying a $336,012 bundle that lost $277,402 over its life while passing over a $9,880 valve replacement that saved $81,403 — because the bundle was a bundle and got looked at first.",
+      "Work plans silently dropped every segment whose best option did not pay for itself. Those segments were not scheduled and not counted as backlog either; they simply vanished from the plan. They are now ranked last and show up as backlog if the money runs out.",
+      "The funding plan editor warns when a category left at 100% is not last. An ordered plan with everything at 100% is not even-handed — it is the first category, exhaustively, and on the seed network that meant 85% rehabilitation and 2% renewal.",
+    ],
+    note:
+      "Needs one migration. Scenarios separate again on what they cost rather than what they reach: all four land near 72 WCI because that is roughly the condition target, but failures run 102 under Increased Funding against 146 under Reduced, and backlog $0 against $6.5M. Re-run your scenarios after deploying.",
+  },
+  {
+    date: "2026-09-11",
     title: "Scenarios now choose their work by Priority Score",
     summary:
       "A scenario used to pick one treatment per segment by risk reduction per dollar, then rank the segments by its strategy. It now ranks every treatment and every combination by Priority Score and funds down that list, category by category, in the order the funding plan sets.",

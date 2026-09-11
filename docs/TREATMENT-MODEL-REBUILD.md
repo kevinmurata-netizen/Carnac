@@ -869,13 +869,94 @@ rather than hidden: backlog reads $0 and spend reads under budget. But it makes
 Scenario Planning much worse at its actual job, which is telling two funding
 levels apart.
 
+### 5.8 Retreatment, and paying for itself as a tier
+
+**Settled 2026-09-11.** §5.7 closed with two problems: the "must pay for
+itself" gate made every scenario converge, and nothing stopped the model
+re-buying the same work forever if that gate were relaxed. Both are addressed,
+and they had to be addressed together.
+
+#### The retreatment interval is a backstop, not the mechanism
+
+Each treatment carries `retreatmentIntervalYears` — the shortest time before it
+may be applied again to the same asset. Null reads as five years, so an
+existing library gets the backstop without anyone editing thirteen rows.
+
+**Per treatment, not per asset.** "This segment is done for fifty years" would
+forbid a spot repair in year three that might be exactly the right call. "You
+do not reline a segment you lined three years ago" says nothing about what else
+you might do to it.
+
+**A combination inherits its members' lockouts**, in both directions: applying
+one records every member, and any member still locked blocks the whole bundle.
+Without that the escape hatch is obvious — reline a segment, then two years
+later buy a bundle containing relining under a different name.
+
+**And it should rarely be what stops anything.** In a well-built library the
+rules already prevent re-treatment, because a treatment's own effect moves the
+asset out of the window that admitted it: relining resets condition to 85 and
+the relining rule fires between 20 and 55. That is how the real thing works and
+it is what an organization should be investing in. Five years is short on
+purpose — it catches a pathology rather than expressing a policy.
+
+#### Paying for itself became a tier
+
+Work whose life-cycle saving is positive is bought before work whose is not.
+The rest stays on the list, so a budget larger than the work that pays back
+spends the surplus on the next best thing rather than not at all.
+
+#### What each change was worth, measured
+
+Four scenarios, 20 years, no funding plan. "Hard gate" is §5.7 as shipped.
+
+| | Hard gate | Interval + tier |
+| --- | --- | --- |
+| Current Funding | 71.4 WCI, $49.4M, $0 backlog | 72.3 WCI, $107.0M, $2.8M |
+| Increased (+50%) | 70.9 WCI, $49.7M, $0 | 72.3 WCI, $138.0M, $0 |
+| Reduced (−40%) | 72.3 WCI, $48.8M, $0 | 72.0 WCI, $64.4M, $6.5M |
+| Worst-First | 71.4 WCI, $49.4M, $0 | 72.0 WCI, $107.1M, $3.8M |
+
+**Condition still converges, and that is correct.** All four land near 72
+because the condition target is 70 and the "must do something" test requires
+reaching it: the model drives to target and stops. What separates now is what
+getting there costs and what happens on the way — failures run 102 under
+Increased Funding against 146 under Reduced, and backlog runs $0 against $6.5M.
+Budget is binding again.
+
+#### A bug the tier exposed
+
+Rule 4 of §5.7 — a combination beats a single treatment on the same asset even
+at a lower score — was reaching **across** the tier. On one segment at 69 WCI
+the engine kept buying a $336,012 bundle whose life-cycle saving was
+−$277,402, passing over a $9,880 valve replacement that saved $81,403, because
+the bundle was a bundle and reached first.
+
+The preference for a bundle is about avoiding a second visit. That is worth
+giving up some Priority Score for; it is not worth giving up the difference
+between work that pays for itself and work that does not. The rule now applies
+within a tier and never across one. Fixing it took the worst segment from
+$1,139,403 over eleven treatments to $747,450 over ten, with the expensive
+bundle bought once rather than three times.
+
+#### An ordered plan of all-100% is not neutral
+
+Worth stating because the name suggests otherwise. A funding plan is walked in
+order, and a category at 100% takes whatever it can before the next is reached.
+So a plan listing every category at 100% is not "even" — it is "the first
+category, exhaustively". Measured: an all-100% plan spent 85% on
+rehabilitation and 2% on renewal, against 56% renewal with no plan at all.
+
+The plans carried over from the category weightings in §5.6 inherit their
+names, so the one called **Even-handed** behaves this way. The editor now warns
+when an uncapped category is not last.
+
 #### Still open
 
-Whether the "must pay for itself" gate is the right instrument, given what it
-does to scenario comparison. A softer form — allowing negative-saving work once
-the paying work is exhausted, so surplus budget is spent on the next-best thing
-rather than not at all — would restore budget sensitivity without bringing the
-churn back. It is not specified or built.
+Whether the model should be able to rotate between treatments the way it still
+can. The interval stops repetition; it does not stop a segment receiving a
+different treatment every other year, and one segment still takes ten over
+twenty years. Most of that is cheap tier-1 maintenance and defensible, but
+nothing currently expresses "this segment has had enough attention".
 
 Whether the five prioritization strategies still mean what their descriptions
 say. They now govern **eligibility** (`isEligible`) and, for `replacement-only`,

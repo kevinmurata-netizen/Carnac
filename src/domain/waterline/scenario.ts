@@ -22,6 +22,7 @@ import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
 import { selectForYear } from "./selection";
+import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import { buildLccaEvaluator } from "./lcca-evaluator";
 import {
   benefitCof,
@@ -216,6 +217,9 @@ type Candidate = {
    * explain itself. */
   terms: BenefitTerms;
   benefit: number;
+  /** Whether the work pays for itself over the horizon. Not a filter but a
+   * tier: everything that does is bought before anything that does not. */
+  paysForItself: boolean;
 };
 
 function buildContext(asset: SimAsset): AssetTreatmentContext {
@@ -257,6 +261,8 @@ function buildContext(asset: SimAsset): AssetTreatmentContext {
 function rankCandidates(
   state: SimAsset[],
   assumptions: ScenarioAssumptions,
+  year: number,
+  history: TreatmentHistory,
   ctx: {
     library: TreatmentDef[];
     combinations: CombinationDef[];
@@ -267,7 +273,7 @@ function rankCandidates(
     fallbackReplacement: TreatmentDef;
   }
 ): Candidate[] {
-  type Pending = Omit<Candidate, "priority" | "benefit" | "terms">;
+  type Pending = Omit<Candidate, "priority" | "benefit" | "terms" | "paysForItself">;
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
 
   for (const asset of state) {
@@ -284,6 +290,11 @@ function rankCandidates(
     if (assumptions.strategy === "replacement-only") {
       options = options.filter((o) => o.category === "Renew");
     }
+
+    // Anything still inside its own lockout on this asset. A backstop for
+    // rules looser than their author intended — see ./retreatment.ts, which
+    // argues at length that it should rarely be what stops anything.
+    options = options.filter((o) => !withinInterval(history, asset.id, o, year));
     if (options.length === 0) continue;
 
     const pof = assetCtx.pof ?? pofFromCondition(asset.condition);
@@ -327,6 +338,7 @@ function rankCandidates(
     ...s.item,
     terms: s.raw,
     benefit: s.benefit,
+    paysForItself: s.raw.lifeCycleSaving > 0,
     priority: priorityScore({
       criticality: s.item.asset.criticalityScore,
       scaleFactor: s.item.asset.scaleFactor,
@@ -353,42 +365,40 @@ function rankCandidates(
   // best available spend, and the network decays while the budget is fully
   // committed to churn. Measured on the seed network, dropping it cost 30 WCI
   // points while spending twice as much.
-  // Three tests, and the simulation needs all of them. Each was added because
-  // the run misbehaved without it, and the misbehaviour is recorded so nobody
-  // removes one on the grounds that it looks redundant.
+  // Two hard filters, then a tier.
   //
-  //  * **It must pay for itself.** Life-cycle saving over the horizon must be
-  //    positive. Without this the model buys $336,000 of lining every year for
-  //    eighteen years to hold one segment at 70 WCI, because the Priority
-  //    Score's benefit term is min-max normalized: in a year when everything
-  //    left is marginal, the best of a marginal set still scores near 100, and
-  //    criticality x scale then swamps the fact that the gain was 1.5 points.
-  //    Measured, dropping this test cost 27 WCI points across the network
-  //    while spending the entire budget.
+  // **It must do something**: lift the asset to the condition target, or cut
+  // risk by at least MIN_RISK_REDUCTION_PCT. This stops per-dollar ranking
+  // preferring a cheap patch that adds three points to a failing main.
   //
-  //  * **It must do something.** Lift the asset to the condition target, or
-  //    cut risk by at least MIN_RISK_REDUCTION_PCT. Older than the rest, and
-  //    it stops per-dollar ranking preferring a cheap patch that adds three
-  //    points to a failing main.
-  //
-  //  * **It must clear the effectiveness floor**, below §5.5's condition line.
-  //    Shared with the recommendation and the network-wide ranking.
-  //
-  // The first two are ANDed on purpose. Requiring only material risk reduction
-  // lets the expensive marginal work back in — measured at 49.3 WCI against
-  // 71.4 — because a big lining job on a middling asset does clear 25%.
-  const worthDoing = scored.filter(
+  // **It must clear the effectiveness floor** (§5.5), below that section's
+  // condition line. Shared with the recommendation and the network-wide
+  // ranking.
+  const fundable = scored.filter(
     (c) =>
-      c.terms.lifeCycleSaving > 0 &&
       (c.projectedCondition >= assumptions.conditionTarget ||
-        (riskPct(c) ?? 0) >= MIN_RISK_REDUCTION_PCT)
+        (riskPct(c) ?? 0) >= MIN_RISK_REDUCTION_PCT) &&
+      clearsEffectivenessFloor(c.asset.condition, riskPct(c))
   );
 
-  const fundable = (worthDoing.length > 0 ? worthDoing : scored).filter((c) =>
-    clearsEffectivenessFloor(c.asset.condition, riskPct(c))
-  );
-
-  return fundable.sort((a, b) => (b.priority ?? -1) - (a.priority ?? -1));
+  // **Paying for itself is a tier, not a filter.** Everything whose life-cycle
+  // saving is positive is bought before anything whose is not, but the rest
+  // stay on the list — so a budget larger than the work that pays back spends
+  // the surplus on the next best thing rather than not at all.
+  //
+  // It was a hard filter first, and excluding the second tier entirely made
+  // every scenario converge: budgets differing by two and a half times reached
+  // the same condition, because the constraint stopped being money. It was a
+  // filter at all because without it the model bought $336,012 of lining on
+  // one segment every year for eighteen years — the benefit term is min-max
+  // normalized, so in a year when everything left is marginal the best of a
+  // marginal set still scores near 100. The retreatment interval is what makes
+  // demotion safe: that purchase can now happen once every five years at
+  // worst, not every year.
+  return fundable.sort((a, b) => {
+    if (a.paysForItself !== b.paysForItself) return a.paysForItself ? -1 : 1;
+    return (b.priority ?? -1) - (a.priority ?? -1);
+  });
 }
 
 function isEligible(asset: SimAsset, a: ScenarioAssumptions): boolean {
@@ -464,6 +474,9 @@ export function runScenario(
 
   // Work on copies so a scenario run never mutates caller state.
   const state: SimAsset[] = assets.map((a) => ({ ...a }));
+  /** What each asset has already had, and when. Drives the retreatment
+   * interval, and carries across years for the whole run. */
+  const history: TreatmentHistory = new Map();
   const startCondition = new Map(assets.map((a) => [a.id, a.condition]));
   const treatmentCount = new Map<string, number>();
   const startYear = new Date().getFullYear();
@@ -481,7 +494,7 @@ export function runScenario(
     // 1. Every option on every eligible asset, priced and scored against this
     //    year's condition. Rebuilt each year on purpose — last year's work
     //    and a year of deterioration both change what is worth doing.
-    const candidates = rankCandidates(state, assumptions, {
+    const candidates = rankCandidates(state, assumptions, year, history, {
       library,
       combinations,
       selection,
@@ -513,6 +526,7 @@ export function runScenario(
         riskBefore: Math.round(candidate.riskNow * 10) / 10,
         riskAfter: Math.round(candidate.riskAfter * 10) / 10,
       });
+      recordTreatment(history, candidate.assetId, candidate.option, year);
       candidate.asset.condition = candidate.projectedCondition;
       candidate.asset.effectiveAge = effectiveAgeForCondition(candidate.asset.curve, candidate.projectedCondition);
     }

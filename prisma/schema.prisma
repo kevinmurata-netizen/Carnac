@@ -662,6 +662,16 @@ model Treatment {
   annualMaintenanceCost  Float?
   usefulLife             Int?
 
+  /// Shortest time before this treatment may be applied again to the same
+  /// asset. Null reads as the shipped default (5 years).
+  ///
+  /// A backstop for rules that are looser than their author intended, not the
+  /// mechanism: a well-built library prevents re-treatment through the rules,
+  /// because the treatment's own effect moves the asset out of the window
+  /// that admitted it. Per-treatment rather than per-asset, so a lockout on
+  /// relining does not also forbid a spot repair next year.
+  retreatmentIntervalYears Int?
+
   /// Superseded by `ruleTree`, which can express the same thing and more.
   /// Kept for one release so the conversion can be checked and reverted;
   /// dropped in Phase 6.
