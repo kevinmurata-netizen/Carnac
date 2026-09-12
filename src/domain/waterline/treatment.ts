@@ -567,6 +567,11 @@ export type TreatmentOption = {
   /** The rate that priced each member, in member order. */
   rates: CostRate[];
   cost: number;
+  /** The mobilization actually charged — a combination's own figure where it
+   * sets one, otherwise the largest of the members' rates. Carried on the
+   * option so `splitOptionCost` divides up the same number that was charged,
+   * rather than re-deriving it and drifting. */
+  mobilization: number;
   /** One sentence per member saying which rate set its share of the price. */
   costReasons: string[];
   projectedCondition: number;
@@ -590,6 +595,9 @@ export type CombinationDef = {
    * should not re-state conditions its members already carry. */
   rules?: Rule[];
   qualifyMode?: QualifyMode;
+  /** What mobilizing for this bundle costs, replacing the largest of the
+   * members' rates. Null or absent keeps that inferred figure. */
+  mobilizationCost?: number | null;
 };
 
 /** Which category a bundle reports as. The most committing member wins, so a
@@ -612,7 +620,17 @@ export function buildOption(
   id: string,
   label: string,
   members: TreatmentDef[],
-  ctx: AssetTreatmentContext
+  ctx: AssetTreatmentContext,
+  /**
+   * What mobilizing for this bundle costs, when someone has said.
+   *
+   * Null or absent falls back to the largest of the members' rates, which is
+   * what a bundle was always charged. The override exists because that is a
+   * guess: a real dig-once job may mobilize for more than any of its parts or
+   * for less, and the difference lands directly in the Priority Score, whose
+   * divisor is total cost.
+   */
+  mobilizationOverride?: number | null
 ): TreatmentOption | null {
   if (members.length === 0) return null;
 
@@ -629,7 +647,11 @@ export function buildOption(
     (sum, r) => sum + (r.costUnit === "per LF" ? r.unitCost * factor * (ctx.lengthFt ?? 0) : r.unitCost * factor),
     0
   );
-  const mobilization = Math.max(...rates.map((r) => r.mobilizationCost));
+  const inferredMobilization = Math.max(...rates.map((r) => r.mobilizationCost));
+  const mobilization =
+    mobilizationOverride != null && Number.isFinite(mobilizationOverride) && mobilizationOverride >= 0
+      ? mobilizationOverride
+      : inferredMobilization;
   const cost = Math.round(unitTotal + mobilization);
 
   // Condition: a reset establishes a floor, gains are incremental on top.
@@ -650,6 +672,7 @@ export function buildOption(
     members,
     rates,
     cost,
+    mobilization,
     costReasons: resolved.map((p) => p.reason),
     projectedCondition,
     conditionGain: Math.round((projectedCondition - current) * 10) / 10,
@@ -714,7 +737,7 @@ export function enumerateOptions(
       continue;
     }
 
-    const option = buildOption(`combo:${combo.id}`, combo.name, members, ctx);
+    const option = buildOption(`combo:${combo.id}`, combo.name, members, ctx, combo.mobilizationCost);
     if (option) options.push(option);
   }
 
@@ -737,10 +760,15 @@ export function splitOptionCost(option: TreatmentOption, ctx: AssetTreatmentCont
     r.costUnit === "per LF" ? r.unitCost * factor * (ctx.lengthFt ?? 0) : r.unitCost * factor
   );
 
+  // Mobilization is read off the option rather than re-derived, so a bundle
+  // that set its own figure splits the amount actually charged. Which member
+  // carries it is still decided by whose rate mobilizes for most — arbitrary
+  // either way, but stable, and it keeps the split unchanged for every bundle
+  // that has not overridden anything.
   const maxMob = Math.max(...option.rates.map((r) => r.mobilizationCost));
   const mobIndex = option.rates.findIndex((r) => r.mobilizationCost === maxMob);
 
-  const shares = units.map((u, i) => Math.round(u + (i === mobIndex ? maxMob : 0)));
+  const shares = units.map((u, i) => Math.round(u + (i === mobIndex ? option.mobilization : 0)));
   const drift = option.cost - shares.reduce((sum, s) => sum + s, 0);
   if (drift !== 0) {
     const largest = shares.indexOf(Math.max(...shares));
