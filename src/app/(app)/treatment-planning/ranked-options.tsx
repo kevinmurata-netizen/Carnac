@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { PriorityRanking } from "@/server/priority";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
+import { RankedGrid } from "./ranked-grid";
 import { ExportButton } from "@/components/layout/export-button";
 
 const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -15,7 +15,6 @@ const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
   Retire: "secondary",
 };
 
-const SHOWN = 25;
 /** The window the mix is measured over. Long enough to be a real program,
  * short enough that it is the part of the ranking anyone would fund. */
 const MIX_WINDOW = 100;
@@ -31,11 +30,10 @@ const MIX_WINDOW = 100;
  * of a hundred patches is a statement about cost spread, not about the network.
  */
 export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
-  // The mix and the table both read the fundable list. An option the
-  // effectiveness floor rules out is still scored and still findable, but
-  // showing it at the top would suggest it is on the table when it is not.
+  // The mix and the grid both read the fundable list. An option the
+  // effectiveness floor rules out is still scored and still exported, but
+  // showing it here would suggest it is on the table when it is not.
   const fundable = ranking.rows.filter((r) => r.eligible);
-  const top = fundable.slice(0, SHOWN);
   const window = fundable.slice(0, MIX_WINDOW);
 
   const mix = new Map<TreatmentCategory, { count: number; cost: number }>();
@@ -121,89 +119,36 @@ export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
           )}
         </div>
 
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">#</TableHead>
-                <TableHead>Segment</TableHead>
-                <TableHead>Option</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead className="text-right">Total Cost</TableHead>
-                <TableHead className="text-right">Benefit</TableHead>
-                <TableHead className="text-right">Priority</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {top.map((row, i) => (
-                <TableRow key={`${row.assetId}:${row.optionId}`}>
-                  <TableCell className="tabular-nums text-muted-foreground">{i + 1}</TableCell>
-                  <TableCell>
-                    <Link
-                      href={`/assets/${row.assetId}?tab=treatments`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {row.assetCode}
-                    </Link>
-                    {row.conditionScore != null && (
-                      <span className="ml-1.5 text-xs text-muted-foreground">WCI {row.conditionScore}</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-medium">{row.optionLabel}</span>
-                    {row.isCombination && (
-                      <span className="ml-1.5 text-xs text-muted-foreground">{row.members.join(" + ")}</span>
-                    )}
-                    {row.isRecommended && (
-                      <span
-                        className="ml-1.5 text-xs text-muted-foreground"
-                        title="This is also what the segment's own recommendation picks, on its separate risk-reduction-per-dollar basis with the professional overrides applied."
-                      >
-                        · recommended
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={CATEGORY_VARIANT[row.category] ?? "default"}>{row.category}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{formatCurrency(row.totalCost)}</TableCell>
-                  <TableCell
-                    className="text-right tabular-nums"
-                    title={`Condition +${Math.round(row.benefitTerms.conditionImprovement)} WCI · Risk −${
-                      Math.round(row.benefitTerms.riskReduction * 10) / 10
-                    } pts (criticality excluded) · Life-cycle saving ${formatCurrency(
-                      row.benefitTerms.lifeCycleSaving
-                    )}`}
-                  >
-                    {row.expectedBenefit}
-                  </TableCell>
-                  <TableCell
-                    className="text-right font-medium tabular-nums"
-                    title={
-                      row.priority == null
-                        ? "No priority score — this option could not be priced, so there is nothing to divide by."
-                        : `criticality ${Math.round(row.criticality * 10) / 10} × scale ${
-                            Math.round(row.scaleFactor * 100) / 100
-                          }${row.categoryWeight === 1 ? "" : ` × category ×${row.categoryWeight}`} × benefit ${
-                            row.expectedBenefit
-                          } ÷ ${formatCurrency(row.totalCost)}`
-                    }
-                  >
-                    {row.priority ?? "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        {/* The grid is a client component so search can filter as you type.
+            It receives the fundable rows in a trimmed shape — see
+            ranked-grid.tsx for what that costs and where it stops scaling. */}
+        <RankedGrid
+          rows={fundable.map((r) => ({
+            assetId: r.assetId,
+            assetCode: r.assetCode,
+            conditionScore: r.conditionScore,
+            riskScore: r.riskScore,
+            optionLabel: r.optionLabel,
+            members: r.members.join(" + "),
+            isCombination: r.isCombination,
+            category: r.category,
+            totalCost: r.totalCost,
+            expectedBenefit: r.expectedBenefit,
+            priority: r.priority,
+            criticality: Math.round(r.criticality * 10) / 10,
+            scaleFactor: Math.round(r.scaleFactor * 100) / 100,
+            categoryWeight: r.categoryWeight,
+            isRecommended: r.isRecommended,
+            conditionGain: Math.round(r.benefitTerms.conditionImprovement),
+            riskPointsRemoved: Math.round(r.benefitTerms.riskReduction * 10) / 10,
+            lifeCycleSaving: Math.round(r.benefitTerms.lifeCycleSaving),
+          }))}
+        />
 
-        {fundable.length > top.length && (
-          <p className="border-t pt-3 text-xs text-muted-foreground">
-            Showing the {top.length} highest-scoring of {formatNumber(fundable.length)} fundable options across{" "}
-            {formatNumber(ranking.assetsWithOptions)} segments. Choosing which of these a scenario actually considers,
-            and fitting them to a budget, is what Scenario Planning does with them.
-          </p>
-        )}
+        <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
+          Across {formatNumber(ranking.assetsWithOptions)} segments. Choosing which of these a scenario actually
+          considers, and fitting them to a budget, is what Scenario Planning does with them.
+        </p>
       </CardContent>
     </Card>
   );
