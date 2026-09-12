@@ -717,6 +717,19 @@ model TreatmentCombination {
   /// members already carry.
   qualifyMode String @default("all")
 
+  /// What it costs to mobilize for this bundle, replacing the figure the
+  /// engine would otherwise infer.
+  ///
+  /// Mobilization has never been summed across members -- `buildOption`
+  /// charges it once, at the largest of their rates, because one crew and one
+  /// traffic plan is the reason to bundle at all. But "the largest of the
+  /// members'" is a guess. A real dig-once job may mobilize for more than any
+  /// of its parts, or for less, and that difference goes straight into the
+  /// Priority Score because total cost is its divisor.
+  ///
+  /// Null keeps the inferred figure.
+  mobilizationCost Float?
+
   members         CombinationMember[]
   rules           CombinationRuleLink[]
   scenarioOptions ScenarioCombination[]

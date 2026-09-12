@@ -34,6 +34,8 @@ export type CombinationPayload = {
   description: string;
   enabled: boolean;
   qualifyMode: "any" | "all";
+  /** Null keeps the inferred figure rather than meaning "free". */
+  mobilizationCost: number | null;
   members: Array<{ treatmentId: string; required: boolean }>;
   ruleIds: string[];
 };
@@ -49,6 +51,12 @@ export async function saveCombinationAction(
       description: payload.description,
       enabled: Boolean(payload.enabled),
       qualifyMode: payload.qualifyMode === "any" ? ("any" as const) : ("all" as const),
+      // An empty box means "keep inferring", not "costs nothing" — so only a
+      // real number is taken, and anything else falls back to null.
+      mobilizationCost:
+        typeof payload.mobilizationCost === "number" && Number.isFinite(payload.mobilizationCost)
+          ? payload.mobilizationCost
+          : null,
       members: Array.isArray(payload.members) ? payload.members : [],
       ruleIds: Array.isArray(payload.ruleIds) ? payload.ruleIds : [],
     };

@@ -358,7 +358,7 @@ Treatment Combinations page and each is a setting, not a constant.
 
 | Quantity | Rule | Why |
 | --- | --- | --- |
-| **Cost** | Σ unit costs (each resolved through its own cost rules) **+ the single largest mobilization**, not the sum | One crew, one traffic plan, one bypass. Summing mobilization would make every bundle look expensive and the feature would never fire — this saving *is* the reason to bundle. |
+| **Cost** | Σ unit costs (each resolved through its own cost rules) **+ one mobilization** — the combination's own figure where it sets one, otherwise the single largest of the members', never the sum | One crew, one traffic plan, one bypass. Summing mobilization would make every bundle look expensive and the feature would never fire — this saving *is* the reason to bundle. The override was added 2026-09-12; "largest of the members'" was only ever a guess, and the difference lands in the Priority Score. |
 | **Condition** | max of members' `conditionResetTo`, then add all `conditionGain` values, capped at 100 | A reset establishes a floor; gains are incremental on top. |
 | **Failure probability** | product of members' multipliers | Independent mitigations compound. |
 | **Life extension** | **max**, not sum | A liner and anodes on the same main do not give 50 + 15 years. Summing is the intuitive error and it inflates every LCCA. |
@@ -1206,10 +1206,23 @@ remain open.**
    districts are a separate concept from service areas, that is its own field
    and its own import mapping, and it belongs in Phase 0.
 
-3. **Largest mobilization, or something else?** §5.1 assumes one mobilization
-   per bundle. If your combinations mix trenchless and open-cut work that would
-   genuinely mobilize twice, the rule should be "largest per work method" and
-   treatments need a `workMethod` attribute.
+3. ~~**Largest mobilization, or something else?**~~ **Answered 2026-09-12 by
+   letting someone say.** A combination carries an optional
+   `mobilizationCost`; null keeps the largest-of-members rule §5.1 always
+   applied. The guess is still the default because it is a reasonable one, but
+   a bundle that genuinely mobilizes twice can now be priced as such by
+   entering the figure, and one that mobilizes once for less than either part
+   can say so — which is what makes bundling rank higher, since total cost is
+   the Priority Score's divisor.
+
+   Measured: dropping *Dig-once repair* from its inferred $2,500 to $500 took
+   its best instance from $12,110 to $10,110 and its Priority Score from 176.0
+   to 210.9, and moved combinations in the top 20 from 11 to 14.
+
+   This does **not** close the `workMethod` question underneath it. A
+   per-combination number is a manual answer; a rule that knows trenchless and
+   open-cut mobilize separately would still be better for an organization with
+   many bundles, and nothing here prevents adding one later.
 
 4. **Life extension = max.** Stated as the safe default. If a bundle's whole
    point is additive life, this needs to be per-combination rather than global.

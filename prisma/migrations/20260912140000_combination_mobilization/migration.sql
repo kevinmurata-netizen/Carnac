@@ -1,0 +1,17 @@
+-- One mobilization for a bundle, set rather than inferred.
+--
+-- The engine has never summed mobilization across a bundle's members: since
+-- combinations arrived, `buildOption` has charged it once, at the largest of
+-- the members' rates. One crew, one traffic plan, one bypass -- summing would
+-- have meant no bundle ever won on cost.
+--
+-- What it could not do is let anyone say what that figure actually is. "The
+-- largest of the members'" is a defensible guess and nothing more. A real
+-- dig-once job may cost more to mobilize than any of its parts (a bigger crew,
+-- a longer closure) or less (one negotiated setup covering both), and the
+-- difference goes straight into the Priority Score, because total cost is its
+-- divisor.
+--
+-- Null keeps the inferred figure, so every existing combination prices exactly
+-- as it did. A number replaces it.
+ALTER TABLE "treatment_combinations" ADD COLUMN "mobilizationCost" DOUBLE PRECISION;

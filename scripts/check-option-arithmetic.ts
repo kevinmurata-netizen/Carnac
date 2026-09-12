@@ -75,6 +75,30 @@ check("life extension is max, not sum", combo.expectedLifeExtension, 50);
 check("maintenance sums", combo.annualMaintenanceCost, 1100);
 check("useful life is max", combo.usefulLife, 50);
 check("two cost reasons, one per member", combo.costReasons.length, 2);
+check("mobilization charged is reported on the option", combo.mobilization, 30000);
+
+// --- a bundle that sets its own mobilization -------------------------------
+//
+// The override is the whole point of the feature: "largest of the members'" is
+// a guess, and a real dig-once job may mobilize for less than either part
+// would alone. Because total cost is the Priority Score's divisor, a cheaper
+// mobilization is what makes bundling rank higher.
+const cheaper = buildOption("combo:x", "Trenchless package", [relining, cathodic], ctx, 12000)!;
+check("override replaces the inferred mobilization", cheaper.cost, 185 * 1000 + 35 * 1000 + 12000);
+check("override is reported on the option", cheaper.mobilization, 12000);
+check("override makes the bundle cheaper than the inferred figure", cheaper.cost < combo.cost, true);
+
+const dearer = buildOption("combo:x", "Trenchless package", [relining, cathodic], ctx, 44000)!;
+check("an override above the largest member is honoured too", dearer.cost, 185 * 1000 + 35 * 1000 + 44000);
+
+// Zero is a real answer -- a bundle folded into work already mobilized for --
+// and must not be mistaken for "not set".
+const free = buildOption("combo:x", "Trenchless package", [relining, cathodic], ctx, 0)!;
+check("zero is an override, not an absent one", free.cost, 185 * 1000 + 35 * 1000);
+
+// Absent and null both mean "keep inferring".
+const inferred = buildOption("combo:x", "Trenchless package", [relining, cathodic], ctx, null)!;
+check("null keeps the inferred figure", inferred.cost, combo.cost);
 
 // Condition cap.
 const nearFull = buildOption("combo:y", "y", [relining, cathodic], { ...ctx, conditionScore: 99 })!;

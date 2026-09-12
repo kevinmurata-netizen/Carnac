@@ -18,6 +18,8 @@ export type CombinationDraft = {
   description: string;
   enabled: boolean;
   qualifyMode: "any" | "all";
+  /** Null means the engine keeps inferring it from the members' rates. */
+  mobilizationCost: number | null;
   members: Array<{ treatmentId: string; required: boolean }>;
   ruleIds: string[];
 };
@@ -39,7 +41,7 @@ export function CombinationEditor({
   onDelete,
 }: {
   initial: CombinationDraft;
-  treatments: Array<{ id: string; name: string; category: string }>;
+  treatments: Array<{ id: string; name: string; category: string; mobilizationCost: number }>;
   rules: RuleSummary[];
   /** Treatments that reset condition rather than nudging it — two in one
    * bundle is almost always an authoring error. */
@@ -54,6 +56,17 @@ export function CombinationEditor({
   // The saved draft itself, so Discard can put it back rather than only
   // noticing that something differs.
   const [saved, setSaved] = useState<CombinationDraft>(initial);
+
+  // What the engine would charge with nothing set: the largest of the chosen
+  // members' fallback mobilizations. Null while fewer than two are chosen,
+  // since a bundle needs two to be one.
+  const inferredMobilization =
+    draft.members.length > 1
+      ? Math.max(
+          0,
+          ...draft.members.map((m) => treatments.find((t) => t.id === m.treatmentId)?.mobilizationCost ?? 0)
+        )
+      : null;
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 
   const memberOf = (id: string) => draft.members.find((m) => m.treatmentId === id);
@@ -123,6 +136,46 @@ export function CombinationEditor({
             placeholder="Why these go together (optional)"
             className={`${control} w-full max-w-lg`}
           />
+
+          {/* The number that makes bundling pay.
+              Mobilization has never been summed across the members — the
+              engine charges it once, at the largest of their rates, because
+              one crew and one traffic plan is the reason to bundle at all.
+              This replaces that guess with the real figure, and because total
+              cost is the Priority Score's divisor, a bundle that mobilizes
+              once for less than its parts would separately ranks higher. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label className="text-xs text-muted-foreground" htmlFor="combo-mobilization">
+              Mobilization for this bundle
+            </label>
+            <input
+              id="combo-mobilization"
+              type="number"
+              min={0}
+              step={500}
+              value={draft.mobilizationCost ?? ""}
+              placeholder={inferredMobilization == null ? "inferred" : String(inferredMobilization)}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  // Empty means "keep inferring", not "free". Only a real
+                  // number overrides.
+                  mobilizationCost: e.target.value.trim() === "" ? null : Number(e.target.value),
+                }))
+              }
+              aria-label="Mobilization cost for this combination"
+              className={`${control} w-36`}
+            />
+            <span className="text-xs text-muted-foreground">
+              {draft.mobilizationCost == null
+                ? inferredMobilization == null
+                  ? "Left empty — charged once, at the largest of the members' rates."
+                  : `Left empty — charged once at $${inferredMobilization.toLocaleString("en-US")}, the largest of the members' rates.`
+                : inferredMobilization != null && draft.mobilizationCost < inferredMobilization
+                  ? `$${(inferredMobilization - draft.mobilizationCost).toLocaleString("en-US")} cheaper than mobilizing for the largest member alone, which makes this bundle rank higher.`
+                  : "Replaces the largest of the members' rates."}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {draft.id && (
