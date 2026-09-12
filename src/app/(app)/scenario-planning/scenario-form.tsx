@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CircleDot } from "lucide-react";
 import { STRATEGIES, STRATEGY_DESCRIPTIONS } from "@/domain/waterline/scenario";
 import {
   ScenarioFields,
@@ -17,6 +16,7 @@ import {
 } from "./scenario-fields";
 import { RunProgressButton } from "./run-progress";
 import { OptionPicker, type OptionPickerValue } from "./option-picker";
+import { SCENARIO_EDIT_FORM_ID, useScenarioEdit } from "./scenario-edit-state";
 import type { RunEstimate } from "@/server/run-estimate";
 import type { OptionChoice } from "@/server/scenario-options";
 
@@ -45,53 +45,32 @@ function Strategies() {
  */
 export function ScenarioEditForm({
   scenarioId,
-  defaults,
   action,
-  estimate,
   criticalityChoices,
   weightSetChoices,
   categoryWeightSetChoices,
   fundingPlanChoices,
   treatmentChoices,
   combinationChoices,
-  savedOptions,
 }: {
   scenarioId: string;
-  defaults: ScenarioFieldDefaults;
   action: (formData: FormData) => void;
-  estimate: RunEstimate;
   criticalityChoices: CriticalityChoice[];
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   treatmentChoices: OptionChoice[];
   combinationChoices: OptionChoice[];
-  savedOptions: OptionPickerValue;
 }) {
-  // The stored values, and what is in the boxes now. Both start from the same
-  // place; the component is remounted by its caller after a save, which is
-  // what makes `saved` the freshly stored values rather than stale ones.
-  const [saved] = useState<ScenarioValues>(() => toValues(defaults));
-  const [values, setValues] = useState<ScenarioValues>(saved);
-  const patch = (change: Partial<ScenarioValues>) => setValues((v) => ({ ...v, ...change }));
+  // State lives in the provider, because the button that submits this form is
+  // in the page header and has to know whether anything changed.
+  const edit = useScenarioEdit();
+  if (!edit) throw new Error("ScenarioEditForm must be rendered inside a ScenarioEditProvider");
 
-  const [options, setOptions] = useState<OptionPickerValue>(savedOptions);
-
-  const fieldChanges = (Object.keys(values) as Array<keyof ScenarioValues>).filter(
-    (k) => values[k] !== saved[k]
-  ).length;
-  // The picker counts as one change however many boxes moved: "8 unsaved
-  // changes" because someone unticked eight treatments would drown out the
-  // budget edit sitting next to it.
-  const optionsChanged =
-    savedOptions.limitsOptions !== options.limitsOptions ||
-    !sameSet(savedOptions.treatments, options.treatments) ||
-    !sameSet(savedOptions.combinations, options.combinations);
-  const changedCount = fieldChanges + (optionsChanged ? 1 : 0);
-  const dirty = changedCount > 0;
+  const { values, patch, saved, options, setOptions, savedOptions } = edit;
 
   return (
-    <form action={action} className="space-y-4">
+    <form id={SCENARIO_EDIT_FORM_ID} action={action} className="space-y-4">
       <input type="hidden" name="scenarioId" value={scenarioId} />
 
       <ScenarioFields
@@ -116,39 +95,25 @@ export function ScenarioEditForm({
         saved={savedOptions}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <p className="text-xs text-muted-foreground">
-          Saving re-runs the simulation immediately — results and the funded project list are replaced, so what you
-          see always matches these parameters.
-        </p>
-        <div className="flex shrink-0 items-center gap-2">
-          {dirty && (
-            <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
-              <CircleDot className="h-3 w-3" />
-              {changedCount} unsaved change{changedCount === 1 ? "" : "s"}
-            </span>
-          )}
-          {dirty && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setValues(saved);
-                setOptions(savedOptions);
-              }}
-            >
-              Discard changes
-            </Button>
-          )}
-          <RunProgressButton
-            estimate={estimate}
-            label="Save & Re-run"
-            runningLabel="Saving and running…"
-            size="default"
-          />
-        </div>
-      </div>
+      {/* The submit is in the page header now, where it is reachable without
+          scrolling past two screens of inputs. This says where it went rather
+          than leaving the form looking unfinished. */}
+      <p className="border-t pt-4 text-xs text-muted-foreground">
+        {edit.dirty ? (
+          <>
+            <span className="font-medium text-amber-600">
+              {edit.changedCount} unsaved change{edit.changedCount === 1 ? "" : "s"}
+            </span>{" "}
+            — Save &amp; Re-run is at the top of the page. Saving re-runs the simulation immediately: results and the
+            funded project list are replaced, so what you see always matches these parameters.
+          </>
+        ) : (
+          <>
+            Saving re-runs the simulation immediately — results and the funded project list are replaced, so what you
+            see always matches these parameters. The button is at the top of the page.
+          </>
+        )}
+      </p>
     </form>
   );
 }
@@ -220,11 +185,4 @@ export function ScenarioCreateForm({
       </div>
     </form>
   );
-}
-
-/** Order-insensitive comparison; the picker appends rather than sorting. */
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const set = new Set(a);
-  return b.every((v) => set.has(v));
 }

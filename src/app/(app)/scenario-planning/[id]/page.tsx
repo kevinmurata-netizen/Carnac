@@ -29,9 +29,11 @@ import type {
   FundingPlanChoice,
 } from "../scenario-fields";
 import { ScenarioEditForm } from "../scenario-form";
+import { ScenarioEditProvider } from "../scenario-edit-state";
+import { ScenarioHeaderActions } from "../scenario-header-actions";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
 import { RunProgressButton } from "../run-progress";
-import { estimateRunMs, type RunEstimate } from "@/server/run-estimate";
+import { estimateRunMs } from "@/server/run-estimate";
 import { AlertTriangle, Gauge, Layers, Wallet } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { ExportButton } from "@/components/layout/export-button";
@@ -86,6 +88,29 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
 
   const canEdit = canRecordFieldData(session);
   const a = scenario.assumptions;
+
+  // Hoisted so the provider owns them: the header's Save button and the form
+  // two screens below read one piece of state, and "changed" is defined once.
+  const editDefaults = {
+    name: scenario.name,
+    description: scenario.description ?? "",
+    criticalityModelId: scenario.criticalityModelId ?? null,
+    weightSetId: scenario.weightSetId ?? null,
+    categoryWeightSetId: scenario.categoryWeightSetId ?? null,
+    categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
+    annualBudget: a.annualBudget,
+    fundingGrowthPct: toPercent(a.fundingGrowth),
+    discountRatePct: toPercent(a.discountRate),
+    analysisPeriodYears: a.analysisPeriodYears,
+    conditionTarget: a.conditionTarget,
+    riskThreshold: a.riskThreshold,
+    strategy: a.strategy,
+  };
+  const editSavedOptions = {
+    limitsOptions: catalogue.limitsOptions,
+    treatments: catalogue.selectedTreatments,
+    combinations: catalogue.selectedCombinations,
+  };
   const years = scenario.years;
   const first = years[0];
   const last = years[years.length - 1];
@@ -93,7 +118,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const peak = years.length ? Math.max(...years.map((y) => y.avgCondition)) : null;
   const totalFailureCost = years.reduce((s, y) => s + y.failureCost, 0);
 
-  return (
+  const body = (
     <div>
       <SetBreadcrumb segment={id} label={scenario.name} />
       <PageHeader
@@ -103,10 +128,18 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="flex items-center gap-2">
             {canEdit && (
               <>
-                <form action={rerunScenarioAction}>
-                  <input type="hidden" name="scenarioId" value={scenario.id} />
-                  <RunProgressButton estimate={estimate} label="Re-run" variant="outline" />
-                </form>
+                {/* Re-run until something changes, then Save & Re-run with the
+                    unsaved-changes badge beside it. The form itself is two
+                    screens down; this submits it by id. */}
+                <ScenarioHeaderActions
+                  estimate={estimate}
+                  rerun={
+                    <form action={rerunScenarioAction}>
+                      <input type="hidden" name="scenarioId" value={scenario.id} />
+                      <RunProgressButton estimate={estimate} label="Re-run" variant="outline" />
+                    </form>
+                  }
+                />
                 <form action={deleteScenarioAction}>
                   <input type="hidden" name="scenarioId" value={scenario.id} />
                   <Button type="submit" size="sm" variant="destructive">
@@ -134,7 +167,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} catalogue={catalogue} estimate={estimate} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -170,7 +203,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} catalogue={catalogue} estimate={estimate} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -361,6 +394,22 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
       )}
     </div>
   );
+
+  // A reader who cannot edit gets no provider at all, so the header renders
+  // Re-run and nothing else — rather than a Save button that would never light
+  // up. Keyed on updatedAt so a save remounts it and "stored" becomes the
+  // freshly stored values; without that every field would stay marked changed.
+  return canEdit ? (
+    <ScenarioEditProvider
+      key={scenario.updatedAt.toISOString()}
+      defaults={editDefaults}
+      savedOptions={editSavedOptions}
+    >
+      {body}
+    </ScenarioEditProvider>
+  ) : (
+    body
+  );
 }
 
 /** Editable for anyone who can run scenarios, read-only otherwise. Rendered in
@@ -374,7 +423,6 @@ function AssumptionsCard({
   categoryWeightSetChoices,
   fundingPlanChoices,
   catalogue,
-  estimate,
 }: {
   scenario: ScenarioDetail;
   canEdit: boolean;
@@ -383,7 +431,6 @@ function AssumptionsCard({
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   catalogue: ScenarioOptionCatalogue;
-  estimate: RunEstimate;
 }) {
   const a = scenario.assumptions;
 
@@ -399,36 +446,14 @@ function AssumptionsCard({
               comparing against what was on screen before the save, and every
               field would stay marked as changed. */}
           <ScenarioEditForm
-            key={scenario.updatedAt.toISOString()}
             scenarioId={scenario.id}
             action={updateScenarioAction}
-            estimate={estimate}
             criticalityChoices={criticalityChoices}
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}
-            savedOptions={{
-              limitsOptions: catalogue.limitsOptions,
-              treatments: catalogue.selectedTreatments,
-              combinations: catalogue.selectedCombinations,
-            }}
-            defaults={{
-              name: scenario.name,
-              description: scenario.description ?? "",
-              criticalityModelId: scenario.criticalityModelId ?? null,
-              weightSetId: scenario.weightSetId ?? null,
-              categoryWeightSetId: scenario.categoryWeightSetId ?? null,
-              categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
-              annualBudget: a.annualBudget,
-              fundingGrowthPct: toPercent(a.fundingGrowth),
-              discountRatePct: toPercent(a.discountRate),
-              analysisPeriodYears: a.analysisPeriodYears,
-              conditionTarget: a.conditionTarget,
-              riskThreshold: a.riskThreshold,
-              strategy: a.strategy,
-            }}
           />
         </CardContent>
       ) : (

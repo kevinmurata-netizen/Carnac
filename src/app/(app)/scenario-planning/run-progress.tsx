@@ -25,14 +25,33 @@ export function RunProgressButton({
   runningLabel = "Running…",
   size = "sm",
   variant,
+  form,
+  onSubmitStart,
+  pending: pendingOverride,
 }: {
   estimate: RunEstimate;
   label: string;
   runningLabel?: string;
   size?: "sm" | "default";
   variant?: "default" | "outline";
+  /** Submits a form the button does not sit inside, by id. */
+  form?: string;
+  onSubmitStart?: () => void;
+  /**
+   * Whether a run is in flight, when the caller knows better than
+   * `useFormStatus` does.
+   *
+   * That hook only reports for a form the button is a descendant of. A button
+   * associated by `form=` is not, so it would sit at "not pending" through the
+   * entire run and draw no bar at all — the one thing this component exists
+   * for.
+   */
+  pending?: boolean;
 }) {
-  const { pending } = useFormStatus();
+  // Called unconditionally, as hooks must be. Outside a form it simply
+  // reports false, which is exactly what the override is then for.
+  const status = useFormStatus();
+  const pending = pendingOverride ?? status.pending;
   const [elapsed, setElapsed] = useState(0);
 
   // Reset at render rather than in the effect: React discards this pass and
@@ -59,7 +78,14 @@ export function RunProgressButton({
 
   return (
     <div className="flex flex-col gap-2">
-      <Button type="submit" size={size} variant={variant} disabled={pending}>
+      <Button
+        type="submit"
+        size={size}
+        variant={variant}
+        disabled={pending}
+        form={form}
+        onClick={onSubmitStart}
+      >
         {pending ? runningLabel : label}
       </Button>
 
