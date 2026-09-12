@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-12",
+    title: "Save a scenario from the top of the page",
+    summary:
+      "Save & Re-run sat at the foot of a form two screens down, so the button that mattered was the one you had to go looking for. It is now at the top, where Re-run is.",
+    changes: [
+      "Change anything on a scenario and Re-run becomes Save & Re-run, with the unsaved-changes count beside it and a Discard button.",
+      "Change nothing and it stays Re-run, exactly as before.",
+      "The two swap rather than sitting side by side. With unsaved edits waiting, Re-run is not something anyone means — it would run the old parameters and discard the edit in all but name. Saving re-runs anyway, so nothing is lost by taking it away.",
+      "The progress bar still draws from the top button, and the foot of the form now says where the button went rather than looking unfinished.",
+    ],
+    note:
+      "No migration. The form and the button are at opposite ends of a long page, so the edit state moved to a shared place — which also means “changed” is defined once and the badge at the top cannot disagree with the marks on the fields.",
+  },
+  {
+    date: "2026-09-12",
     title: "Set what it costs to mobilize for a bundle",
     summary:
       "A combination can now carry its own mobilization cost instead of the model guessing it. Because total cost is what the Priority Score divides by, a bundle that mobilizes once for less than its parts would separately now ranks higher — which is the real-world reason to bundle at all.",

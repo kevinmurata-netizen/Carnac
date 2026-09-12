@@ -25,14 +25,33 @@ export function RunProgressButton({
   runningLabel = "Running…",
   size = "sm",
   variant,
+  form,
+  onSubmitStart,
+  pending: pendingOverride,
 }: {
   estimate: RunEstimate;
   label: string;
   runningLabel?: string;
   size?: "sm" | "default";
   variant?: "default" | "outline";
+  /** Submits a form the button does not sit inside, by id. */
+  form?: string;
+  onSubmitStart?: () => void;
+  /**
+   * Whether a run is in flight, when the caller knows better than
+   * `useFormStatus` does.
+   *
+   * That hook only reports for a form the button is a descendant of. A button
+   * associated by `form=` is not, so it would sit at "not pending" through the
+   * entire run and draw no bar at all — the one thing this component exists
+   * for.
+   */
+  pending?: boolean;
 }) {
-  const { pending } = useFormStatus();
+  // Called unconditionally, as hooks must be. Outside a form it simply
+  // reports false, which is exactly what the override is then for.
+  const status = useFormStatus();
+  const pending = pendingOverride ?? status.pending;
   const [elapsed, setElapsed] = useState(0);
 
   // Reset at render rather than in the effect: React discards this pass and
@@ -59,9 +78,48 @@ export function RunProgressButton({
 
   return (
     <div className="flex flex-col gap-2">
-      <Button type="submit" size={size} variant={variant} disabled={pending}>
-        {pending ? runningLabel : label}
-      </Button>
+      {/*
+        Two shapes, because a button that submits a form it does not sit inside
+        cannot do both jobs at once.
+
+        Inside its form: a plain submit, so it works before JavaScript loads.
+
+        Outside it: submit explicitly, *then* mark the run as started. Marking
+        first is the obvious way to write it and it silently does nothing —
+        setting `pending` disables the button in the same tick, and a disabled
+        button does not submit. The form association is correct, the click is
+        real, and no request is ever made.
+      */}
+      {form ? (
+        <Button
+          type="button"
+          size={size}
+          variant={variant}
+          disabled={pending}
+          onClick={() => {
+            const target = document.getElementById(form);
+            if (!(target instanceof HTMLFormElement)) return;
+
+            // Validate first, and say so. `requestSubmit` runs constraint
+            // validation itself and simply does nothing when a field fails,
+            // so marking the run as started before checking would leave the
+            // button reading "Saving and running…" over a form that never
+            // went anywhere. `reportValidity` also shows the browser's own
+            // message against the offending field, which is what the old
+            // in-form submit button did.
+            if (!target.reportValidity()) return;
+
+            target.requestSubmit();
+            onSubmitStart?.();
+          }}
+        >
+          {pending ? runningLabel : label}
+        </Button>
+      ) : (
+        <Button type="submit" size={size} variant={variant} disabled={pending}>
+          {pending ? runningLabel : label}
+        </Button>
+      )}
 
       {pending && (
         <div
