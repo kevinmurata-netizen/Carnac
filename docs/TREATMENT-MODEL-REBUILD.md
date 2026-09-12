@@ -946,9 +946,24 @@ So a plan listing every category at 100% is not "even" — it is "the first
 category, exhaustively". Measured: an all-100% plan spent 85% on
 rehabilitation and 2% on renewal, against 56% renewal with no plan at all.
 
-The plans carried over from the category weightings in §5.6 inherit their
-names, so the one called **Even-handed** behaves this way. The editor now warns
+The plans carried over from the category weightings in §5.6 inherited their
+names, so the one called **Even-handed** behaved this way. The editor now warns
 when an uncapped category is not last.
+
+**Renamed 2026-09-12** to *Repair first, uncapped*, migration
+`20260912180000_rename_even_handed_plan`. Reordering was considered and
+rejected: whichever category goes first gets first refusal on the whole year,
+so changing the order only moves which one monopolises. There is no ordering
+of an all-100% plan that is even-handed.
+
+The genuinely even-handed option is **not a plan at all** — choosing no
+category order makes one pass down the ranked list with category playing no
+part. The shares were left untouched; the label was what was wrong.
+
+The *category weighting* named Even-handed keeps its name, and correctly: on a
+weighting every category multiplies by 1, so nothing leans. The same word is
+accurate on one table and false on the other, which is worth remembering the
+next time something is carried across between them.
 
 #### Still open
 
