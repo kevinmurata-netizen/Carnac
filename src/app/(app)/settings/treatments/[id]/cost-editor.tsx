@@ -131,7 +131,7 @@ export function CostEditor({
           {rates.length === 1
             ? "One price for every asset."
             : `${rates.length} prices, tried top to bottom — the first whose rule matches is charged.`}{" "}
-          <Link href="/settings/decision-trees" className="text-primary hover:underline">
+          <Link href="/settings/treatment-rules" className="text-primary hover:underline">
             Write a rule →
           </Link>
         </p>

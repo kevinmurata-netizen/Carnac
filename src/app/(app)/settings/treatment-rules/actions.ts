@@ -8,14 +8,14 @@ import { isValidNode, type Group, type RuleEffect } from "@/domain/waterline/dec
 /** Treatment rules gate what work gets recommended and therefore what shows up
  * in the identified need, so changing them is an Administrator action. */
 async function requireWriteAccess() {
-  return requireCardWrite("/settings/decision-trees", "Only an Administrator can change treatment rules");
+  return requireCardWrite("/settings/treatment-rules", "Only an Administrator can change treatment rules");
 }
 
 /** Recommendations, costs, work plans and scenarios all run through
  * isApplicable, so all of them change the moment a rule does. */
 function revalidateEverythingRulesTouch() {
   for (const path of [
-    "/settings/decision-trees",
+    "/settings/treatment-rules",
     "/settings/treatments",
     "/treatment-planning",
     "/work-plan",

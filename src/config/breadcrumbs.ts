@@ -30,7 +30,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   configuration: "Configuration",
   "condition-models": "Metrics",
   "risk-models": "Risk Models",
-  "decision-trees": "Treatment Rules",
+  "treatment-rules": "Treatment Rules",
   "treatment-combinations": "Treatment Combinations",
   "treatment-costs": "Treatment Costs",
   "failure-types": "Failure Types",

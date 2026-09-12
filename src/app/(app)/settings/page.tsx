@@ -122,7 +122,7 @@ export default async function SettingsPage({
     "condition-index": `${config.conditionModels[0]?.name ?? "Condition index"} — components and weights`,
     "condition-models": `Scale ${conditionModel.scaleMin}–${conditionModel.scaleMax} · ${conditionModel.bands.length} bands`,
     treatments: `${formatNumber(config.treatments.length)} treatments in the library`,
-    "decision-trees":
+    "treatment-rules":
       activeRules === 0
         ? "No rules written yet"
         : `${formatNumber(activeRules)} rules · ${formatNumber(attachedRules)} attached to a treatment`,

@@ -213,8 +213,8 @@ export const SETTINGS_CARDS: SettingsCard[] = [
       "Every price across the library in one place, with the rule that selects each one — so an annual rate review is a single screen.",
   },
   {
-    key: "decision-trees",
-    href: "/settings/decision-trees",
+    key: "treatment-rules",
+    href: "/settings/treatment-rules",
     tab: "modeling",
     title: "Treatment Rules",
     icon: GitBranch,

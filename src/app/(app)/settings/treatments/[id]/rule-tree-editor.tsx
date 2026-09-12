@@ -111,7 +111,7 @@ export function RuleTreeEditor({
           {used.size === 0
             ? "Nothing arranged, so this treatment is considered for every inspected asset."
             : `${used.size} rule${used.size === 1 ? "" : "s"} arranged${blockIds.length > 0 ? `, ${blockIds.length} blocking` : ""}.`}{" "}
-          <Link href="/settings/decision-trees" className="text-primary hover:underline">
+          <Link href="/settings/treatment-rules" className="text-primary hover:underline">
             Write or edit rules →
           </Link>
         </p>
@@ -211,7 +211,7 @@ export function RuleTreeEditor({
 function RuleLink({ rule }: { rule: RuleSummary }) {
   return (
     <Link
-      href={`/settings/decision-trees?rule=${rule.id}`}
+      href={`/settings/treatment-rules?rule=${rule.id}`}
       className="group inline-flex items-center gap-1 font-medium text-primary hover:underline"
       title={rule.summary}
     >
