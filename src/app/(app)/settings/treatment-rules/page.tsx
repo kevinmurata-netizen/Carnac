@@ -91,8 +91,8 @@ export default async function TreatmentRulesPage({
   const { rule: requested } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
-  const { canWrite: canEdit } = await requireCard("/settings/decision-trees");
-  const pageTitle = await getPageName(organizationId, "/settings/decision-trees", "Treatment Rules");
+  const { canWrite: canEdit } = await requireCard("/settings/treatment-rules");
+  const pageTitle = await getPageName(organizationId, "/settings/treatment-rules", "Treatment Rules");
 
   const [rules, samples, materials, criticalities, serviceAreas, pressureZones] = await Promise.all([
     listRules(organizationId),
@@ -152,7 +152,7 @@ export default async function TreatmentRulesPage({
             </CardTitle>
             {canEdit && (
               <Link
-                href="/settings/decision-trees?rule=new"
+                href="/settings/treatment-rules?rule=new"
                 className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 New rule
@@ -180,7 +180,7 @@ export default async function TreatmentRulesPage({
                       <TableRow key={r.id} className={r.id === selected?.id ? "bg-muted/50" : undefined}>
                         <TableCell>
                           <Link
-                            href={`/settings/decision-trees?rule=${r.id}`}
+                            href={`/settings/treatment-rules?rule=${r.id}`}
                             className="font-medium text-primary hover:underline"
                           >
                             {r.name}

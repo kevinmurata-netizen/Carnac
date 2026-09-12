@@ -186,7 +186,7 @@ export async function createTreatmentAction(
   if (!created) return { status: "error", message: "Could not create treatment" };
 
   revalidateAffected();
-  revalidatePath("/settings/decision-trees");
+  revalidatePath("/settings/treatment-rules");
   // Straight to the treatment just made, which is where its rules and prices
   // are edited from now on.
   redirect(`/settings/treatments/${created.id}`);

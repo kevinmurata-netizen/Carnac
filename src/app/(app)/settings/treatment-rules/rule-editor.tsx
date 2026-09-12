@@ -101,7 +101,7 @@ export function RuleEditor({
       setSaved(draft);
       // A rule that has just been created needs its own address, or Save
       // again would create a second one.
-      if (!draft.id && outcome.id) router.replace(`/settings/decision-trees?rule=${outcome.id}`);
+      if (!draft.id && outcome.id) router.replace(`/settings/treatment-rules?rule=${outcome.id}`);
       else router.refresh();
     }
     setBusy(false);
@@ -113,7 +113,7 @@ export function RuleEditor({
     setResult(null);
     const outcome = await onDelete(draft.id);
     setResult(outcome);
-    if (outcome.ok) router.replace("/settings/decision-trees");
+    if (outcome.ok) router.replace("/settings/treatment-rules");
     setBusy(false);
   };
 

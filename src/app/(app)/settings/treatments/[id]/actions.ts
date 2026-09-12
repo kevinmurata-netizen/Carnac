@@ -80,7 +80,7 @@ export async function setTreatmentRuleTreeAction(
     for (const path of [
       "/settings/treatments",
       `/settings/treatments/${treatmentId}`,
-      "/settings/decision-trees",
+      "/settings/treatment-rules",
       "/treatment-planning",
       "/work-plan",
       "/scenario-planning",

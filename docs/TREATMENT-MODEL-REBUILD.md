@@ -1112,6 +1112,31 @@ and a data migration updating both tables. Worth doing — but it is its own
 change with its own risk, and it does not belong in the same release as the
 column drops.
 
+> **Done 2026-09-12**, migration `20260912100000_treatment_rules_route`.
+>
+> The route is `/settings/treatment-rules`; the card's `key` was renamed with
+> it, which is safe because `key` is never stored — it drives the summary
+> lookup inside `settings/page.tsx` and nothing else. Only `href` reaches the
+> database.
+>
+> The redirect is a 308 in `next.config.ts` rather than in `proxy.ts`. Query
+> values pass through on their own, which the `?rule=<id>` deep links need, and
+> config redirects are checked before the filesystem. Kept indefinitely: a
+> bookmark costs nothing to honour.
+>
+> **The trap the plan warned about was real, and larger than written.** The
+> moved page's own files still named the old path — including
+> `requireCard("/settings/decision-trees")` and `getPageName(...)`, which build
+> the permission key and read the navigation label. A `git mv` plus the seven
+> external references would have left the page checking a card that no longer
+> exists in `SETTINGS_CARDS`. The compiler cannot see it: these are strings.
+>
+> **Verified by planting rows rather than trusting the SQL.** The local
+> database had no rows on the old path, so the migration would have been a
+> silent no-op. A restriction (`read=false, write=false, visible=false`) and a
+> renamed title were inserted on the old path, the migration was run, and both
+> came back intact on the new one — then removed.
+
 ---
 
 # 5. Card layout

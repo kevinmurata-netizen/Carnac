@@ -29,6 +29,22 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-12",
+    title: "Treatment Rules lives at an address that says so",
+    summary:
+      "The page has been called Treatment Rules since rules became first-class, while its address still said decision-trees — what it was called before. The address now matches the name.",
+    changes: [
+      "Settings › Modeling › Treatment Rules is at /settings/treatment-rules.",
+      "The old address still works and always will. It answers with a permanent redirect, and a link to a specific rule still opens that rule rather than dropping you on the list.",
+      "Role restrictions on this card, and any renaming of the page title, move with it. Both are stored against the address, so a rename that did not carry them would have quietly handed the page back to roles that had been kept out of it — and quietly taken it away from roles that had been given it.",
+    ],
+    fixes: [
+      "The page's own files still named the old address, including the two calls that decide who may open it. Nothing would have failed loudly: the permission check would simply have asked about a card that no longer existed.",
+    ],
+    note:
+      "Needs one migration. The local database had nothing stored against the old address, so the migration would have appeared to work while doing nothing — a restriction and a renamed title were planted first, and both came back intact on the new address.",
+  },
+  {
     date: "2026-09-11",
     title: "Filter the build log by date, and choose the order",
     summary:
