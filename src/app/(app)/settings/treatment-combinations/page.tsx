@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatCurrency } from "@/lib/format";
 import { CombinationEditor, type CombinationDraft } from "./combination-editor";
 import { saveCombinationAction, deleteCombinationAction } from "./actions";
 import { getPageName } from "@/server/navigation";
@@ -37,6 +38,19 @@ export default async function TreatmentCombinationsPage({
   // editor can show what a bundle would be charged if nobody overrides it.
   // It is the fallback rather than the rate that will actually apply, because
   // which rate applies depends on the asset and there is no asset here.
+  // What each combination is charged to mobilize: its own figure, or the
+  // largest of its members' fallback rates when it has not set one. Computed
+  // here rather than in the row so the list and the editor agree on what
+  // "inferred" means.
+  const mobilizationFor = (members: Array<{ treatmentId: string }>): number =>
+    Math.max(
+      0,
+      ...members.map(
+        (m) => (treatments.find((t) => t.id === m.treatmentId)?.costRates ?? []).find((r) => r.rule == null)
+          ?.mobilizationCost ?? 0
+      )
+    );
+
   const treatmentOptions = treatments.map((t) => ({
     id: t.id,
     name: t.name,
@@ -114,6 +128,7 @@ export default async function TreatmentCombinationsPage({
                     <TableRow>
                       <TableHead>Combination</TableHead>
                       <TableHead>Treatments</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Mobilization</TableHead>
                       <TableHead>Extra rules</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -146,6 +161,21 @@ export default async function TreatmentCombinationsPage({
                               </Badge>
                             ))}
                           </span>
+                        </TableCell>
+                        <TableCell className="text-right text-sm whitespace-nowrap">
+                          {c.mobilizationCost == null ? (
+                            <span
+                              className="text-muted-foreground"
+                              title="Not set — charged once, at the largest of the members' rates."
+                            >
+                              {formatCurrency(mobilizationFor(c.members))}
+                              <span className="ml-1 text-xs">inferred</span>
+                            </span>
+                          ) : (
+                            <span title="Set on this combination, replacing the largest of the members' rates.">
+                              {formatCurrency(c.mobilizationCost)}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm">
                           {c.ruleNames.length === 0 ? (

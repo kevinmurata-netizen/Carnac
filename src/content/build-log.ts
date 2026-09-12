@@ -30,6 +30,22 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-12",
+    title: "Search, filter and sort the ranked options",
+    summary:
+      "The Ranked Options list on Treatment Planning showed the top 25 and nothing else. It is now a grid you can search as you type, filter by category, and sort on any column.",
+    changes: [
+      "A search box that filters as you type. It matches the segment, the option, and the treatments inside a bundle — so searching “cathodic” finds every bundle containing it, not only the ones whose name mentions it.",
+      "Several words narrow rather than widen: “WL-0197 repair” finds options that match both.",
+      "Category chips and a Combinations-only toggle, which combine with the search.",
+      "Every column sorts, either direction. Numbers open largest-first and text A–Z. Options that could not be priced sort last whichever way a column points — unknown is not the same as worst.",
+      "A count line says how many matched out of how many there are, so a narrow search cannot be mistaken for an empty list.",
+      "Treatment Combinations gains a Mobilization column, showing either the figure set on the bundle or the one inferred from its members, labelled so the two cannot be confused.",
+    ],
+    note:
+      "No migration. Filtering happens in the browser so it can keep up with typing, which means the fundable options travel with the page — about a thousand rows here. That is comfortable at this size and would not be on a network many times larger, where this would need to move behind the server.",
+  },
+  {
+    date: "2026-09-12",
     title: "The funding plan called “Even-handed” was not",
     summary:
       "It is now called “Repair first, uncapped”, which is what it does. Only the name changed — the shares are exactly as they were.",
