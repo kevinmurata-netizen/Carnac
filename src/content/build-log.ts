@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-12",
+    title: "The funding plan called “Even-handed” was not",
+    summary:
+      "It is now called “Repair first, uncapped”, which is what it does. Only the name changed — the shares are exactly as they were.",
+    changes: [
+      "A funding plan is worked through in order, and a category left at 100% takes whatever it can before the next is reached. A plan with every category at 100% is therefore not even-handed: it is the first category, exhaustively. On the seed network that meant 85% rehabilitation and 2% renewal, against 56% renewal with no plan at all.",
+      "Reordering would not have fixed it. Whichever category goes first gets first refusal on the whole year, so a different order only changes which one takes everything.",
+      "If you want genuinely even-handed, choose no category order at all on the scenario — one pass down the ranked list, with category playing no part. That option was always there.",
+      "The category weighting also called Even-handed keeps its name, and rightly: on a weighting every category counts the same, so nothing leans. The word is accurate there and was never accurate on the plan.",
+    ],
+    note:
+      "Needs one migration, and it only changes a name and a description. Nothing that any scenario funds moves.",
+  },
+  {
+    date: "2026-09-12",
     title: "Save a scenario from the top of the page",
     summary:
       "Save & Re-run sat at the foot of a form two screens down, so the button that mattered was the one you had to go looking for. It is now at the top, where Re-run is.",
