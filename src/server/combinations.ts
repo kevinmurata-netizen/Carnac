@@ -33,6 +33,7 @@ export async function loadCombinations(organizationId: string): Promise<Combinat
     members: row.members.map((m) => ({ treatment: m.treatment.name, required: m.required })),
     rules: parseRules(row.rules.map((r) => r.rule)),
     qualifyMode: row.qualifyMode === "any" ? "any" : "all",
+    mobilizationCost: row.mobilizationCost,
   }));
 }
 
@@ -42,6 +43,8 @@ export type CombinationSummary = {
   description: string | null;
   enabled: boolean;
   qualifyMode: "any" | "all";
+  /** Null means the engine keeps inferring it from the members' rates. */
+  mobilizationCost: number | null;
   members: Array<{ treatmentId: string; treatmentName: string; required: boolean }>;
   ruleIds: string[];
   ruleNames: string[];
@@ -60,6 +63,7 @@ function toSummary(
     description: row.description,
     enabled: row.enabled,
     qualifyMode: row.qualifyMode === "any" ? "any" : "all",
+    mobilizationCost: row.mobilizationCost,
     members: row.members.map((m) => ({
       treatmentId: m.treatment.id,
       treatmentName: m.treatment.name,
@@ -115,12 +119,20 @@ export type CombinationInput = {
   description: string | null;
   enabled: boolean;
   qualifyMode: "any" | "all";
+  /** Null keeps the inferred figure — the largest of the members' rates. */
+  mobilizationCost: number | null;
   members: Array<{ treatmentId: string; required: boolean }>;
   ruleIds: string[];
 };
 
 function validate(input: CombinationInput) {
   if (!input.name.trim()) throw new Error("Give the combination a name");
+
+  if (input.mobilizationCost != null) {
+    if (!Number.isFinite(input.mobilizationCost) || input.mobilizationCost < 0) {
+      throw new Error("Mobilization must be zero or more. Leave it empty to keep the inferred figure.");
+    }
+  }
 
   const ids = input.members.map((m) => m.treatmentId);
   if (new Set(ids).size !== ids.length) throw new Error("A treatment can only appear once in a combination");
@@ -179,6 +191,7 @@ export async function createCombination(organizationId: string, input: Combinati
       description: input.description?.trim() || null,
       enabled: input.enabled,
       qualifyMode: input.qualifyMode,
+      mobilizationCost: input.mobilizationCost,
       members: { create: input.members.map((m) => ({ treatmentId: m.treatmentId, required: m.required })) },
       rules: { create: input.ruleIds.map((ruleId) => ({ ruleId })) },
     },
@@ -207,6 +220,7 @@ export async function updateCombination(organizationId: string, id: string, inpu
         description: input.description?.trim() || null,
         enabled: input.enabled,
         qualifyMode: input.qualifyMode,
+        mobilizationCost: input.mobilizationCost,
         members: { create: input.members.map((m) => ({ treatmentId: m.treatmentId, required: m.required })) },
         rules: { create: input.ruleIds.map((ruleId) => ({ ruleId })) },
       },

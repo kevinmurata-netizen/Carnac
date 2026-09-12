@@ -33,7 +33,16 @@ export default async function TreatmentCombinationsPage({
     listRules(organizationId),
   ]);
 
-  const treatmentOptions = treatments.map((t) => ({ id: t.id, name: t.name, category: t.category }));
+  // The fallback rate's mobilization travels with each treatment so the
+  // editor can show what a bundle would be charged if nobody overrides it.
+  // It is the fallback rather than the rate that will actually apply, because
+  // which rate applies depends on the asset and there is no asset here.
+  const treatmentOptions = treatments.map((t) => ({
+    id: t.id,
+    name: t.name,
+    category: t.category,
+    mobilizationCost: (t.costRates ?? []).find((r) => r.rule == null)?.mobilizationCost ?? 0,
+  }));
   const resetTreatmentIds = treatments.filter((t) => t.conditionResetTo != null).map((t) => t.id);
 
   const selected =
@@ -41,7 +50,16 @@ export default async function TreatmentCombinationsPage({
 
   const draft: CombinationDraft | null =
     requested === "new" && canEdit
-      ? { id: null, name: "", description: "", enabled: true, qualifyMode: "all", members: [], ruleIds: [] }
+      ? {
+          id: null,
+          name: "",
+          description: "",
+          enabled: true,
+          qualifyMode: "all",
+          mobilizationCost: null,
+          members: [],
+          ruleIds: [],
+        }
       : selected
         ? {
             id: selected.id,
@@ -49,6 +67,7 @@ export default async function TreatmentCombinationsPage({
             description: selected.description ?? "",
             enabled: selected.enabled,
             qualifyMode: selected.qualifyMode,
+            mobilizationCost: selected.mobilizationCost,
             members: selected.members.map((m) => ({ treatmentId: m.treatmentId, required: m.required })),
             ruleIds: selected.ruleIds,
           }

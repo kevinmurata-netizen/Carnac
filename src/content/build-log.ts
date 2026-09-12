@@ -44,6 +44,23 @@ export const ENTRIES: BuildEntry[] = [
   },
   {
     date: "2026-09-12",
+    title: "Set what it costs to mobilize for a bundle",
+    summary:
+      "A combination can now carry its own mobilization cost instead of the model guessing it. Because total cost is what the Priority Score divides by, a bundle that mobilizes once for less than its parts would separately now ranks higher — which is the real-world reason to bundle at all.",
+    changes: [
+      "A Mobilization field on each Treatment Combination. Leave it empty and nothing changes; the box shows what would be charged instead.",
+      "Enter a lower figure and the page says how much cheaper the bundle is than mobilizing for its largest member alone, and that this makes it rank higher.",
+      "A higher figure works too, for a bundle that genuinely costs more to set up than any of its parts — a bigger crew, a longer road closure.",
+      "Zero is a real answer, for work folded into a job already mobilized for, and is not mistaken for an empty box.",
+    ],
+    fixes: [
+      "Worth knowing, because it is the opposite of what it looks like: mobilization was never being summed across a bundle. It has always been charged once, at the largest of the members' rates. What was missing was any way to say what the figure actually is.",
+    ],
+    note:
+      "Needs one migration. Nothing moves until a figure is entered — every existing combination prices exactly as before. Setting Dig-once repair to $500 against its inferred $2,500 took its best instance from $12,110 to $10,110, its Priority Score from 176.0 to 210.9, and moved combinations in the top 20 of the ranking from 11 to 14.",
+  },
+  {
+    date: "2026-09-12",
     title: "Treatment Rules lives at an address that says so",
     summary:
       "The page has been called Treatment Rules since rules became first-class, while its address still said decision-trees — what it was called before. The address now matches the name.",
