@@ -1,8 +1,14 @@
 /**
- * Delete every Vercel deployment except the one currently live in production.
+ * Delete old Vercel deployments, keeping the one live in production and the
+ * most recent production deployments before it as rollback targets.
  *
- *   npm run vercel:prune              -- dry run, prints what would be deleted
- *   npm run vercel:prune -- --yes     -- actually deletes
+ *   npm run vercel:prune                      -- dry run, prints what would be deleted
+ *   npm run vercel:prune -- --yes             -- actually deletes
+ *   npm run vercel:prune -- --keep-rollbacks 0  -- keep only the live one
+ *
+ * One rollback is kept by default: a deployment you have deleted cannot be
+ * promoted back, so pruning to the live one alone leaves nothing to fall back
+ * to if the latest release turns out to be broken.
  *
  * Every push creates a stored deployment (preview or production) that Vercel
  * keeps indefinitely on the Hobby plan, and only the most recent production
@@ -24,6 +30,14 @@ const PRODUCTION_URL = "carnacms.vercel.app";
 
 function arg(flag: string): boolean {
   return process.argv.includes(flag);
+}
+
+function numberArg(flag: string, fallback: number): number {
+  const i = process.argv.indexOf(flag);
+  if (i === -1) return fallback;
+  const value = Number(process.argv[i + 1]);
+  if (!Number.isInteger(value) || value < 0) throw new Error(`${flag} needs a whole number of 0 or more`);
+  return value;
 }
 
 function findCliToken(): string | undefined {
@@ -69,7 +83,14 @@ async function api<T>(token: string, path: string, init?: RequestInit): Promise<
   return res.json() as Promise<T>;
 }
 
-type Deployment = { uid: string; url: string; target: string | null; created: number };
+type Deployment = {
+  uid: string;
+  url: string;
+  target: string | null;
+  created: number;
+  state?: string;
+  readyState?: string;
+};
 
 async function fetchAllDeployments(token: string, projectId: string, teamId: string): Promise<Deployment[]> {
   const all: Deployment[] = [];
@@ -89,6 +110,7 @@ async function fetchAllDeployments(token: string, projectId: string, teamId: str
 
 async function main() {
   const dryRun = !arg("--yes");
+  const keepRollbacks = numberArg("--keep-rollbacks", 1);
 
   const token = process.env.VERCEL_TOKEN ?? findCliToken();
   if (!token) throw new Error("No Vercel token found. Run `vercel login` once, or set VERCEL_TOKEN.");
@@ -100,22 +122,55 @@ async function main() {
     throw new Error("No project linked. Run `vercel link`, or set VERCEL_PROJECT_ID and VERCEL_TEAM_ID.");
   }
 
-  // This endpoint's deployment object uses `id`; the list endpoint below
-  // uses `uid` for the same value — genuinely inconsistent across the API.
-  const live = await api<{ id: string }>(
+  // Ask the alias what it points at: that is the definition of "live", and it
+  // respects a manual rollback. The alias object calls it `deploymentId`; the
+  // list endpoint below calls the same value `uid`.
+  const alias = await api<{ deploymentId: string }>(
     token,
-    `/v13/deployments/get?url=${encodeURIComponent(PRODUCTION_URL)}&teamId=${teamId}`
+    `/v4/aliases/${encodeURIComponent(PRODUCTION_URL)}?teamId=${teamId}`
   );
+  const liveId = alias.deploymentId;
 
   const deployments = await fetchAllDeployments(token, projectId, teamId);
-  const toDelete = deployments.filter((d) => d.uid !== live.id);
+  const live = deployments.find((d) => d.uid === liveId);
+  if (!live) {
+    // Refuse rather than guess: without the live deployment in hand there is
+    // no safe way to say which others are older than it.
+    throw new Error(`${PRODUCTION_URL} points at ${liveId}, which is not in this project's deployment list.`);
+  }
 
-  console.log(`${deployments.length} deployments total. Keeping the live one: ${live.id} (${PRODUCTION_URL}).`);
+  // Rollback targets: finished production deployments that went live before
+  // the current one, newest first. A preview or a failed build cannot be
+  // promoted, so neither counts as something to fall back to.
+  const rollbacks = deployments
+    .filter(
+      (d) =>
+        d.uid !== liveId &&
+        d.target === "production" &&
+        (d.state ?? d.readyState) === "READY" &&
+        d.created < live.created
+    )
+    .sort((a, b) => b.created - a.created)
+    .slice(0, keepRollbacks);
+
+  const keep = new Set([liveId, ...rollbacks.map((d) => d.uid)]);
+  const toDelete = deployments.filter((d) => !keep.has(d.uid));
+
+  console.log(`${deployments.length} deployments total.`);
+  console.log(`Keeping live:      ${liveId}  ${new Date(live.created).toISOString()}  (${PRODUCTION_URL})`);
+  for (const d of rollbacks) {
+    console.log(`Keeping rollback:  ${d.uid}  ${new Date(d.created).toISOString()}`);
+  }
+  if (rollbacks.length < keepRollbacks) {
+    console.log(`(Asked to keep ${keepRollbacks} rollback(s); only ${rollbacks.length} earlier production deployment(s) exist.)`);
+  }
   console.log(`${toDelete.length} eligible for deletion.\n`);
 
   if (dryRun) {
     for (const d of toDelete) {
-      console.log(`  would delete  ${d.uid}  ${d.url}  ${d.target ?? "preview"}  ${new Date(d.created).toISOString()}`);
+      console.log(
+        `  would delete  ${d.uid}  ${d.target ?? "preview"}  ${d.state ?? d.readyState ?? "?"}  ${new Date(d.created).toISOString()}`
+      );
     }
     console.log(`\nDry run — nothing deleted. Re-run with --yes to actually delete these.`);
     return;
