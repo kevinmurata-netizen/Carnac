@@ -48,6 +48,21 @@ export const ENTRIES: BuildEntry[] = [
       "Needs one migration, and it only adds: a new scenario_sets table and a nullable column on scenarios. Every existing scenario starts outside any set and runs exactly as before. A scenario in a set always starts from the network's latest measured condition, whatever the base year — a base year in the future does not age the network forward to it first.",
   },
   {
+    date: "2026-09-14",
+    title: "Choose the parameters Treatment Planning ranks by",
+    summary:
+      "Treatment Planning always ranked by the organization's defaults. You can now pick the criticality formula, scale factor, category weighting and scenario weighting from dropdowns at the top of the page and press Recalculate to see the Priority Scores they produce.",
+    changes: [
+      "Four dropdowns — Criticality, Scale factor, Category weight, Scenario weight. Leaving one blank uses the default, and each blank says which default that is.",
+      "Nothing recalculates until you press Recalculate. A dropdown you have changed but not applied is outlined, and the bar says the rankings below still reflect the previous selection, so a ranking is never read against selections that did not produce it.",
+      "The selection lives in the page address, so a particular ranking survives a refresh and can be sent to someone. Back to defaults clears it.",
+      "Nothing is saved. This asks “what if” — the organization's defaults, and every scenario, are exactly as they were.",
+      "Both Excel exports carry the selection, so a download matches what is on screen. The Ranked Options line names the criticality formula it used alongside the weightings and scale factor.",
+      "Choosing a criticality formula scores every asset live with it, instead of using each asset's stored score.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-09-12",
     title: "Search, filter and sort the ranked options",
     summary:

@@ -471,3 +471,33 @@ export async function getActiveFormula(assetTypeId: string): Promise<CompiledFor
   if (!model) return null;
   return compileCriticalityModel(model.id);
 }
+
+/**
+ * Criticality per asset under one named formula, worked out live.
+ *
+ * Returns null when there is no such formula or it no longer parses, which
+ * leaves the stored score in charge — the one the asset pages show. So a
+ * caller asking "what if we ranked by this formula instead" only diverges from
+ * the rest of the system where it asked to, and a stale formula degrades to
+ * the ordinary answer rather than to an error.
+ *
+ * Live rather than read from a stored score, because the point of choosing a
+ * formula is to see its effect now, without waiting for a model run to write
+ * it down.
+ */
+export async function criticalityForModel(
+  organizationId: string,
+  modelId: string
+): Promise<Map<string, number> | null> {
+  const model = await prisma.criticalityModel.findFirst({
+    where: { id: modelId, assetType: { organizationId } },
+    select: { id: true, assetTypeId: true },
+  });
+  if (!model) return null;
+
+  const compiled = await compileCriticalityModel(model.id);
+  if (!compiled) return null;
+
+  const values = await loadAssetValues(organizationId, model.assetTypeId, compiled.valueMaps);
+  return new Map(scoreAssets(compiled.tree, values).map((s) => [s.assetId, s.score]));
+}
