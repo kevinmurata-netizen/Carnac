@@ -96,7 +96,12 @@ export async function getWciFlow(organizationId: string, scenarioId: string): Pr
     getConditionBands(organizationId),
   ]);
 
-  const result = runScenario(simAssets, summary.assumptions, { library });
+  // The set's base year, so a flow for a plan starting later begins from the
+  // network as aged to that year — the same starting point the stored run used.
+  const result = runScenario(simAssets, summary.assumptions, {
+    library,
+    startYear: summary.scenarioSet?.baseYear,
+  });
   const outcomes = result.assetOutcomes;
   if (outcomes.length === 0) return null;
 

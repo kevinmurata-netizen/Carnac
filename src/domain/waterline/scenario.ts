@@ -171,6 +171,15 @@ export type ScenarioRunResult = {
   /** Where each asset started and ended, so a run can be shown as a flow
    * between condition bands rather than only as yearly averages. */
   assetOutcomes: AssetOutcome[];
+  /** Years the network was aged, with no work, between the condition year
+   * and the start year. Zero when the run starts in the condition year or
+   * earlier. */
+  agedYears: number;
+  /** Average condition in the condition year, before any ageing. */
+  conditionYearAvgCondition: number;
+  /** Average condition at the start of the first year, after ageing. Equal to
+   * the figure above when nothing was aged. */
+  startAvgCondition: number;
 };
 
 export type AssetOutcome = {
@@ -444,9 +453,12 @@ export type ScenarioRunOptions = {
   /** Deterioration curves by material. */
   curves?: Record<string, CurveParams>;
   /** The first year of the run. A scenario set supplies its base year; on
-   * its own a scenario starts in the year it is run. The network always
-   * starts from its latest measured condition either way. */
+   * its own a scenario starts in the year it is run. */
   startYear?: number;
+  /** The year the assets' starting condition describes. Defaults to the
+   * current year. When the run starts later than this, the network is aged
+   * forward to the start year with no work done first. */
+  conditionYear?: number;
 };
 
 /**
@@ -481,10 +493,36 @@ export function runScenario(
   /** What each asset has already had, and when. Drives the retreatment
    * interval, and carries across years for the whole run. */
   const history: TreatmentHistory = new Map();
-  const startCondition = new Map(assets.map((a) => [a.id, a.condition]));
   const treatmentCount = new Map<string, number>();
-  const startYear = options.startYear ?? new Date().getFullYear();
+  const conditionYear = options.conditionYear ?? new Date().getFullYear();
+  const startYear = options.startYear ?? conditionYear;
   const years: ScenarioYearResult[] = [];
+  const average = () => state.reduce((s, a) => s + a.condition, 0) / (state.length || 1);
+
+  // 0. Carry the network to the start year. A plan that begins in 2028 is
+  //    planning for the pipes as they will be in 2028, not as they were last
+  //    measured — two more years down the curve. Nothing is funded in the gap:
+  //    whatever is already programmed for those years is not known here, and
+  //    assuming none is the conservative reading.
+  //
+  //    A start year before the condition year is not aged backwards. There is
+  //    no honest way to un-deteriorate a pipe, so such a run starts from the
+  //    condition as it stands.
+  //
+  //    Retreatment history is not advanced either: nothing was treated in the
+  //    gap, so there is nothing to record.
+  const conditionYearAvgCondition = average();
+  const agedYears = Math.max(0, startYear - conditionYear);
+  if (agedYears > 0) {
+    for (const asset of state) {
+      asset.effectiveAge += agedYears;
+      asset.condition = evaluateCurve(asset.curve, asset.effectiveAge);
+    }
+  }
+  // Outcomes are measured across the planning window, so they start where the
+  // window starts rather than where the network was before ageing.
+  const startCondition = new Map(state.map((a) => [a.id, a.condition]));
+  const startAvgCondition = average();
 
   let totalSpend = 0;
   let totalFailureCost = 0;
@@ -615,6 +653,9 @@ export function runScenario(
       endCondition: Math.round(a.condition * 10) / 10,
       treatments: treatmentCount.get(a.id) ?? 0,
     })),
+    agedYears,
+    conditionYearAvgCondition: Math.round(conditionYearAvgCondition * 10) / 10,
+    startAvgCondition: Math.round(startAvgCondition * 10) / 10,
   };
 }
 

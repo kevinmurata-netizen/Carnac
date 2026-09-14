@@ -72,6 +72,8 @@ export function ScenarioSetForm({
     period >= PERIOD_MIN &&
     period <= PERIOD_MAX;
   const windowChanged = changed("baseYear") || changed("planningPeriodYears");
+  // Matches the server, which ages from the year a run happens in.
+  const thisYear = new Date().getFullYear();
 
   return (
     <form action={formAction} className="space-y-4">
@@ -174,7 +176,20 @@ export function ScenarioSetForm({
               <span className="font-medium text-foreground tabular-nums">
                 {base}–{endYear({ baseYear: base, planningPeriodYears: period })}
               </span>
-              , from the network&apos;s latest measured condition.
+
+              {base > thisYear ? (
+                <>
+                  . The network is first aged {base - thisYear} year{base - thisYear === 1 ? "" : "s"} from its{" "}
+                  {thisYear} condition, with no work in between.
+                </>
+              ) : base < thisYear ? (
+                // Said, because it is the one case the years do not mean what
+                // they say: a pipe cannot be un-aged, so an earlier base year
+                // relabels today's network rather than recreating that year's.
+                <>, starting from the network as it is now — condition cannot be wound back to {base}.</>
+              ) : (
+                <>, from the network&apos;s latest measured condition.</>
+              )}
             </p>
           ) : (
             <p className="text-muted-foreground">
