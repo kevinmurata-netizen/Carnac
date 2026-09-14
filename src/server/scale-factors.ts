@@ -91,9 +91,18 @@ export function scaleAssets(
  */
 export async function assetScaleFactors(
   organizationId: string,
-  assetTypeId: string
+  assetTypeId: string,
+  /**
+   * A specific formula to use instead of the active one — for a screen that
+   * asks "what if size were measured this way". Absent means the active
+   * formula, which is what every caller before this wanted. A model that no
+   * longer exists or no longer parses falls back to the active one rather than
+   * to no scale factor at all.
+   */
+  modelId?: string | null
 ): Promise<{ factors: Map<string, { factor: number; missing: boolean }>; name: string | null }> {
-  const model = await getActiveScaleFactor(assetTypeId);
+  const chosen = modelId ? await compileScaleFactor(assetTypeId, modelId) : null;
+  const model = chosen ?? (await getActiveScaleFactor(assetTypeId));
   if (!model) return { factors: new Map(), name: null };
 
   const values = await loadAssetValues(organizationId, assetTypeId, model.valueMaps);
@@ -289,6 +298,25 @@ export type CompiledScaleFactor = {
  */
 export async function getActiveScaleFactor(assetTypeId: string): Promise<CompiledScaleFactor | null> {
   const model = await prisma.scaleFactorModel.findFirst({ where: { assetTypeId, isActive: true } });
+  if (!model) return null;
+  try {
+    return {
+      id: model.id,
+      name: model.name,
+      assetTypeId: model.assetTypeId,
+      tree: parse(model.expression),
+      valueMaps: readValueMaps(model.valueMaps),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** One named scale factor formula for an asset type, compiled — or null if it
+ * does not exist there or no longer parses. Scoped to the asset type so an id
+ * from somewhere else cannot be smuggled in through a URL. */
+async function compileScaleFactor(assetTypeId: string, modelId: string): Promise<CompiledScaleFactor | null> {
+  const model = await prisma.scaleFactorModel.findFirst({ where: { id: modelId, assetTypeId } });
   if (!model) return null;
   try {
     return {

@@ -61,11 +61,26 @@ export async function GET(request: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const organizationId = session.user.organizationId;
-  const list = new URL(request.url).searchParams.get("list") === "ranked" ? "ranked" : "recommended";
+  const search = new URL(request.url).searchParams;
+  const list = search.get("list") === "ranked" ? "ranked" : "recommended";
+
+  // The same four parameters Treatment Planning was recalculated with, so the
+  // file matches the page. Only id-shaped values are passed on; the loaders
+  // scope each to this organization.
+  const idParam = (key: string) => {
+    const v = search.get(key);
+    return v && /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null;
+  };
+  const options = {
+    weightSetId: idParam("weightSetId"),
+    categoryWeightSetId: idParam("categoryWeightSetId"),
+    criticalityModelId: idParam("criticalityModelId"),
+    scaleFactorModelId: idParam("scaleFactorModelId"),
+  };
   const today = new Date().toISOString().slice(0, 10);
 
   if (list === "ranked") {
-    const ranking = await rankOptions(organizationId);
+    const ranking = await rankOptions(organizationId, options);
     const rows = ranking.rows.map((r, i) => ({
       rank: i + 1,
       assetCode: r.assetCode,
@@ -91,13 +106,13 @@ export async function GET(request: Request) {
       columns: RANKED,
       rows,
       title: "Ranked Options — Criticality × Scale × Category × Benefit ÷ Total Cost",
-      note: `${rows.length.toLocaleString()} options over ${ranking.assetsWithOptions.toLocaleString()} segments (${ranking.combinationsScored.toLocaleString()} combinations) · ${ranking.weightSetName} · ${ranking.categoryWeightSetName} · scale factor ${ranking.scaleFactorName ?? "none"} · ${ranking.belowFloor.toLocaleString()} below the effectiveness floor · exported ${today}`,
+      note: `${rows.length.toLocaleString()} options over ${ranking.assetsWithOptions.toLocaleString()} segments (${ranking.combinationsScored.toLocaleString()} combinations) · ${ranking.weightSetName} · ${ranking.categoryWeightSetName} · scale factor ${ranking.scaleFactorName ?? "none"} · criticality ${ranking.criticalityModelName ?? "stored scores"} · ${ranking.belowFloor.toLocaleString()} below the effectiveness floor · exported ${today}`,
     });
 
     return file(buffer, "Ranked Options");
   }
 
-  const recommendations = await getNetworkRecommendations(organizationId);
+  const recommendations = await getNetworkRecommendations(organizationId, options);
   const rows = recommendations.rows.map((r) => ({
     assetCode: r.assetCode,
     conditionScore: r.conditionScore,

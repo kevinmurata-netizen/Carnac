@@ -17,6 +17,11 @@ import { ASSET_LABEL } from "@/config/labels";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 import { ExportButton } from "@/components/layout/export-button";
+import { ParameterBar, type AppliedParameters } from "./parameter-bar";
+import { listWeightSets } from "@/server/weight-sets";
+import { listCategoryWeightSets } from "@/server/category-weight-sets";
+import { listFormulaChoices } from "@/server/criticality";
+import { listScaleFactors } from "@/server/scale-factors";
 
 const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   Assess: "secondary",
@@ -26,17 +31,63 @@ const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
   Retire: "secondary",
 };
 
-export default async function TreatmentPlanningPage() {
+/** Only an id-shaped value is passed on. The loaders already scope every id
+ * to the organization, so a foreign one quietly falls back to the default —
+ * this just stops a hand-edited URL sending arbitrary text into a query. */
+const readId = (raw: string | undefined) => (raw && /^[A-Za-z0-9_-]{1,64}$/.test(raw) ? raw : "");
+
+export default async function TreatmentPlanningPage({
+  searchParams,
+}: {
+  searchParams: Promise<Partial<Record<keyof AppliedParameters, string>>>;
+}) {
+  const params = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/treatment-planning", "Treatment Planning");
   const conditionBands = await getConditionBands(organizationId);
 
-  const [recommendations, library, ranking] = await Promise.all([
-    getNetworkRecommendations(organizationId),
-    listTreatments(organizationId),
-    rankOptions(organizationId),
-  ]);
+  const applied: AppliedParameters = {
+    weightSetId: readId(params.weightSetId),
+    categoryWeightSetId: readId(params.categoryWeightSetId),
+    criticalityModelId: readId(params.criticalityModelId),
+    scaleFactorModelId: readId(params.scaleFactorModelId),
+  };
+
+  // Empty strings become null so every loader reads "not chosen" the way it
+  // already understands, rather than looking up an id of "".
+  const options = {
+    weightSetId: applied.weightSetId || null,
+    categoryWeightSetId: applied.categoryWeightSetId || null,
+    criticalityModelId: applied.criticalityModelId || null,
+    scaleFactorModelId: applied.scaleFactorModelId || null,
+  };
+
+  const [recommendations, library, ranking, weightSets, categoryWeightSets, formulas, scaleGroups] =
+    await Promise.all([
+      getNetworkRecommendations(organizationId, options),
+      listTreatments(organizationId),
+      rankOptions(organizationId, options),
+      listWeightSets(organizationId),
+      listCategoryWeightSets(organizationId),
+      listFormulaChoices(organizationId),
+      listScaleFactors(organizationId),
+    ]);
+
+  const choices = {
+    weightSetId: weightSets.map((w) => ({ id: w.id, label: w.name, isDefault: w.isDefault })),
+    categoryWeightSetId: categoryWeightSets.map((c) => ({ id: c.id, label: c.name, isDefault: c.isDefault })),
+    criticalityModelId: formulas.map((f) => ({ id: f.id, label: f.name, isDefault: f.isActive })),
+    scaleFactorModelId: scaleGroups.flatMap((g) =>
+      g.models.map((m) => ({ id: m.id, label: m.name, isDefault: m.isActive }))
+    ),
+  };
+
+  // Carried onto the export links, so a recalculated ranking downloads as the
+  // ranking on screen rather than as the defaults.
+  const exportQuery = new URLSearchParams(
+    Object.entries(applied).filter(([, v]) => v !== "") as Array<[string, string]>
+  ).toString();
 
   const renewalCount = recommendations.rows.filter((r) => r.category === "Renew").length;
   const topRows = recommendations.rows.slice(0, 25);
@@ -47,6 +98,10 @@ export default async function TreatmentPlanningPage() {
         title={pageTitle}
         description="Applicable treatments, effects and cost for every segment — each recommendation carries its reasoning"
       />
+
+      {/* Keyed on the applied values so browser Back, which changes them
+          without a click here, resets the dropdowns to match the ranking. */}
+      <ParameterBar key={exportQuery} applied={applied} choices={choices} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
@@ -94,7 +149,7 @@ export default async function TreatmentPlanningPage() {
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle>Recommended Treatments — Highest Risk First</CardTitle>
           <ExportButton
-            href="/treatment-planning/export"
+            href={`/treatment-planning/export${exportQuery ? `?${exportQuery}` : ""}`}
             title={`All ${formatNumber(recommendations.rows.length)} segments with a recommendation, not the 25 shown`}
           />
         </CardHeader>
@@ -189,7 +244,7 @@ Priority = criticality ${row.criticalityScore} × scale ${
         </CardContent>
       </Card>
 
-      <RankedOptions ranking={ranking} />
+      <RankedOptions ranking={ranking} exportQuery={exportQuery} />
 
       <Card className="mt-4">
         <CardHeader>

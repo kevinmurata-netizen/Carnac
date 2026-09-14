@@ -28,6 +28,8 @@ import { getMaterialCurves } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
 import { assetScaleFactors } from "@/server/scale-factors";
+import { criticalityForModel } from "@/server/criticality";
+import type { PriorityOptions } from "@/server/priority";
 import { categoryWeight } from "@/domain/waterline/category-weight";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 
@@ -271,22 +273,34 @@ export type NetworkRecommendations = {
   noActionCount: number;
 };
 
-export async function getNetworkRecommendations(organizationId: string): Promise<NetworkRecommendations> {
+export async function getNetworkRecommendations(
+  organizationId: string,
+  /**
+   * The same four choices the ranked list takes, so both tables on Treatment
+   * Planning score an option the same way. Without this the page would show
+   * two priority scores for one treatment the moment anyone changed a
+   * parameter, computed two different ways.
+   */
+  options: PriorityOptions = {}
+): Promise<NetworkRecommendations> {
   const contexts = await buildContexts(organizationId);
   const assetType = await prisma.assetType.findFirst({
     where: { organizationId, code: "WATERLINE" },
     select: { id: true },
   });
 
-  const [library, combinations, curves, chosen, chosenCategories, scale] = await Promise.all([
+  const [library, combinations, curves, chosen, chosenCategories, scale, liveCriticality] = await Promise.all([
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
     getMaterialCurves(organizationId),
-    resolveWeights(organizationId),
-    resolveCategoryWeights(organizationId),
+    resolveWeights(organizationId, options.weightSetId),
+    resolveCategoryWeights(organizationId, options.categoryWeightSetId),
     assetType
-      ? assetScaleFactors(organizationId, assetType.id)
+      ? assetScaleFactors(organizationId, assetType.id, options.scaleFactorModelId)
       : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
+    options.criticalityModelId
+      ? criticalityForModel(organizationId, options.criticalityModelId)
+      : Promise.resolve(null),
   ]);
 
   // Criticality is deliberately absent from these weights: it multiplies the
@@ -370,6 +384,7 @@ export async function getNetworkRecommendations(organizationId: string): Promise
         estimatedCost: rec.recommended.estimatedCost,
         riskReductionPct: rec.recommended.riskReductionPct,
         criticalityScore:
+          liveCriticality?.get(asset.id) ??
           asset.storedCriticality ??
           computeCriticalityScore({
             customersServed: ctx.customersServed,
