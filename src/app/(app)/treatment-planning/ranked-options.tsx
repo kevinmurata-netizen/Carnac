@@ -29,7 +29,15 @@ const MIX_WINDOW = 100;
  * seeing before reading the rows, because it changes what the rows mean: a list
  * of a hundred patches is a statement about cost spread, not about the network.
  */
-export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
+export function RankedOptions({
+  ranking,
+  exportQuery = "",
+}: {
+  ranking: PriorityRanking;
+  /** The parameters the ranking was computed with, so the download matches
+   * what is on screen. */
+  exportQuery?: string;
+}) {
   // The mix and the grid both read the fundable list. An option the
   // effectiveness floor rules out is still scored and still exported, but
   // showing it here would suggest it is on the table when it is not.
@@ -55,7 +63,7 @@ export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
             Ranked Options <span className="text-muted-foreground">({formatNumber(ranking.optionsScored)})</span>
           </CardTitle>
           <ExportButton
-            href="/treatment-planning/export?list=ranked"
+            href={`/treatment-planning/export?list=ranked${exportQuery ? `&${exportQuery}` : ""}`}
             title={`All ${formatNumber(ranking.optionsScored)} options, including the ${formatNumber(
               ranking.belowFloor
             )} the effectiveness floor rules out`}
@@ -68,7 +76,8 @@ export function RankedOptions({ ranking }: { ranking: PriorityRanking }) {
         <p className="text-xs text-muted-foreground">
           Ranked by <span className="font-medium">{ranking.weightSetName}</span> ·{" "}
           <span className="font-medium">{ranking.categoryWeightSetName}</span> · scale factor{" "}
-          <span className="font-medium">{ranking.scaleFactorName ?? "none active"}</span>
+          <span className="font-medium">{ranking.scaleFactorName ?? "none active"}</span> · criticality{" "}
+          <span className="font-medium">{ranking.criticalityModelName ?? "stored scores"}</span>
           {ranking.scaleFactorFallbacks > 0 && (
             <>
               {" "}

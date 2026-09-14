@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { compileCriticalityModel, loadAssetValues, scoreAssets } from "@/server/criticality";
+import { criticalityForModel } from "@/server/criticality";
 import { WorkPlanItemStatus } from "@prisma/client";
 import {
   DEFAULT_WEIGHTS,
@@ -77,16 +77,10 @@ async function criticalityForScenario(
 ): Promise<Map<string, number> | null> {
   const scenario = await prisma.scenario.findFirst({
     where: { id: scenarioId, organizationId },
-    select: { criticalityModel: true },
+    select: { criticalityModelId: true },
   });
-  const model = scenario?.criticalityModel;
-  if (!model) return null;
-
-  const compiled = await compileCriticalityModel(model.id);
-  if (!compiled) return null;
-
-  const values = await loadAssetValues(organizationId, model.assetTypeId, compiled.valueMaps);
-  return new Map(scoreAssets(compiled.tree, values).map((s) => [s.assetId, s.score]));
+  if (!scenario?.criticalityModelId) return null;
+  return criticalityForModel(organizationId, scenario.criticalityModelId);
 }
 
 /** Assemble every asset with a viable treatment, plus the objective values

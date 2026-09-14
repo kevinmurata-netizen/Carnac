@@ -28,6 +28,7 @@ import { getMaterialCurves } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
 import { assetScaleFactors } from "@/server/scale-factors";
+import { criticalityForModel } from "@/server/criticality";
 import { resolveOptionSelection } from "@/server/scenario-options";
 import { CONSIDER_ALL, filterOptions } from "@/domain/waterline/option-selection";
 
@@ -122,6 +123,8 @@ export type PriorityRanking = {
   weightSetName: string;
   categoryWeightSetName: string;
   scaleFactorName: string | null;
+  /** The criticality formula ranked by, or null for the stored scores. */
+  criticalityModelName: string | null;
   /** Categories the chosen weighting switches off entirely. Their options are
    * still scored — at zero — so the plan can say what it excluded rather than
    * silently omitting it. */
@@ -135,6 +138,11 @@ export type PriorityOptions = {
   /** Null falls back to the organization's default set. */
   weightSetId?: string | null;
   categoryWeightSetId?: string | null;
+  /** A criticality formula to rank by, worked out live. Null uses each asset's
+   * stored score — the one the rest of the system shows. */
+  criticalityModelId?: string | null;
+  /** A scale factor formula to rank by. Null uses the active one. */
+  scaleFactorModelId?: string | null;
   /** Rank as one scenario would: only what that scenario considers, weighted
    * and capped the way it is. Null ranks the whole library. */
   scenarioId?: string | null;
@@ -151,7 +159,7 @@ export async function rankOptions(
     select: { id: true },
   });
 
-  const [contexts, library, combinations, curves, chosen, chosenCategories, selection, scale] =
+  const [contexts, library, combinations, curves, chosen, chosenCategories, selection, scale, liveCriticality] =
     await Promise.all([
     buildContexts(organizationId),
     loadTreatmentDefs(organizationId),
@@ -161,8 +169,11 @@ export async function rankOptions(
     resolveCategoryWeights(organizationId, options.categoryWeightSetId),
     resolveOptionSelection(organizationId, options.scenarioId),
     assetType
-      ? assetScaleFactors(organizationId, assetType.id)
+      ? assetScaleFactors(organizationId, assetType.id, options.scaleFactorModelId)
       : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
+    options.criticalityModelId
+      ? criticalityForModel(organizationId, options.criticalityModelId)
+      : Promise.resolve(null),
     ]);
 
   // Criticality is absent from these weights on purpose: it multiplies the
@@ -195,7 +206,12 @@ export async function rankOptions(
       customerType: ctx.customerType ?? null,
     });
 
+    // A chosen formula wins, then the stored score, then the risk-based
+    // default. An asset the formula could not score keeps its stored value
+    // rather than dropping to zero — a gap in the data should not quietly
+    // demote it.
     const criticality =
+      liveCriticality?.get(asset.id) ??
       asset.storedCriticality ??
       computeCriticalityScore({
         customersServed: ctx.customersServed,
@@ -296,6 +312,14 @@ export async function rankOptions(
     weightSetName: chosen.name,
     categoryWeightSetName: chosenCategories.name,
     scaleFactorName: scale.name,
+    // Named only when the chosen formula actually produced scores; a stale id
+    // falls back to stored scores and should not be reported as in use.
+    criticalityModelName: liveCriticality
+      ? (await prisma.criticalityModel.findFirst({
+          where: { id: options.criticalityModelId! },
+          select: { name: true },
+        }))?.name ?? null
+      : null,
     excludedCategories: (Object.keys(categoryWeights) as TreatmentCategory[]).filter(
       (k) => categoryWeights[k] === 0
     ),
