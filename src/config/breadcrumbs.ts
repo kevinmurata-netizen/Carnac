@@ -19,6 +19,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   "deterioration-models": "Deterioration Models",
   "treatment-planning": "Treatment Planning",
   "scenario-planning": "Scenario Planning",
+  sets: "Scenario Sets",
   "work-plan": "Work Plan",
   "model-results": "Model Results",
   reports: "Reports",

@@ -30,6 +30,25 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-14",
+    title: "Group scenarios into Scenario Sets",
+    summary:
+      "A Scenario Set groups scenarios meant to be compared, with a name, description, base year, planning period and status. Every scenario in a set runs from the set's base year for its planning period, so they compare year for year.",
+    changes: [
+      "Scenario Planning › New Scenario Set. A set has a name, a description, a base year, a planning period and a status: Draft, In review, Approved or Archived.",
+      "Each set has its own page: the scenarios in it, a chart and comparison table of just those scenarios, and Run all scenarios to run every one of them back to back.",
+      "Add a scenario to a set from the set's page, or choose the set on the scenario itself. A scenario belongs to one set at most; adding one that is already in another set moves it.",
+      "The set decides the years. A scenario in a set starts in the set's base year, not the current year, and runs for the set's planning period instead of its own. Its own analysis period is shown greyed out with the set's window beside it.",
+      "The scenario's own analysis period is kept, not overwritten. Take it out of the set and it runs over what it had before.",
+      "Changing a set's window, or moving a scenario into or out of a set, does not run anything. Instead, any scenario whose stored results cover different years is marked “out of window” — on the set's page, on the scenario's page and in the comparison table — until it is run again.",
+      "Scenario Planning shows the sets above the comparison, and the comparison gains a Set column. A scenario in a set shows its calendar years (2027–2036) as its period.",
+      "Deleting a set keeps its scenarios. They go back to running over their own analysis periods.",
+      "Status is a label and locks nothing. An approved set can still be re-run after a correction to the treatment library.",
+    ],
+    note:
+      "Needs one migration, and it only adds: a new scenario_sets table and a nullable column on scenarios. Every existing scenario starts outside any set and runs exactly as before. A scenario in a set always starts from the network's latest measured condition, whatever the base year — a base year in the future does not age the network forward to it first.",
+  },
+  {
+    date: "2026-09-14",
     title: "Choose the parameters Treatment Planning ranks by",
     summary:
       "Treatment Planning always ranked by the organization's defaults. You can now pick the criticality formula, scale factor, category weighting and scenario weighting from dropdowns at the top of the page and press Recalculate to see the Priority Scores they produce.",

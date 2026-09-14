@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart, type LineSeries } from "@/components/charts/simple-line-chart";
 import { formatCurrency, formatDateTime, formatDuration, formatNumber } from "@/lib/format";
+import { describeWindow } from "@/lib/scenario-sets";
 
 /** Colors are assigned by position in the full list, not by position among the
  * checked ones, so a scenario keeps the same line color as others are toggled. */
@@ -22,8 +23,11 @@ const SERIES_COLORS = [
 export function ScenarioComparison({
   scenarios,
   bands,
+  showSet = true,
 }: {
   scenarios: ScenarioSummary[];
+  /** Off on a set's own page, where every row would name the same set. */
+  showSet?: boolean;
   /** Configured bands, passed from the server page — a client component cannot
    * read them itself, and the seeded defaults would ignore any edit. */
   bands: ConditionBand[];
@@ -151,6 +155,7 @@ export function ScenarioComparison({
                     />
                   </TableHead>
                   <TableHead>Scenario</TableHead>
+                  {showSet && <TableHead>Set</TableHead>}
                   <TableHead>Strategy</TableHead>
                   <TableHead>Annual Budget</TableHead>
                   <TableHead>Period</TableHead>
@@ -164,8 +169,8 @@ export function ScenarioComparison({
               <TableBody>
                 {scenarios.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
-                      No scenarios yet — create one below.
+                    <TableCell colSpan={showSet ? 11 : 10} className="py-10 text-center text-sm text-muted-foreground">
+                      No scenarios yet.
                     </TableCell>
                   </TableRow>
                 )}
@@ -199,10 +204,36 @@ export function ScenarioComparison({
                         </Link>
                         {s.description && <div className="text-xs text-muted-foreground">{s.description}</div>}
                         {!plottable && <div className="text-xs text-muted-foreground">Not run yet</div>}
+                        {s.resultsOutOfWindow && (
+                          <div
+                            className="text-xs font-medium text-amber-600"
+                            title="Its set covers different years from these results. Run it again to compare like with like."
+                          >
+                            Results out of window
+                          </div>
+                        )}
                       </TableCell>
+                      {showSet && (
+                        <TableCell className="text-xs">
+                          {s.scenarioSet ? (
+                            <Link
+                              href={`/scenario-planning/sets/${s.scenarioSet.id}`}
+                              className="text-primary hover:underline"
+                            >
+                              {s.scenarioSet.name}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      )}
                       <TableCell className="text-xs">{s.assumptions.strategy}</TableCell>
                       <TableCell>{formatCurrency(s.assumptions.annualBudget, { compact: true })}</TableCell>
-                      <TableCell>{s.assumptions.analysisPeriodYears} yr</TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        {/* A set fixes the calendar years, so name them; on its
+                            own a scenario starts whenever it is run. */}
+                        {s.scenarioSet ? describeWindow(s.scenarioSet) : `${s.assumptions.analysisPeriodYears} yr`}
+                      </TableCell>
                       <TableCell style={band ? { color: band.color } : undefined} className="font-medium">
                         {s.finalAvgCondition ?? "—"}
                       </TableCell>

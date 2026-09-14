@@ -28,6 +28,7 @@ export type ScenarioValues = {
   weightSetId: string;
   categoryWeightSetId: string;
   categoryFundingPlanId: string;
+  scenarioSetId: string;
 };
 
 export type ScenarioFieldDefaults = {
@@ -44,6 +45,7 @@ export type ScenarioFieldDefaults = {
   weightSetId: string | null;
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
+  scenarioSetId: string | null;
 };
 
 export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
@@ -61,8 +63,19 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     weightSetId: d.weightSetId ?? "",
     categoryWeightSetId: d.categoryWeightSetId ?? "",
     categoryFundingPlanId: d.categoryFundingPlanId ?? "",
+    scenarioSetId: d.scenarioSetId ?? "",
   };
 }
+
+/** The sets a scenario can join. The window travels with the choice so the
+ * form can show what joining would do to the analysis period before saving. */
+export type ScenarioSetChoice = {
+  id: string;
+  name: string;
+  baseYear: number;
+  planningPeriodYears: number;
+  statusLabel: string;
+};
 
 /** The formulas that can rank this scenario's work plans. */
 export type CriticalityChoice = { id: string; name: string; assetTypeName: string; isActive: boolean };
@@ -108,6 +121,7 @@ export function ScenarioFields({
   weightSetChoices = [],
   categoryWeightSetChoices = [],
   fundingPlanChoices = [],
+  scenarioSetChoices = [],
 }: {
   values: ScenarioValues;
   onChange: (patch: Partial<ScenarioValues>) => void;
@@ -118,10 +132,14 @@ export function ScenarioFields({
   weightSetChoices?: WeightSetChoice[];
   categoryWeightSetChoices?: CategoryWeightSetChoice[];
   fundingPlanChoices?: FundingPlanChoice[];
+  scenarioSetChoices?: ScenarioSetChoice[];
 }) {
   const id = (name: string) => `${idPrefix}${name}`;
   const mark = (key: keyof ScenarioValues) =>
     saved && values[key] !== saved[key] ? `${input} border-amber-500` : input;
+  // Read from the selection rather than from what is stored, so choosing a set
+  // shows its window straight away instead of after the save that commits it.
+  const governingSet = scenarioSetChoices.find((s) => s.id === values.scenarioSetId) ?? null;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -147,6 +165,32 @@ export function ScenarioFields({
           className={mark("description")}
         />
       </div>
+
+      {/* Near the top, because it changes a field further down: a set decides
+          the years, and the analysis period below defers to it. */}
+      {scenarioSetChoices.length > 0 && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("scenarioSetId")}>Scenario set</Label>
+          <select
+            id={id("scenarioSetId")}
+            name="scenarioSetId"
+            value={values.scenarioSetId}
+            onChange={(e) => onChange({ scenarioSetId: e.target.value })}
+            className={mark("scenarioSetId")}
+          >
+            <option value="">Not in a set — starts in the year it is run</option>
+            {scenarioSetChoices.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} — {s.baseYear}–{s.baseYear + s.planningPeriodYears - 1} · {s.statusLabel}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Scenarios in a set all run from the set&apos;s base year for its planning period, so they can be compared
+            year for year. A scenario belongs to one set at most.
+          </p>
+        </div>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor={id("annualBudget")}>Annual Budget ($)</Label>
         <input
@@ -186,16 +230,37 @@ export function ScenarioFields({
       </div>
       <div className="space-y-1.5">
         <Label htmlFor={id("analysisPeriodYears")}>Analysis Period (yr)</Label>
-        <input
-          id={id("analysisPeriodYears")}
-          name="analysisPeriodYears"
-          type="number"
-          min={1}
-          max={50}
-          value={values.analysisPeriodYears}
-          onChange={(e) => onChange({ analysisPeriodYears: e.target.value })}
-          className={mark("analysisPeriodYears")}
-        />
+        {governingSet ? (
+          <>
+            {/* The set's period is shown, the scenario's own is what posts.
+                Leaving the set then gives back what the scenario had, rather
+                than the set's number having quietly replaced it. */}
+            <input type="hidden" name="analysisPeriodYears" value={values.analysisPeriodYears} />
+            <input
+              id={id("analysisPeriodYears")}
+              type="number"
+              readOnly
+              aria-describedby={id("analysisPeriodYears-note")}
+              value={governingSet.planningPeriodYears}
+              className={`${input} cursor-not-allowed bg-muted text-muted-foreground`}
+            />
+            <p id={id("analysisPeriodYears-note")} className="text-xs text-muted-foreground">
+              Set by {governingSet.name}: {governingSet.baseYear}–
+              {governingSet.baseYear + governingSet.planningPeriodYears - 1}
+            </p>
+          </>
+        ) : (
+          <input
+            id={id("analysisPeriodYears")}
+            name="analysisPeriodYears"
+            type="number"
+            min={1}
+            max={50}
+            value={values.analysisPeriodYears}
+            onChange={(e) => onChange({ analysisPeriodYears: e.target.value })}
+            className={mark("analysisPeriodYears")}
+          />
+        )}
       </div>
       <div className="space-y-1.5">
         <Label htmlFor={id("conditionTarget")}>Condition Target (WCI)</Label>

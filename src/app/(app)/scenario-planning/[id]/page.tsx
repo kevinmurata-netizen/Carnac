@@ -27,6 +27,7 @@ import type {
   WeightSetChoice,
   CategoryWeightSetChoice,
   FundingPlanChoice,
+  ScenarioSetChoice,
 } from "../scenario-fields";
 import { ScenarioEditForm } from "../scenario-form";
 import { ScenarioEditProvider } from "../scenario-edit-state";
@@ -38,6 +39,8 @@ import { AlertTriangle, Gauge, Layers, Wallet } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { ExportButton } from "@/components/layout/export-button";
 import { getConditionBands } from "@/server/settings";
+import { listScenarioSets } from "@/server/scenario-sets";
+import { STATUS_LABELS, describeWindow } from "@/lib/scenario-sets";
 
 export default async function ScenarioDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -45,7 +48,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate] =
+  const [scenario, projects, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate, sets] =
     await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
@@ -55,8 +58,22 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     listFundingPlans(organizationId),
     getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
+    listScenarioSets(organizationId),
     ]);
   if (!scenario) notFound();
+
+  // Archived sets are not offered — except the one this scenario is already
+  // in, which has to stay selectable or opening the form would silently
+  // propose taking it out.
+  const scenarioSetChoices: ScenarioSetChoice[] = sets
+    .filter((s) => s.status !== "ARCHIVED" || s.id === scenario.scenarioSet?.id)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      baseYear: s.baseYear,
+      planningPeriodYears: s.planningPeriodYears,
+      statusLabel: STATUS_LABELS[s.status],
+    }));
 
   const weightSetChoices: WeightSetChoice[] = weightSets.map((w) => {
     const n = normalizeWeights(w.weights);
@@ -98,10 +115,13 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     weightSetId: scenario.weightSetId ?? null,
     categoryWeightSetId: scenario.categoryWeightSetId ?? null,
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
+    scenarioSetId: scenario.scenarioSet?.id ?? null,
     annualBudget: a.annualBudget,
     fundingGrowthPct: toPercent(a.fundingGrowth),
     discountRatePct: toPercent(a.discountRate),
-    analysisPeriodYears: a.analysisPeriodYears,
+    // The scenario's own, not the set's: this is what the form posts back, and
+    // saving must not copy a set's period onto the scenario.
+    analysisPeriodYears: scenario.ownAnalysisPeriodYears,
     conditionTarget: a.conditionTarget,
     riskThreshold: a.riskThreshold,
     strategy: a.strategy,
@@ -155,10 +175,29 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
       {/* When the numbers below were produced. Results are stored, not live,
           so a reader comparing two scenarios needs to know whether they were
           computed against the same library. */}
-      {scenario.lastRunAt && (
+      {(scenario.lastRunAt || scenario.scenarioSet) && (
         <p className="-mt-2 mb-4 text-xs text-muted-foreground">
-          Last run {formatDateTime(scenario.lastRunAt)}
-          {scenario.lastRunMs != null && <> · took {formatDuration(scenario.lastRunMs)}</>}
+          {scenario.scenarioSet && (
+            <>
+              In{" "}
+              <Link href={`/scenario-planning/sets/${scenario.scenarioSet.id}`} className="text-primary hover:underline">
+                {scenario.scenarioSet.name}
+              </Link>
+              , which runs it over {describeWindow(scenario.scenarioSet)}
+              {scenario.lastRunAt && " · "}
+            </>
+          )}
+          {scenario.lastRunAt && <>Last run {formatDateTime(scenario.lastRunAt)}</>}
+          {scenario.lastRunAt && scenario.lastRunMs != null && <> · took {formatDuration(scenario.lastRunMs)}</>}
+        </p>
+      )}
+
+      {/* Before the numbers, because it is about the numbers: they were produced
+          over different years from the ones this scenario now runs over. */}
+      {scenario.resultsOutOfWindow && scenario.scenarioSet && (
+        <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-800 dark:text-amber-400">
+          These results cover {years[0]?.year}–{years.at(-1)?.year}, but {scenario.scenarioSet.name} now runs its
+          scenarios over {describeWindow(scenario.scenarioSet)}. Re-run to bring them into line.
         </p>
       )}
 
@@ -167,7 +206,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -203,7 +242,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -422,6 +461,7 @@ function AssumptionsCard({
   weightSetChoices,
   categoryWeightSetChoices,
   fundingPlanChoices,
+  scenarioSetChoices,
   catalogue,
 }: {
   scenario: ScenarioDetail;
@@ -430,6 +470,7 @@ function AssumptionsCard({
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
+  scenarioSetChoices: ScenarioSetChoice[];
   catalogue: ScenarioOptionCatalogue;
 }) {
   const a = scenario.assumptions;
@@ -452,6 +493,7 @@ function AssumptionsCard({
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
+            scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}
           />
@@ -462,7 +504,11 @@ function AssumptionsCard({
           <Field label="Annual Budget" value={formatCurrency(a.annualBudget, { compact: true })} />
           <Field label="Funding Growth" value={`${(a.fundingGrowth * 100).toFixed(1)}%/yr`} />
           <Field label="Discount Rate" value={`${(a.discountRate * 100).toFixed(2)}%`} />
-          <Field label="Analysis Period" value={`${a.analysisPeriodYears} yr`} />
+          <Field
+            label="Analysis Period"
+            value={scenario.scenarioSet ? describeWindow(scenario.scenarioSet) : `${a.analysisPeriodYears} yr`}
+          />
+          <Field label="Scenario Set" value={scenario.scenarioSet?.name ?? "—"} />
           <Field label="Condition Target" value={String(a.conditionTarget)} />
           <Field label="Risk Threshold" value={String(a.riskThreshold)} />
           {/* Read-only readers need this most: a scenario funding nothing but

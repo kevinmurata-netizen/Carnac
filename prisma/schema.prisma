@@ -1062,6 +1062,13 @@ model Scenario {
   /// than they are.
   lastRunAt DateTime?
 
+  /// The set this scenario belongs to, if any. At most one: a set decides the
+  /// years a scenario runs over, and two sets could disagree about that.
+  /// Deleting the set releases its scenarios back to their own analysis
+  /// period rather than deleting them.
+  scenarioSetId String?
+  scenarioSet   ScenarioSet? @relation(fields: [scenarioSetId], references: [id], onDelete: SetNull)
+
   assumptions ScenarioAssumption[]
   results     ScenarioResult[]
   workPlans   WorkPlan[]
@@ -1069,7 +1076,47 @@ model Scenario {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([scenarioSetId])
   @@map("scenarios")
+}
+
+/// Where a scenario set is in its life. Recorded rather than enforced: nothing
+/// is locked by a status, because an approved set that cannot be re-run after
+/// a library correction is worse than one that can.
+enum ScenarioSetStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  ARCHIVED
+}
+
+/// A group of scenarios compared over one planning window.
+///
+/// The set governs the window. Every scenario in it runs from `baseYear` for
+/// `planningPeriodYears`, whatever its own analysis period says — scenarios
+/// that are meant to be compared cannot be allowed to cover different years,
+/// or the comparison is of the calendar rather than the choices.
+model ScenarioSet {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  /// The first year of every member scenario's run.
+  baseYear Int
+
+  /// How many years each member runs for, starting at baseYear.
+  planningPeriodYears Int
+
+  status ScenarioSetStatus @default(DRAFT)
+
+  scenarios Scenario[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("scenario_sets")
 }
 
 /// One treatment a scenario is allowed to consider.
