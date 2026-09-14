@@ -15,15 +15,18 @@ import { toPercent } from "@/lib/format";
 import { ScenarioCreateForm } from "../scenario-form";
 import { createScenarioAction } from "../actions";
 import { estimateNewRunMs } from "@/server/run-estimate";
-import { listScenarioSets } from "@/server/scenario-sets";
+import { getScenarioSet } from "@/server/scenario-sets";
 import { STATUS_LABELS } from "@/lib/scenario-sets";
 
 /**
- * Creating a scenario.
+ * Creating a scenario, always inside a scenario set.
  *
- * This was a form below the comparison grid, which read as part of the grid
- * and put a dozen empty inputs under a table people came to read. On its own
- * page it can also carry the weighting choice without crowding anything.
+ * Sets come first: this page is reached from a set's Add Scenario button, and
+ * without a set to create in it sends the reader back to choose or create one.
+ * A scenario with nowhere to belong is what sets-first exists to prevent.
+ *
+ * This was once a form below the comparison grid, which read as part of the
+ * grid. On its own page it can carry the weighting choices without crowding.
  */
 export default async function NewScenarioPage({ searchParams }: { searchParams: Promise<{ set?: string }> }) {
   const { set: requestedSet } = await searchParams;
@@ -31,7 +34,11 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
   const organizationId = session!.user.organizationId;
   if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
-  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate, sets] =
+  // Archived sets are kept for the record, not for new work.
+  const set = requestedSet ? await getScenarioSet(organizationId, requestedSet) : null;
+  if (!set || set.status === "ARCHIVED") redirect("/scenario-planning");
+
+  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate] =
     await Promise.all([
     getAnnualBudget(organizationId),
     listFormulaChoices(organizationId),
@@ -39,23 +46,20 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     listCategoryWeightSets(organizationId),
     listFundingPlans(organizationId),
     getScenarioOptionCatalogue(organizationId),
-    // The form's default period, since nothing has been entered yet. Whatever
-    // the reader picks, the first run measures itself and every later estimate
-    // for this scenario comes from that.
-    estimateNewRunMs(organizationId, DEFAULT_ASSUMPTIONS.analysisPeriodYears),
-    listScenarioSets(organizationId),
+    // The set's period, since that is what the run will cover. The first run
+    // then measures itself and every later estimate comes from that.
+    estimateNewRunMs(organizationId, set.planningPeriodYears),
     ]);
 
-  // Archived sets are kept for the record and not offered for new work.
-  const scenarioSetChoices = sets
-    .filter((s) => s.status !== "ARCHIVED")
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      baseYear: s.baseYear,
-      planningPeriodYears: s.planningPeriodYears,
-      statusLabel: STATUS_LABELS[s.status],
-    }));
+  const scenarioSetChoices = [
+    {
+      id: set.id,
+      name: set.name,
+      baseYear: set.baseYear,
+      planningPeriodYears: set.planningPeriodYears,
+      statusLabel: STATUS_LABELS[set.status],
+    },
+  ];
 
   const weightSetChoices = weightSets.map((w) => {
     const n = normalizeWeights(w.weights);
@@ -82,7 +86,9 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     <div>
       <PageHeader
         title="New Scenario"
-        description="Funding, horizon and strategy — then it runs, and lands beside the others in the comparison"
+        description={`In ${set.name} — funding and strategy, then it runs over ${set.baseYear}–${
+          set.baseYear + set.planningPeriodYears - 1
+        } and lands beside the set's other scenarios`}
       />
 
       <Card>
@@ -104,12 +110,13 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
               weightSetId: weightSets.find((w) => w.isDefault)?.id ?? null,
               categoryWeightSetId: categoryWeightSets.find((c) => c.isDefault)?.id ?? null,
               categoryFundingPlanId: fundingPlans.find((p) => p.isDefault)?.id ?? null,
-              // Arriving from a set's page preselects that set.
-              scenarioSetId: scenarioSetChoices.find((s) => s.id === requestedSet)?.id ?? null,
+              scenarioSetId: set.id,
               annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
               fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),
               discountRatePct: toPercent(DEFAULT_ASSUMPTIONS.discountRate),
-              analysisPeriodYears: DEFAULT_ASSUMPTIONS.analysisPeriodYears,
+              // Stored as the scenario's own period too, so it matches the set
+              // it was made for. The set governs while it is a member.
+              analysisPeriodYears: set.planningPeriodYears,
               conditionTarget: DEFAULT_ASSUMPTIONS.conditionTarget,
               riskThreshold: DEFAULT_ASSUMPTIONS.riskThreshold,
               strategy: "risk-based",

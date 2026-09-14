@@ -168,6 +168,7 @@ export function ScenarioCreateForm({
         categoryWeightSetChoices={categoryWeightSetChoices}
         fundingPlanChoices={fundingPlanChoices}
         scenarioSetChoices={scenarioSetChoices}
+        lockSet
       />
 
       <Strategies />
@@ -182,7 +183,15 @@ export function ScenarioCreateForm({
       {/* Creating runs the scenario immediately, so there is nothing
           half-made to come back to — Cancel is simply "not this". */}
       <div className="flex items-center justify-end gap-2 border-t pt-4">
-        <Button variant="outline" nativeButton={false} render={<Link href="/scenario-planning">Cancel</Link>} />
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={
+            <Link href={values.scenarioSetId ? `/scenario-planning/sets/${values.scenarioSetId}` : "/scenario-planning"}>
+              Cancel
+            </Link>
+          }
+        />
         <RunProgressButton
           estimate={estimate}
           label="Create & Run Scenario"
