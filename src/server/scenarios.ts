@@ -10,6 +10,7 @@ import {
   type SimAsset,
   type Strategy,
   type ScenarioRunResult,
+  type ScenarioRunOptions,
 } from "@/domain/waterline/scenario";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
@@ -224,14 +225,30 @@ export async function updateScenario(
   ]);
 }
 
-/** Run the simulation and replace this scenario's stored results. */
-export async function runAndStoreScenario(organizationId: string, scenarioId: string): Promise<ScenarioRunResult> {
-  const startedAt = Date.now();
+/**
+ * Everything a run of this scenario needs, gathered once.
+ *
+ * The one place a scenario's settings become simulation inputs. Anything that
+ * re-runs a scenario — storing its results, or Model Results recovering each
+ * asset's path — goes through here, so the two cannot describe different runs.
+ * They used to: Model Results passed only the treatment library, and silently
+ * ignored the scenario's combinations, weightings, funding plan, option
+ * selection and curves.
+ */
+export async function loadScenarioRun(
+  organizationId: string,
+  scenarioId: string
+): Promise<{
+  name: string;
+  assumptions: ScenarioAssumptions;
+  simAssets: SimAsset[];
+  options: ScenarioRunOptions;
+} | null> {
   const scenario = await prisma.scenario.findFirst({
     where: { id: scenarioId, organizationId },
     include: { assumptions: true, scenarioSet: { select: { baseYear: true, planningPeriodYears: true } } },
   });
-  if (!scenario) throw new Error("Scenario not found");
+  if (!scenario) return null;
 
   // A set decides the years: its base year starts the run and its planning
   // period replaces the scenario's own, so every member covers the same span.
@@ -255,22 +272,36 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
     getMaterialCurves(organizationId),
   ]);
 
-  const result = runScenario(simAssets, assumptions, {
-    library,
-    combinations,
-    selection,
-    // Criticality is deliberately absent: it multiplies the benefit rather
-    // than forming part of it. §5.3.
-    benefitWeights: {
-      conditionImprovement: weights.weights.conditionImprovement,
-      riskReduction: weights.weights.riskReduction,
-      lifeCycleSaving: weights.weights.lifeCycleCost,
+  return {
+    name: scenario.name,
+    assumptions,
+    simAssets,
+    options: {
+      library,
+      combinations,
+      selection,
+      // Criticality is deliberately absent: it multiplies the benefit rather
+      // than forming part of it. §5.3.
+      benefitWeights: {
+        conditionImprovement: weights.weights.conditionImprovement,
+        riskReduction: weights.weights.riskReduction,
+        lifeCycleSaving: weights.weights.lifeCycleCost,
+      },
+      categoryWeights: categories.weights,
+      fundingPlan: funding.plan,
+      curves,
+      startYear: scenario.scenarioSet?.baseYear,
     },
-    categoryWeights: categories.weights,
-    fundingPlan: funding.plan,
-    curves,
-    startYear: scenario.scenarioSet?.baseYear,
-  });
+  };
+}
+
+/** Run the simulation and replace this scenario's stored results. */
+export async function runAndStoreScenario(organizationId: string, scenarioId: string): Promise<ScenarioRunResult> {
+  const startedAt = Date.now();
+  const run = await loadScenarioRun(organizationId, scenarioId);
+  if (!run) throw new Error("Scenario not found");
+
+  const result = runScenario(run.simAssets, run.assumptions, run.options);
 
   await prisma.scenarioResult.deleteMany({ where: { scenarioId } });
   await prisma.scenarioResult.createMany({
@@ -299,7 +330,7 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       ],
     });
   }
-  await persistScenarioProgram(scenarioId, scenario.name, result);
+  await persistScenarioProgram(scenarioId, run.name, result);
   // Measured across everything the run actually did — loading, simulating and
   // persisting — because that is what the person waiting experiences. Written
   // only on success, so a failed run cannot poison the next estimate.

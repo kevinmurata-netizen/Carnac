@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-14",
+    title: "Model Results describes the run a scenario actually made",
+    summary:
+      "Model Results re-runs a scenario to trace each segment from its starting band to its ending one, but it was re-running a simpler version of the scenario. It now uses exactly the same inputs as the scenario's own run, so the two agree.",
+    fixes: [
+      "Model Results used only the treatment library. It ignored the scenario's treatment combinations, benefit weighting, category weighting, funding plan, which treatments it may consider, and the configured deterioration curves — so its condition flow could describe a quite different plan from the one on the scenario's page.",
+      "On the seed network the gap was large: Current Funding showed an average WCI ending at 75.0 on Model Results against 72.3 on the scenario, and Reduced Funding showed 61.1 against 72.0. Both now match to the decimal.",
+    ],
+    changes: [
+      "The inputs to a run are now gathered in one place, used both when a scenario runs and when Model Results traces it, so they cannot drift apart again.",
+      "Scenarios whose stored results predate recent engine changes (never re-run since they were seeded) will still show different numbers on the two pages until they are run again. That is the stored results being old, not the two pages disagreeing.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-14",
     title: "Scenario Sets come first",
     summary:
       "Scenario Planning now opens with Scenario Sets, and scenarios are created inside a set rather than on their own. Create a set, then add its scenarios from the set.",

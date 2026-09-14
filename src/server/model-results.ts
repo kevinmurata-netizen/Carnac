@@ -1,8 +1,6 @@
-import { prisma } from "@/lib/prisma";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { runScenario } from "@/domain/waterline/scenario";
-import { buildSimAssets, listScenarios } from "@/server/scenarios";
-import { loadTreatmentDefs } from "@/server/treatment-config";
+import { listScenarios, loadScenarioRun } from "@/server/scenarios";
 import { getConditionBands } from "@/server/settings";
 
 /**
@@ -80,28 +78,16 @@ export async function listScenarioOptions(organizationId: string) {
 }
 
 export async function getWciFlow(organizationId: string, scenarioId: string): Promise<WciFlow | null> {
-  const scenario = await prisma.scenario.findFirst({
-    where: { id: scenarioId, organizationId },
-    include: { assumptions: true },
-  });
-  if (!scenario) return null;
-
-  const summaries = await listScenarios(organizationId);
-  const summary = summaries.find((s) => s.id === scenarioId);
-  if (!summary) return null;
-
-  const [simAssets, library, bands] = await Promise.all([
-    buildSimAssets(organizationId),
-    loadTreatmentDefs(organizationId),
+  // The same inputs the stored run was built from — library, combinations,
+  // weightings, funding plan, option selection, curves and the set's years —
+  // so the flow describes that run rather than a simpler one beside it.
+  const [run, bands] = await Promise.all([
+    loadScenarioRun(organizationId, scenarioId),
     getConditionBands(organizationId),
   ]);
+  if (!run) return null;
 
-  // The set's base year, so a flow for a plan starting later begins from the
-  // network as aged to that year — the same starting point the stored run used.
-  const result = runScenario(simAssets, summary.assumptions, {
-    library,
-    startYear: summary.scenarioSet?.baseYear,
-  });
+  const result = runScenario(run.simAssets, run.assumptions, run.options);
   const outcomes = result.assetOutcomes;
   if (outcomes.length === 0) return null;
 
@@ -179,9 +165,9 @@ export async function getWciFlow(organizationId: string, scenarioId: string): Pr
 
   return {
     scenarioId,
-    scenarioName: scenario.name,
-    strategy: summary.assumptions.strategy,
-    years: summary.assumptions.analysisPeriodYears,
+    scenarioName: run.name,
+    strategy: run.assumptions.strategy,
+    years: run.assumptions.analysisPeriodYears,
     assetCount: outcomes.length,
     startAvg: avg((o) => o.startCondition),
     endAvg: avg((o) => o.endCondition),
