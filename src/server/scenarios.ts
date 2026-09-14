@@ -281,6 +281,19 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       { scenarioId, year: y.year, metricKey: "belowTargetCount", metricValue: y.belowTargetCount },
     ]),
   });
+  // How the run got to its first year, stored against that year so no extra
+  // year appears in the results. Only written when something was aged: its
+  // absence means the run started from the network as measured.
+  if (result.agedYears > 0 && result.years.length > 0) {
+    const year = result.years[0].year;
+    await prisma.scenarioResult.createMany({
+      data: [
+        { scenarioId, year, metricKey: "agedYears", metricValue: result.agedYears },
+        { scenarioId, year, metricKey: "conditionYearAvgCondition", metricValue: result.conditionYearAvgCondition },
+        { scenarioId, year, metricKey: "startAvgCondition", metricValue: result.startAvgCondition },
+      ],
+    });
+  }
   await persistScenarioProgram(scenarioId, scenario.name, result);
   // Measured across everything the run actually did — loading, simulating and
   // persisting — because that is what the person waiting experiences. Written
@@ -471,6 +484,14 @@ export type ScenarioSummary = {
   /** Stored results cover different years from the set's window, so they
    * describe a run this scenario would no longer make. */
   resultsOutOfWindow: boolean;
+  /** Present when the stored run began in a later year than the network's
+   * condition describes, and so aged the network forward first. */
+  ageing: {
+    fromYear: number;
+    years: number;
+    fromAvgCondition: number;
+    toAvgCondition: number;
+  } | null;
 };
 
 export async function listScenarios(
@@ -498,6 +519,9 @@ export async function listScenarios(
     const backlogs = byMetric("backlog");
     const spends = byMetric("spend");
     const failures = byMetric("expectedFailures");
+    const aged = byMetric("agedYears")[0];
+    const agedFrom = byMetric("conditionYearAvgCondition")[0];
+    const agedTo = byMetric("startAvgCondition")[0];
 
     return {
       id: s.id,
@@ -527,6 +551,15 @@ export async function listScenarios(
         conditions.map((r) => r.year),
         s.scenarioSet
       ),
+      ageing:
+        aged && agedFrom && agedTo
+          ? {
+              fromYear: aged.year - aged.metricValue,
+              years: aged.metricValue,
+              fromAvgCondition: agedFrom.metricValue,
+              toAvgCondition: agedTo.metricValue,
+            }
+          : null,
     };
   });
 }

@@ -38,6 +38,10 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
   const others = scenarios.filter((s) => s.scenarioSet?.id !== set.id);
   const outOfWindow = members.filter((s) => s.resultsOutOfWindow);
   const notRun = members.filter((s) => !s.hasResults);
+  // What the next run will do, from the year it runs in — the same rule the
+  // engine applies.
+  const thisYear = new Date().getFullYear();
+  const agedYears = Math.max(0, set.baseYear - thisYear);
 
   return (
     <div>
@@ -84,6 +88,12 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
           <span>
             Base year <span className="font-medium">{set.baseYear}</span> ·{" "}
             <span className="font-medium">{set.planningPeriodYears}</span>-year planning period (to {endYear(set)})
+            {agedYears > 0 && (
+              <span className="text-muted-foreground">
+                {" "}
+                · network aged {agedYears} year{agedYears === 1 ? "" : "s"} from {thisYear} with no work first
+              </span>
+            )}
           </span>
         </span>
         <span className="text-muted-foreground">

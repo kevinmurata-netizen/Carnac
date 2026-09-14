@@ -187,6 +187,16 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               {scenario.lastRunAt && " · "}
             </>
           )}
+          {/* Said up here because it moves every number below: a plan that
+              starts later starts from a worse network. */}
+          {scenario.ageing && (
+            <>
+              Network aged {scenario.ageing.years} year{scenario.ageing.years === 1 ? "" : "s"} with no work from{" "}
+              {scenario.ageing.fromYear} to reach the base year (WCI {scenario.ageing.fromAvgCondition} →{" "}
+              {scenario.ageing.toAvgCondition})
+              {scenario.lastRunAt && " · "}
+            </>
+          )}
           {scenario.lastRunAt && <>Last run {formatDateTime(scenario.lastRunAt)}</>}
           {scenario.lastRunAt && scenario.lastRunMs != null && <> · took {formatDuration(scenario.lastRunMs)}</>}
         </p>
@@ -424,8 +434,21 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           </Card>
 
           <p className="mt-3 text-xs text-muted-foreground">
-            Simulation starts from the current measured network ({formatNumber(first.belowTargetCount)} segments below
-            the {a.conditionTarget} target in {first.year}). Each year the strategy ranks candidate work, funds down the
+            {scenario.ageing ? (
+              <>
+                Simulation starts from the measured network aged forward {scenario.ageing.years} year
+                {scenario.ageing.years === 1 ? "" : "s"}, from {scenario.ageing.fromYear} to {first.year}, with nothing
+                funded in between — average condition {scenario.ageing.fromAvgCondition} falls to{" "}
+                {scenario.ageing.toAvgCondition} before the first year begins ({formatNumber(first.belowTargetCount)}{" "}
+                segments below the {a.conditionTarget} target by the end of {first.year}).
+              </>
+            ) : (
+              <>
+                Simulation starts from the current measured network ({formatNumber(first.belowTargetCount)} segments
+                below the {a.conditionTarget} target in {first.year}).
+              </>
+            )}{" "}
+            Each year the strategy ranks candidate work, funds down the
             list until the budget is exhausted, applies the treatment&apos;s stored effects, and ages the whole network
             one year along its material deterioration curve.
           </p>

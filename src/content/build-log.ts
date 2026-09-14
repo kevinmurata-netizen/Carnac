@@ -30,6 +30,22 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-14",
+    title: "A future base year starts from the network as it will be",
+    summary:
+      "A scenario set with a base year after this one used to start from the network as last measured. The network is now aged forward to the base year first, with no work done in between, so a plan for 2028 plans for the pipes as they will be in 2028.",
+    changes: [
+      "Between this year and the base year, every segment moves down its deterioration curve exactly as it would in an unfunded year. Nothing is funded in the gap.",
+      "The scenario's page says so, next to the set it belongs to: how many years were aged, from when, and what that did to average condition. On the seed network, two years takes it from WCI 47.5 to 44.6 before 2028 begins.",
+      "The set's page and its edit form say what the next run will do before it runs.",
+      "A base year earlier than this one is not aged backwards — condition cannot be wound back — so such a run starts from the network as it is now, and the form says that too.",
+      "Model Results now starts its condition flow from the set's base year as well, so it agrees with the stored run about where the network started.",
+      "Scenarios outside a set, and sets whose base year is this year, run exactly as before.",
+    ],
+    note:
+      "No migration. Scenarios already in a set with a future base year keep their un-aged results until they are run again. Checked by running the engine with no budget: a run starting two years late matched the last years of a run starting on time, to the decimal. On the seed network, Current Funding for 2028–2037 ends at WCI 67.5 with 86 expected failures, against 70.3 and 78 without ageing.",
+  },
+  {
+    date: "2026-09-14",
     title: "Group scenarios into Scenario Sets",
     summary:
       "A Scenario Set groups scenarios meant to be compared, with a name, description, base year, planning period and status. Every scenario in a set runs from the set's base year for its planning period, so they compare year for year.",
