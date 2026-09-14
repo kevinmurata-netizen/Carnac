@@ -93,7 +93,11 @@ export async function createScenarioAction(formData: FormData) {
     throw new Error("You do not have permission to create scenarios");
   }
 
-  const scenario = await createScenario(session.user.organizationId, parseForm(formData));
+  const input = parseForm(formData);
+  // Sets come first: a new scenario is always created inside one, from that
+  // set's page. The server checks the set belongs to this organization.
+  if (!input.scenarioSetId) throw new Error("Create a scenario from its scenario set");
+  const scenario = await createScenario(session.user.organizationId, input);
   // Written before the run, so the first run already honours the selection
   // rather than producing results the scenario's own settings contradict.
   await setScenarioOptions(session.user.organizationId, scenario.id, parseSelection(formData));

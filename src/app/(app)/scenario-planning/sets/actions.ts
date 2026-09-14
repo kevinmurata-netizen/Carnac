@@ -74,21 +74,20 @@ export async function deleteScenarioSetAction(formData: FormData) {
   const organizationId = await organizationFor("delete");
   await deleteScenarioSet(organizationId, String(formData.get("id") ?? ""));
   revalidate();
-  redirect("/scenario-planning/sets");
+  // Sets live on Scenario Planning itself now, so that is where "back" is.
+  redirect("/scenario-planning");
 }
 
-/** Add a scenario to this set — moving it out of any other — or, with an empty
- * `setId`, take it out. Nothing runs: the member pages say their results are
- * out of window until someone runs them, rather than a click on "add" quietly
- * spending a minute of simulation. */
+/** Add a scenario to a set, moving it out of any other. Nothing runs: the
+ * scenario's pages say its results are out of window until someone runs it,
+ * rather than a click on "add" quietly spending a minute of simulation. */
 export async function assignScenarioAction(formData: FormData) {
   const organizationId = await organizationFor("edit");
   const scenarioId = String(formData.get("scenarioId") ?? "");
-  const setId = String(formData.get("setId") ?? "") || null;
-  const returnTo = String(formData.get("returnTo") ?? "");
+  const setId = String(formData.get("setId") ?? "");
   await assignScenarioToSet(organizationId, scenarioId, setId);
-  revalidate(returnTo || undefined);
-  revalidatePath(`/scenario-planning/${scenarioId}`);
+  // Layout, because a move changes two sets' pages as well as the scenario's.
+  revalidate();
 }
 
 export async function runScenarioSetAction(formData: FormData) {

@@ -118,23 +118,42 @@ export async function updateScenarioSet(organizationId: string, id: string, inpu
   await prisma.scenarioSet.update({ where: { id }, data });
 }
 
-/** Members are released, not deleted — the relation is SET NULL — and go back
- * to running over their own analysis period. */
+/**
+ * Only an empty set can be deleted.
+ *
+ * Scenarios belong in sets now, so deleting one with members would either
+ * delete work nobody asked to lose or leave scenarios outside any set — which
+ * is exactly what sets-first is meant to stop. Move or delete them first. (The
+ * relation is still SET NULL in the schema, so the database would allow it;
+ * this is the rule, not the constraint.)
+ */
 export async function deleteScenarioSet(organizationId: string, id: string) {
-  const existing = await prisma.scenarioSet.findFirst({ where: { id, organizationId }, select: { id: true } });
+  const existing = await prisma.scenarioSet.findFirst({
+    where: { id, organizationId },
+    select: { id: true, _count: { select: { scenarios: true } } },
+  });
   if (!existing) throw new Error("Scenario set not found");
+  const count = existing._count.scenarios;
+  if (count > 0) {
+    throw new Error(
+      `This set still holds ${count} scenario${count === 1 ? "" : "s"}. Move ${count === 1 ? "it" : "them"} to another set or delete ${count === 1 ? "it" : "them"} first.`
+    );
+  }
   await prisma.scenarioSet.delete({ where: { id } });
 }
 
 /**
- * Put a scenario in a set, move it from another, or (with null) take it out.
+ * Put a scenario in a set, or move it from another.
  *
- * Moving needs no ceremony because a scenario belongs to one set at most:
- * there is no second membership to lose, only a window to change.
+ * There is no taking one out: a scenario belongs to a set, and the way to
+ * stop it belonging to this one is to put it in another. Moving needs no
+ * ceremony because there is no second membership to lose, only a window to
+ * change.
  */
-export async function assignScenarioToSet(organizationId: string, scenarioId: string, setId: string | null) {
+export async function assignScenarioToSet(organizationId: string, scenarioId: string, setId: string) {
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId }, select: { id: true } });
   if (!scenario) throw new Error("Scenario not found");
+  if (!setId) throw new Error("Choose a scenario set");
   await assertSetInOrganization(organizationId, setId);
   await prisma.scenario.update({ where: { id: scenarioId }, data: { scenarioSetId: setId } });
 }

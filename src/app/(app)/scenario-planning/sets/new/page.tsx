@@ -9,7 +9,7 @@ import { createScenarioSetAction } from "../actions";
 
 export default async function NewScenarioSetPage() {
   const session = await auth();
-  if (!canRecordFieldData(session)) redirect("/scenario-planning/sets");
+  if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
   return (
     <div>
@@ -21,7 +21,7 @@ export default async function NewScenarioSetPage() {
         <CardContent className="pt-6">
           <ScenarioSetForm
             action={createScenarioSetAction}
-            onCancelHref="/scenario-planning/sets"
+            onCancelHref="/scenario-planning"
             initial={{
               id: "",
               name: "",

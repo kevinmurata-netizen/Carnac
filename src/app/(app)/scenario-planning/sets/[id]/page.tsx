@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
-import { getScenarioSet } from "@/server/scenario-sets";
+import { getScenarioSet, listScenarioSets } from "@/server/scenario-sets";
 import { listScenarios } from "@/server/scenarios";
 import { estimateSetRunMs } from "@/server/run-estimate";
 import { getConditionBands } from "@/server/settings";
@@ -13,7 +13,7 @@ import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, CalendarRange } from "lucide-react";
+import { AlertTriangle, CalendarRange, Plus } from "lucide-react";
 import { ScenarioComparison } from "../../scenario-comparison";
 import { RunProgressButton } from "../../run-progress";
 import { ScenarioSetStatusBadge } from "../status-badge";
@@ -25,11 +25,12 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
   const session = await auth();
   const organizationId = session!.user.organizationId;
 
-  const [set, scenarios, bands, estimate] = await Promise.all([
+  const [set, scenarios, bands, estimate, sets] = await Promise.all([
     getScenarioSet(organizationId, id),
     listScenarios(organizationId),
     getConditionBands(organizationId),
     estimateSetRunMs(organizationId, id),
+    listScenarioSets(organizationId),
   ]);
   if (!set) notFound();
 
@@ -38,6 +39,21 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
   const others = scenarios.filter((s) => s.scenarioSet?.id !== set.id);
   const outOfWindow = members.filter((s) => s.resultsOutOfWindow);
   const notRun = members.filter((s) => !s.hasResults);
+  // Where a member can move to. Archived sets take no new work.
+  const destinations = sets.filter((s) => s.id !== set.id && s.status !== "ARCHIVED");
+  const archived = set.status === "ARCHIVED";
+  const addScenario = (
+    <Button
+      size="sm"
+      nativeButton={false}
+      render={
+        <Link href={`/scenario-planning/new?set=${set.id}`}>
+          <Plus className="mr-1 h-4 w-4" />
+          Add Scenario
+        </Link>
+      }
+    />
+  );
   // What the next run will do, from the year it runs in — the same rule the
   // engine applies.
   const thisYear = new Date().getFullYear();
@@ -51,7 +67,8 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
         description={set.description ?? `Scenarios compared over ${describeWindow(set)}`}
         actions={
           canEdit && (
-            <div className="flex items-start gap-2">
+            <div className="flex flex-wrap items-start gap-2">
+              {!archived && addScenario}
               {members.length > 0 && (
                 <form action={runScenarioSetAction}>
                   <input type="hidden" name="id" value={set.id} />
@@ -59,17 +76,25 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
                     estimate={estimate}
                     label={`Run all ${members.length} scenario${members.length === 1 ? "" : "s"}`}
                     runningLabel="Running the set…"
-                    variant={outOfWindow.length + notRun.length > 0 ? "default" : "outline"}
+                    variant="outline"
                   />
                 </form>
               )}
               <form action={deleteScenarioSetAction}>
                 <input type="hidden" name="id" value={set.id} />
+                {/* Only an empty set can go: move or delete its scenarios first.
+                    Disabled rather than hidden, with the reason on it, so the
+                    way to delete a set is discoverable. */}
                 <Button
                   type="submit"
                   size="sm"
                   variant="destructive"
-                  title="Deletes the set only. Its scenarios are kept and go back to their own analysis periods."
+                  disabled={members.length > 0}
+                  title={
+                    members.length > 0
+                      ? `Move or delete its ${members.length} scenario${members.length === 1 ? "" : "s"} first`
+                      : "Delete this set"
+                  }
                 >
                   Delete
                 </Button>
@@ -140,27 +165,24 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
 
       <Card>
         <CardHeader>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <CardTitle>
-              Scenarios in this set <span className="text-muted-foreground">({members.length})</span>
-            </CardTitle>
-            {canEdit && (
-              <Link
-                href={`/scenario-planning/new?set=${set.id}`}
-                className="text-sm text-primary hover:underline"
-              >
-                New scenario in this set
-              </Link>
-            )}
-          </div>
+          <CardTitle>
+            Scenarios in this set <span className="text-muted-foreground">({members.length})</span>
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
-            A scenario belongs to one set at most. Adding one that is already in another set moves it here. Its own
-            analysis period is kept, and used again if it leaves.
+            Every scenario here runs over {set.baseYear}–{endYear(set)}. A scenario belongs to one set and can be moved
+            to another.
           </p>
         </CardHeader>
         <CardContent className="space-y-4 p-0">
           {members.length === 0 ? (
-            <p className="px-6 pb-2 text-sm text-muted-foreground">No scenarios in this set yet.</p>
+            // The next step, not just the fact: an empty set is waiting for its
+            // first scenario.
+            <div className="flex flex-col items-start gap-3 px-6 pb-2">
+              <p className="text-sm text-muted-foreground">
+                {archived ? "No scenarios in this set." : "No scenarios in this set yet. Add the first one."}
+              </p>
+              {canEdit && !archived && addScenario}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
@@ -170,7 +192,7 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
                     <TableHead>Strategy</TableHead>
                     <TableHead>Own period</TableHead>
                     <TableHead>Results</TableHead>
-                    {canEdit && <TableHead className="w-24" />}
+                    {canEdit && destinations.length > 0 && <TableHead>Move to</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -203,14 +225,28 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
                           </span>
                         )}
                       </TableCell>
-                      {canEdit && (
+                      {canEdit && destinations.length > 0 && (
                         <TableCell>
-                          <form action={assignScenarioAction}>
+                          <form action={assignScenarioAction} className="flex items-center gap-1.5">
                             <input type="hidden" name="scenarioId" value={s.id} />
-                            <input type="hidden" name="setId" value="" />
-                            <input type="hidden" name="returnTo" value={set.id} />
+                            <select
+                              name="setId"
+                              required
+                              defaultValue=""
+                              aria-label={`Move ${s.name} to another set`}
+                              className="h-8 max-w-[12rem] rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <option value="" disabled>
+                                Another set…
+                              </option>
+                              {destinations.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.name}
+                                </option>
+                              ))}
+                            </select>
                             <Button type="submit" size="sm" variant="ghost">
-                              Remove
+                              Move
                             </Button>
                           </form>
                         </TableCell>
@@ -222,12 +258,11 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
             </div>
           )}
 
-          {canEdit && others.length > 0 && (
+          {canEdit && !archived && others.length > 0 && (
             <form action={assignScenarioAction} className="flex flex-wrap items-center gap-2 border-t px-6 py-4">
               <input type="hidden" name="setId" value={set.id} />
-              <input type="hidden" name="returnTo" value={set.id} />
               <label htmlFor="add-scenario" className="text-sm font-medium">
-                Add a scenario
+                Add an existing scenario
               </label>
               <select
                 id="add-scenario"

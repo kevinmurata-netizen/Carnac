@@ -30,6 +30,24 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-14",
+    title: "Scenario Sets come first",
+    summary:
+      "Scenario Planning now opens with Scenario Sets, and scenarios are created inside a set rather than on their own. Create a set, then add its scenarios from the set.",
+    changes: [
+      "Scenario Sets are the first thing on Scenario Planning, as cards: each shows its status, its years, its scenarios with their final condition, which one ends highest, and whether any need running.",
+      "The header button is now New Scenario Set. Add Scenario lives on each set's card and at the top of the set's own page — there is no longer a way to create a scenario outside a set.",
+      "A new scenario shows the set it is being created in, rather than offering a choice, and its analysis period starts at the set's.",
+      "With no sets yet, the page says to start with one and offers the button.",
+      "A scenario in a set can be moved to another set — from the set's page or from the scenario's own form — but not taken out of sets altogether. Remove is replaced by Move to.",
+      "A set can only be deleted once it is empty. Delete stays visible but disabled while the set has scenarios, and says why.",
+      "Scenarios created before sets existed are listed under Not in a set, with the way to bring each into a set: Add an existing scenario on the set's page.",
+      "Archived sets are tucked into a collapsed list and take no new scenarios.",
+      "The separate Scenario Sets list page now goes straight to Scenario Planning, where the sets are.",
+    ],
+    note: "No migration. Existing scenarios are untouched; the ones outside any set stay where they are until someone adds them to one.",
+  },
+  {
+    date: "2026-09-14",
     title: "A future base year starts from the network as it will be",
     summary:
       "A scenario set with a base year after this one used to start from the network as last measured. The network is now aged forward to the base year first, with no work done in between, so a plan for 2028 plans for the pipes as they will be in 2028.",

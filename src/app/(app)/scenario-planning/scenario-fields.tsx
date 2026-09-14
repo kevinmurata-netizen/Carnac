@@ -122,6 +122,7 @@ export function ScenarioFields({
   categoryWeightSetChoices = [],
   fundingPlanChoices = [],
   scenarioSetChoices = [],
+  lockSet = false,
 }: {
   values: ScenarioValues;
   onChange: (patch: Partial<ScenarioValues>) => void;
@@ -133,6 +134,8 @@ export function ScenarioFields({
   categoryWeightSetChoices?: CategoryWeightSetChoice[];
   fundingPlanChoices?: FundingPlanChoice[];
   scenarioSetChoices?: ScenarioSetChoice[];
+  /** Show the chosen set as fixed rather than as a choice. */
+  lockSet?: boolean;
 }) {
   const id = (name: string) => `${idPrefix}${name}`;
   const mark = (key: keyof ScenarioValues) =>
@@ -168,28 +171,46 @@ export function ScenarioFields({
 
       {/* Near the top, because it changes a field further down: a set decides
           the years, and the analysis period below defers to it. */}
-      {scenarioSetChoices.length > 0 && (
+      {lockSet && governingSet ? (
+        // Creating inside a set: the set was chosen by arriving from its page,
+        // so it is stated rather than offered again.
         <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
-          <Label htmlFor={id("scenarioSetId")}>Scenario set</Label>
-          <select
-            id={id("scenarioSetId")}
-            name="scenarioSetId"
-            value={values.scenarioSetId}
-            onChange={(e) => onChange({ scenarioSetId: e.target.value })}
-            className={mark("scenarioSetId")}
-          >
-            <option value="">Not in a set — starts in the year it is run</option>
-            {scenarioSetChoices.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} — {s.baseYear}–{s.baseYear + s.planningPeriodYears - 1} · {s.statusLabel}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-muted-foreground">
-            Scenarios in a set all run from the set&apos;s base year for its planning period, so they can be compared
-            year for year. A scenario belongs to one set at most.
+          <input type="hidden" name="scenarioSetId" value={governingSet.id} />
+          <div className="text-sm font-medium">Scenario set</div>
+          <p className="text-sm">
+            <span className="font-medium">{governingSet.name}</span>{" "}
+            <span className="text-muted-foreground tabular-nums">
+              — runs {governingSet.baseYear}–{governingSet.baseYear + governingSet.planningPeriodYears - 1}
+            </span>
           </p>
         </div>
+      ) : (
+        scenarioSetChoices.length > 0 && (
+          <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+            <Label htmlFor={id("scenarioSetId")}>Scenario set</Label>
+            <select
+              id={id("scenarioSetId")}
+              name="scenarioSetId"
+              value={values.scenarioSetId}
+              onChange={(e) => onChange({ scenarioSetId: e.target.value })}
+              className={mark("scenarioSetId")}
+            >
+              {/* Offered only to a scenario that has never been in a set —
+                  one made before sets existed. Once in a set, a scenario can
+                  move between sets but not leave. */}
+              {!saved?.scenarioSetId && <option value="">Not in a set — starts in the year it is run</option>}
+              {scenarioSetChoices.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} — {s.baseYear}–{s.baseYear + s.planningPeriodYears - 1} · {s.statusLabel}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Scenarios in a set all run from the set&apos;s base year for its planning period, so they can be compared
+              year for year. Choosing another set moves this scenario there.
+            </p>
+          </div>
+        )
       )}
       <div className="space-y-1.5">
         <Label htmlFor={id("annualBudget")}>Annual Budget ($)</Label>

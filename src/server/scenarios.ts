@@ -197,6 +197,11 @@ export async function updateScenario(
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
   if (!scenario) throw new Error("Scenario not found");
   if (!input.name.trim()) throw new Error("Scenario name is required");
+  // A scenario already in a set can move to another but not leave. Older
+  // scenarios created before sets existed may still be saved outside one.
+  if (scenario.scenarioSetId && !input.scenarioSetId) {
+    throw new Error("A scenario in a set can be moved to another set, but not taken out of one");
+  }
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
 
   await prisma.$transaction([
