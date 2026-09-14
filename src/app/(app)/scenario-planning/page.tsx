@@ -7,9 +7,12 @@ import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { ScenarioComparison } from "./scenario-comparison";
-import { DollarSign, GitCompare, Plus, TrendingUp, Wallet } from "lucide-react";
+import { DollarSign, FolderKanban, GitCompare, Plus, TrendingUp, Wallet } from "lucide-react";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
+import { listScenarioSets } from "@/server/scenario-sets";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScenarioSetList } from "./sets/scenario-set-list";
 
 export default async function ScenarioPlanningPage() {
   const session = await auth();
@@ -17,9 +20,10 @@ export default async function ScenarioPlanningPage() {
   const pageTitle = await getPageName(organizationId, "/scenario-planning", "Scenario Planning");
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenarios, annualBudget] = await Promise.all([
+  const [scenarios, annualBudget, sets] = await Promise.all([
     listScenarios(organizationId),
     getAnnualBudget(organizationId),
+    listScenarioSets(organizationId),
   ]);
   const canEdit = canRecordFieldData(session);
 
@@ -43,16 +47,29 @@ export default async function ScenarioPlanningPage() {
             // A page of its own rather than a form below the grid: a scenario
             // has a dozen inputs, and an empty one sitting under the
             // comparison read as part of it.
-            <Button
-              size="sm"
-              nativeButton={false}
-              render={
-                <Link href="/scenario-planning/new">
-                  <Plus className="mr-1 h-4 w-4" />
-                  Add New Scenario
-                </Link>
-              }
-            />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                nativeButton={false}
+                render={
+                  <Link href="/scenario-planning/sets/new">
+                    <FolderKanban className="mr-1 h-4 w-4" />
+                    New Scenario Set
+                  </Link>
+                }
+              />
+              <Button
+                size="sm"
+                nativeButton={false}
+                render={
+                  <Link href="/scenario-planning/new">
+                    <Plus className="mr-1 h-4 w-4" />
+                    Add New Scenario
+                  </Link>
+                }
+              />
+            </div>
           )
         }
       />
@@ -78,6 +95,26 @@ export default async function ScenarioPlanningPage() {
           icon={DollarSign}
         />
       </div>
+
+      {/* Above the comparison, because a set is how the comparison below is
+          meant to be read: scenarios in one set share their years, and those
+          outside any set do not. Hidden until the first set exists, so nobody
+          meets an empty card for a feature they have not used. */}
+      {sets.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle>
+              Scenario Sets <span className="text-muted-foreground">({sets.length})</span>
+            </CardTitle>
+            <Link href="/scenario-planning/sets" className="text-sm text-primary hover:underline">
+              All sets
+            </Link>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ScenarioSetList sets={sets} emptyText="No scenario sets yet." />
+          </CardContent>
+        </Card>
+      )}
 
       <ScenarioComparison scenarios={scenarios} bands={conditionBands} />
     </div>

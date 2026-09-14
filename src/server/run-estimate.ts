@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { assumptionsFromRows } from "@/server/scenarios";
+import { effectiveAssumptions } from "@/server/scenarios";
 
 /**
  * How long a scenario run is likely to take.
@@ -54,14 +54,14 @@ export async function estimateRunMs(organizationId: string, scenarioId: string):
   const [scenario, assetCount, others] = await Promise.all([
     prisma.scenario.findFirst({
       where: { id: scenarioId, organizationId },
-      include: { assumptions: true },
+      include: { assumptions: true, scenarioSet: { select: { baseYear: true, planningPeriodYears: true } } },
     }),
     prisma.asset.count({
       where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
     }),
     prisma.scenario.findMany({
       where: { organizationId, lastRunMs: { not: null }, id: { not: scenarioId } },
-      include: { assumptions: true },
+      include: { assumptions: true, scenarioSet: { select: { baseYear: true, planningPeriodYears: true } } },
     }),
   ]);
 
@@ -69,11 +69,11 @@ export async function estimateRunMs(organizationId: string, scenarioId: string):
     return { ms: Math.max(MIN_ESTIMATE_MS, scenario.lastRunMs), basis: "this scenario" };
   }
 
-  const years = scenario ? assumptionsFromRows(scenario.assumptions).analysisPeriodYears : 20;
+  const years = scenario ? effectiveAssumptions(scenario.assumptions, scenario.scenarioSet).analysisPeriodYears : 20;
   const units = unitsFor(assetCount, years);
 
   const rates = others
-    .map((s) => s.lastRunMs! / unitsFor(assetCount, assumptionsFromRows(s.assumptions).analysisPeriodYears))
+    .map((s) => s.lastRunMs! / unitsFor(assetCount, effectiveAssumptions(s.assumptions, s.scenarioSet).analysisPeriodYears))
     .sort((a, b) => a - b);
 
   if (rates.length === 0) {
@@ -82,6 +82,23 @@ export async function estimateRunMs(organizationId: string, scenarioId: string):
 
   const median = rates[Math.floor(rates.length / 2)];
   return { ms: Math.max(MIN_ESTIMATE_MS, Math.round(units * median)), basis: "other scenarios" };
+}
+
+/** Estimate for running every scenario in a set back to back: the sum of each
+ * member's own, since they run one after another. */
+export async function estimateSetRunMs(organizationId: string, setId: string): Promise<RunEstimate> {
+  const members = await prisma.scenario.findMany({
+    where: { organizationId, scenarioSetId: setId },
+    select: { id: true },
+  });
+  const estimates = await Promise.all(members.map((m) => estimateRunMs(organizationId, m.id)));
+  const ms = estimates.reduce((sum, e) => sum + e.ms, 0);
+  const basis = estimates.every((e) => e.basis === "this scenario")
+    ? "this scenario"
+    : estimates.some((e) => e.basis !== "no history")
+      ? "other scenarios"
+      : "no history";
+  return { ms: Math.max(MIN_ESTIMATE_MS, ms), basis };
 }
 
 /** Estimate for a scenario that does not exist yet, on the create page. */
@@ -95,13 +112,13 @@ export async function estimateNewRunMs(
     }),
     prisma.scenario.findMany({
       where: { organizationId, lastRunMs: { not: null } },
-      include: { assumptions: true },
+      include: { assumptions: true, scenarioSet: { select: { baseYear: true, planningPeriodYears: true } } },
     }),
   ]);
 
   const units = unitsFor(assetCount, analysisPeriodYears);
   const rates = others
-    .map((s) => s.lastRunMs! / unitsFor(assetCount, assumptionsFromRows(s.assumptions).analysisPeriodYears))
+    .map((s) => s.lastRunMs! / unitsFor(assetCount, effectiveAssumptions(s.assumptions, s.scenarioSet).analysisPeriodYears))
     .sort((a, b) => a - b);
 
   if (rates.length === 0) {

@@ -23,6 +23,7 @@ const schema = z.object({
   weightSetId: z.string().optional(),
   categoryWeightSetId: z.string().optional(),
   categoryFundingPlanId: z.string().optional(),
+  scenarioSetId: z.string().optional(),
 });
 
 /**
@@ -49,6 +50,7 @@ function parseForm(formData: FormData): {
   weightSetId: string | null;
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
+  scenarioSetId: string | null;
 } {
   const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
@@ -70,6 +72,9 @@ function parseForm(formData: FormData): {
     // Empty means "no category order", which is a real choice here rather
     // than a missing one — it is how allocation worked before order existed.
     categoryFundingPlanId: d.categoryFundingPlanId?.trim() || null,
+    // Empty means "not in a set". The server checks the set belongs to this
+    // organization before joining it.
+    scenarioSetId: d.scenarioSetId?.trim() || null,
     assumptions: {
       annualBudget: d.annualBudget,
       fundingGrowth: d.fundingGrowthPct / 100,
@@ -114,8 +119,9 @@ export async function updateScenarioAction(formData: FormData) {
   await setScenarioOptions(session.user.organizationId, id, parseSelection(formData));
   await runAndStoreScenario(session.user.organizationId, id);
 
-  revalidatePath(`/scenario-planning/${id}`);
-  revalidatePath("/scenario-planning");
+  // Layout, so a set page listing this scenario is refreshed too — joining or
+  // leaving a set changes both sides.
+  revalidatePath("/scenario-planning", "layout");
 }
 
 export async function rerunScenarioAction(formData: FormData) {
@@ -127,8 +133,7 @@ export async function rerunScenarioAction(formData: FormData) {
   if (!id) throw new Error("Scenario id is required");
 
   await runAndStoreScenario(session.user.organizationId, id);
-  revalidatePath(`/scenario-planning/${id}`);
-  revalidatePath("/scenario-planning");
+  revalidatePath("/scenario-planning", "layout");
 }
 
 export async function deleteScenarioAction(formData: FormData) {

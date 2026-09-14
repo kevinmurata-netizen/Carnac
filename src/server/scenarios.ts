@@ -23,6 +23,8 @@ import { getMaterialCurves } from "@/server/settings";
 import { assetScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
+import { resultsOutOfWindow, type ScenarioSetStatusValue, type ScenarioWindow } from "@/lib/scenario-sets";
+import { assertSetInOrganization } from "@/server/scenario-sets";
 
 /** Snapshot the current network into simulation inputs. Condition comes from
  * the latest measurement; uninspected assets fall back to their curve position
@@ -110,6 +112,21 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
   };
 }
 
+/**
+ * The assumptions a scenario actually runs with.
+ *
+ * Inside a set, the set's planning period replaces the scenario's own. The
+ * scenario's value stays stored rather than being overwritten, so leaving the
+ * set gives back what it had.
+ */
+export function effectiveAssumptions(
+  rows: Array<{ key: string; value: unknown }>,
+  set: ScenarioWindow | null
+): ScenarioAssumptions {
+  const own = assumptionsFromRows(rows);
+  return set ? { ...own, analysisPeriodYears: set.planningPeriodYears } : own;
+}
+
 export async function createScenario(
   organizationId: string,
   input: {
@@ -128,8 +145,11 @@ export async function createScenario(
     /** How its budget is divided between categories, and in what order. Null
      * means no category order at all. */
     categoryFundingPlanId?: string | null;
+    /** The set it belongs to. Null leaves it on its own. */
+    scenarioSetId?: string | null;
   }
 ) {
+  await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   return prisma.scenario.create({
     data: {
       organizationId,
@@ -139,6 +159,7 @@ export async function createScenario(
       weightSetId: input.weightSetId || null,
       categoryWeightSetId: input.categoryWeightSetId || null,
       categoryFundingPlanId: input.categoryFundingPlanId || null,
+      scenarioSetId: input.scenarioSetId || null,
       assumptions: {
         create: Object.entries(input.assumptions).map(([key, value]) => ({ key, value })),
       },
@@ -169,11 +190,14 @@ export async function updateScenario(
     /** How its budget is divided between categories, and in what order. Null
      * means no category order at all. */
     categoryFundingPlanId?: string | null;
+    /** The set it belongs to. Null takes it out of any set. */
+    scenarioSetId?: string | null;
   }
 ) {
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
   if (!scenario) throw new Error("Scenario not found");
   if (!input.name.trim()) throw new Error("Scenario name is required");
+  await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
 
   await prisma.$transaction([
     prisma.scenario.update({
@@ -185,6 +209,7 @@ export async function updateScenario(
         weightSetId: input.weightSetId || null,
         categoryWeightSetId: input.categoryWeightSetId || null,
         categoryFundingPlanId: input.categoryFundingPlanId || null,
+        scenarioSetId: input.scenarioSetId || null,
       },
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
@@ -199,11 +224,13 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
   const startedAt = Date.now();
   const scenario = await prisma.scenario.findFirst({
     where: { id: scenarioId, organizationId },
-    include: { assumptions: true },
+    include: { assumptions: true, scenarioSet: { select: { baseYear: true, planningPeriodYears: true } } },
   });
   if (!scenario) throw new Error("Scenario not found");
 
-  const assumptions = assumptionsFromRows(scenario.assumptions);
+  // A set decides the years: its base year starts the run and its planning
+  // period replaces the scenario's own, so every member covers the same span.
+  const assumptions = effectiveAssumptions(scenario.assumptions, scenario.scenarioSet);
   const [simAssets, library, combinations, weights, categories, funding, selection, curves] = await Promise.all([
     buildSimAssets(organizationId),
     // Run against the configured library so edited treatments and decision
@@ -237,6 +264,7 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
     categoryWeights: categories.weights,
     fundingPlan: funding.plan,
     curves,
+    startYear: scenario.scenarioSet?.baseYear,
   });
 
   await prisma.scenarioResult.deleteMany({ where: { scenarioId } });
@@ -264,6 +292,24 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
   });
 
   return result;
+}
+
+/**
+ * Run every scenario in a set, one after another.
+ *
+ * Sequential on purpose. Runs share the database connection pool and each
+ * already saturates a core; running them side by side would not finish sooner
+ * and would make each one's measured time — which every later estimate is
+ * built on — meaningless.
+ */
+export async function runScenarioSet(organizationId: string, setId: string): Promise<number> {
+  const members = await prisma.scenario.findMany({
+    where: { organizationId, scenarioSetId: setId },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const m of members) await runAndStoreScenario(organizationId, m.id);
+  return members.length;
 }
 
 /**
@@ -416,14 +462,27 @@ export type ScenarioSummary = {
   lastRunAt: Date | null;
   lastRunMs: number | null;
   updatedAt: Date;
+  /** The set it belongs to, when it belongs to one. `assumptions` already
+   * carries the set's planning period; this says where that came from. */
+  scenarioSet: (ScenarioWindow & { id: string; name: string; status: ScenarioSetStatusValue }) | null;
+  /** The analysis period stored on the scenario itself — what it runs over
+   * outside a set, and what the edit form holds. */
+  ownAnalysisPeriodYears: number;
+  /** Stored results cover different years from the set's window, so they
+   * describe a run this scenario would no longer make. */
+  resultsOutOfWindow: boolean;
 };
 
-export async function listScenarios(organizationId: string): Promise<ScenarioSummary[]> {
+export async function listScenarios(
+  organizationId: string,
+  filter: { scenarioSetId?: string } = {}
+): Promise<ScenarioSummary[]> {
   const scenarios = await prisma.scenario.findMany({
-    where: { organizationId },
+    where: { organizationId, ...(filter.scenarioSetId ? { scenarioSetId: filter.scenarioSetId } : {}) },
     include: {
       assumptions: true,
       results: true,
+      scenarioSet: { select: { id: true, name: true, status: true, baseYear: true, planningPeriodYears: true } },
       criticalityModel: { select: { name: true } },
       weightSet: { select: { name: true } },
       categoryWeightSet: { select: { name: true } },
@@ -433,7 +492,7 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
   });
 
   return scenarios.map((s) => {
-    const assumptions = assumptionsFromRows(s.assumptions);
+    const assumptions = effectiveAssumptions(s.assumptions, s.scenarioSet);
     const byMetric = (key: string) => s.results.filter((r) => r.metricKey === key).sort((a, b) => a.year - b.year);
     const conditions = byMetric("avgCondition");
     const backlogs = byMetric("backlog");
@@ -462,6 +521,12 @@ export async function listScenarios(organizationId: string): Promise<ScenarioSum
       totalFailures: failures.length ? Math.round(failures.reduce((sum, r) => sum + r.metricValue, 0)) : null,
       conditionSeries: conditions.map((r) => ({ year: r.year, avgCondition: r.metricValue })),
       updatedAt: s.updatedAt,
+      scenarioSet: s.scenarioSet,
+      ownAnalysisPeriodYears: assumptionsFromRows(s.assumptions).analysisPeriodYears,
+      resultsOutOfWindow: resultsOutOfWindow(
+        conditions.map((r) => r.year),
+        s.scenarioSet
+      ),
     };
   });
 }

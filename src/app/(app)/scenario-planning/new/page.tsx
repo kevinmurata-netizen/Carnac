@@ -15,6 +15,8 @@ import { toPercent } from "@/lib/format";
 import { ScenarioCreateForm } from "../scenario-form";
 import { createScenarioAction } from "../actions";
 import { estimateNewRunMs } from "@/server/run-estimate";
+import { listScenarioSets } from "@/server/scenario-sets";
+import { STATUS_LABELS } from "@/lib/scenario-sets";
 
 /**
  * Creating a scenario.
@@ -23,12 +25,13 @@ import { estimateNewRunMs } from "@/server/run-estimate";
  * and put a dozen empty inputs under a table people came to read. On its own
  * page it can also carry the weighting choice without crowding anything.
  */
-export default async function NewScenarioPage() {
+export default async function NewScenarioPage({ searchParams }: { searchParams: Promise<{ set?: string }> }) {
+  const { set: requestedSet } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
-  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate] =
+  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate, sets] =
     await Promise.all([
     getAnnualBudget(organizationId),
     listFormulaChoices(organizationId),
@@ -40,7 +43,19 @@ export default async function NewScenarioPage() {
     // the reader picks, the first run measures itself and every later estimate
     // for this scenario comes from that.
     estimateNewRunMs(organizationId, DEFAULT_ASSUMPTIONS.analysisPeriodYears),
+    listScenarioSets(organizationId),
     ]);
+
+  // Archived sets are kept for the record and not offered for new work.
+  const scenarioSetChoices = sets
+    .filter((s) => s.status !== "ARCHIVED")
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      baseYear: s.baseYear,
+      planningPeriodYears: s.planningPeriodYears,
+      statusLabel: STATUS_LABELS[s.status],
+    }));
 
   const weightSetChoices = weightSets.map((w) => {
     const n = normalizeWeights(w.weights);
@@ -79,6 +94,7 @@ export default async function NewScenarioPage() {
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
+            scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}
             defaults={{
@@ -88,6 +104,8 @@ export default async function NewScenarioPage() {
               weightSetId: weightSets.find((w) => w.isDefault)?.id ?? null,
               categoryWeightSetId: categoryWeightSets.find((c) => c.isDefault)?.id ?? null,
               categoryFundingPlanId: fundingPlans.find((p) => p.isDefault)?.id ?? null,
+              // Arriving from a set's page preselects that set.
+              scenarioSetId: scenarioSetChoices.find((s) => s.id === requestedSet)?.id ?? null,
               annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
               fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),
               discountRatePct: toPercent(DEFAULT_ASSUMPTIONS.discountRate),

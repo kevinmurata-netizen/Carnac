@@ -443,6 +443,10 @@ export type ScenarioRunOptions = {
   fundingPlan?: FundingPlan;
   /** Deterioration curves by material. */
   curves?: Record<string, CurveParams>;
+  /** The first year of the run. A scenario set supplies its base year; on
+   * its own a scenario starts in the year it is run. The network always
+   * starts from its latest measured condition either way. */
+  startYear?: number;
 };
 
 /**
@@ -479,7 +483,7 @@ export function runScenario(
   const history: TreatmentHistory = new Map();
   const startCondition = new Map(assets.map((a) => [a.id, a.condition]));
   const treatmentCount = new Map<string, number>();
-  const startYear = new Date().getFullYear();
+  const startYear = options.startYear ?? new Date().getFullYear();
   const years: ScenarioYearResult[] = [];
 
   let totalSpend = 0;
