@@ -4,6 +4,7 @@ import { useActionState, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CancelOrDiscard } from "@/components/layout/save-actions";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { EMPTY_SETTINGS_STATE, type SettingsActionState } from "@/app/(app)/settings/state";
 import { Check, CircleDot, Play, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -366,10 +367,20 @@ export function FormulaEditor<TPreview>({
           </form>
           <form action={deleteAction}>
             <input type="hidden" name="id" value={editing.id} />
-            <Button type="submit" size="sm" variant="ghost" className="text-destructive hover:text-destructive">
+            <ConfirmDelete
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              pendingLabel="Deleting…"
+              title={`Delete ${models.find((m) => m.id === editing.id)?.name ?? `this ${vocabulary.noun}`}?`}
+              description={
+                models.find((m) => m.id === editing.id)?.isActive
+                  ? `This is the active ${vocabulary.noun}. Deleting it leaves none active until another is chosen. This cannot be undone.`
+                  : `The ${vocabulary.noun} and its expression are removed. This cannot be undone.`
+              }
+            >
               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
               Delete
-            </Button>
+            </ConfirmDelete>
           </form>
         </div>
       )}

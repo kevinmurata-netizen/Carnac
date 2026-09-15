@@ -30,6 +30,23 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-15",
+    title: "Delete several treatments at once, and every delete now asks first",
+    summary:
+      "The Treatments page gains a checkbox on each row, Select all, and Delete selected. And across the whole application, every delete button now asks for confirmation before anything is deleted.",
+    changes: [
+      "Treatments: tick any number of treatments and press Delete selected, or use Select all (or the checkbox in the header). The count of what is ticked is shown beside the button.",
+      "The confirmation names what will go and what will not. A treatment a work plan still uses cannot be deleted, so the dialog lists those separately as kept, and says which combinations lose a member.",
+      "Anything that could be deleted is; anything that could not stays, and the message afterwards names it and says why — so a partial result is never mistaken for a complete one.",
+      "Every other delete now asks too: treatments one at a time, combinations, rules, criticality formulas, scale factors, benefit and category weightings, funding plans, metrics, failure types, Condition Index components, inspection and inventory fields, saved filters, wishlist items, scenarios, scenario sets and work plans.",
+      "Each confirmation says what is being deleted and anything it takes with it, or why the delete will be refused. Keyboard focus starts on Cancel, so a stray Enter backs out rather than deletes; Escape also cancels.",
+      "Roles already asked before deleting, and keep their own confirmation step.",
+      "Removing a row inside an editor that still needs saving — a price, a condition, a filter chip — does not ask, because nothing is deleted until Save, and Discard puts it back.",
+    ],
+    note:
+      "No migration. Checked on the seed network: ticking two disposable treatments with Coating deleted the two and kept Coating, naming the 190 work plan projects that use it; with Select all the dialog split 4 deletable from 9 in use, and cancelling left all 13.",
+  },
+  {
+    date: "2026-09-15",
     title: "Follow one segment through every year of a scenario",
     summary:
       "The Alternatives page gains an All years view, for one segment at a time: every option the run weighed on it, year by year, showing when it was funded, when it was passed over, and what had changed by then.",

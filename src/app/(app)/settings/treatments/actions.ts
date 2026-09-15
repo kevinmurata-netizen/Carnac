@@ -7,6 +7,7 @@ import {
   createTreatment,
   updateTreatment,
   deleteTreatment,
+  deleteTreatments,
   type TreatmentInput,
 } from "@/server/treatment-config";
 import { setTreatmentCosts, validateCostRates, type CostRateInput } from "@/server/cost-rates";
@@ -203,6 +204,40 @@ export async function deleteTreatmentAction(
     return { status: "success", message: "Treatment deleted." };
   } catch (err) {
     return { status: "error", message: err instanceof Error ? err.message : "Could not delete treatment" };
+  }
+}
+
+/**
+ * Delete the treatments ticked on the library page.
+ *
+ * A partial result is reported as an error when anything was kept, even if
+ * most went: "5 deleted" in green over a list still showing two of them reads
+ * as a bug. The message names what stayed and why.
+ */
+export async function deleteTreatmentsAction(
+  _prev: TreatmentActionState,
+  formData: FormData
+): Promise<TreatmentActionState> {
+  try {
+    const session = await requireWriteAccess();
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No treatments were selected." };
+
+    const { deleted, kept } = await deleteTreatments(session.user.organizationId, ids);
+    revalidateAffected();
+    revalidatePath("/settings/treatment-combinations");
+
+    const deletedText =
+      deleted.length === 0 ? "Nothing was deleted." : `Deleted ${deleted.length}: ${deleted.join(", ")}.`;
+    if (kept.length === 0) return { status: "success", message: deletedText };
+    return {
+      status: "error",
+      message: `${deletedText} Kept ${kept.length}, because deleting ${kept.length === 1 ? "it" : "them"} would break existing plans: ${kept
+        .map((k) => `${k.name} (${k.reason})`)
+        .join("; ")}.`,
+    };
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : "Could not delete those treatments" };
   }
 }
 

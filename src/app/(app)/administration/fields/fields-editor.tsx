@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -189,9 +190,18 @@ export function InspectionFieldsEditor({
                       </form>
                       <form action={remove} className="mt-1">
                         <input type="hidden" name="fieldId" value={f.id} />
-                        <Button type="submit" size="xs" variant="destructive" disabled={deleting}>
+                        <ConfirmDelete
+                          size="xs"
+                          disabled={deleting}
+                          title={`Delete the ${f.label} field?`}
+                          description={
+                            f.resultCount > 0
+                              ? `${f.resultCount} inspection answers are recorded against it, so deletion will be refused — remove it from the Condition Index instead.`
+                              : "The field is removed from every inspection form. This cannot be undone."
+                          }
+                        >
                           Delete field
-                        </Button>
+                        </ConfirmDelete>
                         {(f.resultCount > 0 || f.indexWeight != null) && (
                           <span className="ml-2 text-xs text-muted-foreground">
                             {f.resultCount > 0 && `${f.resultCount} answers recorded`}
@@ -387,9 +397,18 @@ export function InventoryFieldsEditor({
                       </form>
                       <form action={remove} className="mt-1">
                         <input type="hidden" name="definitionId" value={f.id} />
-                        <Button type="submit" size="xs" variant="destructive" disabled={deleting}>
+                        <ConfirmDelete
+                          size="xs"
+                          disabled={deleting}
+                          title={`Delete the ${f.label} field?`}
+                          description={
+                            f.valueCount > 0
+                              ? `${f.valueCount} values are recorded against it, so deletion will be refused.`
+                              : "The field is removed from every asset record. This cannot be undone."
+                          }
+                        >
                           Delete field
-                        </Button>
+                        </ConfirmDelete>
                         {f.valueCount > 0 && (
                           <span className="ml-2 text-xs text-muted-foreground">
                             {f.valueCount} values recorded — deletion will be refused

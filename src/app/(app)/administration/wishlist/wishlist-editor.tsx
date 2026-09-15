@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -242,16 +243,17 @@ function Row({ item, locations }: { item: WishlistRow; locations: WishlistLocati
         <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(true)} aria-label={`Edit ${item.title}`}>
           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
         </Button>
-        <Button
-          type="button"
-          size="sm"
+        <ConfirmDelete
           variant="ghost"
           disabled={pending}
-          onClick={() => run(() => removeWishlistItemAction(item.id))}
-          aria-label={`Remove ${item.title}`}
+          onConfirm={() => run(() => removeWishlistItemAction(item.id))}
+          ariaLabel={`Remove ${item.title}`}
+          title={`Remove “${item.title}” from the wishlist?`}
+          description="The item is deleted, not marked done. This cannot be undone."
+          confirmLabel="Remove"
         >
           <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-        </Button>
+        </ConfirmDelete>
       </div>
     </li>
   );

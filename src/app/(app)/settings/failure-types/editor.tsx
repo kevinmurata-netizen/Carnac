@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { startTransition, useActionState } from "react";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -68,21 +69,29 @@ export function FailureTypeEditor({ types }: { types: FailureTypeRow[] }) {
                       </TableCell>
                       <TableCell className="text-sm">{formatNumber(t.eventCount)}</TableCell>
                       <TableCell>
-                        <Button
-                          type="submit"
-                          name="id"
-                          value={t.id}
-                          size="sm"
+                        {/* Called directly rather than by submitting the form
+                            around the table: that form is shared by every row,
+                            and the row's id rode on the button that submitted
+                            it — which a confirmed delete no longer is. */}
+                        <ConfirmDelete
                           variant="ghost"
                           disabled={t.eventCount > 0}
-                          title={
+                          triggerTitle={
                             t.eventCount > 0
                               ? `${t.eventCount} recorded events reference this type`
                               : `Remove ${t.label}`
                           }
+                          title={`Remove the failure type “${t.label}”?`}
+                          description="Nothing has been recorded against it, so no failure loses its cause. Imports that use its code will no longer recognise it. This cannot be undone."
+                          confirmLabel="Remove"
+                          onConfirm={() => {
+                            const data = new FormData();
+                            data.set("id", t.id);
+                            startTransition(() => deleteAction(data));
+                          }}
                         >
                           Remove
-                        </Button>
+                        </ConfirmDelete>
                       </TableCell>
                     </TableRow>
                   ))}

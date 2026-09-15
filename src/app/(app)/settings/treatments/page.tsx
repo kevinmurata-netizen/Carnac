@@ -5,20 +5,10 @@ import { listTreatmentsForAdmin } from "@/server/treatment-config";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
-import { formatNumber } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
-
-const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  Assess: "secondary",
-  Repair: "outline",
-  Rehabilitate: "default",
-  Renew: "destructive",
-  Retire: "secondary",
-};
+import { TreatmentLibrary } from "./treatment-library";
 
 export default async function TreatmentsAdminPage() {
   const session = await auth();
@@ -71,59 +61,7 @@ export default async function TreatmentsAdminPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Treatment</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Effect</TableHead>
-                  <TableHead>Rules</TableHead>
-                  <TableHead>In Plans</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {treatments.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell>
-                      <Link
-                        href={`/settings/treatments/${t.id}`}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        {t.name}
-                      </Link>
-                      {t.description && <div className="text-xs text-muted-foreground">{t.description}</div>}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={CATEGORY_VARIANT[t.category] ?? "default"}>{t.category}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {t.conditionResetTo != null
-                        ? `resets to ${t.conditionResetTo}`
-                        : t.conditionGain != null
-                          ? `+${t.conditionGain}`
-                          : "—"}
-                      <span className="text-muted-foreground"> · ×{t.failureProbMultiplier}</span>
-                    </TableCell>
-                    <TableCell>
-                      {t.ruleCount > 0 ? (
-                        <Badge variant="default">
-                          {t.ruleCount} rule{t.ruleCount === 1 ? "" : "s"}
-                          {t.blockRuleCount > 0 ? `, ${t.blockRuleCount} blocking` : ""}
-                        </Badge>
-                      ) : (
-                        // Not a neutral "none": with no rules the treatment is
-                        // considered for every inspected asset, which is worth
-                        // noticing from the list.
-                        <span className="text-xs text-destructive">none — considered for everything</span>
-                      )}
-                    </TableCell>
-                    <TableCell>{formatNumber(t.workPlanItemCount)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <TreatmentLibrary treatments={treatments} canEdit={canEdit} />
         </CardContent>
       </Card>
 

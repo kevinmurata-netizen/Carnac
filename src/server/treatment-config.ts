@@ -178,9 +178,14 @@ export type TreatmentAdminRow = TreatmentDef & {
   ruleCount: number;
   blockRuleCount: number;
   workPlanItemCount: number;
+  /** Combinations this treatment is a member of. Deleting it removes it from
+   * each, which can leave a bundle of one — worth saying before it happens. */
+  combinationCount: number;
 };
 
-function toAdminRow(row: TreatmentWithRules & { _count: { workPlanItems: number } }): TreatmentAdminRow {
+function toAdminRow(
+  row: TreatmentWithRules & { _count: { workPlanItems: number; combinationMemberships: number } }
+): TreatmentAdminRow {
   const def = toDef(row);
   const rules = def.rules ?? [];
   return {
@@ -190,13 +195,14 @@ function toAdminRow(row: TreatmentWithRules & { _count: { workPlanItems: number 
     ruleCount: rules.length,
     blockRuleCount: rules.filter((r) => r.effect === "block").length,
     workPlanItemCount: row._count.workPlanItems,
+    combinationCount: row._count.combinationMemberships,
   };
 }
 
 export async function listTreatmentsForAdmin(organizationId: string): Promise<TreatmentAdminRow[]> {
   const rows = await prisma.treatment.findMany({
     where: { assetType: { code: "WATERLINE", organizationId } },
-    include: { ...withRules, _count: { select: { workPlanItems: true } } },
+    include: { ...withRules, _count: { select: { workPlanItems: true, combinationMemberships: true } } },
     orderBy: { name: "asc" },
   });
   return rows.map(toAdminRow);
@@ -208,7 +214,7 @@ export async function getTreatmentForAdmin(
 ): Promise<TreatmentAdminRow | null> {
   const row = await prisma.treatment.findFirst({
     where: { id, assetType: { code: "WATERLINE", organizationId } },
-    include: { ...withRules, _count: { select: { workPlanItems: true } } },
+    include: { ...withRules, _count: { select: { workPlanItems: true, combinationMemberships: true } } },
   });
   return row ? toAdminRow(row) : null;
 }
@@ -331,6 +337,43 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
   });
 
   return created.id;
+}
+
+/**
+ * Delete several treatments at once.
+ *
+ * Deletes every one it can and keeps the rest, rather than refusing the lot
+ * because one is in use. The rule is the same as for a single delete — a
+ * treatment a work plan uses cannot go — and the answer is a list of what
+ * was deleted and what was kept and why, so a partial result is never
+ * mistaken for a complete one.
+ */
+export async function deleteTreatments(
+  organizationId: string,
+  ids: string[]
+): Promise<{ deleted: string[]; kept: Array<{ name: string; reason: string }> }> {
+  const rows = await prisma.treatment.findMany({
+    where: { id: { in: ids }, assetType: { code: "WATERLINE", organizationId } },
+    select: { id: true, name: true, _count: { select: { workPlanItems: true } } },
+  });
+
+  const deletable = rows.filter((r) => r._count.workPlanItems === 0);
+  const kept = rows
+    .filter((r) => r._count.workPlanItems > 0)
+    .map((r) => ({
+      name: r.name,
+      reason: `used by ${r._count.workPlanItems.toLocaleString("en-US")} work plan project${r._count.workPlanItems === 1 ? "" : "s"}`,
+    }));
+
+  if (deletable.length > 0) {
+    // Scoped again by organization in the delete itself, not only by the ids
+    // the lookup returned — the ids arrive from a form.
+    await prisma.treatment.deleteMany({
+      where: { id: { in: deletable.map((r) => r.id) }, assetType: { code: "WATERLINE", organizationId } },
+    });
+  }
+
+  return { deleted: deletable.map((r) => r.name), kept };
 }
 
 export async function deleteTreatment(organizationId: string, id: string) {

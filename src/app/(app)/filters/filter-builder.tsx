@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import type { FilterTable, Criterion } from "@/domain/filters";
 import type { SavedFilterRow, FilterResult } from "@/server/saved-filters";
 import { runFilterAction, saveFilterAction, deleteFilterAction } from "./actions";
@@ -172,15 +173,15 @@ export function FilterBuilder({
                   >
                     {f.name}
                   </button>
-                  <Button
-                    type="button"
-                    size="sm"
+                  <ConfirmDelete
                     variant="ghost"
-                    onClick={() => remove(f.id, f.name)}
-                    aria-label={`Delete ${f.name}`}
+                    onConfirm={() => remove(f.id, f.name)}
+                    ariaLabel={`Delete ${f.name}`}
+                    title={`Delete the saved filter “${f.name}”?`}
+                    description="Only the saved filter is deleted; the assets and inspections it finds are untouched. This cannot be undone."
                   >
                     <Trash2 className="h-3 w-3 text-muted-foreground" />
-                  </Button>
+                  </ConfirmDelete>
                 </div>
               ))}
             </div>

@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { formatCurrency, formatDateTime, formatDuration, formatNumber, toPercent } from "@/lib/format";
@@ -178,9 +179,15 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                 />
                 <form action={deleteScenarioAction}>
                   <input type="hidden" name="scenarioId" value={scenario.id} />
-                  <Button type="submit" size="sm" variant="destructive">
+                  <ConfirmDelete
+                    pendingLabel="Deleting…"
+                    title={`Delete the scenario “${scenario.name}”?`}
+                    description={`Its assumptions, results and funded project list are deleted with it${
+                      scenario.scenarioSet ? `, and it leaves ${scenario.scenarioSet.name}` : ""
+                    }. This cannot be undone.`}
+                  >
                     Delete
-                  </Button>
+                  </ConfirmDelete>
                 </form>
               </>
             )}

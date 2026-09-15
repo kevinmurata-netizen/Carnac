@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { saveWeightsAction, addComponentAction, removeComponentAction, recalculateAction } from "./actions";
 import { EMPTY_INDEX_STATE, type IndexActionState } from "./state";
 import type { ConditionIndexConfig } from "@/server/condition-model";
@@ -156,7 +157,7 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
                       <TableCell>{c.resultCount.toLocaleString("en-US")}</TableCell>
                       {canEdit && (
                         <TableCell>
-                          <RemoveButton code={c.code} action={removeComponent} disabled={removing} />
+                          <RemoveButton code={c.code} label={c.label} action={removeComponent} disabled={removing} />
                         </TableCell>
                       )}
                     </TableRow>
@@ -301,19 +302,27 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
 
 function RemoveButton({
   code,
+  label,
   action,
   disabled,
 }: {
   code: string;
+  label: string;
   action: (formData: FormData) => void;
   disabled: boolean;
 }) {
   return (
     <form action={action}>
       <input type="hidden" name="code" value={code} />
-      <Button type="submit" size="xs" variant="destructive" disabled={disabled}>
+      <ConfirmDelete
+        size="xs"
+        disabled={disabled}
+        title={`Remove ${label} from the Condition Index?`}
+        description="It stops counting toward every segment's score, and the remaining components share its weight. Answers already recorded against it are kept, so it can be added back. Scores need recalculating afterwards."
+        confirmLabel="Remove"
+      >
         Remove
-      </Button>
+      </ConfirmDelete>
     </form>
   );
 }
