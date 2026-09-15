@@ -45,9 +45,35 @@ export type Rankable = {
   paysForItself: boolean;
 };
 
+/**
+ * Why an option the year could have bought was not bought, in a few words.
+ *
+ * Kept as a closed set rather than free text: these are the only things that
+ * stop a ranked option, they are what the alternatives page filters on, and a
+ * sentence assembled per row would drift from the rule that produced it.
+ */
+export const NOT_SELECTED = {
+  betterOption: "Better option on this segment",
+  bundle: "Bundle chosen on this segment",
+  alreadyTreated: "Segment already treated this year",
+  budgetSpent: "Year's budget spent",
+  categoryFull: "Category budget full",
+  unpriced: "Could not be priced",
+  categoryUnfunded: "Category not in the funding plan",
+} as const;
+
+export const SELECTED = "Selected";
+
 export type SelectionResult<T extends Rankable> = {
   /** In the order they were selected, which is the order they were funded. */
   selected: T[];
+  /**
+   * Every candidate, against what happened to it: `SELECTED`, or one of
+   * `NOT_SELECTED`. Built during the walk rather than worked out afterwards,
+   * because "the budget was spent" is only true of the moment the option's
+   * turn came — by the end of the year the figures no longer show it.
+   */
+  outcome: Map<T, string>;
   /** What each category took, and what it was allowed to take. */
   byCategory: Array<{ category: TreatmentCategory | "All"; spent: number; cap: number }>;
   totalSpent: number;
@@ -72,6 +98,7 @@ export function selectForYear<T extends Rankable>(
   const selected: T[] = [];
   const treatedAssets = new Set<string>();
   const byCategory: SelectionResult<T>["byCategory"] = [];
+  const outcome = new Map<T, string>();
 
   let totalSpent = 0;
   let cappedOut = 0;
@@ -98,7 +125,11 @@ export function selectForYear<T extends Rankable>(
     // which is what "start from the top of the list" means once an asset can
     // only be funded once.
     for (const candidate of inPass) {
-      if (treatedAssets.has(candidate.assetId)) continue;
+      if (treatedAssets.has(candidate.assetId)) {
+        // Funded in an earlier pass, or by the line above in this one. Rule 2.
+        if (!outcome.has(candidate)) outcome.set(candidate, NOT_SELECTED.alreadyTreated);
+        continue;
+      }
 
       const onAsset = byAsset.get(candidate.assetId);
       if (!onAsset || onAsset[0] !== candidate) continue; // not this asset's turn yet
@@ -126,8 +157,22 @@ export function selectForYear<T extends Rankable>(
       const chosen = pick(paying) ?? pick(rest);
 
       if (!chosen) {
-        // Nothing on this asset fits. Report it as capped out only when the
-        // year still had room — otherwise it is simply the budget.
+        // Nothing on this asset fits. Each option says which wall it hit, at
+        // the moment it hit it.
+        for (const c of onAsset) {
+          if (outcome.has(c)) continue;
+          outcome.set(
+            c,
+            c.priority == null
+              ? NOT_SELECTED.unpriced
+              : totalSpent + c.cost > budget
+                ? NOT_SELECTED.budgetSpent
+                : NOT_SELECTED.categoryFull
+          );
+        }
+
+        // Report it as capped out only when the year still had room —
+        // otherwise it is simply the budget.
         const cheapest = onAsset.reduce<T | null>(
           (best, c) => (c.priority != null && (best == null || c.cost < best.cost) ? c : best),
           null
@@ -137,6 +182,12 @@ export function selectForYear<T extends Rankable>(
       }
 
       selected.push(chosen);
+      outcome.set(chosen, SELECTED);
+      // Rule 3, and rule 4 where the winner was a bundle: the rest of this
+      // asset's options were alternatives to the one that won.
+      const beaten = chosen.option.members.length > 1 ? NOT_SELECTED.bundle : NOT_SELECTED.betterOption;
+      for (const c of onAsset) if (c !== chosen && !outcome.has(c)) outcome.set(c, beaten);
+
       treatedAssets.add(chosen.assetId);
       totalSpent += chosen.cost;
       categorySpent += chosen.cost;
@@ -149,5 +200,9 @@ export function selectForYear<T extends Rankable>(
     });
   }
 
-  return { selected, byCategory, totalSpent, cappedOut };
+  // A plan that names only some categories never opens a pass for the rest, so
+  // their options were never in the running at all.
+  for (const c of candidates) if (!outcome.has(c)) outcome.set(c, NOT_SELECTED.categoryUnfunded);
+
+  return { selected, outcome, byCategory, totalSpent, cappedOut };
 }

@@ -35,7 +35,7 @@ import { ScenarioHeaderActions } from "../scenario-header-actions";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
 import { RunProgressButton } from "../run-progress";
 import { estimateRunMs } from "@/server/run-estimate";
-import { AlertTriangle, Gauge, Layers, Wallet } from "lucide-react";
+import { AlertTriangle, Gauge, Layers, ListTree, Wallet } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { ExportButton } from "@/components/layout/export-button";
 import { getConditionBands } from "@/server/settings";
@@ -146,6 +146,22 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
         description={scenario.description ?? STRATEGY_DESCRIPTIONS[a.strategy as Strategy]}
         actions={
           <div className="flex items-center gap-2">
+            {/* Offered to readers as well as editors: "why wasn't this one
+                done" is a question asked far more often than it is answered
+                by someone who can change the scenario. */}
+            {years.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                nativeButton={false}
+                render={
+                  <Link href={`/scenario-planning/${scenario.id}/alternatives`}>
+                    <ListTree className="mr-1 h-4 w-4" />
+                    Alternatives
+                  </Link>
+                }
+              />
+            )}
             {canEdit && (
               <>
                 {/* Re-run until something changes, then Save & Re-run with the
