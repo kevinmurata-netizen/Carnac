@@ -45,6 +45,23 @@ export const ENTRIES: BuildEntry[] = [
   },
   {
     date: "2026-09-15",
+    title: "Funded bundles were missing from a scenario's project list",
+    summary:
+      "When a scenario funded a treatment combination, the combination never reached its Funded Projects list — though its cost was still counted in the yearly spend. Bundles are now stored as one row per treatment, with the cost divided between them.",
+    fixes: [
+      "A project row names one treatment, and a bundle is named after none of them — so matching the bundle's name against the treatment list found nothing and the row was quietly dropped. On the seed network's Current Funding scenario that was 780 of 1,596 rows: every bundle the twenty-year run bought, absent from the list while its money appeared in the totals.",
+      "The list was therefore short of work the scenario had paid for, and the costs in it did not add up to the run's spend. They do now: 1,596 rows totalling $107,032,693, which is the run's total spend to the dollar.",
+    ],
+    changes: [
+      "A funded bundle is stored the way the work plan generator already stored one: a row per treatment in it, each labelled “part of Dig-once repair”, sharing the visit's condition and risk figures.",
+      "The bundle's cost is divided between its treatments — each member's own unit cost, with the single mobilization charge going to the member whose rate set it — so the rows add up to exactly what the bundle cost.",
+      "Funded Projects and its Excel export both show which bundle a row belongs to.",
+    ],
+    note:
+      "No migration. Existing scenario results keep their short project lists until the scenario is re-run; re-running rebuilds the list from the same figures. Nothing about what a scenario funds or what it costs has changed — only what was recorded about it.",
+  },
+  {
+    date: "2026-09-15",
     title: "See every alternative a scenario weighed, year by year",
     summary:
       "A scenario now has an Alternatives page: every treatment and combination it considered in each year, in Priority Score order, marked selected or not with a few words saying what stopped it.",
