@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowDown, ArrowUp, Check, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarRange, Check, Search, X } from "lucide-react";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 
@@ -20,6 +20,7 @@ import type { TreatmentCategory } from "@/domain/waterline/treatment";
  */
 
 export type AlternativeRow = {
+  year: number;
   assetId: string;
   assetCode: string;
   conditionBefore: number;
@@ -40,7 +41,16 @@ export type AlternativeRow = {
   reason: string;
 };
 
-type SortKey = "priority" | "assetCode" | "optionLabel" | "category" | "cost" | "benefit" | "conditionBefore" | "reason";
+type SortKey =
+  | "year"
+  | "priority"
+  | "assetCode"
+  | "optionLabel"
+  | "category"
+  | "cost"
+  | "benefit"
+  | "conditionBefore"
+  | "reason";
 
 const COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = [
   { key: "assetCode", label: "Segment" },
@@ -61,17 +71,36 @@ const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
   Retire: "secondary",
 };
 
-/** Enough to read the shape of a year without building a DOM nobody scrolls.
- * The count line always says how many actually matched. */
-const SHOWN = 100;
+/** Enough to read the shape of a year without building a DOM nobody scrolls;
+ * the count line always says how many actually matched. One segment across the
+ * run is a couple of hundred rows at most, and cutting that off would hide the
+ * years someone came to see — so it is shown whole. */
+const SHOWN_PER_YEAR = 100;
+const SHOWN_PER_SEGMENT = 1000;
 
-export function AlternativesGrid({ rows }: { rows: AlternativeRow[] }) {
+export function AlternativesGrid({
+  rows,
+  showYear = false,
+  allYearsBase,
+}: {
+  rows: AlternativeRow[];
+  /** One segment across the run, rather than one year across the network. */
+  showYear?: boolean;
+  /** Prefix for a row's "every year" link, with the segment id appended. A
+   * string rather than a function because a server component cannot hand a
+   * client one a callback. Absent in the all-years view, which is there
+   * already. */
+  allYearsBase?: string;
+}) {
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<TreatmentCategory[]>([]);
   const [reasons, setReasons] = useState<string[]>([]);
   const [only, setOnly] = useState<"all" | "selected" | "not">("all");
-  const [sort, setSort] = useState<SortKey>("priority");
-  const [descending, setDescending] = useState(true);
+  // Across years the story is chronological; within a year it is the ranking.
+  const [sort, setSort] = useState<SortKey>(showYear ? "year" : "priority");
+  const [descending, setDescending] = useState(!showYear);
+
+  const columns = showYear ? [{ key: "year" as const, label: "Year", numeric: true }, ...COLUMNS] : COLUMNS;
 
   const presentCategories = useMemo(() => [...new Set(rows.map((r) => r.category))].sort(), [rows]);
   // Commonest first: the reasons that explain most of a year are the ones
@@ -112,7 +141,7 @@ export function AlternativesGrid({ rows }: { rows: AlternativeRow[] }) {
     });
   }, [rows, query, categories, reasons, only, sort, descending]);
 
-  const shown = matched.slice(0, SHOWN);
+  const shown = matched.slice(0, showYear ? SHOWN_PER_SEGMENT : SHOWN_PER_YEAR);
   const filtering = query.trim() !== "" || categories.length > 0 || reasons.length > 0 || only !== "all";
 
   const toggleSort = (key: SortKey) => {
@@ -121,7 +150,8 @@ export function AlternativesGrid({ rows }: { rows: AlternativeRow[] }) {
       return;
     }
     setSort(key);
-    setDescending(COLUMNS.find((c) => c.key === key)?.numeric ?? false);
+    // Years open oldest-first; other numbers largest-first; text A–Z.
+    setDescending(key === "year" ? false : (columns.find((c) => c.key === key)?.numeric ?? false));
   };
 
   const chip = (on: boolean) =>
@@ -223,7 +253,7 @@ export function AlternativesGrid({ rows }: { rows: AlternativeRow[] }) {
       <p className="text-xs text-muted-foreground">
         {filtering
           ? `${formatNumber(matched.length)} of ${formatNumber(rows.length)} alternatives match`
-          : `${formatNumber(rows.length)} alternatives considered this year`}
+          : `${formatNumber(rows.length)} alternatives considered ${showYear ? "across the run" : "this year"}`}
         {matched.length > shown.length && ` — showing the first ${shown.length}`}
       </p>
 
@@ -238,7 +268,7 @@ export function AlternativesGrid({ rows }: { rows: AlternativeRow[] }) {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12">#</TableHead>
-                {COLUMNS.map((column) => (
+                {columns.map((column) => (
                   <TableHead key={column.key} className={column.numeric ? "text-right" : undefined}>
                     <button
                       type="button"
@@ -259,14 +289,25 @@ export function AlternativesGrid({ rows }: { rows: AlternativeRow[] }) {
             <TableBody>
               {shown.map((row, index) => (
                 <TableRow
-                  key={`${row.assetId}:${row.optionLabel}`}
+                  key={`${row.year}:${row.assetId}:${row.optionLabel}`}
                   className={row.selected ? "bg-emerald-500/5" : undefined}
                 >
                   <TableCell className="tabular-nums text-muted-foreground">{index + 1}</TableCell>
-                  <TableCell>
+                  {showYear && <TableCell className="text-right font-medium tabular-nums">{row.year}</TableCell>}
+                  <TableCell className="whitespace-nowrap">
                     <Link href={`/assets/${row.assetId}?tab=treatments`} className="font-medium text-primary hover:underline">
                       {row.assetCode}
                     </Link>
+                    {allYearsBase && (
+                      <Link
+                        href={`${allYearsBase}${row.assetId}`}
+                        title={`Every alternative on ${row.assetCode}, every year`}
+                        aria-label={`Every alternative on ${row.assetCode}, every year`}
+                        className="ml-1.5 text-muted-foreground hover:text-primary"
+                      >
+                        <CalendarRange className="inline h-3.5 w-3.5" />
+                      </Link>
+                    )}
                   </TableCell>
                   <TableCell
                     className="text-right tabular-nums"

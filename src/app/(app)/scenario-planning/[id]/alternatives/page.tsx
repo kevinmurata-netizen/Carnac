@@ -4,56 +4,75 @@ import { auth } from "@/lib/auth";
 import { getScenarioAlternatives } from "@/server/scenario-alternatives";
 import { PageHeader } from "@/components/layout/page-header";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExportButton } from "@/components/layout/export-button";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { AlternativesGrid } from "./alternatives-grid";
 
 /**
- * Every option the run weighed, one year at a time.
+ * Every option the run weighed — one year across the network, or one segment
+ * across every year.
  *
  * The scenario's own page says what was funded. This says what else was on the
- * table and why it was not — which is the question anyone challenging a plan
- * actually asks, and the one a list of funded projects cannot answer.
+ * table and why it was not, which is the question anyone challenging a plan
+ * actually asks and the one a list of funded projects cannot answer.
  *
  * A year at a time because the run compounds: 2028's options are built from
  * the network 2027 left behind, so the same option on the same segment scores
- * differently each year. Whole-run reading belongs in the spreadsheet.
+ * differently each year. All years is offered for one segment at a time, where
+ * that compounding is the whole point — when was this picked, when was it not,
+ * and what had changed by then — and where a hundred rows can be read. The
+ * whole run at once is twenty thousand rows, which is what the file is for.
  */
 export default async function AlternativesPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; asset?: string }>;
 }) {
   const { id } = await params;
-  const { year: yearParam } = await searchParams;
+  const { year: yearParam, asset: assetParam } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
 
-  const requested = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : undefined;
-  const data = await getScenarioAlternatives(organizationId, id, requested);
+  const data = await getScenarioAlternatives(organizationId, id, {
+    year: yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : undefined,
+    allYears: yearParam === "all",
+    assetId: assetParam && /^[A-Za-z0-9_-]{1,64}$/.test(assetParam) ? assetParam : undefined,
+  });
   if (!data) notFound();
 
-  const { summary } = data;
-  const thisYear = data.byYear.find((y) => y.year === data.year)!;
+  const { summary, segment } = data;
+  const allYears = data.year === "all";
+  // Asked for every year without saying which segment: the picker below is the
+  // answer, and the table waits.
+  const needsSegment = yearParam === "all" && !segment;
+  const base = `/scenario-planning/${id}/alternatives`;
+  const exportQuery = allYears ? `year=all&asset=${segment!.id}` : `year=${data.year}`;
 
   return (
     <div>
       <SetBreadcrumb segment={id} label={data.scenarioName} />
       <PageHeader
         title={`Alternatives — ${data.scenarioName}`}
-        description="Every treatment and combination the run considered each year, in Priority Score order, with what happened to it"
+        description="Every treatment and combination the run considered, in Priority Score order, with what happened to it"
         actions={
           <div className="flex items-center gap-2">
+            {!needsSegment && (
+              <ExportButton
+                href={`${base}/export?${exportQuery}`}
+                label={allYears ? `Export ${segment!.code}` : "Export year"}
+                title={
+                  allYears
+                    ? `Every alternative on ${segment!.code}, every year`
+                    : `Every alternative considered in ${data.year}`
+                }
+              />
+            )}
             <ExportButton
-              href={`/scenario-planning/${id}/alternatives/export?year=${data.year}`}
-              label="Export year"
-              title={`Every alternative considered in ${data.year}`}
-            />
-            <ExportButton
-              href={`/scenario-planning/${id}/alternatives/export?year=all`}
+              href={`${base}/export?year=all`}
               label="Export all years"
               title="Every alternative considered in every year of the run"
             />
@@ -73,25 +92,52 @@ export default async function AlternativesPage({
         <CardHeader className="gap-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <CardTitle>
-              {data.year} <span className="font-normal text-muted-foreground">· year {data.years.indexOf(data.year) + 1} of {data.years.length}</span>
+              {allYears ? (
+                <>
+                  {segment!.code}{" "}
+                  <span className="font-normal text-muted-foreground">
+                    · every year, {data.years[0]}–{data.years.at(-1)}
+                  </span>
+                </>
+              ) : needsSegment ? (
+                "Every year, one segment"
+              ) : (
+                <>
+                  {data.year}{" "}
+                  <span className="font-normal text-muted-foreground">
+                    · year {data.years.indexOf(data.year as number) + 1} of {data.years.length}
+                  </span>
+                </>
+              )}
             </CardTitle>
-            <p className="text-sm text-muted-foreground tabular-nums">
-              {formatNumber(summary.selected)} funded of {formatNumber(summary.considered)} considered ·{" "}
-              {formatCurrency(thisYear.spend, { compact: true })} of {formatCurrency(thisYear.budget, { compact: true })}{" "}
-              spent · {formatNumber(summary.segmentsTreated)} of {formatNumber(summary.segments)} segments treated
-            </p>
+            {!needsSegment && (
+              <p className="text-sm tabular-nums text-muted-foreground">
+                {allYears ? (
+                  <>
+                    funded in {formatNumber(summary.selected)} of {formatNumber(data.years.length)} years ·{" "}
+                    {formatNumber(summary.considered)} alternatives weighed
+                  </>
+                ) : (
+                  <>
+                    {formatNumber(summary.selected)} funded of {formatNumber(summary.considered)} considered ·{" "}
+                    {formatCurrency(summary.spend, { compact: true })} of{" "}
+                    {formatCurrency(summary.budget, { compact: true })} spent ·{" "}
+                    {formatNumber(summary.segmentsTreated)} of {formatNumber(summary.segments)} segments treated
+                  </>
+                )}
+              </p>
+            )}
           </div>
 
-          {/* Every year of the run, with how much each one bought. The counts
-              are the point: a year that funded three of nine hundred options
-              looks different from one that funded ninety. */}
+          {/* Every year of the run, with how much each one bought, and the way
+              into one segment's whole story. */}
           <div className="flex flex-wrap gap-1.5">
             {data.byYear.map((y) => {
-              const current = y.year === data.year;
+              const current = !allYears && !needsSegment && y.year === data.year;
               return (
                 <Link
                   key={y.year}
-                  href={`/scenario-planning/${id}/alternatives?year=${y.year}`}
+                  href={`${base}?year=${y.year}`}
                   scroll={false}
                   aria-current={current ? "page" : undefined}
                   title={`${formatNumber(y.selected)} funded of ${formatNumber(y.considered)} considered · ${formatCurrency(y.spend, { compact: true })}`}
@@ -106,38 +152,103 @@ export default async function AlternativesPage({
                 </Link>
               );
             })}
+            <Link
+              href={segment ? `${base}?year=all&asset=${segment.id}` : `${base}?year=all`}
+              scroll={false}
+              aria-current={allYears || needsSegment ? "page" : undefined}
+              title="Every alternative on one segment, across every year"
+              className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                allYears || needsSegment
+                  ? "border-transparent bg-primary font-medium text-primary-foreground"
+                  : "text-muted-foreground hover:border-primary/50 hover:text-foreground"
+              }`}
+            >
+              All years {segment ? `· ${segment.code}` : "· one segment"}
+            </Link>
           </div>
+
+          {/* The segment picker, whenever every year is in view: it is both how
+              you get here without a segment and how you switch to another. */}
+          {(allYears || needsSegment) && (
+            <form action={base} method="get" className="flex flex-wrap items-center gap-2">
+              <input type="hidden" name="year" value="all" />
+              <label htmlFor="segment" className="text-sm font-medium">
+                Segment
+              </label>
+              <select
+                id="segment"
+                name="asset"
+                required
+                defaultValue={segment?.id ?? ""}
+                className="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-56"
+              >
+                <option value="" disabled>
+                  Choose a segment…
+                </option>
+                {data.segments.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.code}
+                  </option>
+                ))}
+              </select>
+              <Button type="submit" size="sm" variant="outline">
+                Show every year
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {formatNumber(data.segments.length)} segments the run considered anything on
+              </span>
+            </form>
+          )}
         </CardHeader>
 
         <CardContent className="border-t pt-4">
-          <AlternativesGrid
-            rows={data.rows.map((r) => ({
-              assetId: r.assetId,
-              assetCode: r.assetCode,
-              conditionBefore: r.conditionBefore,
-              optionLabel: r.optionLabel,
-              members: r.members.join(" + "),
-              isCombination: r.isCombination,
-              category: r.category,
-              cost: r.cost,
-              benefit: r.benefit,
-              priority: r.priority,
-              criticality: r.criticality,
-              scaleFactor: r.scaleFactor,
-              categoryWeight: r.categoryWeight,
-              conditionAfter: r.conditionAfter,
-              riskBefore: r.riskBefore,
-              riskAfter: r.riskAfter,
-              selected: r.selected,
-              reason: r.reason,
-            }))}
-          />
+          {needsSegment ? (
+            <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+              Choose a segment to see every alternative on it, year by year — when it was funded, when it was passed
+              over, and what had changed by then. The whole run at once is over twenty thousand rows; that is what
+              Export all years is for.
+            </p>
+          ) : (
+            <AlternativesGrid
+              /* Remounted when the view changes: the grid decides its default
+                 sort and holds its filters in state, and a client-side move
+                 between years — or into one segment's whole run — would
+                 otherwise keep a sort that no longer makes sense and chips for
+                 outcomes this view may not contain. */
+              key={allYears ? `all:${segment!.id}` : String(data.year)}
+              showYear={allYears}
+              allYearsBase={allYears ? undefined : `${base}?year=all&asset=`}
+              rows={data.rows.map((r) => ({
+                year: r.year,
+                assetId: r.assetId,
+                assetCode: r.assetCode,
+                conditionBefore: r.conditionBefore,
+                optionLabel: r.optionLabel,
+                members: r.members.join(" + "),
+                isCombination: r.isCombination,
+                category: r.category,
+                cost: r.cost,
+                benefit: r.benefit,
+                priority: r.priority,
+                criticality: r.criticality,
+                scaleFactor: r.scaleFactor,
+                categoryWeight: r.categoryWeight,
+                conditionAfter: r.conditionAfter,
+                riskBefore: r.riskBefore,
+                riskAfter: r.riskAfter,
+                selected: r.selected,
+                reason: r.reason,
+              }))}
+            />
+          )}
 
           <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
             Priority Score is Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost, computed
-            against this year&apos;s condition. Expected Benefit is normalized across the options considered this year,
-            so scores rank options within a year and are not comparable across years. Options ruled out before scoring
-            — locked out by a retreatment interval, or on a segment the strategy passed over — have no score.
+            against that year&apos;s condition. Expected Benefit is normalized across the options considered in a year,
+            so scores rank options within their own year and are not comparable across years — a segment&apos;s score
+            moving between years says its standing among that year&apos;s options changed, not that it is worth more.
+            Options ruled out before scoring — locked out by a retreatment interval, or on a segment the strategy
+            passed over — have no score.
           </p>
         </CardContent>
       </Card>
