@@ -13,12 +13,17 @@ import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, CalendarRange, Plus } from "lucide-react";
+import { AlertTriangle, CalendarRange, Copy, Plus } from "lucide-react";
 import { ScenarioComparison } from "../../scenario-comparison";
 import { RunProgressButton } from "../../run-progress";
 import { ScenarioSetStatusBadge } from "../status-badge";
 import { ScenarioSetEditor } from "../set-editor";
-import { assignScenarioAction, deleteScenarioSetAction, runScenarioSetAction } from "../actions";
+import {
+  assignScenarioAction,
+  copyScenarioSetAction,
+  deleteScenarioSetAction,
+  runScenarioSetAction,
+} from "../actions";
 
 export default async function ScenarioSetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -80,6 +85,24 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
                   />
                 </form>
               )}
+              {/* Copying is how a variant gets made: same scenarios, same
+                  window, then change one thing and run it. */}
+              <form action={copyScenarioSetAction}>
+                <input type="hidden" name="id" value={set.id} />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  title={
+                    members.length > 0
+                      ? `Copies this set and its ${members.length} scenario${members.length === 1 ? "" : "s"}, without their results`
+                      : "Copies this set"
+                  }
+                >
+                  <Copy className="mr-1 h-4 w-4" />
+                  Duplicate
+                </Button>
+              </form>
               <form action={deleteScenarioSetAction}>
                 <input type="hidden" name="id" value={set.id} />
                 {/* Only an empty set can go: move or delete its scenarios first.

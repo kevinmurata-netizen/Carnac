@@ -29,6 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-15",
+    title: "Duplicate a scenario set",
+    summary:
+      "A Duplicate button on a scenario set copies the set and every scenario in it, so a variant can be made by changing one thing rather than rebuilding the whole comparison.",
+    changes: [
+      "Duplicate is at the top of a set's page, beside Run all. It copies the description, base year and planning period, and every scenario in the set — each with its budget, strategy, weightings, funding plan and the treatments it may consider.",
+      "Results are not copied. The copies have never run, and carrying the original's numbers across would be a lie that lasts until someone notices the figures never change. The copy opens with its scenarios marked Not run.",
+      "The copy is a Draft whatever the original's status, because it has not been reviewed or approved.",
+      "Names number themselves: “2027 Capital Plan (copy)”, then “(copy 2)”. A copy of a copy numbers from the original name rather than stacking the word.",
+      "The original set and its scenarios are untouched.",
+    ],
+    note:
+      "No migration. On the seed network, running a copy reproduced the original's figures exactly — 70.3 WCI and 78 failures against the same window — which is what says the copy carried every setting across.",
+  },
+  {
     date: "2026-09-14",
     title: "Model Results describes the run a scenario actually made",
     summary:
