@@ -157,7 +157,7 @@ export function RuleEditor({
                 disabled={busy}
                 ariaLabel="Delete rule"
                 title={`Delete the rule “${saved.name || "Untitled"}”?`}
-                description="If a treatment still uses it, deletion will be refused, since removing it would quietly widen what that treatment is considered for. Otherwise it is deleted. This cannot be undone."
+                description="If a treatment, combination or price still uses it, deletion will be refused, since removing it would quietly change what those apply to. Otherwise it is deleted. This cannot be undone."
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </ConfirmDelete>

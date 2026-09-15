@@ -13,10 +13,9 @@ import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { ageInYears } from "@/lib/format";
 import { emptyGroup, type DecisionField, type DecisionInput } from "@/domain/waterline/decision-tree";
 import { PageHeader } from "@/components/layout/page-header";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RuleEditor, type Sample, type RuleDraft } from "./rule-editor";
+import { RuleList } from "./rule-list";
 import { saveRuleAction, deleteRuleAction } from "./actions";
 import { getPageName } from "@/server/navigation";
 
@@ -165,46 +164,7 @@ export default async function TreatmentRulesPage({
                 No rules yet. Without any, every treatment is considered for every inspected asset.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Rule</TableHead>
-                      <TableHead>Effect</TableHead>
-                      <TableHead className="min-w-[16rem]">Reads as</TableHead>
-                      <TableHead>Used by</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rules.map((r) => (
-                      <TableRow key={r.id} className={r.id === selected?.id ? "bg-muted/50" : undefined}>
-                        <TableCell>
-                          <Link
-                            href={`/settings/treatment-rules?rule=${r.id}`}
-                            className="font-medium text-primary hover:underline"
-                          >
-                            {r.name}
-                          </Link>
-                          {!r.enabled && <span className="ml-2 text-xs text-muted-foreground">(disabled)</span>}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={r.effect === "block" ? "destructive" : "secondary"}>
-                            {r.effect === "block" ? "Blocks" : "Allows"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="min-w-[16rem] whitespace-normal break-words text-sm text-muted-foreground">{r.summary}</TableCell>
-                        <TableCell className="whitespace-normal break-words text-sm">
-                          {r.usedBy.length === 0 ? (
-                            <span className="text-muted-foreground">Nothing yet</span>
-                          ) : (
-                            r.usedBy.join(", ")
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <RuleList rules={rules} selectedId={selected?.id ?? null} canEdit={canEdit} />
             )}
           </CardContent>
         </Card>

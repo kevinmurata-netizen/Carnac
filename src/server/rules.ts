@@ -68,9 +68,55 @@ export type RuleSummary = {
   summary: string;
   /** Treatment names this rule is attached to, alphabetically. */
   usedBy: string[];
+  /** Prices that apply only where this rule matches, as "Treatment: rate". */
+  usedByRates: string[];
+  /** Combinations this rule adds a gate to. */
+  usedByCombinations: string[];
+  /**
+   * Why this rule cannot be deleted right now, or null when it can.
+   *
+   * Worked out once, here, so the list, the confirmation dialog and the
+   * delete itself all refuse for the same reasons in the same words.
+   */
+  deleteBlocker: string | null;
 };
 
-function toSummary(row: RuleRow & { treatments: Array<{ treatment: { name: string } }> }): RuleSummary {
+/** Everything that points at a rule — each of which deleting it would break. */
+const withUsage = {
+  treatments: { include: { treatment: { select: { name: true } } } },
+  costRates: { select: { name: true, treatment: { select: { name: true } } } },
+  combinations: { select: { combination: { select: { name: true } } } },
+} as const;
+
+type RuleWithUsage = RuleRow & {
+  treatments: Array<{ treatment: { name: string } }>;
+  costRates: Array<{ name: string; treatment: { name: string } }>;
+  combinations: Array<{ combination: { name: string } }>;
+};
+
+/**
+ * What deleting this rule would break, in a sentence, or null.
+ *
+ * Three things point at a rule and each is refused for its own reason:
+ *  - a **treatment** it gates would silently be considered more widely;
+ *  - a **combination** it gates would silently be offered more widely — the
+ *    same harm, which used to go unchecked because the link cascades;
+ *  - a **price** that applies where it matches would lose the condition that
+ *    picks it. The database refuses this one outright, and used to answer with
+ *    a raw constraint error rather than a reason.
+ */
+function blockerFor(row: RuleWithUsage): string | null {
+  const parts: string[] = [];
+  const treatments = row.treatments.map((t) => t.treatment.name).sort();
+  const combinations = row.combinations.map((c) => c.combination.name).sort();
+  const rates = row.costRates.map((r) => `${r.treatment.name}: ${r.name}`).sort();
+  if (treatments.length) parts.push(`gates ${treatments.join(", ")}`);
+  if (combinations.length) parts.push(`gates the combination${combinations.length === 1 ? "" : "s"} ${combinations.join(", ")}`);
+  if (rates.length) parts.push(`picks the price${rates.length === 1 ? "" : "s"} ${rates.join(", ")}`);
+  return parts.length ? `still ${parts.join("; ")}` : null;
+}
+
+function toSummary(row: RuleWithUsage): RuleSummary {
   const parsed = parseRules([row])[0];
   return {
     id: row.id,
@@ -82,13 +128,16 @@ function toSummary(row: RuleRow & { treatments: Array<{ treatment: { name: strin
     conditionCount: parsed ? countConditions(parsed.root) : 0,
     summary: parsed ? describeNode(parsed.root) : "This rule could not be read and is being ignored.",
     usedBy: row.treatments.map((t) => t.treatment.name).sort(),
+    usedByRates: row.costRates.map((r) => `${r.treatment.name}: ${r.name}`).sort(),
+    usedByCombinations: row.combinations.map((c) => c.combination.name).sort(),
+    deleteBlocker: blockerFor(row),
   };
 }
 
 export async function listRules(organizationId: string): Promise<RuleSummary[]> {
   const rows = await prisma.rule.findMany({
     where: { organizationId },
-    include: { treatments: { include: { treatment: { select: { name: true } } } } },
+    include: withUsage,
     orderBy: { name: "asc" },
   });
   return rows.map(toSummary);
@@ -97,7 +146,7 @@ export async function listRules(organizationId: string): Promise<RuleSummary[]> 
 export async function getRule(organizationId: string, id: string): Promise<RuleSummary | null> {
   const row = await prisma.rule.findFirst({
     where: { id, organizationId },
-    include: { treatments: { include: { treatment: { select: { name: true } } } } },
+    include: withUsage,
   });
   return row ? toSummary(row) : null;
 }
@@ -177,25 +226,47 @@ export async function updateRule(organizationId: string, id: string, input: Rule
 }
 
 /**
- * Deleting a shared rule removes a gate from every treatment using it, so the
+ * Deleting a shared rule removes a gate from everything using it, so the
  * refusal names them. Detaching first is the deliberate, visible step —
  * exactly the shape `deleteTreatment` already uses for work plan items.
  */
 export async function deleteRule(organizationId: string, id: string) {
-  const row = await prisma.rule.findFirst({
-    where: { id, organizationId },
-    include: { treatments: { include: { treatment: { select: { name: true } } } } },
-  });
+  const row = await prisma.rule.findFirst({ where: { id, organizationId }, include: withUsage });
   if (!row) throw new Error("That rule no longer exists");
 
-  if (row.treatments.length > 0) {
-    const names = row.treatments.map((t) => t.treatment.name).sort().join(", ");
+  const blocker = blockerFor(row);
+  if (blocker) {
     throw new Error(
-      `"${row.name}" still gates ${names}. Detach it from those treatments first — deleting it would silently widen what they are considered for.`
+      `"${row.name}" ${blocker}. Detach it first — deleting it would silently change what those apply to.`
     );
   }
 
   await prisma.rule.delete({ where: { id } });
+}
+
+/**
+ * Delete several rules at once: every one nothing depends on, keeping the
+ * rest and saying why, by the same test as a single delete.
+ */
+export async function deleteRules(
+  organizationId: string,
+  ids: string[]
+): Promise<{ deleted: string[]; kept: Array<{ name: string; reason: string }> }> {
+  const rows = await prisma.rule.findMany({
+    where: { id: { in: ids }, organizationId },
+    include: withUsage,
+  });
+
+  const deletable = rows.filter((r) => blockerFor(r) == null);
+  const kept = rows
+    .filter((r) => blockerFor(r) != null)
+    .map((r) => ({ name: r.name, reason: blockerFor(r)! }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (deletable.length > 0) {
+    await prisma.rule.deleteMany({ where: { id: { in: deletable.map((r) => r.id) }, organizationId } });
+  }
+  return { deleted: deletable.map((r) => r.name).sort(), kept };
 }
 
 export function newRuleDraft(): RuleInput {
@@ -225,7 +296,7 @@ export async function getTreatmentRules(
     where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
     include: {
       ruleLinks: {
-        include: { rule: { include: { treatments: { include: { treatment: { select: { name: true } } } } } } },
+        include: { rule: { include: withUsage } },
       },
     },
   });
