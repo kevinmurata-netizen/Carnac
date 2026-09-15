@@ -21,6 +21,11 @@
  * the CLI already saved) or set VERCEL_TOKEN yourself, e.g. in CI. Needs
  * PROJECT_ID and TEAM_ID, read from .vercel/project.json if you've run
  * `vercel link`, or set VERCEL_PROJECT_ID / VERCEL_TEAM_ID directly.
+ *
+ * On a 403 saying `invalidToken`, run `vercel whoami` and try again. The CLI
+ * rotates the token in that file, and this script only ever reads it — so the
+ * saved token can be stale while the CLI itself still works, and running any
+ * CLI command refreshes it. It looks like an outage and is not one.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -78,7 +83,15 @@ async function api<T>(token: string, path: string, init?: RequestInit): Promise<
     headers: { Authorization: `Bearer ${token}`, ...init?.headers },
   });
   if (!res.ok) {
-    throw new Error(`${init?.method ?? "GET"} ${path} -> ${res.status}: ${await res.text()}`);
+    const body = await res.text();
+    // The one failure that looks like Vercel being down and is not: the saved
+    // token has rotated since this read it. Say what fixes it, here, rather
+    // than leaving a bare 403 to be diagnosed twice.
+    const stale = res.status === 403 && body.includes("invalidToken");
+    throw new Error(
+      `${init?.method ?? "GET"} ${path} -> ${res.status}: ${body}` +
+        (stale ? `\n\nThe saved Vercel token is stale. Run \`vercel whoami\` to refresh it, then try again.` : "")
+    );
   }
   return res.json() as Promise<T>;
 }
