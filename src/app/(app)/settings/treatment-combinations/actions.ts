@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
-import { createCombination, updateCombination, deleteCombination } from "@/server/combinations";
+import {
+  createCombination,
+  updateCombination,
+  deleteCombination,
+  deleteCombinations,
+} from "@/server/combinations";
 
 /** Combinations decide what the model may propose and what it costs, so
  * changing them carries the same bar as changing a treatment. */
@@ -90,5 +95,31 @@ export async function deleteCombinationAction(id: string): Promise<{ ok: boolean
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not delete" };
+  }
+}
+
+export type BulkDeleteState = { status: "idle" | "success" | "error"; message: string | null };
+
+/** Delete the combinations ticked on the list. */
+export async function deleteCombinationsAction(
+  _prev: BulkDeleteState,
+  formData: FormData
+): Promise<BulkDeleteState> {
+  try {
+    const session = await requireWriteAccess();
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No combinations were selected." };
+
+    const deleted = await deleteCombinations(session.user.organizationId, ids);
+    revalidateEverything();
+    return {
+      status: "success",
+      message:
+        deleted.length === 0
+          ? "Nothing was deleted — those combinations no longer exist."
+          : `Deleted ${deleted.length}: ${deleted.join(", ")}. Their treatments are still offered on their own, and work plans already generated keep their rows.`,
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not delete those combinations" };
   }
 }

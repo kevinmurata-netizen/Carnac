@@ -5,11 +5,9 @@ import { listCombinations, getCombination } from "@/server/combinations";
 import { listTreatmentsForAdmin } from "@/server/treatment-config";
 import { listRules } from "@/server/rules";
 import { PageHeader } from "@/components/layout/page-header";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatCurrency } from "@/lib/format";
 import { CombinationEditor, type CombinationDraft } from "./combination-editor";
+import { CombinationList } from "./combination-list";
 import { saveCombinationAction, deleteCombinationAction } from "./actions";
 import { getPageName } from "@/server/navigation";
 
@@ -122,73 +120,11 @@ export default async function TreatmentCombinationsPage({
                 before this page existed.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Combination</TableHead>
-                      <TableHead>Treatments</TableHead>
-                      <TableHead className="text-right whitespace-nowrap">Mobilization</TableHead>
-                      <TableHead>Extra rules</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {combinations.map((c) => (
-                      <TableRow key={c.id} className={c.id === selected?.id ? "bg-muted/50" : undefined}>
-                        <TableCell>
-                          <Link
-                            href={`/settings/treatment-combinations?combination=${c.id}`}
-                            className="font-medium text-primary hover:underline"
-                          >
-                            {c.name}
-                          </Link>
-                          {!c.enabled && <span className="ml-2 text-xs text-muted-foreground">(disabled)</span>}
-                          {c.description && (
-                            <div className="text-xs text-muted-foreground">{c.description}</div>
-                          )}
-                          {c.conflictingResets.length > 1 && (
-                            <div className="text-xs text-destructive">
-                              {c.conflictingResets.join(" and ")} both reset condition — probably not intended.
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <span className="flex flex-wrap gap-1">
-                            {c.members.map((m) => (
-                              <Badge key={m.treatmentId} variant={m.required ? "default" : "secondary"}>
-                                {m.treatmentName}
-                                {m.required ? "" : " (optional)"}
-                              </Badge>
-                            ))}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right text-sm whitespace-nowrap">
-                          {c.mobilizationCost == null ? (
-                            <span
-                              className="text-muted-foreground"
-                              title="Not set — charged once, at the largest of the members' rates."
-                            >
-                              {formatCurrency(mobilizationFor(c.members))}
-                              <span className="ml-1 text-xs">inferred</span>
-                            </span>
-                          ) : (
-                            <span title="Set on this combination, replacing the largest of the members' rates.">
-                              {formatCurrency(c.mobilizationCost)}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {c.ruleNames.length === 0 ? (
-                            <span className="text-muted-foreground">none</span>
-                          ) : (
-                            c.ruleNames.join(", ")
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <CombinationList
+                combinations={combinations.map((c) => ({ ...c, inferredMobilization: mobilizationFor(c.members) }))}
+                selectedId={selected?.id ?? null}
+                canEdit={canEdit}
+              />
             )}
           </CardContent>
         </Card>

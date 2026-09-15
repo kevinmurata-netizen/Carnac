@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-15",
+    title: "Delete several treatment combinations at once",
+    summary:
+      "The Treatment Combinations page gains the same bulk delete as Treatments: a checkbox on each row, Select all, and Delete selected, with a confirmation first.",
+    changes: [
+      "Tick any number of combinations, or use Select all (or the checkbox in the header), and press Delete selected. The count of what is ticked is shown beside the button.",
+      "Nothing stops a combination being deleted, so the confirmation warns about what does happen: any scenario that chose it in its option list loses it without saying so, and the dialog names those combinations and how many scenarios chose each.",
+      "It also says what does not change: the combination's treatments stay in the library and are still offered on their own, and work plans already generated keep their rows.",
+      "Treatments and Treatment Combinations now share one implementation of selecting and bulk deleting, so the two behave identically.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-15",
     title: "Delete several treatments at once, and every delete now asks first",
     summary:
       "The Treatments page gains a checkbox on each row, Select all, and Delete selected. And across the whole application, every delete button now asks for confirmation before anything is deleted.",
