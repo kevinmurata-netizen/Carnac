@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
-import { createRule, updateRule, deleteRule } from "@/server/rules";
+import { createRule, updateRule, deleteRule, deleteRules } from "@/server/rules";
 import { isValidNode, type Group, type RuleEffect } from "@/domain/waterline/decision-tree";
 
 /** Treatment rules gate what work gets recommended and therefore what shows up
@@ -81,5 +81,35 @@ export async function deleteRuleAction(id: string): Promise<{ ok: boolean; messa
     return { ok: true, message: "Deleted." };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not delete" };
+  }
+}
+
+export type BulkDeleteState = { status: "idle" | "success" | "error"; message: string | null };
+
+/**
+ * Delete the rules ticked on the list. Anything still in use is kept and
+ * named, and a partial result reads as an error so it is never mistaken for
+ * everything having gone.
+ */
+export async function deleteRulesAction(_prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
+  try {
+    const session = await requireWriteAccess();
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No rules were selected." };
+
+    const { deleted, kept } = await deleteRules(session.user.organizationId, ids);
+    revalidateEverythingRulesTouch();
+
+    const deletedText =
+      deleted.length === 0 ? "Nothing was deleted." : `Deleted ${deleted.length}: ${deleted.join(", ")}.`;
+    if (kept.length === 0) return { status: "success", message: deletedText };
+    return {
+      status: "error",
+      message: `${deletedText} Kept ${kept.length}, because deleting ${kept.length === 1 ? "it" : "them"} would quietly change what they apply to: ${kept
+        .map((k) => `${k.name} (${k.reason})`)
+        .join("; ")}.`,
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not delete those rules" };
   }
 }

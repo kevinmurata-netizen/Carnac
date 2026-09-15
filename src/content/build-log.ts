@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-15",
+    title: "Delete several treatment rules at once",
+    summary:
+      "The Treatment Rules page gains the same bulk delete as Treatments and Treatment Combinations: a checkbox on each row, Select all, and Delete selected, with a confirmation first.",
+    changes: [
+      "Tick rules, or use Select all, and press Delete selected. A rule still in use is kept, and the confirmation lists each kept rule with what it is still doing — so Select all is a safe way to clear out rules nothing uses.",
+      "The Used by column now shows everything that relies on a rule: the treatments it gates, and also the combinations it gates and the prices it picks, which were not shown before.",
+    ],
+    fixes: [
+      "Deleting a rule that gated a treatment combination used to succeed silently, quietly widening where that combination was offered — the exact harm the check on treatments exists to prevent. It is now refused in the same way, naming the combination.",
+      "Deleting a rule that only a price used failed with a raw database error. It is now refused with a sentence saying which price still depends on it.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-15",
     title: "Delete several treatment combinations at once",
     summary:
       "The Treatment Combinations page gains the same bulk delete as Treatments: a checkbox on each row, Select all, and Delete selected, with a confirmation first.",
