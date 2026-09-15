@@ -14,6 +14,7 @@ import type { CombinationDef } from "@/domain/waterline/treatment";
 const withEverything = {
   members: { include: { treatment: { select: { id: true, name: true } } } },
   rules: { include: { rule: true } },
+  _count: { select: { scenarioOptions: true } },
 } as const;
 
 /** What the engine reads. Member treatments are resolved to names here so the
@@ -51,6 +52,10 @@ export type CombinationSummary = {
   /** Members that each reset condition. Two of them is almost always an
    * authoring error, so the page says so rather than silently costing both. */
   conflictingResets: string[];
+  /** Scenarios that chose this combination in their option list. Deleting it
+   * removes it from each without a word, which a scenario limited to a few
+   * options would feel — so the delete confirmation says so. */
+  scenarioCount: number;
 };
 
 function toSummary(
@@ -75,6 +80,7 @@ function toSummary(
       .filter((m) => resetByTreatmentId.get(m.treatment.id))
       .map((m) => m.treatment.name)
       .sort(),
+    scenarioCount: row._count.scenarioOptions,
   };
 }
 
@@ -234,6 +240,26 @@ export async function updateCombination(organizationId: string, id: string, inpu
  * considered for. Work plans already generated keep their rows — they record
  * what was decided, not what the library currently offers.
  */
+/**
+ * Delete several combinations at once.
+ *
+ * Nothing refuses a combination's deletion — work plans record a funded
+ * bundle's name as text, so they keep their rows — so this deletes every id
+ * that belongs to the organization and reports the names it deleted.
+ */
+export async function deleteCombinations(organizationId: string, ids: string[]): Promise<string[]> {
+  const rows = await prisma.treatmentCombination.findMany({
+    where: { id: { in: ids }, organizationId },
+    select: { id: true, name: true },
+  });
+  if (rows.length > 0) {
+    await prisma.treatmentCombination.deleteMany({
+      where: { id: { in: rows.map((r) => r.id) }, organizationId },
+    });
+  }
+  return rows.map((r) => r.name).sort();
+}
+
 export async function deleteCombination(organizationId: string, id: string) {
   const row = await fetchOne(organizationId, id);
   if (!row) throw new Error("That combination no longer exists");
