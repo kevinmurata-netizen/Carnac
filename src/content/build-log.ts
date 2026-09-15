@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-15",
+    title: "Follow one segment through every year of a scenario",
+    summary:
+      "The Alternatives page gains an All years view, for one segment at a time: every option the run weighed on it, year by year, showing when it was funded, when it was passed over, and what had changed by then.",
+    changes: [
+      "An All years chip beside the year picker, and a small calendar link on every row — so the way in is from the segment you are already looking at.",
+      "A Year column, oldest year first, with the options inside each year still in Priority Score order. On the seed network, WL-0197 weighs 111 alternatives over twenty years and is funded in 7 of them.",
+      "Reading down a segment's rows is the point: WL-0197 sits at WCI 32.8 in 2026 and takes a dig-once bundle; by 2027 it is at 42.1 and its cheap repairs no longer do enough; in 2032 it takes the bundle again, and by 2042 a leak repair is the best thing on the whole network.",
+      "A segment picker for choosing another one, and Export for just that segment across every year.",
+      "Search, the filters and the sorting work the same as in a year view. All of a segment's rows are shown rather than the first hundred.",
+      "All years is offered one segment at a time on purpose: the whole run is over twenty thousand rows, which is what Export all years is for.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-15",
     title: "See every alternative a scenario weighed, year by year",
     summary:
       "A scenario now has an Alternatives page: every treatment and combination it considered in each year, in Priority Score order, marked selected or not with a few words saying what stopped it.",

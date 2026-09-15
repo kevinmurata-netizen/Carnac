@@ -7,7 +7,9 @@ import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } fro
  * Every alternative a scenario considered, as a spreadsheet.
  *
  * `?year=all` is the whole run — tens of thousands of rows, which is exactly
- * what a file is for and exactly what the page refuses to render.
+ * what a file is for and exactly what the page refuses to render. With
+ * `&asset=` it is one segment across every year, matching the page's all-years
+ * view.
  */
 
 const COLUMNS: ExcelColumn[] = [
@@ -37,13 +39,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const organizationId = session.user.organizationId;
-  const yearParam = new URL(request.url).searchParams.get("year");
+  const search = new URL(request.url).searchParams;
+  const yearParam = search.get("year");
+  const assetParam = search.get("asset");
   const allYears = yearParam === "all";
   const year = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : undefined;
+  const assetId = assetParam && /^[A-Za-z0-9_-]{1,64}$/.test(assetParam) ? assetParam : undefined;
 
   const data = allYears
-    ? await getAllScenarioAlternatives(organizationId, id)
-    : await getScenarioAlternatives(organizationId, id, year);
+    ? await getAllScenarioAlternatives(organizationId, id, assetId)
+    : await getScenarioAlternatives(organizationId, id, { year });
   if (!data) return new NextResponse("Not found", { status: 404 });
 
   const rows = data.rows.map((r) => ({
@@ -67,7 +72,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     reason: r.reason,
   }));
 
-  const scope = allYears ? "every year" : `${"year" in data ? data.year : year}`;
+  const segmentCode = "segmentCode" in data ? data.segmentCode : null;
+  const scope = allYears
+    ? segmentCode
+      ? `${segmentCode}, every year`
+      : "every year"
+    : `${"year" in data ? data.year : year}`;
   const selected = rows.filter((r) => r.selected === "Yes").length;
   const buffer = await buildWorkbook({
     sheetName: "Alternatives",
@@ -86,7 +96,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     headers: {
       "Content-Type": XLSX_CONTENT_TYPE,
       "Content-Disposition": `attachment; filename="${excelFileName(
-        `${data.scenarioName} Alternatives${allYears ? "" : ` ${scope}`}`
+        `${data.scenarioName} Alternatives ${scope}`
       )}"`,
       "Cache-Control": "no-store",
     },
