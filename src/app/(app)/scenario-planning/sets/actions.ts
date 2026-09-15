@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import {
   assignScenarioToSet,
+  copyScenarioSet,
   createScenarioSet,
   deleteScenarioSet,
   updateScenarioSet,
@@ -68,6 +69,15 @@ export async function updateScenarioSetAction(_prev: SetFormState, formData: For
   }
   revalidate(id);
   return { status: "success", message: "Saved." };
+}
+
+/** Copy a set and its scenarios, and open the copy — which is where every edit
+ * that follows is going to happen. */
+export async function copyScenarioSetAction(formData: FormData) {
+  const organizationId = await organizationFor("create");
+  const copyId = await copyScenarioSet(organizationId, String(formData.get("id") ?? ""));
+  revalidate();
+  redirect(`/scenario-planning/sets/${copyId}`);
 }
 
 export async function deleteScenarioSetAction(formData: FormData) {

@@ -119,6 +119,105 @@ export async function updateScenarioSet(organizationId: string, id: string, inpu
 }
 
 /**
+ * Copy a set and everything in it.
+ *
+ * The copy is for asking a different question of the same programme: same
+ * scenarios, same window, then change one thing and run it. So every member
+ * scenario is copied too, with its assumptions, its weightings and what it may
+ * consider — but not its results. A copy has never run, and saying it has by
+ * carrying the original's numbers across would be a lie that survives until
+ * someone notices the figures never change.
+ *
+ * The copy starts as a Draft whatever the original's status: it has not been
+ * reviewed or approved, and inheriting "Approved" would launder that.
+ */
+export async function copyScenarioSet(organizationId: string, id: string): Promise<string> {
+  const source = await prisma.scenarioSet.findFirst({
+    where: { id, organizationId },
+    include: {
+      scenarios: {
+        include: {
+          assumptions: { select: { key: true, value: true } },
+          treatmentOptions: { select: { treatmentId: true } },
+          combinationOptions: { select: { combinationId: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+  if (!source) throw new Error("Scenario set not found");
+
+  const name = await freeName(organizationId, source.name);
+
+  return prisma.$transaction(async (tx) => {
+    const copy = await tx.scenarioSet.create({
+      data: {
+        organizationId,
+        name,
+        description: source.description,
+        baseYear: source.baseYear,
+        planningPeriodYears: source.planningPeriodYears,
+        status: "DRAFT",
+      },
+      select: { id: true },
+    });
+
+    for (const scenario of source.scenarios) {
+      await tx.scenario.create({
+        data: {
+          organizationId,
+          scenarioSetId: copy.id,
+          // Scenario names are not unique, and inside a new set the original
+          // names are the point — "Current Funding" in the copy answers the
+          // same question as "Current Funding" in the original.
+          name: scenario.name,
+          description: scenario.description,
+          criticalityModelId: scenario.criticalityModelId,
+          weightSetId: scenario.weightSetId,
+          categoryWeightSetId: scenario.categoryWeightSetId,
+          categoryFundingPlanId: scenario.categoryFundingPlanId,
+          limitsOptions: scenario.limitsOptions,
+          assumptions: { create: scenario.assumptions.map((a) => ({ key: a.key, value: a.value as object })) },
+          treatmentOptions: { create: scenario.treatmentOptions.map((t) => ({ treatmentId: t.treatmentId })) },
+          combinationOptions: {
+            create: scenario.combinationOptions.map((c) => ({ combinationId: c.combinationId })),
+          },
+        },
+      });
+    }
+
+    return copy.id;
+  });
+}
+
+/**
+ * "2027 Capital Plan" → "2027 Capital Plan (copy)", then "(copy 2)" and so on.
+ * Set names are unique per organization, so a copy has to find a free one.
+ *
+ * A copy of a copy numbers from the original name rather than stacking: three
+ * variants of one plan read as "(copy)", "(copy 2)", "(copy 3)", not as
+ * "(copy) (copy) (copy)", which says nothing about how they differ and grows a
+ * word every time.
+ */
+async function freeName(organizationId: string, original: string): Promise<string> {
+  const base = original.replace(/ \(copy(?: \d+)?\)$/, "");
+  const taken = new Set(
+    (
+      await prisma.scenarioSet.findMany({
+        where: { organizationId, name: { startsWith: base } },
+        select: { name: true },
+      })
+    ).map((s) => s.name)
+  );
+  const first = `${base} (copy)`;
+  if (!taken.has(first)) return first;
+  for (let n = 2; ; n++) {
+    const candidate = `${base} (copy ${n})`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/**
  * Only an empty set can be deleted.
  *
  * Scenarios belong in sets now, so deleting one with members would either
