@@ -29,6 +29,22 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-15",
+    title: "See every alternative a scenario weighed, year by year",
+    summary:
+      "A scenario now has an Alternatives page: every treatment and combination it considered in each year, in Priority Score order, marked selected or not with a few words saying what stopped it.",
+    changes: [
+      "One year at a time, with a year picker showing how many options each year funded. A year on the seed network is around 1,400 alternatives across 215 segments.",
+      "Search as you type, filter by category, by outcome, or to just the selected or just the passed-over, and sort on any column. Priority Score order is the default, because that is the order the year's money was offered to them.",
+      "Options ruled out before scoring are included rather than hidden — locked out by a retreatment interval, on a segment the strategy passed over, not in the scenario's chosen options. They have no Priority Score, and sort last either way.",
+      "The outcomes in a few words: Selected · Better option on this segment · Bundle chosen on this segment · Segment already treated this year · Year's budget spent · Category budget full · Within its retreatment interval · Would not do enough · Below the effectiveness floor · Segment not eligible this year · Assess and Retire are not funded here · Not in this scenario's options · Category not in the funding plan · Could not be priced.",
+      "Export the year, or the whole run, to Excel.",
+      "Each year is built on what the year before left: a segment treated in 2026 shows its improved condition and a different score in 2027, and one left alone shows a year of deterioration. On the seed network, WL-0197 is at WCI 32.8 in 2026, is funded a dig-once bundle, and appears at 42.1 in 2027.",
+    ],
+    note:
+      "No migration. The page runs the scenario again with the current library rather than storing the trace — a row per option per segment per year is over twenty thousand rows for one scenario, and it would be stale the moment a cost changed. It takes a few seconds to load. Checked against the stored run: every treatment the scenario funded appears in the trace as Selected, and every row carries an outcome.",
+  },
+  {
     date: "2026-09-14",
     title: "Model Results describes the run a scenario actually made",
     summary:

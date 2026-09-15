@@ -21,7 +21,7 @@ import { annualFailureProbability, failureEventCost, presentValue } from "./lcca
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
-import { selectForYear } from "./selection";
+import { selectForYear, NOT_SELECTED, SELECTED } from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import { buildLccaEvaluator } from "./lcca-evaluator";
 import {
@@ -42,6 +42,7 @@ import {
   type TreatmentDef,
   type TreatmentOption,
   type CombinationDef,
+  type TreatmentCategory,
 } from "./treatment";
 
 export const STRATEGIES = [
@@ -171,6 +172,9 @@ export type ScenarioRunResult = {
   /** Where each asset started and ended, so a run can be shown as a flow
    * between condition bands rather than only as yearly averages. */
   assetOutcomes: AssetOutcome[];
+  /** Every alternative the run considered, when `trace` was asked for.
+   * Empty otherwise. */
+  alternatives: YearAlternative[];
   /** Years the network was aged, with no work, between the condition year
    * and the start year. Zero when the run starts in the condition year or
    * earlier. */
@@ -180,6 +184,46 @@ export type ScenarioRunResult = {
   /** Average condition at the start of the first year, after ageing. Equal to
    * the figure above when nothing was aged. */
   startAvgCondition: number;
+};
+
+/**
+ * One option on one segment in one year, and what became of it.
+ *
+ * Every applicable option is here, not only the ranked ones: an option the
+ * retreatment interval locked out is exactly what someone asking "why wasn't
+ * this relined again" is looking for, and leaving it out would read as the
+ * model never having considered it.
+ *
+ * The scores are the year's own. Expected Benefit is min-max normalized across
+ * the options considered that year, so a Priority Score compares options within
+ * its year and not across years — which is also why the same option scores
+ * differently in 2027 and 2028 even when nothing was done to the segment.
+ */
+export type YearAlternative = {
+  year: number;
+  assetId: string;
+  assetCode: string;
+  /** The segment's condition when the year's options were built, before any
+   * treatment this year and before the year's deterioration. */
+  conditionBefore: number;
+  optionLabel: string;
+  members: string[];
+  isCombination: boolean;
+  category: TreatmentCategory;
+  cost: number;
+  /** Null for an option that never reached scoring — it was ruled out first. */
+  benefit: number | null;
+  priority: number | null;
+  criticality: number;
+  scaleFactor: number;
+  categoryWeight: number;
+  conditionAfter: number | null;
+  riskBefore: number | null;
+  riskAfter: number | null;
+  /** Whether the run funded it this year. */
+  selected: boolean;
+  /** "Selected", or a few words saying what stopped it. */
+  reason: string;
 };
 
 export type AssetOutcome = {
@@ -280,30 +324,82 @@ function rankCandidates(
     categoryWeights: CategoryWeights;
     curves: Record<string, CurveParams>;
     fallbackReplacement: TreatmentDef;
-  }
+  },
+  /** Where to record options that never reach the ranked list, or null when
+   * the run is not being traced. */
+  trace: YearAlternative[] | null
 ): Candidate[] {
   type Pending = Omit<Candidate, "priority" | "benefit" | "terms" | "paysForItself">;
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
 
+  /** An option that got no further, with the year's figures for the segment as
+   * they stood when it was ruled out. */
+  const ruledOut = (asset: SimAsset, option: TreatmentOption, reason: string) => {
+    if (!trace) return;
+    const pof = pofFromCondition(asset.condition);
+    trace.push({
+      year,
+      assetId: asset.id,
+      assetCode: asset.assetCode,
+      conditionBefore: round1(asset.condition),
+      optionLabel: option.label,
+      members: option.members.map((m) => m.name),
+      isCombination: option.members.length > 1,
+      category: option.category,
+      cost: Math.round(option.cost),
+      benefit: null,
+      priority: null,
+      criticality: round1(asset.criticalityScore),
+      scaleFactor: Math.round(asset.scaleFactor * 100) / 100,
+      categoryWeight: categoryWeight(ctx.categoryWeights, option.category),
+      conditionAfter: round1(option.projectedCondition),
+      riskBefore: round1(pof * asset.cof),
+      riskAfter: null,
+      selected: false,
+      reason,
+    });
+  };
+
   for (const asset of state) {
-    if (!isEligible(asset, assumptions)) continue;
+    // Enumerated even for a segment the strategy passes over, but only when
+    // tracing: the question the trace answers is "what could have been done
+    // here", and "nothing, the strategy was not looking at this segment" is an
+    // answer. Outside a trace this is the hot loop, so it stays skipped.
+    if (!isEligible(asset, assumptions)) {
+      if (trace) {
+        const ctxFor = buildContext(asset);
+        for (const option of enumerateOptions(ctxFor, ctx.library, ctx.combinations)) {
+          ruledOut(asset, option, NOT_RANKED.ineligible);
+        }
+      }
+      continue;
+    }
 
     const assetCtx = buildContext(asset);
-    let options = filterOptions(ctx.selection, enumerateOptions(assetCtx, ctx.library, ctx.combinations));
+    const applicable = enumerateOptions(assetCtx, ctx.library, ctx.combinations);
+    let options = filterOptions(ctx.selection, applicable);
+    if (trace) {
+      const considered = new Set(options);
+      for (const o of applicable) if (!considered.has(o)) ruledOut(asset, o, NOT_RANKED.notConsidered);
+    }
 
     // Assessment buys information rather than condition, and retirement is a
     // decision about service rather than a capital project. Neither belongs in
     // a budget-constrained condition simulation; both remain available to the
     // network-wide ranking, which is not spending money.
-    options = options.filter((o) => o.category !== "Assess" && o.category !== "Retire");
+    options = keep(options, (o) => o.category !== "Assess" && o.category !== "Retire", (o) =>
+      ruledOut(asset, o, NOT_RANKED.notCapital)
+    );
     if (assumptions.strategy === "replacement-only") {
-      options = options.filter((o) => o.category === "Renew");
+      options = keep(options, (o) => o.category === "Renew", (o) => ruledOut(asset, o, NOT_RANKED.renewalOnly));
     }
 
     // Anything still inside its own lockout on this asset. A backstop for
     // rules looser than their author intended — see ./retreatment.ts, which
     // argues at length that it should rarely be what stops anything.
-    options = options.filter((o) => !withinInterval(history, asset.id, o, year));
+    options = keep(options, (o) => !withinInterval(history, asset.id, o, year), (o) =>
+      ruledOut(asset, o, NOT_RANKED.retreatment)
+    );
     if (options.length === 0) continue;
 
     const pof = assetCtx.pof ?? pofFromCondition(asset.condition);
@@ -383,12 +479,24 @@ function rankCandidates(
   // **It must clear the effectiveness floor** (§5.5), below that section's
   // condition line. Shared with the recommendation and the network-wide
   // ranking.
-  const fundable = scored.filter(
-    (c) =>
-      (c.projectedCondition >= assumptions.conditionTarget ||
-        (riskPct(c) ?? 0) >= MIN_RISK_REDUCTION_PCT) &&
-      clearsEffectivenessFloor(c.asset.condition, riskPct(c))
-  );
+  const doesEnough = (c: Candidate) =>
+    c.projectedCondition >= assumptions.conditionTarget || (riskPct(c) ?? 0) >= MIN_RISK_REDUCTION_PCT;
+
+  const fundable = scored.filter((c) => {
+    const enough = doesEnough(c);
+    const clears = clearsEffectivenessFloor(c.asset.condition, riskPct(c));
+    if (enough && clears) return true;
+    // Scored, so the trace can show what it would have been worth — which is
+    // the interesting part of an option ruled out on effect rather than price.
+    if (trace) {
+      trace.push({
+        ...traceOf(c, year, ctx.categoryWeights),
+        selected: false,
+        reason: enough ? NOT_RANKED.belowFloor : NOT_RANKED.tooLittle,
+      });
+    }
+    return false;
+  });
 
   // **Paying for itself is a tier, not a filter.** Everything whose life-cycle
   // saving is positive is bought before anything whose is not, but the rest
@@ -408,6 +516,43 @@ function rankCandidates(
     if (a.paysForItself !== b.paysForItself) return a.paysForItself ? -1 : 1;
     return (b.priority ?? -1) - (a.priority ?? -1);
   });
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/** Partition in passing: keep what the rule allows, and hand the rest to the
+ * trace before they are forgotten. */
+function keep<T>(items: T[], allowed: (item: T) => boolean, dropped: (item: T) => void): T[] {
+  const kept: T[] = [];
+  for (const item of items) {
+    if (allowed(item)) kept.push(item);
+    else dropped(item);
+  }
+  return kept;
+}
+
+/** The trace row for an option that was scored: everything but what happened
+ * to it, which its caller knows and this does not. */
+function traceOf(c: Candidate, year: number, weights: CategoryWeights): Omit<YearAlternative, "selected" | "reason"> {
+  return {
+    year,
+    assetId: c.asset.id,
+    assetCode: c.asset.assetCode,
+    conditionBefore: round1(c.asset.condition),
+    optionLabel: c.option.label,
+    members: c.option.members.map((m) => m.name),
+    isCombination: c.option.members.length > 1,
+    category: c.option.category,
+    cost: Math.round(c.cost),
+    benefit: round1(c.benefit),
+    priority: c.priority,
+    criticality: round1(c.asset.criticalityScore),
+    scaleFactor: Math.round(c.asset.scaleFactor * 100) / 100,
+    categoryWeight: categoryWeight(weights, c.option.category),
+    conditionAfter: round1(c.projectedCondition),
+    riskBefore: round1(c.riskNow),
+    riskAfter: round1(c.riskAfter),
+  };
 }
 
 function isEligible(asset: SimAsset, a: ScenarioAssumptions): boolean {
@@ -459,6 +604,15 @@ export type ScenarioRunOptions = {
    * current year. When the run starts later than this, the network is aged
    * forward to the start year with no work done first. */
   conditionYear?: number;
+  /**
+   * Record every alternative the run considered, year by year, with what
+   * happened to it.
+   *
+   * Off by default because it is a row per applicable option per segment per
+   * year — tens of thousands on a real network, where the run itself only
+   * needs the ones it funds. On, it is the audit trail behind the plan.
+   */
+  trace?: boolean;
 };
 
 /**
@@ -494,6 +648,8 @@ export function runScenario(
    * interval, and carries across years for the whole run. */
   const history: TreatmentHistory = new Map();
   const treatmentCount = new Map<string, number>();
+  const alternatives: YearAlternative[] = [];
+  const trace = options.trace ? alternatives : null;
   const conditionYear = options.conditionYear ?? new Date().getFullYear();
   const startYear = options.startYear ?? conditionYear;
   const years: ScenarioYearResult[] = [];
@@ -544,11 +700,20 @@ export function runScenario(
       categoryWeights,
       curves,
       fallbackReplacement,
-    });
+    }, trace);
 
     // 2. Choose what the year buys: categories in the plan's order, one
     //    treatment per asset, a combination preferred over its parts. §5.7.
     const outcome = selectForYear(candidates, budget, fundingPlan);
+
+    // Recorded here rather than inside the selection engine, which is written
+    // against a shape that knows nothing about segments or conditions.
+    if (trace) {
+      for (const candidate of candidates) {
+        const reason = outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
+        trace.push({ ...traceOf(candidate, year, categoryWeights), selected: reason === SELECTED, reason });
+      }
+    }
 
     let treatedCount = 0;
     const treated = new Set<string>();
@@ -653,11 +818,26 @@ export function runScenario(
       endCondition: Math.round(a.condition * 10) / 10,
       treatments: treatmentCount.get(a.id) ?? 0,
     })),
+    alternatives,
     agedYears,
     conditionYearAvgCondition: Math.round(conditionYearAvgCondition * 10) / 10,
     startAvgCondition: Math.round(startAvgCondition * 10) / 10,
   };
 }
+
+/**
+ * Why an option never reached the ranked list. The rest of the reasons a row
+ * can carry come from the selection engine — see NOT_SELECTED there.
+ */
+export const NOT_RANKED = {
+  ineligible: "Segment not eligible this year",
+  notConsidered: "Not in this scenario's options",
+  notCapital: "Assess and Retire are not funded here",
+  renewalOnly: "Renewal-only strategy",
+  retreatment: "Within its retreatment interval",
+  tooLittle: "Would not do enough",
+  belowFloor: "Below the effectiveness floor",
+} as const;
 
 /** Metric keys persisted to ScenarioResult rows. */
 export const SCENARIO_METRICS = [
