@@ -11,6 +11,7 @@ import { formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertTriangle, CalendarRange, Copy, Plus } from "lucide-react";
@@ -108,19 +109,19 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
                 {/* Only an empty set can go: move or delete its scenarios first.
                     Disabled rather than hidden, with the reason on it, so the
                     way to delete a set is discoverable. */}
-                <Button
-                  type="submit"
-                  size="sm"
-                  variant="destructive"
+                <ConfirmDelete
                   disabled={members.length > 0}
-                  title={
+                  pendingLabel="Deleting…"
+                  triggerTitle={
                     members.length > 0
                       ? `Move or delete its ${members.length} scenario${members.length === 1 ? "" : "s"} first`
                       : "Delete this set"
                   }
+                  title={`Delete the scenario set “${set.name}”?`}
+                  description="The set is empty, so no scenario is affected. This cannot be undone."
                 >
                   Delete
-                </Button>
+                </ConfirmDelete>
               </form>
             </div>
           )

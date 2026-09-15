@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -150,9 +151,16 @@ export function RuleEditor({
               </span>
             )}
             {draft.id && (
-              <Button type="button" size="sm" variant="ghost" onClick={remove} disabled={busy} aria-label="Delete rule">
+              <ConfirmDelete
+                variant="ghost"
+                onConfirm={remove}
+                disabled={busy}
+                ariaLabel="Delete rule"
+                title={`Delete the rule “${saved.name || "Untitled"}”?`}
+                description="If a treatment still uses it, deletion will be refused, since removing it would quietly widen what that treatment is considered for. Otherwise it is deleted. This cannot be undone."
+              >
                 <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+              </ConfirmDelete>
             )}
             <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(saved)} disabled={busy} />
             <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>

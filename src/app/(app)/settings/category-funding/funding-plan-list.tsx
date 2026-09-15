@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, CircleDot, GripVertical, Plus, Star, Trash2 } from "lucide-react";
 import { CATEGORY_KEYS, CATEGORY_DESCRIPTIONS } from "@/domain/waterline/category-weight";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
@@ -173,15 +174,19 @@ export function FundingPlanList({
                       </Button>
                       <form action={remove}>
                         <input type="hidden" name="id" value={plan.id} />
-                        <Button
-                          type="submit"
-                          size="sm"
+                        <ConfirmDelete
                           variant="ghost"
-                          aria-label={`Delete ${plan.name}`}
-                          title={used > 0 ? "Still used by a scenario or plan" : `Delete ${plan.name}`}
+                          ariaLabel={`Delete ${plan.name}`}
+                          triggerTitle={used > 0 ? "Still used by a scenario or plan" : `Delete ${plan.name}`}
+                          title={`Delete the funding plan “${plan.name}”?`}
+                          description={
+                            used > 0
+                              ? "It is still used by a scenario or work plan, so deletion will be refused. Choose another plan on those first."
+                              : "The plan and its category order are deleted. This cannot be undone."
+                          }
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        </ConfirmDelete>
                       </form>
                     </div>
                   )}

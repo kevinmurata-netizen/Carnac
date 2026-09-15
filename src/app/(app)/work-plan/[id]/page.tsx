@@ -12,6 +12,7 @@ import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { formatCurrency, formatNumber } from "@/lib/format";
@@ -54,9 +55,17 @@ export default async function WorkPlanDetailPage({ params }: { params: Promise<{
             {canEdit && (
               <form action={deleteWorkPlanAction}>
                 <input type="hidden" name="workPlanId" value={plan.id} />
-                <Button type="submit" size="sm" variant="destructive">
+                <ConfirmDelete
+                  pendingLabel="Deleting…"
+                  title={`Delete ${plan.name}?`}
+                  description={
+                    plan.scenarioName
+                      ? `Its ${formatNumber(plan.itemCount)} projects are deleted with it. This plan came from the scenario “${plan.scenarioName}”; re-running that scenario builds its funded program again.`
+                      : `Its ${formatNumber(plan.itemCount)} projects are deleted with it. This cannot be undone.`
+                  }
+                >
                   Delete
-                </Button>
+                </ConfirmDelete>
               </form>
             )}
           </div>

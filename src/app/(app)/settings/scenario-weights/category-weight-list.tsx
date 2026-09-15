@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -186,21 +187,27 @@ export function CategoryWeightList({
                       </Button>
                       <form action={remove}>
                         <input type="hidden" name="id" value={set.id} />
-                        <Button
-                          type="submit"
-                          size="sm"
+                        <ConfirmDelete
                           variant="ghost"
-                          aria-label={`Delete ${set.name}`}
-                          title={
+                          ariaLabel={`Delete ${set.name}`}
+                          triggerTitle={
                             set.isDefault
                               ? "The default cannot be deleted — make another set the default first"
                               : used > 0
                                 ? "Still used by a scenario or plan"
                                 : `Delete ${set.name}`
                           }
+                          title={`Delete the category weighting “${set.name}”?`}
+                          description={
+                            set.isDefault
+                              ? "It is the default, so deletion will be refused. Make another the default first."
+                              : used > 0
+                                ? "It is still used by a scenario or work plan, so deletion will be refused. Choose another on those first."
+                                : "The weighting is deleted. This cannot be undone."
+                          }
                         >
                           <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        </ConfirmDelete>
                       </form>
                     </div>
                   )}

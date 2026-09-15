@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CircleDot } from "lucide-react";
@@ -128,9 +129,22 @@ export function TreatmentDangerZone({ treatment }: { treatment: TreatmentAdminRo
           </p>
           <form action={remove}>
             <input type="hidden" name="id" value={treatment.id} />
-            <Button type="submit" size="sm" variant="destructive" disabled={deleting}>
-              {deleting ? "Deleting…" : "Delete Treatment"}
-            </Button>
+            <ConfirmDelete
+              disabled={deleting}
+              pendingLabel="Deleting…"
+              title={`Delete ${treatment.name}?`}
+              description={
+                treatment.workPlanItemCount > 0
+                  ? `Work plans use it in ${treatment.workPlanItemCount} projects, so deletion will be refused. Delete or regenerate those plans first.`
+                  : `${treatment.name} is removed from the library with its prices and rules${
+                      treatment.combinationCount > 0
+                        ? `, and from the ${treatment.combinationCount} combination${treatment.combinationCount === 1 ? "" : "s"} it belongs to`
+                        : ""
+                    }. This cannot be undone.`
+              }
+            >
+              Delete Treatment
+            </ConfirmDelete>
           </form>
         </CardContent>
       </Card>

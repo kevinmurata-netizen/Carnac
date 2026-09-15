@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -339,9 +340,13 @@ export function MetricEditor({ metric }: { metric: MetricConfig }) {
         <form action={deleteAction} className="flex items-center justify-between gap-3 border-t pt-4">
           <input type="hidden" name="id" value={metric.id} />
           <span className="text-xs text-destructive">{deleteState.message}</span>
-          <Button type="submit" size="sm" variant="destructive">
+          <ConfirmDelete
+            pendingLabel="Deleting…"
+            title={`Delete the metric “${metric.name}”?`}
+            description="If it has stored condition measurements, deletion will be refused. Otherwise the metric is removed. This cannot be undone."
+          >
             Delete metric
-          </Button>
+          </ConfirmDelete>
         </form>
       </CardContent>
     </Card>

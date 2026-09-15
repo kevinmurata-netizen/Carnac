@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -179,9 +180,16 @@ export function CombinationEditor({
         </div>
         <div className="flex items-center gap-2">
           {draft.id && (
-            <Button type="button" size="sm" variant="ghost" onClick={remove} disabled={busy} aria-label="Delete combination">
+            <ConfirmDelete
+              variant="ghost"
+              onConfirm={remove}
+              disabled={busy}
+              ariaLabel="Delete combination"
+              title={`Delete the combination “${saved.name || "Untitled"}”?`}
+              description="Its treatments stay in the library and can still be applied on their own; only the bundle goes, and any scenario that chose it stops considering it. This cannot be undone."
+            >
               <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            </ConfirmDelete>
           )}
           <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(saved)} disabled={busy} />
           <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
