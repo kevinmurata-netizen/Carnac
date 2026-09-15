@@ -395,30 +395,48 @@ async function persistScenarioProgram(
     },
   });
 
+  // A row names one treatment, so a funded bundle becomes one row per member
+  // with the cost divided between them — the same shape the work plan
+  // generator stores, and for the same reason. Matching the bundle's own
+  // label against treatment names is what used to happen here, and a bundle
+  // is not called after any treatment: every funded combination was silently
+  // dropped, leaving the project list short of work the run had paid for.
   const items = years.flatMap((year) =>
     year.selected.flatMap((p) => {
-      const treatmentId = treatmentIdByName.get(p.treatment);
-      if (!treatmentId) return [];
-      return [{
-        workPlanId: workPlan.id,
-        assetId: p.assetId,
-        treatmentId,
-        year: year.year,
-        estimatedCost: p.cost,
-        expectedBenefit: {
-          conditionBefore: p.conditionBefore,
-          conditionAfter: p.conditionAfter,
-          riskBefore: p.riskBefore,
-          riskAfter: p.riskAfter,
-          riskReductionPct:
-            p.riskBefore > 0 ? Math.round(((p.riskBefore - p.riskAfter) / p.riskBefore) * 1000) / 10 : 0,
-        },
-        reasonExplanation:
-          `Selected by the ${scenarioName} run in ${year.year}. ` +
-          `Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
-        fundingSource: "Scenario Budget",
-        status: WorkPlanItemStatus.PLANNED,
-      }];
+      const isBundle = p.bundleName != null;
+      const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${year.year}:${p.treatment}` : null;
+
+      return p.members.flatMap((member) => {
+        const treatmentId = treatmentIdByName.get(member.treatment);
+        if (!treatmentId) return [];
+        return [
+          {
+            workPlanId: workPlan.id,
+            assetId: p.assetId,
+            treatmentId,
+            bundleId,
+            bundleName: p.bundleName,
+            year: year.year,
+            estimatedCost: member.cost,
+            expectedBenefit: {
+              // The effects belong to the whole visit, not to one member of
+              // it: relining and anodes on the same main lift it once.
+              conditionBefore: p.conditionBefore,
+              conditionAfter: p.conditionAfter,
+              riskBefore: p.riskBefore,
+              riskAfter: p.riskAfter,
+              riskReductionPct:
+                p.riskBefore > 0 ? Math.round(((p.riskBefore - p.riskAfter) / p.riskBefore) * 1000) / 10 : 0,
+            },
+            reasonExplanation:
+              `Selected by the ${scenarioName} run in ${year.year}` +
+              (isBundle ? ` as part of ${p.treatment}` : "") +
+              `. Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
+            fundingSource: "Scenario Budget",
+            status: WorkPlanItemStatus.PLANNED,
+          },
+        ];
+      });
     })
   );
 
@@ -431,6 +449,10 @@ export type ScenarioProjectRow = {
   assetCode: string;
   serviceArea: string | null;
   treatment: string;
+  /** The bundle this row was part of, when the run funded a combination.
+   * Several rows share it: one visit, one set of effects, one cost split
+   * between them. */
+  bundleName: string | null;
   cost: number;
   conditionBefore: number | null;
   conditionAfter: number | null;
@@ -467,6 +489,7 @@ export async function getScenarioProjects(
       assetCode: i.asset.assetCode,
       serviceArea: i.asset.location?.serviceArea ?? null,
       treatment: i.treatment.name,
+      bundleName: i.bundleName,
       cost: Math.round(i.estimatedCost),
       conditionBefore: b.conditionBefore ?? null,
       conditionAfter: b.conditionAfter ?? null,

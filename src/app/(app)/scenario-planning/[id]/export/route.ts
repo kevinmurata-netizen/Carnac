@@ -20,6 +20,9 @@ const COLUMNS: ExcelColumn[] = [
   { key: "assetCode", header: "Segment", width: 14 },
   { key: "serviceArea", header: "Service Area", width: 18 },
   { key: "treatment", header: "Treatment", width: 22 },
+  // Rows sharing a bundle are one visit, with the cost divided between them
+  // and one set of condition and risk figures.
+  { key: "bundleName", header: "Part of Bundle", width: 22 },
   { key: "cost", header: "Cost", type: "money", width: 14 },
   { key: "conditionBefore", header: "Condition Before", type: "number", width: 16 },
   { key: "conditionAfter", header: "Condition After", type: "number", width: 16 },
