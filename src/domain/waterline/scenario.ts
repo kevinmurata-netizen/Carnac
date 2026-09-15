@@ -38,6 +38,7 @@ import {
   MIN_RISK_REDUCTION_PCT,
   clearsEffectivenessFloor,
   enumerateOptions,
+  splitOptionCost,
   type AssetTreatmentContext,
   type TreatmentDef,
   type TreatmentOption,
@@ -126,9 +127,22 @@ export type SimAsset = {
 export type ScenarioProject = {
   assetId: string;
   assetCode: string;
+  /** The option's label: a treatment's name, or a bundle's. */
   treatment: string;
   category: string;
   cost: number;
+  /**
+   * What was actually bought, and for how much each.
+   *
+   * A single treatment is one member holding the whole cost. A bundle is one
+   * member per treatment with the cost divided between them — which is what
+   * lets a funded bundle be stored as work plan rows, since a row names one
+   * treatment and no treatment is called "Dig-once repair".
+   */
+  members: Array<{ treatment: string; cost: number }>;
+  /** The bundle's name when this was a combination, so a row can say which
+   * one visit it belongs to. Null for a single treatment. */
+  bundleName: string | null;
   conditionBefore: number;
   conditionAfter: number;
   riskBefore: number;
@@ -722,12 +736,21 @@ export function runScenario(
       treatedCount++;
       treatmentCount.set(candidate.asset.id, (treatmentCount.get(candidate.asset.id) ?? 0) + 1);
       treated.add(candidate.asset.id);
+      const isBundle = candidate.option.members.length > 1;
+      // Computed before the treatment is applied below, though only diameter
+      // and length go into it — neither of which a treatment changes.
+      const shares = isBundle
+        ? splitOptionCost(candidate.option, buildContext(candidate.asset))
+        : [Math.round(candidate.cost)];
+
       selected.push({
         assetId: candidate.asset.id,
         assetCode: candidate.asset.assetCode,
         treatment: candidate.option.label,
         category: candidate.option.category,
         cost: Math.round(candidate.cost),
+        members: candidate.option.members.map((m, i) => ({ treatment: m.name, cost: shares[i] ?? 0 })),
+        bundleName: isBundle ? candidate.option.label : null,
         conditionBefore: Math.round(candidate.asset.condition * 10) / 10,
         conditionAfter: Math.round(candidate.projectedCondition * 10) / 10,
         riskBefore: Math.round(candidate.riskNow * 10) / 10,

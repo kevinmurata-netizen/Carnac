@@ -386,7 +386,17 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                                 </Link>
                               </TableCell>
                               <TableCell className="text-xs">{p.serviceArea ?? "—"}</TableCell>
-                              <TableCell>{p.treatment}</TableCell>
+                              <TableCell>
+                                {p.treatment}
+                                {p.bundleName && (
+                                  <div
+                                    className="text-xs text-muted-foreground"
+                                    title="One visit, funded as a combination. Its cost is divided between the treatments in it, and the condition and risk figures are the visit's."
+                                  >
+                                    part of {p.bundleName}
+                                  </div>
+                                )}
+                              </TableCell>
                               <TableCell>{formatCurrency(p.cost)}</TableCell>
                               <TableCell className="whitespace-nowrap text-xs">
                                 {p.conditionBefore} → {p.conditionAfter}
