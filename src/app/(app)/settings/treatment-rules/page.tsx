@@ -1,86 +1,15 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
-import { prisma } from "@/lib/prisma";
 import { listRules, getRuleForEditing } from "@/server/rules";
-import {
-  listMaterials,
-  listCriticalities,
-  listServiceAreas,
-  listPressureZones,
-} from "@/server/assets";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
-import { ageInYears } from "@/lib/format";
-import { emptyGroup, type DecisionField, type DecisionInput } from "@/domain/waterline/decision-tree";
+import { loadRuleSamples, loadRuleFieldOptions } from "@/server/rule-samples";
+import { emptyGroup } from "@/domain/waterline/decision-tree";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { RuleEditor, type Sample, type RuleDraft } from "./rule-editor";
+import { RuleEditor, type RuleDraft } from "./rule-editor";
 import { RuleList } from "./rule-list";
 import { saveRuleAction, deleteRuleAction } from "./actions";
 import { getPageName } from "@/server/navigation";
-
-/**
- * Real segments to test a rule against, spread across the condition range so a
- * rule can be checked at both ends rather than only against whichever asset
- * happened to be worst.
- */
-async function loadSamples(organizationId: string): Promise<Sample[]> {
-  const measurements = await prisma.conditionMeasurement.findMany({
-    where: { asset: { organizationId, deletedAt: null, status: "ACTIVE" } },
-    orderBy: { score: "asc" },
-    distinct: ["assetId"],
-    include: {
-      asset: {
-        include: {
-          attributeValues: { include: { definition: true } },
-          riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
-          failureEvents: { select: { id: true } },
-          location: { select: { serviceArea: true, pressureZone: true } },
-        },
-      },
-    },
-  });
-  if (measurements.length === 0) return [];
-
-  // Worst, best and three between — enough to see where a threshold bites.
-  const picks = [0, 0.25, 0.5, 0.75, 1]
-    .map((f) => Math.min(measurements.length - 1, Math.round(f * (measurements.length - 1))))
-    .filter((v, i, all) => all.indexOf(v) === i);
-
-  return picks.map((index) => {
-    const measurement = measurements[index];
-    const asset = measurement.asset;
-    const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
-    const risk = asset.riskAssessments[0];
-    const age = ageInYears(asset.installationDate);
-    const life = asset.expectedUsefulLife ?? 75;
-
-    const input: DecisionInput = {
-      condition: Math.round(measurement.score * 10) / 10,
-      ageYears: age,
-      ageRatio: age != null ? Math.round((age / life) * 100) / 100 : null,
-      diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
-      lengthFt: attr(WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null,
-      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
-      riskScore: risk?.riskScore ?? null,
-      pof: risk?.probabilityScore ?? null,
-      cof: risk?.consequenceScore ?? null,
-      failuresLast10Years: asset.failureEvents.length,
-      material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
-      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
-      serviceArea: asset.location?.serviceArea ?? null,
-      pressureZone: asset.location?.pressureZone ?? null,
-    };
-
-    return {
-      id: asset.id,
-      label: `${asset.assetCode} — WCI ${input.condition}, ${input.material ?? "unknown material"}, ${
-        input.customersServed ?? 0
-      } customers${input.serviceArea ? `, ${input.serviceArea}` : ""}`,
-      input,
-    };
-  });
-}
 
 export default async function TreatmentRulesPage({
   searchParams,
@@ -93,23 +22,11 @@ export default async function TreatmentRulesPage({
   const { canWrite: canEdit } = await requireCard("/settings/treatment-rules");
   const pageTitle = await getPageName(organizationId, "/settings/treatment-rules", "Treatment Rules");
 
-  const [rules, samples, materials, criticalities, serviceAreas, pressureZones] = await Promise.all([
+  const [rules, samples, fieldOptions] = await Promise.all([
     listRules(organizationId),
-    loadSamples(organizationId),
-    listMaterials(organizationId),
-    listCriticalities(organizationId),
-    listServiceAreas(organizationId),
-    listPressureZones(organizationId),
+    loadRuleSamples(organizationId),
+    loadRuleFieldOptions(organizationId),
   ]);
-
-  // Text fields offer what the inventory actually holds, so a rule cannot be
-  // written against a material or district no segment has.
-  const fieldOptions: Partial<Record<DecisionField, string[]>> = {
-    material: materials,
-    criticality: criticalities,
-    serviceArea: serviceAreas,
-    pressureZone: pressureZones,
-  };
 
   const selected = requested && requested !== "new" ? rules.find((r) => r.id === requested) : undefined;
   const editing = await (selected ? getRuleForEditing(organizationId, selected.id) : Promise.resolve(null));

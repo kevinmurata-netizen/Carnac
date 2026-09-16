@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, canWriteCard } from "@/server/guard";
 import { listRules } from "@/server/rules";
 import { listEffects } from "@/server/effects";
 import { emptyRuleGroup } from "@/domain/waterline/decision-tree";
@@ -22,7 +22,12 @@ export default async function NewTreatmentPage() {
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
   if (!canEdit) redirect("/settings/treatments");
 
-  const [rules, effects] = await Promise.all([listRules(organizationId), listEffects(organizationId)]);
+  const [rules, effects, canEditRules, canEditEffects] = await Promise.all([
+    listRules(organizationId),
+    listEffects(organizationId),
+    canWriteCard("/settings/treatment-rules"),
+    canWriteCard("/settings/treatment-effects"),
+  ]);
 
   return (
     <div>
@@ -36,7 +41,13 @@ export default async function NewTreatmentPage() {
       {/* Built here rather than inside the client component: the empty group
           carries a generated id, and generating it during a client render
           would give the server and the browser two different ids. */}
-      <NewTreatmentForm allRules={rules} allEffects={effects} emptyTree={emptyRuleGroup("AND")} />
+      <NewTreatmentForm
+        allRules={rules}
+        allEffects={effects}
+        emptyTree={emptyRuleGroup("AND")}
+        canEditRules={canEditRules}
+        canEditEffects={canEditEffects}
+      />
     </div>
   );
 }

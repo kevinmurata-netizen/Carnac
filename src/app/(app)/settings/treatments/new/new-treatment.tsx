@@ -47,10 +47,14 @@ export function NewTreatmentForm({
   allRules,
   allEffects,
   emptyTree,
+  canEditRules,
+  canEditEffects,
 }: {
   allRules: RuleSummary[];
   allEffects: EffectSummary[];
   emptyTree: RuleGroup;
+  canEditRules: boolean;
+  canEditEffects: boolean;
 }) {
   const [state, submit, pending] = useActionState<TreatmentActionState, FormData>(
     createTreatmentAction,
@@ -114,6 +118,7 @@ export function NewTreatmentForm({
               initialIds={[]}
               treatmentName={draft.name.trim() || "this treatment"}
               canEdit
+              canEditEffects={canEditEffects}
               onChange={setEffectIds}
             />
           </CollapsibleSection>
@@ -129,6 +134,7 @@ export function NewTreatmentForm({
               initial={STARTING_ROWS}
               rules={allRules}
               canEdit
+              canEditRules={canEditRules}
               onChange={setRates}
             />
           </CollapsibleSection>
@@ -144,6 +150,7 @@ export function NewTreatmentForm({
               initialTree={emptyTree}
               initialBlockIds={[]}
               canEdit
+              canEditRules={canEditRules}
               onChange={(next, blocks) => {
                 setTree(next);
                 setBlockIds(blocks);

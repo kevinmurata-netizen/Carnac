@@ -20,14 +20,14 @@ import {
   emptyGroup,
 
   type DecisionField,
-  type DecisionInput,
   type Group,
   type Rule,
   type RuleEffect,
 } from "@/domain/waterline/decision-tree";
+import type { RuleSample } from "@/server/rule-samples";
 import { GroupEditor, TraceView, control } from "./condition-builder";
 
-export type Sample = { id: string; label: string; input: DecisionInput };
+export type Sample = RuleSample;
 
 export type RuleDraft = {
   /** Null while the rule has never been saved. */
@@ -47,6 +47,15 @@ export type RuleDraft = {
  * editor says nothing about which treatments use it — that is chosen on the
  * treatment, and shown here only as a consequence. Every edit is local until
  * Save: nothing here changes a recommendation until you press it.
+ *
+ * Used in two places, like the effect editor:
+ *
+ *  - **On the Treatment Rules page**, where it is the page's own editor:
+ *    Delete, Discard and Save, and it moves the page to the saved rule.
+ *  - **In a pop-up over a treatment** (`inDialog`), where leaving would lose
+ *    your place: Cancel, Save and Save & close, and `onSaved` tells the
+ *    treatment which rule was saved so a new one can be added where it was
+ *    written.
  */
 export function RuleEditor({
   initial,
@@ -56,6 +65,9 @@ export function RuleEditor({
   fieldOptions,
   onSave,
   onDelete,
+  onSaved,
+  onCancel,
+  inDialog = false,
 }: {
   initial: RuleDraft;
   usedBy: string[];
@@ -64,7 +76,10 @@ export function RuleEditor({
   /** Known values for the text fields, read from the live inventory. */
   fieldOptions: Partial<Record<DecisionField, string[]>>;
   onSave: (draft: RuleDraft) => Promise<{ ok: boolean; message: string; id?: string }>;
-  onDelete: (id: string) => Promise<{ ok: boolean; message: string }>;
+  onDelete?: (id: string) => Promise<{ ok: boolean; message: string }>;
+  onSaved?: (id: string, effect: RuleEffect, close: boolean) => void;
+  onCancel?: () => void;
+  inDialog?: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<RuleDraft>(initial);
@@ -93,23 +108,32 @@ export function RuleEditor({
 
   const patchRoot = (fn: (root: Group) => Group) => setDraft((d) => ({ ...d, root: fn(d.root) }));
 
-  const save = async () => {
+  const save = async (close = false) => {
     setBusy(true);
     setResult(null);
     const outcome = await onSave(draft);
     setResult(outcome);
     if (outcome.ok) {
-      setSaved(draft);
-      // A rule that has just been created needs its own address, or Save
-      // again would create a second one.
-      if (!draft.id && outcome.id) router.replace(`/settings/treatment-rules?rule=${outcome.id}`);
-      else router.refresh();
+      if (inDialog) {
+        // Keep the new id, so Save then Save again updates the rule rather
+        // than creating a second one.
+        const stored = { ...draft, id: outcome.id ?? draft.id };
+        setDraft(stored);
+        setSaved(stored);
+        if (stored.id) onSaved?.(stored.id, stored.effect, close);
+      } else {
+        setSaved(draft);
+        // A rule that has just been created needs its own address, or Save
+        // again would create a second one.
+        if (!draft.id && outcome.id) router.replace(`/settings/treatment-rules?rule=${outcome.id}`);
+        else router.refresh();
+      }
     }
     setBusy(false);
   };
 
   const remove = async () => {
-    if (!draft.id) return;
+    if (!draft.id || !onDelete) return;
     setBusy(true);
     setResult(null);
     const outcome = await onDelete(draft.id);
@@ -150,7 +174,7 @@ export function RuleEditor({
                 Unsaved changes
               </span>
             )}
-            {draft.id && (
+            {!inDialog && draft.id && onDelete && (
               <ConfirmDelete
                 variant="ghost"
                 onConfirm={remove}
@@ -162,10 +186,26 @@ export function RuleEditor({
                 <Trash2 className="h-3.5 w-3.5" />
               </ConfirmDelete>
             )}
-            <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(saved)} disabled={busy} />
-            <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
-              {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
-            </Button>
+            {inDialog ? (
+              <>
+                <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={busy}>
+                  {dirty ? "Cancel" : "Close"}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => save(false)} disabled={busy || !dirty}>
+                  {busy ? "Saving…" : "Save"}
+                </Button>
+                <Button type="button" size="sm" onClick={() => save(true)} disabled={busy || !dirty}>
+                  {busy ? "Saving…" : draft.id ? "Save & close" : "Create & add"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(saved)} disabled={busy} />
+                <Button type="button" size="sm" onClick={() => save()} disabled={busy || !dirty}>
+                  {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
+                </Button>
+              </>
+            )}
           </div>
         </CardHeader>
 

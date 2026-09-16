@@ -11,6 +11,7 @@ import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { Plus, Trash2, ArrowUp, ArrowDown, CircleDot } from "lucide-react";
 import type { CostRateRow } from "@/server/cost-rates";
 import type { RuleSummary } from "@/server/rules";
+import { RuleDialog, type RuleRequest } from "./rule-dialog";
 
 const control =
   "h-8 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -40,6 +41,7 @@ export function CostEditor({
   initial,
   rules,
   canEdit,
+  canEditRules,
   onSave,
   onChange,
 }: {
@@ -47,6 +49,8 @@ export function CostEditor({
   initial: CostRateRow[];
   rules: RuleSummary[];
   canEdit: boolean;
+  /** Whether this role may write rules, which opens the rule pop-up here. */
+  canEditRules: boolean;
   onSave?: (rates: Draft[]) => Promise<{ ok: boolean; message: string }>;
   onChange?: (rates: Draft[]) => void;
 }) {
@@ -61,6 +65,7 @@ export function CostEditor({
   });
 
   const [rates, setRates] = useState<Draft[]>(initial.map(toDraft));
+  const [request, setRequest] = useState<RuleRequest | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   // The saved rates themselves, not just their serialisation — Discard has to
@@ -131,9 +136,21 @@ export function CostEditor({
           {rates.length === 1
             ? "One price for every asset."
             : `${rates.length} prices, tried top to bottom — the first whose rule matches is charged.`}{" "}
-          <Link href="/settings/treatment-rules" className="text-primary hover:underline">
-            Write a rule →
-          </Link>
+          {canEditRules ? (
+            // Written in a pop-up, so the treatment stays put; once saved it
+            // is in every price's rule list below.
+            <button
+              type="button"
+              onClick={() => setRequest({ id: null, effect: "allow" })}
+              className="text-primary hover:underline"
+            >
+              Write a rule
+            </button>
+          ) : (
+            <Link href="/settings/treatment-rules" className="text-primary hover:underline">
+              All rules →
+            </Link>
+          )}
         </p>
         {canEdit && (
           <div className="flex items-center gap-2">
@@ -304,6 +321,13 @@ export function CostEditor({
 
         {result && <p className={`text-sm ${result.ok ? "text-emerald-600" : "text-destructive"}`}>{result.message}</p>}
       </div>
+
+      <RuleDialog
+        request={request}
+        usedBy={[]}
+        addingTo="offered in each price's rule list here"
+        onClose={() => setRequest(null)}
+      />
     </div>
   );
 }

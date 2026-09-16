@@ -87,6 +87,15 @@ export async function requirePageWrite(href: string, message: string) {
   return session;
 }
 
+/** Whether this role may write a Settings card, without throwing — for
+ * rendering one card's controls on another card's page. */
+export async function canWriteCard(href: string): Promise<boolean> {
+  const session = await auth();
+  if (!session) return false;
+  const permissions = await getSessionPermissions(session);
+  return permissions.canWrite(resourceKey("card", href));
+}
+
 /** Whether this role may write a page, without throwing — for rendering. */
 export async function canWritePage(href: string): Promise<boolean> {
   const session = await auth();
