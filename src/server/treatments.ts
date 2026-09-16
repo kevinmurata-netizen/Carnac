@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
+import { combineEffects, effectLabel } from "@/domain/waterline/effect";
+import { toEffectDef } from "@/server/effects";
 import {
   WATERLINE_TREATMENTS,
   rulesFromWindow,
@@ -61,18 +63,33 @@ export async function ensureTreatments(organizationId: string) {
         applicability: {
           category: def.category,
           constraints: def.implementationConstraints ?? null,
-          // Record which kind of condition effect this is; effectOnCondition
-          // below is a single number and cannot express the difference.
-          conditionResetTo: def.conditionResetTo ?? null,
-          conditionGain: def.conditionGain ?? null,
         },
-        expectedLifeExtension: def.expectedLifeExtension,
-        effectOnCondition: def.conditionResetTo ?? def.conditionGain ?? 0,
-        effectOnFailureProb: def.failureProbMultiplier,
         usefulLife: def.usefulLife,
       },
       select: { id: true },
     });
+
+    // What it does, as a shared effect named the way the Treatments grid shows
+    // it — the same name the treatment_effects migration gives an existing
+    // database, so a seeded one and a migrated one hold identical effects.
+    // Upserted, so Replacement and Upsizing share one row.
+    const mode = def.conditionResetTo != null ? "reset" : def.conditionGain != null ? "gain" : "none";
+    const effectName = effectLabel(def);
+    const effect = await prisma.effect.upsert({
+      where: { organizationId_name: { organizationId, name: effectName } },
+      update: {},
+      create: {
+        organizationId,
+        name: effectName,
+        conditionMode: mode,
+        conditionValue: def.conditionResetTo ?? def.conditionGain ?? null,
+        failureProbMultiplier: def.failureProbMultiplier,
+        expectedLifeExtension: def.expectedLifeExtension,
+        isGenerated: true,
+      },
+      select: { id: true },
+    });
+    await prisma.treatmentEffectLink.create({ data: { treatmentId: created.id, effectId: effect.id, sortOrder: 0 } });
 
     // A treatment with no rate cannot be priced and so is never recommended.
     // Seeded with the single fallback its own columns amount to.
@@ -139,6 +156,7 @@ export async function listTreatments(organizationId: string) {
     include: {
       ruleLinks: { include: { rule: true } },
       costRates: { orderBy: { sortOrder: "asc" } },
+      effectLinks: { include: { effect: true }, orderBy: { sortOrder: "asc" } },
     },
     orderBy: { name: "asc" },
   });
@@ -151,6 +169,7 @@ export async function listTreatments(organizationId: string) {
     // Rates are tried in order and the last one matches everything, so the
     // fallback is what an asset costs when no narrower rate claims it.
     const fallback = t.costRates.find((r) => r.ruleId == null) ?? t.costRates[t.costRates.length - 1];
+    const effect = combineEffects(t.effectLinks.map((l) => toEffectDef(l.effect)));
 
     return {
       id: t.id,
@@ -164,8 +183,8 @@ export async function listTreatments(organizationId: string) {
       mobilizationCost: fallback?.mobilizationCost ?? 0,
       /** More than one means the headline price is only the fallback. */
       rateCount: t.costRates.length,
-      expectedLifeExtension: t.expectedLifeExtension ?? 0,
-      failureProbMultiplier: t.effectOnFailureProb ?? 1,
+      expectedLifeExtension: effect.expectedLifeExtension,
+      failureProbMultiplier: effect.failureProbMultiplier,
       constraints: (t.applicability as { constraints?: string | null } | null)?.constraints ?? null,
     };
   });

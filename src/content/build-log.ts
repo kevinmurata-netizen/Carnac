@@ -29,6 +29,20 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-16",
+    title: "Treatment effects, written once and shared",
+    summary:
+      "What a treatment does to condition, failure probability and remaining life is now a named Treatment Effect, kept in its own library like Treatment Rules and added to as many treatments as it applies to. A treatment can carry several, and they combine.",
+    changes: [
+      "A new Treatment Effects card on Settings › Modeling lists every effect, which treatments use it, and lets you write, edit or bulk delete them. An effect still in use cannot be deleted.",
+      "A treatment's “What it does” section now mirrors “When it can be used”: add an existing effect by search or from the dropdown, remove one, or write a new one — and it shows the combined result the model uses.",
+      "Writing or editing an effect from a treatment opens it in a pop-up over the treatment, with Cancel, Save, and Save & close, so you never lose your place. A new effect is added to the treatment as it is created.",
+      "Several effects combine the way a treatment combination merges its members: the highest reset wins, point gains add, failure multipliers multiply, and the longest life extension wins.",
+      "Every existing treatment's effect was turned into a named effect, named as its Effect column read on the Treatments grid (for example “resets to 100 · ×0.05”). Treatments with identical effects now share one — Replacement and Upsizing, for instance.",
+    ],
+    note: "1 migration (creates the effects tables and converts existing treatments). Model results are unchanged — checked by comparing the treatment definitions, 1,364 ranked options and a full Current Funding run before and after.",
+  },
+  {
     date: "2026-09-15",
     title: "Delete several treatment rules at once",
     summary:

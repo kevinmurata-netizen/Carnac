@@ -115,6 +115,7 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
       ["/settings/risk-models", "risk-models"],
       ["/settings/criticality", "criticality"],
       ["/settings/treatment-rules", "treatment-rules"],
+      ["/settings/treatment-effects", "treatment-effects"],
       ["/settings/failure-types", "failure-types"],
       ["/filters", "filters"],
     ].map(([href, segment]) => resolve(href, SEGMENT_LABELS[segment] ?? segment)),

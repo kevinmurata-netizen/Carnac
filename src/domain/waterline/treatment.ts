@@ -47,7 +47,9 @@ export type TreatmentDef = {
   applicableMaterials?: string[];
   applicableDiameterMin?: number;
   applicableDiameterMax?: number;
-  /** Post-treatment WCI. Mutually exclusive with conditionGain. */
+  /** Post-treatment WCI. When a gain is also present — a treatment whose
+   * effects include both — the gain is added on top of the reset, the same
+   * way a combination's members combine. See ./effect.ts. */
   conditionResetTo?: number;
   /** Additive WCI improvement (capped at 100). */
   conditionGain?: number;
@@ -533,10 +535,12 @@ export function estimateTreatmentCost(def: TreatmentDef, ctx: AssetTreatmentCont
   return resolveTreatmentCost(def, ctx)?.amount ?? null;
 }
 
+/** A reset sets the floor and any gain adds to it — identical to how
+ * `buildOption` combines a bundle's members, so one treatment with a reset and
+ * a gain effect lands where the same two treatments done together would. */
 export function projectedConditionAfter(def: Pick<TreatmentDef, "conditionResetTo" | "conditionGain">, current: number): number {
-  if (def.conditionResetTo != null) return def.conditionResetTo;
-  if (def.conditionGain != null) return Math.min(100, current + def.conditionGain);
-  return current;
+  const floor = def.conditionResetTo ?? current;
+  return Math.min(100, floor + (def.conditionGain ?? 0));
 }
 
 // ---------------------------------------------------------------------------

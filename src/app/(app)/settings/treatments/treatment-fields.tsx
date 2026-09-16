@@ -36,10 +36,6 @@ export type TreatmentDraft = {
   retreatmentIntervalYears: string;
   description: string;
   implementationConstraints: string;
-  effectMode: "reset" | "gain";
-  effectValue: string;
-  failureProbMultiplier: string;
-  expectedLifeExtension: string;
 };
 
 const str = (value: number | null | undefined) => (value == null ? "" : String(value));
@@ -55,10 +51,6 @@ export function draftFromTreatment(treatment?: TreatmentAdminRow): TreatmentDraf
       treatment?.retreatmentIntervalYears == null ? "" : str(treatment.retreatmentIntervalYears),
     description: treatment?.description ?? "",
     implementationConstraints: treatment?.implementationConstraints ?? "",
-    effectMode: treatment?.conditionResetTo != null ? "reset" : "gain",
-    effectValue: str(treatment?.conditionResetTo ?? treatment?.conditionGain),
-    failureProbMultiplier: str(treatment?.failureProbMultiplier ?? 1),
-    expectedLifeExtension: str(treatment?.expectedLifeExtension ?? 0),
   };
 }
 
@@ -183,75 +175,6 @@ export function DefinitionFields({ draft, onChange }: FieldProps) {
             that should actually rule an asset in or out belongs in a rule.
           </p>
         </div>
-      </fieldset>
-    </div>
-  );
-}
-
-/** Condition effect, failure probability and life extension. */
-export function EffectFields({ draft, onChange }: FieldProps) {
-  return (
-    <div className="space-y-5">
-      <fieldset className="space-y-3 rounded-md border p-3">
-        <legend className="px-1 text-sm font-medium">Effects</legend>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="effectMode">Condition effect</Label>
-            <select
-              id="effectMode"
-              name="effectMode"
-              value={draft.effectMode}
-              onChange={(e) => onChange({ effectMode: e.target.value as "reset" | "gain" })}
-              className={input}
-            >
-              <option value="reset">Resets condition to</option>
-              <option value="gain">Adds points</option>
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="effectValue">{draft.effectMode === "reset" ? "New WCI" : "Points added"}</Label>
-            <input
-              id="effectValue"
-              name="effectValue"
-              type="number"
-              step="any"
-              value={draft.effectValue}
-              onChange={(e) => onChange({ effectValue: e.target.value })}
-              className={input}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="failureProbMultiplier">Failure prob. ×</Label>
-            <input
-              id="failureProbMultiplier"
-              name="failureProbMultiplier"
-              type="number"
-              min={0}
-              max={1}
-              step="any"
-              value={draft.failureProbMultiplier}
-              onChange={(e) => onChange({ failureProbMultiplier: e.target.value })}
-              className={input}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="expectedLifeExtension">Life extension (yr)</Label>
-            <input
-              id="expectedLifeExtension"
-              name="expectedLifeExtension"
-              type="number"
-              min={0}
-              value={draft.expectedLifeExtension}
-              onChange={(e) => onChange({ expectedLifeExtension: e.target.value })}
-              className={input}
-            />
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          A treatment that <em>resets</em> condition renews the asset; one that only <em>adds points</em> is a patch
-          and stays on the same deterioration path in life-cycle cost. Failure multiplier of 1 means no effect, 0.2
-          means an 80% cut.
-        </p>
       </fieldset>
     </div>
   );

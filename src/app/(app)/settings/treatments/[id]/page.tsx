@@ -4,12 +4,14 @@ import { requireCard } from "@/server/guard";
 import { getTreatmentForAdmin } from "@/server/treatment-config";
 import { listRules, getTreatmentRules } from "@/server/rules";
 import { getTreatmentCosts } from "@/server/cost-rates";
+import { listEffects, getTreatmentEffects } from "@/server/effects";
 import { PageHeader } from "@/components/layout/page-header";
 import { SectionGroup, CollapsibleSection } from "@/components/layout/collapsible-section";
 import { TreatmentForm, TreatmentDangerZone } from "../treatment-form";
 import { RuleTreeEditor } from "./rule-tree-editor";
 import { CostEditor } from "./cost-editor";
-import { setTreatmentRuleTreeAction, setTreatmentCostsAction } from "./actions";
+import { EffectListEditor } from "./effect-list-editor";
+import { setTreatmentRuleTreeAction, setTreatmentCostsAction, setTreatmentEffectsAction } from "./actions";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 
 /**
@@ -25,13 +27,15 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
   const organizationId = session!.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
-  const [treatment, allRules, selection, costs] = await Promise.all([
+  const [treatment, allRules, selection, costs, allEffects, effects] = await Promise.all([
     getTreatmentForAdmin(organizationId, id),
     listRules(organizationId),
     getTreatmentRules(organizationId, id),
     getTreatmentCosts(organizationId, id),
+    listEffects(organizationId),
+    getTreatmentEffects(organizationId, id),
   ]);
-  if (!treatment || !selection || !costs) notFound();
+  if (!treatment || !selection || !costs || !effects) notFound();
 
   return (
     <div>
@@ -48,23 +52,30 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
       )}
 
       <SectionGroup ids={SECTION_IDS}>
-        {/* Renders the Definition and What it does sections; they are one form
-            and save together. */}
+        {/* Renders the Definition section. */}
         {canEdit ? (
           <TreatmentForm treatment={treatment} />
         ) : (
           <CollapsibleSection id="definition" title="Treatment Definition">
             <p className="text-sm text-muted-foreground">
-              {treatment.category} · {treatment.usefulLife} year useful life ·{" "}
-              {treatment.conditionResetTo != null
-                ? `resets condition to ${treatment.conditionResetTo}`
-                : treatment.conditionGain != null
-                  ? `adds ${treatment.conditionGain} condition points`
-                  : "no condition effect"}{" "}
-              · failure probability ×{treatment.failureProbMultiplier}
+              {treatment.category} · {treatment.usefulLife} year useful life
             </p>
           </CollapsibleSection>
         )}
+
+        <CollapsibleSection
+          id="does"
+          title="What it does"
+          description="Its effects on condition, failure probability and remaining life — the numbers every recommendation and life-cycle comparison is built from. Click an effect to edit it."
+        >
+          <EffectListEditor
+            allEffects={allEffects}
+            initialIds={effects.effects.map((e) => e.id)}
+            treatmentName={treatment.name}
+            canEdit={canEdit}
+            onSave={setTreatmentEffectsAction.bind(null, treatment.id)}
+          />
+        </CollapsibleSection>
 
         <CollapsibleSection
           id="costs"

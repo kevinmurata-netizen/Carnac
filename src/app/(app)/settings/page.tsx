@@ -8,6 +8,7 @@ import { getSessionPermissions, resourceKey } from "@/server/permissions";
 import { getWishlistSummary } from "@/server/wishlist";
 import { listSavedFilters } from "@/server/saved-filters";
 import { listRules } from "@/server/rules";
+import { listEffects } from "@/server/effects";
 import { listScaleFactors } from "@/server/scale-factors";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets } from "@/server/category-weight-sets";
@@ -55,6 +56,7 @@ export default async function SettingsPage({
     wishlist,
     filters,
     rules,
+    effects,
     scaleFactors,
     weightSets,
     categoryWeightSets,
@@ -71,6 +73,7 @@ export default async function SettingsPage({
     getWishlistSummary(organizationId),
     listSavedFilters(organizationId),
     listRules(organizationId),
+    listEffects(organizationId),
     listScaleFactors(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
@@ -122,6 +125,12 @@ export default async function SettingsPage({
     "condition-index": `${config.conditionModels[0]?.name ?? "Condition index"} — components and weights`,
     "condition-models": `Scale ${conditionModel.scaleMin}–${conditionModel.scaleMax} · ${conditionModel.bands.length} bands`,
     treatments: `${formatNumber(config.treatments.length)} treatments in the library`,
+    "treatment-effects":
+      effects.length === 0
+        ? "No effects written yet"
+        : `${formatNumber(effects.length)} effects · ${formatNumber(
+            effects.filter((e) => e.usedBy.length > 0).length
+          )} in use`,
     "treatment-rules":
       activeRules === 0
         ? "No rules written yet"

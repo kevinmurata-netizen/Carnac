@@ -6,9 +6,9 @@ import { SectionGroup, CollapsibleSection } from "@/components/layout/collapsibl
 import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { CostEditor } from "../[id]/cost-editor";
 import { RuleTreeEditor } from "../[id]/rule-tree-editor";
+import { EffectListEditor } from "../[id]/effect-list-editor";
 import {
   DefinitionFields,
-  EffectFields,
   Feedback,
   draftFromTreatment,
   type TreatmentDraft,
@@ -18,6 +18,7 @@ import { EMPTY_TREATMENT_STATE, type TreatmentActionState } from "../state";
 import type { RuleGroup } from "@/domain/waterline/decision-tree";
 import type { CostRateRow, CostRateInput } from "@/server/cost-rates";
 import type { RuleSummary } from "@/server/rules";
+import type { EffectSummary } from "@/server/effects";
 
 /** Same order as the detail page, so the page you fill in and the page you
  * come back to are the same page. */
@@ -44,9 +45,11 @@ const STARTING_ROWS: CostRateRow[] = [
 
 export function NewTreatmentForm({
   allRules,
+  allEffects,
   emptyTree,
 }: {
   allRules: RuleSummary[];
+  allEffects: EffectSummary[];
   emptyTree: RuleGroup;
 }) {
   const [state, submit, pending] = useActionState<TreatmentActionState, FormData>(
@@ -61,6 +64,7 @@ export function NewTreatmentForm({
   const [rates, setRates] = useState<CostRateInput[]>(STARTING_RATES);
   const [tree, setTree] = useState<RuleGroup>(emptyTree);
   const [blockIds, setBlockIds] = useState<string[]>([]);
+  const [effectIds, setEffectIds] = useState<string[]>([]);
 
   // The prices and the arrangement are held by their own editors, which report
   // upwards but keep their state. Remounting them is what actually empties
@@ -73,7 +77,8 @@ export function NewTreatmentForm({
     JSON.stringify(draft) !== JSON.stringify(draftFromTreatment()) ||
     JSON.stringify(rates) !== JSON.stringify(STARTING_RATES) ||
     JSON.stringify(tree) !== JSON.stringify(emptyTree) ||
-    blockIds.length > 0;
+    blockIds.length > 0 ||
+    effectIds.length > 0;
 
   return (
     <div className="space-y-4">
@@ -87,6 +92,7 @@ export function NewTreatmentForm({
         <input type="hidden" name="costRates" value={JSON.stringify(rates)} />
         <input type="hidden" name="ruleTree" value={JSON.stringify(tree)} />
         <input type="hidden" name="blockIds" value={JSON.stringify(blockIds)} />
+        <input type="hidden" name="effectIds" value={JSON.stringify(effectIds)} />
 
         <SectionGroup ids={SECTION_IDS}>
           <CollapsibleSection
@@ -100,9 +106,16 @@ export function NewTreatmentForm({
           <CollapsibleSection
             id="does"
             title="What it does"
-            description="The effect on condition, on failure probability, and on remaining life — the numbers every recommendation and life-cycle comparison is built from."
+            description="Its effects on condition, failure probability and remaining life — the numbers every recommendation and life-cycle comparison is built from."
           >
-            <EffectFields draft={draft} onChange={patch} />
+            <EffectListEditor
+              key={generation}
+              allEffects={allEffects}
+              initialIds={[]}
+              treatmentName={draft.name.trim() || "this treatment"}
+              canEdit
+              onChange={setEffectIds}
+            />
           </CollapsibleSection>
 
           <CollapsibleSection
@@ -152,6 +165,7 @@ export function NewTreatmentForm({
               setRates(STARTING_RATES);
               setTree(emptyTree);
               setBlockIds([]);
+              setEffectIds([]);
               setGeneration((g) => g + 1);
             }}
             disabled={pending}

@@ -692,7 +692,75 @@ model Treatment {
   ruleLinks              TreatmentRuleLink[]
   combinationMemberships CombinationMember[]
 
+  /// What this treatment does, as named effects shared across the library.
+  /// Several combine the way a treatment combination's members do: the
+  /// highest reset wins, point gains add, failure multipliers multiply, and
+  /// the longest life extension wins.
+  ///
+  /// Supersedes expectedLifeExtension, effectOnCondition, effectOnFailureProb
+  /// and the reset/gain discriminator in `applicability`. Those are kept for
+  /// one release so this can be reverted, and nothing reads them after the
+  /// treatment_effects migration.
+  effectLinks TreatmentEffectLink[]
+
   @@map("treatments")
+}
+
+/// A named, reusable effect of a treatment: what it does to condition, to
+/// failure probability and to remaining life.
+///
+/// Organization-owned like rules, so "resets to 100 · ×0.05" is one row
+/// shared by Replacement and Upsizing rather than a copy inside each — and
+/// editing it changes every treatment using it, which the page says.
+model Effect {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  /// "reset" sets condition to `conditionValue`; "gain" adds it; "none"
+  /// leaves condition alone and ignores `conditionValue`. A reset renews the
+  /// asset in life-cycle cost, a gain only patches it — the distinction is the
+  /// most consequential number here, which is why it is explicit.
+  conditionMode  String @default("none")
+  conditionValue Float?
+
+  /// 1 means no change; 0.2 means an 80% cut.
+  failureProbMultiplier Float @default(1)
+
+  /// Years added to remaining service life.
+  expectedLifeExtension Int @default(0)
+
+  /// True for effects the treatment_effects migration built from treatments'
+  /// own columns. Only used to explain their origin; they are ordinary effects.
+  isGenerated Boolean @default(false)
+
+  treatments TreatmentEffectLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("effects")
+}
+
+model TreatmentEffectLink {
+  treatmentId String
+  treatment   Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  effectId    String
+  /// Restrict: an effect in use cannot be deleted out from under a treatment,
+  /// which would silently change what that treatment does.
+  effect      Effect    @relation(fields: [effectId], references: [id], onDelete: Restrict)
+
+  /// Display order only. Effects combine commutatively, so order changes
+  /// nothing about the result.
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@id([treatmentId, effectId])
+  @@index([effectId])
+  @@map("treatment_effect_links")
 }
 
 /// Superseded by Rule + TreatmentRuleLink. Kept for one release so Phase 1
