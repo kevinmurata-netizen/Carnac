@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExportButton } from "@/components/layout/export-button";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import { outcomeLegend } from "@/domain/waterline/alternative-reasons";
 import { AlternativesGrid } from "./alternatives-grid";
 
 /**
@@ -218,6 +219,7 @@ export default async function AlternativesPage({
               key={allYears ? `all:${segment!.id}` : String(data.year)}
               showYear={allYears}
               allYearsBase={allYears ? undefined : `${base}?year=all&asset=`}
+              outcomes={outcomeLegend(new Set(["Selected", ...data.rows.map((r) => r.reason)]))}
               rows={data.rows.map((r) => ({
                 year: r.year,
                 assetId: r.assetId,

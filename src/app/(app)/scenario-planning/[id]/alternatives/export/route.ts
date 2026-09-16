@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getAllScenarioAlternatives, getScenarioAlternatives } from "@/server/scenario-alternatives";
+import { outcomeLegend } from "@/domain/waterline/alternative-reasons";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 
 /**
@@ -31,6 +32,7 @@ const COLUMNS: ExcelColumn[] = [
   { key: "riskAfter", header: "Risk After", type: "number", width: 11 },
   { key: "selected", header: "Selected", width: 10 },
   { key: "reason", header: "Outcome", width: 32 },
+  { key: "reasonDetail", header: "What the Outcome Means", width: 70 },
 ];
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -51,6 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     : await getScenarioAlternatives(organizationId, id, { year });
   if (!data) return new NextResponse("Not found", { status: 404 });
 
+  const legend = outcomeLegend(new Set(data.rows.map((r) => r.reason)));
   const rows = data.rows.map((r) => ({
     year: r.year,
     assetCode: r.assetCode,
@@ -70,6 +73,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     riskAfter: r.riskAfter,
     selected: r.selected ? "Yes" : "No",
     reason: r.reason,
+    reasonDetail: legend[r.reason]?.description ?? "",
   }));
 
   const segmentCode = "segmentCode" in data ? data.segmentCode : null;
