@@ -10,7 +10,6 @@ import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { saveTreatmentAction, deleteTreatmentAction } from "./actions";
 import {
   DefinitionFields,
-  EffectFields,
   Feedback,
   draftFromTreatment,
   type TreatmentDraft,
@@ -19,7 +18,9 @@ import { EMPTY_TREATMENT_STATE, type TreatmentActionState } from "./state";
 import type { TreatmentAdminRow } from "@/server/treatment-config";
 
 /**
- * An existing treatment's definition and effects.
+ * An existing treatment's definition. What it does is a section of its own now
+ * — effects are shared rows chosen from a library, saved separately, like the
+ * rules — see [id]/effect-list-editor.tsx.
  *
  * Creating a treatment is a page of its own, not a blank copy of this form
  * dropped below the library: an empty form sitting under a list reads as part
@@ -53,9 +54,7 @@ export function TreatmentForm({ treatment }: { treatment: TreatmentAdminRow }) {
     <div className="space-y-4">
       <Feedback state={state} />
 
-      {/* One form spanning two collapsible sections, so Definition and What it
-          does read as separate parts of the page while still saving together.
-          Sections hide their content rather than unmounting it, which is what
+      {/* Sections hide their content rather than unmounting it, which is what
           lets a folded-away field keep an unsaved edit. */}
       <form
         action={submit}
@@ -75,19 +74,8 @@ export function TreatmentForm({ treatment }: { treatment: TreatmentAdminRow }) {
           <DefinitionFields draft={draft} onChange={patch} />
         </Section>
 
-        <Section
-          id="does"
-          title="What it does"
-          description="The effect on condition, on failure probability, and on remaining life — the numbers every recommendation and life-cycle comparison is built from."
-        >
-          {/* Both sections are one form and save together, so both carry the
-              marker whichever of them was actually edited. */}
-          <SectionDirty dirty={dirty} />
-          <EffectFields draft={draft} onChange={patch} />
-        </Section>
-
-        {/* Outside every section, because it saves all of them and must stay
-            reachable however many are folded away. */}
+        {/* Outside the section, so it stays reachable when the section is
+            folded away. */}
         <div className="flex items-center justify-end gap-2">
           {dirty && (
             <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">

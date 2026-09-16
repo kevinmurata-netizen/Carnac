@@ -5,6 +5,7 @@ import { requireCardWrite } from "@/server/guard";
 import { setTreatmentRuleTree } from "@/server/rules";
 import { ruleIdsIn, type RuleGroup } from "@/domain/waterline/decision-tree";
 import { setTreatmentCosts, type CostRateInput } from "@/server/cost-rates";
+import { setTreatmentEffects } from "@/server/effects";
 
 /**
  * Which rules gate a treatment decides what the model recommends, so it
@@ -49,6 +50,48 @@ export async function setTreatmentCostsAction(
         priced === 0
           ? "Saved. One price for every asset."
           : `Saved. ${priced} rule-selected price${priced === 1 ? "" : "s"}, plus the fallback.`,
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not save" };
+  }
+}
+
+/**
+ * Which effects a treatment has. Same bar as editing the treatment: what it
+ * does to condition and risk is what every recommendation is built from.
+ */
+export async function setTreatmentEffectsAction(
+  treatmentId: string,
+  effectIds: string[]
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const session = await requireCardWrite(
+      "/settings/treatments",
+      "Only an Administrator can change what a treatment does"
+    );
+
+    const ids = Array.isArray(effectIds) ? effectIds.filter((id) => typeof id === "string") : [];
+    await setTreatmentEffects(session.user.organizationId, treatmentId, ids);
+
+    for (const path of [
+      "/settings/treatments",
+      `/settings/treatments/${treatmentId}`,
+      "/settings/treatment-effects",
+      "/treatment-planning",
+      "/work-plan",
+      "/scenario-planning",
+      "/model-results",
+      "/assets",
+    ]) {
+      revalidatePath(path);
+    }
+
+    return {
+      ok: true,
+      message:
+        ids.length === 0
+          ? "Saved. With no effects, this treatment changes nothing about condition or risk."
+          : `Saved. ${ids.length} effect${ids.length === 1 ? "" : "s"}, combined.`,
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not save" };

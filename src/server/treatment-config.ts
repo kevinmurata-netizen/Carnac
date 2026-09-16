@@ -13,6 +13,8 @@ import {
   type RuleGroup,
 } from "@/domain/waterline/decision-tree";
 import { parseRules } from "@/server/rules";
+import { toEffectDef } from "@/server/effects";
+import { combineEffects } from "@/domain/waterline/effect";
 import { createStandardRate } from "@/server/cost-rates";
 
 /**
@@ -27,6 +29,7 @@ type TreatmentWithRules = Awaited<ReturnType<typeof fetchTreatments>>[number];
 const withRules = {
   ruleLinks: { include: { rule: true } },
   costRates: { include: { rule: true }, orderBy: { sortOrder: "asc" } },
+  effectLinks: { include: { effect: true }, orderBy: { sortOrder: "asc" } },
 } as const;
 
 /** Cost rates in the order they are tried. A rate whose rule fails validation
@@ -102,28 +105,17 @@ function fetchTreatments(organizationId: string) {
 function toDef(row: TreatmentWithRules): TreatmentDef {
   const applicability = (row.applicability ?? {}) as {
     category?: string;
-    materials?: string[] | null;
-    diameterMin?: number | null;
-    diameterMax?: number | null;
     constraints?: string | null;
-    conditionResetTo?: number | null;
-    conditionGain?: number | null;
   };
 
-  // effectOnCondition stores a single number, so the applicability blob
-  // records WHICH of reset/gain it was — the distinction matters enormously
-  // (a reset renews the asset, a gain only patches it).
-  //
-  // Rows written before that discriminator existed carry neither key. Falling
-  // back to the seed definition by name keeps them working; without this they
-  // load with no condition effect at all, so treatments silently stop
-  // improving anything and the whole network decays in every scenario.
-  const hasDiscriminator =
-    applicability.conditionResetTo != null || applicability.conditionGain != null;
-  const seed = hasDiscriminator ? undefined : WATERLINE_TREATMENTS.find((t) => t.name === row.name);
-
-  const resetTo = hasDiscriminator ? (applicability.conditionResetTo ?? null) : (seed?.conditionResetTo ?? null);
-  const gain = hasDiscriminator ? (applicability.conditionGain ?? null) : (seed?.conditionGain ?? null);
+  // What the treatment does comes from its effects, combined. The columns
+  // and applicability keys that used to hold it are no longer read: the
+  // treatment_effects migration built an effect from each treatment's own
+  // values — including the seed-name fallback for rows that predated the
+  // reset/gain discriminator — so every treatment starts with exactly the
+  // effect it had. A treatment with no effects does nothing, which is right
+  // for an inspection and visible on the page for anything else.
+  const effect = combineEffects(row.effectLinks.map((l) => toEffectDef(l.effect)));
 
   return {
     id: row.id,
@@ -135,10 +127,7 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
     // treatment is gated by its rules and nothing else. The fields survive on
     // TreatmentDef because the shipped library still uses them, once, to
     // generate those rules at seed time.
-    conditionResetTo: resetTo ?? undefined,
-    conditionGain: gain ?? undefined,
-    failureProbMultiplier: row.effectOnFailureProb ?? 1,
-    expectedLifeExtension: row.expectedLifeExtension ?? 0,
+    ...effect,
     // No prices either: cost rates own them, and `costRates` below carries
     // the real ones.
     usefulLife: row.usefulLife ?? 0,
@@ -225,12 +214,8 @@ export type TreatmentInput = {
   category: TreatmentCategory;
   // The condition window, material list and diameter bounds are absent on
   // purpose: they are rules now, edited on the treatment's own page, and as of
-  // Phase 6b the columns behind them are gone too.
-  /** Exactly one of these is used; the other must be null. */
-  conditionResetTo: number | null;
-  conditionGain: number | null;
-  failureProbMultiplier: number;
-  expectedLifeExtension: number;
+  // Phase 6b the columns behind them are gone too. What the treatment does is
+  // absent for the same reason: it is effects now, set with setTreatmentEffects.
 
   /**
    * The fallback rate a newly created treatment starts with.
@@ -252,27 +237,20 @@ export type TreatmentInput = {
 
 function validate(input: TreatmentInput) {
   if (!input.name.trim()) throw new Error("Treatment name is required");
-  if (input.failureProbMultiplier < 0 || input.failureProbMultiplier > 1) {
-    throw new Error("Failure probability multiplier must be between 0 and 1 (1 = no effect)");
-  }
-  if (input.conditionResetTo != null && input.conditionGain != null) {
-    throw new Error("Choose either a condition reset or a condition gain, not both");
-  }
   if ((input.unitCost ?? 0) < 0 || (input.mobilizationCost ?? 0) < 0) {
     throw new Error("Costs cannot be negative");
   }
 }
 
-// `existing` is spread first and the applicability keys are no longer written,
-// so a treatment edited today keeps the window it was migrated from rather
-// than having it silently blanked by a form that no longer asks about it.
+// `existing` is spread first and keys the form no longer asks about are not
+// written, so a treatment edited today keeps what it was migrated with rather
+// than having it silently blanked. That includes the old reset/gain keys, kept
+// for one release so the treatment_effects migration can be reverted.
 function toApplicability(input: TreatmentInput, existing: Record<string, unknown> = {}) {
   return {
     ...existing,
     category: input.category,
     constraints: input.implementationConstraints,
-    conditionResetTo: input.conditionResetTo,
-    conditionGain: input.conditionGain,
   };
 }
 
@@ -289,9 +267,7 @@ export async function updateTreatment(organizationId: string, id: string, input:
       name: input.name.trim(),
       description: input.description.trim() || null,
       applicability: toApplicability(input, (existing.applicability ?? {}) as Record<string, unknown>),
-      expectedLifeExtension: input.expectedLifeExtension,
-      effectOnCondition: input.conditionResetTo ?? input.conditionGain ?? 0,
-      effectOnFailureProb: input.failureProbMultiplier,
+      // The effect columns are not written: effects own what a treatment does.
       // The cost columns are deliberately not written. Cost rates own the
       // price now, the edit form no longer asks about it, and writing the
       // form's empty defaults here would blank what these columns still hold.
@@ -317,9 +293,6 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
       name: input.name.trim(),
       description: input.description.trim() || null,
       applicability: toApplicability(input),
-      expectedLifeExtension: input.expectedLifeExtension,
-      effectOnCondition: input.conditionResetTo ?? input.conditionGain ?? 0,
-      effectOnFailureProb: input.failureProbMultiplier,
       usefulLife: input.usefulLife,
       retreatmentIntervalYears: input.retreatmentIntervalYears,
     },

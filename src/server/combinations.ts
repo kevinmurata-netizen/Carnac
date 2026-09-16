@@ -91,16 +91,14 @@ function fetchOne(organizationId: string, id: string) {
   });
 }
 
-/** Which treatments reset condition rather than nudging it. Read from the
- * applicability blob, the same place toDef() reads it. */
+/** Which treatments reset condition rather than nudging it — any one of their
+ * effects resetting is enough, the same reading toDef() gives. */
 async function resetFlags(organizationId: string): Promise<Map<string, boolean>> {
   const rows = await prisma.treatment.findMany({
     where: { assetType: { code: "WATERLINE", organizationId } },
-    select: { id: true, applicability: true },
+    select: { id: true, effectLinks: { select: { effect: { select: { conditionMode: true } } } } },
   });
-  return new Map(
-    rows.map((r) => [r.id, (r.applicability as { conditionResetTo?: number | null } | null)?.conditionResetTo != null])
-  );
+  return new Map(rows.map((r) => [r.id, r.effectLinks.some((l) => l.effect.conditionMode === "reset")]));
 }
 
 export async function listCombinations(organizationId: string): Promise<CombinationSummary[]> {

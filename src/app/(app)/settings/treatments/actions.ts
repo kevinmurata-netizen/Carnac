@@ -12,6 +12,7 @@ import {
 } from "@/server/treatment-config";
 import { setTreatmentCosts, validateCostRates, type CostRateInput } from "@/server/cost-rates";
 import { setTreatmentRuleTree } from "@/server/rules";
+import { setTreatmentEffects } from "@/server/effects";
 import { isValidRuleNode, type RuleGroup } from "@/domain/waterline/decision-tree";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 import type { TreatmentActionState } from "./state";
@@ -53,8 +54,6 @@ function optionalNum(form: FormData, key: string): number | null {
 
 function parseInput(form: FormData): TreatmentInput {
   const category = String(form.get("category") ?? "Repair") as TreatmentCategory;
-  const effectMode = String(form.get("effectMode") ?? "gain");
-  const effectValue = optionalNum(form, "effectValue");
 
   return {
     name: String(form.get("name") ?? ""),
@@ -63,10 +62,6 @@ function parseInput(form: FormData): TreatmentInput {
     // administrator who never opens this box still gets the backstop.
     retreatmentIntervalYears: optionalNum(form, "retreatmentIntervalYears"),
     category: CATEGORIES.includes(category) ? category : "Repair",
-    conditionResetTo: effectMode === "reset" ? effectValue : null,
-    conditionGain: effectMode === "gain" ? effectValue : null,
-    failureProbMultiplier: num(form, "failureProbMultiplier", 1),
-    expectedLifeExtension: num(form, "expectedLifeExtension", 0),
     // No cost fields: the form has not asked about them since prices moved to
     // cost rates, so reading them here only ever produced zeroes. The create
     // path supplies the fallback rate explicitly instead.
@@ -121,6 +116,18 @@ function parseArrangement(form: FormData): { tree: RuleGroup; blockIds: string[]
   };
 }
 
+/** The chosen effects, in order. An empty list is allowed: a treatment that
+ * does nothing to condition or risk is a real thing — an inspection. */
+function parseEffectIds(form: FormData): string[] {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(String(form.get("effectIds") ?? "[]"));
+  } catch {
+    throw new Error("Those effects could not be read and nothing was created");
+  }
+  return Array.isArray(raw) ? raw.filter((id): id is string => typeof id === "string") : [];
+}
+
 export async function saveTreatmentAction(
   _prev: TreatmentActionState,
   formData: FormData
@@ -159,6 +166,7 @@ export async function createTreatmentAction(
 
     const rates = parseRates(formData);
     const { tree, blockIds } = parseArrangement(formData);
+    const effectIds = parseEffectIds(formData);
     validateCostRates(rates);
 
     // The treatment row keeps its own copy of the price, and the fallback is
@@ -175,6 +183,7 @@ export async function createTreatmentAction(
 
     await setTreatmentCosts(organizationId, id, rates);
     await setTreatmentRuleTree(organizationId, id, tree, blockIds);
+    await setTreatmentEffects(organizationId, id, effectIds);
   } catch (err) {
     if (created) {
       // Safe: a treatment created moments ago is in no work plan, which is the

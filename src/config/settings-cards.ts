@@ -19,6 +19,7 @@ import {
   ShieldAlert,
   ScrollText,
   ShieldCheck,
+  Sparkles,
   Target,
   TrendingDown,
   Users,
@@ -220,6 +221,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     icon: GitBranch,
     detail:
       "Named conditions that decide whether an asset qualifies for a treatment. Written once, attached to as many treatments as they apply to.",
+  },
+  {
+    key: "treatment-effects",
+    href: "/settings/treatment-effects",
+    tab: "modeling",
+    title: "Treatment Effects",
+    icon: Sparkles,
+    detail:
+      "What a treatment does to condition, failure probability and remaining life. Written once, added to as many treatments as it applies to.",
   },
   {
     key: "treatment-combinations",
