@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-16",
+    title: "Write and edit rules without leaving the treatment",
+    summary:
+      "On a treatment, clicking a rule or writing a new one now opens the rule editor in a pop-up over the treatment, the same way effects do. Cancel, Save, or Save & close put you back exactly where you were, with no need for the browser's back button.",
+    changes: [
+      "Click any rule's name under “When it can be used” to edit it in a pop-up, including the test against real segments.",
+      "Each group, and the blocks, has a Write a new rule button. The rule you create is added where you started it, as an unsaved change like picking an existing rule. A rule written as a block always goes with the blocks.",
+      "“Write a rule” under “What it costs” opens the same pop-up; the new rule is then offered in each price's rule list.",
+      "Writing rules and effects follows their own permissions: a role that can edit treatments but not rules sees rule names as links to the Treatment Rules page instead of the editor.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-16",
     title: "Treatment effects, written once and shared",
     summary:
       "What a treatment does to condition, failure probability and remaining life is now a named Treatment Effect, kept in its own library like Treatment Rules and added to as many treatments as it applies to. A treatment can carry several, and they combine.",

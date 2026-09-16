@@ -2,8 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
-import { createRule, updateRule, deleteRule, deleteRules } from "@/server/rules";
-import { isValidNode, type Group, type RuleEffect } from "@/domain/waterline/decision-tree";
+import { prisma } from "@/lib/prisma";
+import { createRule, updateRule, deleteRule, deleteRules, getRuleForEditing } from "@/server/rules";
+import { loadRuleSamples, loadRuleFieldOptions, type RuleSample } from "@/server/rule-samples";
+import {
+  emptyGroup,
+  isValidNode,
+  type DecisionField,
+  type Group,
+  type RuleEffect,
+} from "@/domain/waterline/decision-tree";
 
 /** Treatment rules gate what work gets recommended and therefore what shows up
  * in the identified need, so changing them is an Administrator action. */
@@ -70,6 +78,69 @@ export async function saveRuleAction(payload: RulePayload): Promise<{ ok: boolea
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not save" };
+  }
+}
+
+export type OpenedRule = {
+  draft: RulePayload;
+  samples: RuleSample[];
+  fieldOptions: Partial<Record<DecisionField, string[]>>;
+  isGenerated: boolean;
+};
+
+/**
+ * Everything the rule editor needs, fetched as the pop-up on a treatment opens
+ * rather than with the treatment page — the sample segments are a real query,
+ * and most visits to a treatment never open a rule.
+ *
+ * `id` null starts a new rule, allowing or blocking as asked.
+ */
+export async function openRuleAction(
+  id: string | null,
+  effect: RuleEffect = "allow"
+): Promise<{ ok: true; rule: OpenedRule } | { ok: false; message: string }> {
+  try {
+    const session = await requireWriteAccess();
+    const organizationId = session.user.organizationId;
+
+    const [samples, fieldOptions, stored] = await Promise.all([
+      loadRuleSamples(organizationId),
+      loadRuleFieldOptions(organizationId),
+      id ? prisma.rule.findFirst({ where: { id, organizationId }, select: { isGenerated: true } }) : null,
+    ]);
+
+    if (!id) {
+      return {
+        ok: true,
+        rule: {
+          draft: { id: null, name: "", description: "", effect, enabled: true, root: emptyGroup("AND") },
+          samples,
+          fieldOptions,
+          isGenerated: false,
+        },
+      };
+    }
+
+    const rule = await getRuleForEditing(organizationId, id);
+    if (!rule || !stored) throw new Error("That rule no longer exists");
+    return {
+      ok: true,
+      rule: {
+        draft: {
+          id: rule.id,
+          name: rule.name,
+          description: rule.description ?? "",
+          effect: rule.effect,
+          enabled: rule.enabled,
+          root: rule.root,
+        },
+        samples,
+        fieldOptions,
+        isGenerated: stored.isGenerated,
+      },
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not open that rule" };
   }
 }
 

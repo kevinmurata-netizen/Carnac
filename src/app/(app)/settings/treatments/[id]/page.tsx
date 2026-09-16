@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, canWriteCard } from "@/server/guard";
 import { getTreatmentForAdmin } from "@/server/treatment-config";
 import { listRules, getTreatmentRules } from "@/server/rules";
 import { getTreatmentCosts } from "@/server/cost-rates";
@@ -27,13 +27,17 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
   const organizationId = session!.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
-  const [treatment, allRules, selection, costs, allEffects, effects] = await Promise.all([
+  const [treatment, allRules, selection, costs, allEffects, effects, canEditRules, canEditEffects] = await Promise.all([
     getTreatmentForAdmin(organizationId, id),
     listRules(organizationId),
     getTreatmentRules(organizationId, id),
     getTreatmentCosts(organizationId, id),
     listEffects(organizationId),
     getTreatmentEffects(organizationId, id),
+    // Rules and effects are their own cards, so writing them is their own
+    // permission — separate from arranging them on this treatment.
+    canWriteCard("/settings/treatment-rules"),
+    canWriteCard("/settings/treatment-effects"),
   ]);
   if (!treatment || !selection || !costs || !effects) notFound();
 
@@ -73,6 +77,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
             initialIds={effects.effects.map((e) => e.id)}
             treatmentName={treatment.name}
             canEdit={canEdit}
+            canEditEffects={canEditEffects}
             onSave={setTreatmentEffectsAction.bind(null, treatment.id)}
           />
         </CollapsibleSection>
@@ -87,6 +92,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
             initial={costs.rates}
             rules={allRules}
             canEdit={canEdit}
+            canEditRules={canEditRules}
             onSave={setTreatmentCostsAction.bind(null, treatment.id)}
           />
         </CollapsibleSection>
@@ -94,13 +100,14 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
         <CollapsibleSection
           id="rules"
           title="When it can be used"
-          description="How the rules combine to decide whether this treatment is considered. Click any rule to open it."
+          description="How the rules combine to decide whether this treatment is considered. Click a rule to edit it."
         >
           <RuleTreeEditor
             allRules={allRules}
             initialTree={selection.tree}
             initialBlockIds={selection.blocks.map((r) => r.id)}
             canEdit={canEdit}
+            canEditRules={canEditRules}
             onSave={setTreatmentRuleTreeAction.bind(null, treatment.id)}
           />
         </CollapsibleSection>

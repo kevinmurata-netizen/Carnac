@@ -51,6 +51,7 @@ export function EffectListEditor({
   initialIds,
   treatmentName,
   canEdit,
+  canEditEffects,
   onSave,
   onChange,
 }: {
@@ -59,6 +60,9 @@ export function EffectListEditor({
   /** Named in the sharing warning, so it can leave this treatment out. */
   treatmentName: string;
   canEdit: boolean;
+  /** Whether this role may write effects themselves — their own permission,
+   * separate from choosing them for this treatment. */
+  canEditEffects: boolean;
   onSave?: (effectIds: string[]) => Promise<{ ok: boolean; message: string }>;
   onChange?: (effectIds: string[]) => void;
 }) {
@@ -146,7 +150,7 @@ export function EffectListEditor({
             <span className="min-w-0 flex-1">
               {effect ? (
                 <>
-                  {canEdit ? (
+                  {canEditEffects ? (
                     <button
                       type="button"
                       onClick={() => setEditing(draftOf(effect))}
@@ -219,10 +223,12 @@ export function EffectListEditor({
                 </option>
               ))}
             </select>
-            <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ ...BLANK_EFFECT })}>
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              Write a new effect
-            </Button>
+            {canEditEffects && (
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ ...BLANK_EFFECT })}>
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                Write a new effect
+              </Button>
+            )}
           </div>
         )}
       </div>
