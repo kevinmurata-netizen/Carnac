@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-16",
+    title: "Alternatives explain their outcomes, and say what is filtered",
+    summary:
+      "Every reason an alternative was not selected now comes with a plain description of what it means, and the filters on the Alternatives page are labelled so it is clear what each set of chips narrows and what is currently applied.",
+    changes: [
+      "Hover an outcome in the table, or a reason chip, to read what it means. “What each outcome means” opens a key listing every outcome in view with its description and count.",
+      "Reasons are grouped by where in the year's run they stopped an option: ruled out before scoring, scored but would not achieve enough, or ranked but not funded.",
+      "The filters sit in labelled rows (Outcome, Category, Why not selected), and every chip shows how many alternatives it covers.",
+      "A summary line lists each active filter in words, for example “Category: Repair”, with an × to remove just that one, and Clear all.",
+      "The Excel export gains a “What the Outcome Means” column.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-16",
     title: "Write and edit rules without leaving the treatment",
     summary:
       "On a treatment, clicking a rule or writing a new one now opens the rule editor in a pop-up over the treatment, the same way effects do. Cancel, Save, or Save & close put you back exactly where you were, with no need for the browser's back button.",
