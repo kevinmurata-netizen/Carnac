@@ -27,6 +27,8 @@ const COLUMNS: ExcelColumn[] = [
   { key: "categoryWeight", header: "Category Weight", type: "number", width: 16 },
   { key: "benefit", header: "Expected Benefit", type: "number", width: 16 },
   { key: "priority", header: "Priority Score", type: "number", width: 15 },
+  { key: "incremental", header: "Incremental Score", type: "number", width: 17 },
+  { key: "incrementalOver", header: "Incremental Over", width: 24 },
   { key: "conditionAfter", header: "WCI After", type: "number", width: 11 },
   { key: "riskBefore", header: "Risk Before", type: "number", width: 12 },
   { key: "riskAfter", header: "Risk After", type: "number", width: 11 },
@@ -68,6 +70,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     categoryWeight: r.categoryWeight,
     benefit: r.benefit,
     priority: r.priority,
+    incremental: r.incremental,
+    incrementalOver: r.incremental == null ? "" : (r.incrementalOver ?? "Doing nothing"),
     conditionAfter: r.conditionAfter,
     riskBefore: r.riskBefore,
     riskAfter: r.riskAfter,
@@ -91,6 +95,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     note:
       `${rows.length.toLocaleString()} alternatives over ${scope}, ${selected.toLocaleString()} funded · ` +
       `Priority Score is Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost, computed against each year's condition; ` +
+      `work is bought by Incremental Score — the weighted benefit an option adds over the next cheaper option worth having on its segment, per extra dollar; ` +
       `benefit is normalized within a year, so scores rank options inside their own year only · exported ${new Date()
         .toISOString()
         .slice(0, 10)}`,

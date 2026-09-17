@@ -29,10 +29,10 @@ function revalidateAffected() {
 }
 
 /**
- * The ordered list, posted as one JSON field.
+ * The category limits, posted as one JSON field.
  *
- * Parsed defensively rather than trusted: this is the field that decides
- * spending order, and a malformed one should be a message rather than a plan
+ * Parsed defensively rather than trusted: this is the field that limits
+ * spending, and a malformed one should be a message rather than a plan
  * that silently drops a category.
  */
 function parseSteps(raw: FormDataEntryValue | null): FundingStep[] {
@@ -42,9 +42,9 @@ function parseSteps(raw: FormDataEntryValue | null): FundingStep[] {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("Could not read the spending order. Try again.");
+    throw new Error("Could not read the category limits. Try again.");
   }
-  if (!Array.isArray(parsed)) throw new Error("Could not read the spending order. Try again.");
+  if (!Array.isArray(parsed)) throw new Error("Could not read the category limits. Try again.");
 
   return parsed.map((entry) => {
     const step = entry as { category?: unknown; maxPct?: unknown };
@@ -97,8 +97,8 @@ export async function saveFundingPlanAction(
  * Make one the default, or — with an empty id — clear it.
  *
  * Clearing is a real choice here in a way it is not for the weightings: "no
- * category order" is how allocation worked before this page existed, and
- * someone experimenting with an order needs a way back to it.
+ * category limits" is how allocation worked before this page existed, and
+ * someone experimenting with limits needs a way back to it.
  */
 export async function setDefaultFundingPlanAction(
   _prev: { status: string; message?: string },
@@ -114,7 +114,7 @@ export async function setDefaultFundingPlanAction(
       return {
         status: "success",
         message:
-          "Default cleared. A scenario that does not choose a plan now makes one pass down the ranked list, with category playing no part.",
+          "Default cleared. A scenario that does not choose a plan is now limited only by its yearly budget, with category playing no part.",
       };
     }
 

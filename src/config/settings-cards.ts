@@ -265,7 +265,7 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     title: "Category Funding",
     icon: ListOrdered,
     detail:
-      "How a year's budget is divided between repair, rehabilitation and renewal — and, because the order decides what is bought first, which of them spends before the others.",
+      "The most of each year's budget that repair, rehabilitation and renewal may each take. Limits, not a spending order: work is chosen across all of them at once.",
   },
   {
     key: "deterioration-models",

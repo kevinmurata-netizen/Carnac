@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-17",
+    title: "Scenarios buy work by incremental benefit/cost",
+    summary:
+      "Scenarios now choose each year's work by what each step up adds for its extra cost, across every category at once, with a category funding plan's percentages acting only as limits. On the seed network, Current Funding ends 2.3 WCI points higher with 29 fewer segments below target and $19.6M less spent.",
+    changes: [
+      "Each segment's options are laid out cheapest first, and each is scored on the benefit it adds over the next cheaper one, divided by the extra it costs. The year buys the best next step anywhere on the network — a first fix on one segment, or an upgrade from a patch to a relining on another — until the money runs out.",
+      "Previously each option was ranked on its own benefit ÷ cost, which almost always picked the cheapest option on a segment and rarely let a larger job that was well worth its extra cost compete.",
+      "A category funding plan's percentages are now limits, not a spending order. No category takes more than its share; an upgrade that moves a segment into another category counts its whole cost there. The order categories are listed in no longer matters, so the Category Funding editor drops dragging and arrows.",
+      "Combinations are no longer preferred automatically, and work that pays for itself no longer goes first as a tier. A combination is bought when what it adds is worth it; life-cycle saving still counts through Expected Benefit.",
+      "The Alternatives page and its Excel export gain an Incremental score — what the option adds, and which option it is measured over. Two outcomes are new (“Larger option funded on this segment” and “Another option gives more for the money”) and two are gone (bundle chosen, segment already treated).",
+      "Measured against each category funding plan applied to Current Funding, the new rule had the highest final WCI, fewest segments below target and fewest failures every time.",
+    ],
+    note: "No migration. Stored scenario results were calculated with the old rule — re-run scenarios to see the new ones. Work plans still use their own, older allocation and are unchanged.",
+  },
+  {
+    date: "2026-09-17",
     title: "Copy or delete several prices at once",
     summary:
       "The Treatment Costs grid gains the same checkboxes, Select all, Copy selected and Delete selected as the other treatment lists, working across treatments.",

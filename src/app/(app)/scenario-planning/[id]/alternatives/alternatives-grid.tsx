@@ -37,6 +37,10 @@ export type AlternativeRow = {
   cost: number;
   benefit: number | null;
   priority: number | null;
+  /** What it adds over the next cheaper option on the segment, per extra
+   * dollar — the score the year's work is bought by. */
+  incremental: number | null;
+  incrementalOver: string | null;
   criticality: number;
   scaleFactor: number;
   categoryWeight: number;
@@ -50,6 +54,7 @@ export type AlternativeRow = {
 type SortKey =
   | "year"
   | "priority"
+  | "incremental"
   | "assetCode"
   | "optionLabel"
   | "category"
@@ -66,6 +71,7 @@ const COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = [
   { key: "cost", label: "Cost", numeric: true },
   { key: "benefit", label: "Benefit", numeric: true },
   { key: "priority", label: "Priority", numeric: true },
+  { key: "incremental", label: "Incremental", numeric: true },
   { key: "reason", label: "Outcome" },
 ];
 
@@ -430,7 +436,7 @@ export function AlternativesGrid({
                   <TableCell className="text-right tabular-nums">{formatCurrency(row.cost)}</TableCell>
                   <TableCell className="text-right tabular-nums">{row.benefit ?? "—"}</TableCell>
                   <TableCell
-                    className="text-right font-medium tabular-nums"
+                    className="text-right tabular-nums"
                     title={
                       row.priority == null
                         ? "Ruled out before scoring, so it has no Priority Score."
@@ -440,6 +446,25 @@ export function AlternativesGrid({
                     }
                   >
                     {row.priority ?? "—"}
+                  </TableCell>
+                  <TableCell
+                    className="text-right font-medium tabular-nums"
+                    title={
+                      row.incremental == null
+                        ? row.priority == null
+                          ? "Ruled out before scoring."
+                          : "Never worth buying on this segment — another option gives more for the money."
+                        : row.incrementalOver
+                          ? `What it adds over ${row.incrementalOver}, per dollar of the extra it costs`
+                          : "The cheapest option worth having on this segment, so measured against doing nothing"
+                    }
+                  >
+                    {row.incremental ?? "—"}
+                    {row.incremental != null && (
+                      <span className="block text-[11px] font-normal text-muted-foreground">
+                        {row.incrementalOver ? `over ${row.incrementalOver}` : "first step"}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-xs">
                     {row.selected ? (

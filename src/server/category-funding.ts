@@ -81,10 +81,11 @@ export async function listFundingPlans(organizationId: string): Promise<FundingP
 /**
  * The plan a scenario runs under, or null.
  *
- * Null — no order at all, one pass down the ranked list — is the honest answer
+ * Null — no category limits, only the year's budget — is the honest answer
  * when nothing is chosen and nothing is default. Falling back to some invented
- * order would decide what gets funded on the model's behalf, and category
- * order is exactly the kind of decision that has to be someone's.
+ * limits would decide what gets funded on the model's behalf, and how much
+ * each kind of work may take is exactly the kind of decision that has to be
+ * someone's.
  */
 export async function resolveFundingPlan(
   organizationId: string,
@@ -97,7 +98,7 @@ export async function resolveFundingPlan(
         include: withSteps,
       });
 
-  if (!row) return { plan: null, planId: null, name: "No category order" };
+  if (!row) return { plan: null, planId: null, name: "No category limits" };
 
   const steps = toRow(row as Row).steps;
   return { plan: steps.length > 0 ? steps : null, planId: row.id, name: row.name };
@@ -207,7 +208,7 @@ export async function setDefaultFundingPlan(organizationId: string, id: string) 
 }
 
 /** There is no default by default, so unlike the weight sets this one can be
- * cleared — "no category order" is a legitimate way to run. */
+ * cleared — "no category limits" is a legitimate way to run. */
 export async function clearDefaultFundingPlan(organizationId: string) {
   await prisma.categoryFundingPlan.updateMany({ where: { organizationId }, data: { isDefault: false } });
 }
@@ -222,15 +223,15 @@ export async function deleteFundingPlan(organizationId: string, id: string) {
   const users = [...row.scenarios.map((s) => s.name), ...row.workPlans.map((w) => w.name)];
   if (users.length > 0) {
     throw new Error(
-      `"${row.name}" is still used by ${users.sort().join(", ")}. Point those at another plan first — deleting it would move them onto no category order at all and quietly change what they fund.`
+      `"${row.name}" is still used by ${users.sort().join(", ")}. Point those at another plan first — deleting it would move them onto no category limits at all and quietly change what they fund.`
     );
   }
 
   await prisma.categoryFundingPlan.delete({ where: { id } });
 }
 
-/** The dropdown's one-line view: the order, with the shares. */
+/** The dropdown's one-line view: each category's limit. */
 export function describeFundingPlan(plan: FundingPlanRow): string {
   if (plan.steps.length === 0) return "no categories";
-  return plan.steps.map((s) => `${s.category} ${Math.round(s.maxPct * 100)}%`).join(" → ");
+  return plan.steps.map((s) => `${s.category} ≤ ${Math.round(s.maxPct * 100)}%`).join(" · ");
 }

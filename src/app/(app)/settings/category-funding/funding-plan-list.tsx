@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
-import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, CircleDot, GripVertical, Plus, Star, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDot, Plus, Star, Trash2 } from "lucide-react";
 import { CATEGORY_KEYS, CATEGORY_DESCRIPTIONS } from "@/domain/waterline/category-weight";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 import type { FundingPlanRow } from "@/server/category-funding";
@@ -21,9 +21,7 @@ type Action = (prev: State, form: FormData) => Promise<State>;
 type Step = { category: TreatmentCategory; pct: number };
 type Draft = { id: string; name: string; description: string; steps: Step[] };
 
-/** Cheapest and least committing first, so the categories most likely to be
- * capped spend first and the rest inherit what they leave. A starting point,
- * not a recommendation — the order is the decision this page exists for. */
+/** Every category, with no limit of its own. A starting point to lower. */
 const BLANK: Draft = {
   id: "",
   name: "",
@@ -100,8 +98,8 @@ export function FundingPlanList({
         <CardContent className="space-y-3">
           {plans.length === 0 && (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              No funding plans yet. Without one a scenario makes a single pass down the ranked list and category plays
-              no part in what it buys.
+              No funding plans yet. Without one, a scenario is limited only by its yearly budget and category plays no
+              part in what it buys.
             </p>
           )}
 
@@ -128,12 +126,10 @@ export function FundingPlanList({
                     </div>
                     {plan.description && <p className="mt-0.5 text-xs text-muted-foreground">{plan.description}</p>}
 
-                    {/* The order shown as an order. A comma-separated list
-                        would read as a set, which is exactly what it is not. */}
-                    <ol className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                      {plan.steps.map((s, i) => (
+                    {/* Limits, not a sequence: shown as a set of chips. */}
+                    <ul className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
+                      {plan.steps.map((s) => (
                         <li key={s.category} className="flex items-center gap-1.5">
-                          {i > 0 && <span className="text-muted-foreground">→</span>}
                           <span
                             className={`rounded border px-1.5 py-0.5 ${
                               s.maxPct === 0 ? "text-muted-foreground line-through" : "text-foreground"
@@ -143,7 +139,7 @@ export function FundingPlanList({
                           </span>
                         </li>
                       ))}
-                    </ol>
+                    </ul>
 
                     {plan.unfunded.length > 0 && (
                       <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-500">
@@ -182,7 +178,7 @@ export function FundingPlanList({
                           description={
                             used > 0
                               ? "It is still used by a scenario or work plan, so deletion will be refused. Choose another plan on those first."
-                              : "The plan and its category order are deleted. This cannot be undone."
+                              : "The plan and its category limits are deleted. This cannot be undone."
                           }
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -199,7 +195,7 @@ export function FundingPlanList({
             <form action={makeDefault} className="pt-1">
               <input type="hidden" name="id" value="" />
               <Button type="submit" size="sm" variant="ghost">
-                Clear the default — go back to no category order
+                Clear the default — go back to no category limits
               </Button>
             </form>
           )}
@@ -223,16 +219,7 @@ function FundingPlanEditor({
   onClose: () => void;
 }) {
   const [values, setValues] = useState(draft);
-  const [dragging, setDragging] = useState<number | null>(null);
   const dirty = JSON.stringify(values) !== JSON.stringify(draft);
-
-  const move = (from: number, to: number) => {
-    if (to < 0 || to >= values.steps.length || from === to) return;
-    const steps = [...values.steps];
-    const [held] = steps.splice(from, 1);
-    steps.splice(to, 0, held);
-    setValues((v) => ({ ...v, steps }));
-  };
 
   const setPct = (index: number, pct: number) =>
     setValues((v) => ({ ...v, steps: v.steps.map((s, i) => (i === index ? { ...s, pct } : s)) }));
@@ -247,28 +234,22 @@ function FundingPlanEditor({
   const total = values.steps.reduce((sum, s) => sum + s.pct, 0);
   const allZero = values.steps.length > 0 && values.steps.every((s) => s.pct === 0);
   const strands = total < 100 && values.steps.length > 0 && values.steps.every((s) => s.pct < 100);
-  // An uncapped category early in the order can take the whole year before
-  // anything below it is reached. "Every category at 100%" reads as neutral
-  // and is not: it is "the first category, exhaustively". Measured on the seed
-  // network, an all-100% plan spent 85% on rehabilitation and 2% on renewal.
-  const starvesFrom = values.steps.findIndex((s) => s.pct >= 100);
-  const starves = starvesFrom >= 0 && starvesFrom < values.steps.length - 1;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>{draft.id ? `Edit ${draft.name}` : "New funding plan"}</CardTitle>
         <p className="text-sm font-normal text-muted-foreground">
-          Categories are funded in the order below. The first takes what it can up to its share, then the second, and
-          so on — so the order decides what is bought before the money runs out, not just how much of it.
+          The most of each year&apos;s budget each category may take. The year&apos;s work is chosen across all categories
+          at once — each step up judged by what it adds for its extra cost — and a category stops being funded when
+          it reaches its share. A category left out is never funded.
         </p>
       </CardHeader>
       <CardContent>
         <form action={action} className="space-y-4">
           <input type="hidden" name="id" value={values.id} />
-          {/* The list is posted as one ordered field. Separate inputs per row
-              would carry the order only by document position, which survives
-              this form but not a change to how it is rendered. */}
+          {/* The limits are posted as one JSON field, parsed and validated on
+              the server like the rest of the plan. */}
           <input
             type="hidden"
             name="steps"
@@ -282,7 +263,7 @@ function FundingPlanEditor({
                 id="fp-name"
                 name="name"
                 required
-                placeholder="e.g. Repair first, renew with what is left"
+                placeholder="e.g. Renewal capped at a fifth"
                 value={values.name}
                 onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
                 className={input}
@@ -303,8 +284,8 @@ function FundingPlanEditor({
 
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label>Spending order</Label>
-              <span className="text-xs text-muted-foreground">Drag to reorder, or use the arrows</span>
+              <Label>Limit per category</Label>
+              <span className="text-xs text-muted-foreground">100% means no limit of its own</span>
             </div>
 
             {values.steps.length === 0 && (
@@ -313,26 +294,12 @@ function FundingPlanEditor({
               </p>
             )}
 
-            <ol className="space-y-2">
+            <ul className="space-y-2">
               {values.steps.map((step, index) => (
                 <li
                   key={step.category}
-                  draggable
-                  onDragStart={() => setDragging(index)}
-                  onDragEnd={() => setDragging(null)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (dragging != null) move(dragging, index);
-                    setDragging(null);
-                  }}
-                  className={`flex flex-wrap items-center gap-3 rounded-md border bg-background p-3 ${
-                    dragging === index ? "opacity-50" : ""
-                  }`}
+                  className="flex flex-wrap items-center gap-3 rounded-md border bg-background p-3"
                 >
-                  <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden />
-                  <span className="w-6 shrink-0 text-sm tabular-nums text-muted-foreground">{index + 1}</span>
-
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium">{step.category}</span>
                     <span className="block text-xs text-muted-foreground">{CATEGORY_DESCRIPTIONS[step.category]}</span>
@@ -355,30 +322,7 @@ function FundingPlanEditor({
                     </label>
                   </span>
 
-                  {/* Arrows as well as dragging: a drag is unusable by keyboard
-                      and awkward on a touchpad, and reordering five rows is
-                      not worth making someone fight for. */}
                   <span className="flex shrink-0 items-center gap-0.5">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Move ${step.category} earlier`}
-                      disabled={index === 0}
-                      onClick={() => move(index, index - 1)}
-                    >
-                      <ArrowUp className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Move ${step.category} later`}
-                      disabled={index === values.steps.length - 1}
-                      onClick={() => move(index, index + 1)}
-                    >
-                      <ArrowDown className="h-3.5 w-3.5" />
-                    </Button>
                     <Button
                       type="button"
                       size="sm"
@@ -392,7 +336,7 @@ function FundingPlanEditor({
                   </span>
                 </li>
               ))}
-            </ol>
+            </ul>
 
             {missing.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -413,19 +357,6 @@ function FundingPlanEditor({
             )}
           </div>
 
-          {starves && !allZero && (
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-500">
-              <span className="font-medium">{values.steps[starvesFrom].category} is uncapped and not last.</span> It
-              may take the whole year before{" "}
-              {values.steps
-                .slice(starvesFrom + 1)
-                .map((s) => s.category)
-                .join(", ")}{" "}
-              {values.steps.length - starvesFrom === 2 ? "is" : "are"} reached at all. A category at 100% is usually
-              meant to go last, where it absorbs whatever the ones before it left.
-            </p>
-          )}
-
           {allZero ? (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               Every category is at 0%, so a scenario using this plan would fund nothing at all.
@@ -434,7 +365,7 @@ function FundingPlanEditor({
             strands && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-500">
                 The shares total {total}% and none is 100%, so at least {100 - total}% of every year cannot be spent by
-                anything. Leaving the last category at 100% is the usual way to let it absorb what the others leave.
+                anything. Leaving at least one category at 100% lets it use what the others do not.
               </p>
             )
           )}

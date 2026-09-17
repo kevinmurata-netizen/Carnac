@@ -143,8 +143,8 @@ export async function createScenario(
     /** Which named category weighting this scenario leans by. Null uses the
      * organization's default set. */
     categoryWeightSetId?: string | null;
-    /** How its budget is divided between categories, and in what order. Null
-     * means no category order at all. */
+    /** The most of its budget each category may take. Null
+     * means no category limits at all. */
     categoryFundingPlanId?: string | null;
     /** The set it belongs to. Null leaves it on its own. */
     scenarioSetId?: string | null;
@@ -188,8 +188,8 @@ export async function updateScenario(
     /** Which named category weighting this scenario leans by. Null uses the
      * organization's default set. */
     categoryWeightSetId?: string | null;
-    /** How its budget is divided between categories, and in what order. Null
-     * means no category order at all. */
+    /** The most of its budget each category may take. Null
+     * means no category limits at all. */
     categoryFundingPlanId?: string | null;
     /** The set it belongs to. Null takes it out of any set. */
     scenarioSetId?: string | null;
@@ -264,8 +264,7 @@ export async function loadScenarioRun(
     // How far this scenario leans toward each kind of work, as a multiplier
     // on the Priority Score.
     resolveCategoryWeights(organizationId, scenario.categoryWeightSetId),
-    // How its budget is divided between categories, and in what order they
-    // spend. Null means one pass down the ranked list.
+    // The most of its budget each category may take. Null means no category limits, only the year's budget.
     resolveFundingPlan(organizationId, scenario.categoryFundingPlanId),
     // And what it is allowed to consider at all. Null means the whole library.
     resolveOptionSelection(organizationId, scenarioId),
@@ -526,7 +525,7 @@ export type ScenarioSummary = {
   categoryWeightSetId: string | null;
   categoryWeightSetName: string | null;
   /** The named funding plan this scenario spends by, when it names one. Null
-   * means no category order: one pass down the ranked list. */
+   * means no category limits, only the year's budget. */
   categoryFundingPlanId: string | null;
   categoryFundingPlanName: string | null;
   /** When the stored results were produced, and how long that took. Null until
