@@ -71,8 +71,9 @@ export function TreatmentLibrary({
               <div className="space-y-2">
                 <p>
                   <span className="font-medium text-foreground">{selected.map((t) => t.name).join(", ")}</span> will
-                  be copied with their rules, blocks, prices and effects, each named &ldquo;(copy)&rdquo;. Rules and
-                  effects are shared, so the copies use the same ones.
+                  be copied with {selected.length === 1 ? "its" : "their"} rules, blocks, prices and effects, named
+                  &ldquo;(copy)&rdquo;. Rules and effects are shared, so {selected.length === 1 ? "the copy uses" : "the copies use"}{" "}
+                  the same ones.
                 </p>
                 <p className="text-amber-700 dark:text-amber-500">
                   A copy is offered wherever the original is — in Treatment Planning and in any scenario that considers
