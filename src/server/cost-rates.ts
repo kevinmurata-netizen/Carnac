@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { copyName, takenNames } from "@/lib/copy-name";
 import { describeNode } from "@/domain/waterline/decision-tree";
 import { parseRules } from "@/server/rules";
 
@@ -75,6 +76,7 @@ export async function listAllCostRates(organizationId: string) {
     treatmentId: r.treatment.id,
     treatmentName: r.treatment.name,
     name: r.name,
+    ruleId: r.ruleId,
     ruleName: r.rule?.name ?? null,
     unitCost: r.unitCost,
     costUnit: r.costUnit,
@@ -185,6 +187,112 @@ export async function setTreatmentCosts(
       })),
     }),
   ]);
+}
+
+/** Why a fallback price is never bulk deleted or copied, in one place so the
+ * list, the confirmation and the result all say the same thing. */
+export const FALLBACK_DELETE_REASON =
+  "it is the fallback — every treatment needs one price with no rule, or assets no rule matches cannot be priced";
+export const FALLBACK_COPY_REASON =
+  "it is the fallback — a second price with no rule would never be charged";
+
+/**
+ * Delete several prices, from any treatments, at once.
+ *
+ * A fallback is kept: deleting it would leave its treatment unable to price
+ * any asset its rules miss. Every other price can go — what it charged is
+ * then charged by the next price down whose rule matches, ending at the
+ * fallback, so the treatment stays priceable.
+ */
+export async function deleteCostRates(
+  organizationId: string,
+  ids: string[]
+): Promise<{ deleted: string[]; kept: Array<{ name: string; reason: string }> }> {
+  const rows = await prisma.treatmentCostRate.findMany({
+    where: { id: { in: ids }, treatment: { assetType: { code: "WATERLINE", organizationId } } },
+    include: { treatment: { select: { name: true } } },
+    orderBy: [{ treatment: { name: "asc" } }, { sortOrder: "asc" }],
+  });
+  const label = (r: (typeof rows)[number]) => `${r.treatment.name}: ${r.name}`;
+
+  const deletable = rows.filter((r) => r.ruleId != null);
+  const kept = rows.filter((r) => r.ruleId == null).map((r) => ({ name: label(r), reason: FALLBACK_DELETE_REASON }));
+
+  if (deletable.length > 0) {
+    await prisma.treatmentCostRate.deleteMany({
+      where: {
+        id: { in: deletable.map((r) => r.id) },
+        ruleId: { not: null },
+        treatment: { assetType: { code: "WATERLINE", organizationId } },
+      },
+    });
+  }
+  return { deleted: deletable.map(label), kept };
+}
+
+/**
+ * Copy several prices. Each copy goes directly below its original, on the
+ * same treatment, named "(copy)".
+ *
+ * A copy has its original's rule, and prices are tried top to bottom with the
+ * first match charged — so the copy is never reached until its rule is
+ * changed, and copying changes no price anyone pays. A fallback is not
+ * copied: a second price with no rule could never be reached at all.
+ */
+export async function copyCostRates(
+  organizationId: string,
+  ids: string[]
+): Promise<{ copied: string[]; skipped: Array<{ name: string; reason: string }> }> {
+  const picked = await prisma.treatmentCostRate.findMany({
+    where: { id: { in: ids }, treatment: { assetType: { code: "WATERLINE", organizationId } } },
+    select: { id: true, treatmentId: true },
+  });
+  const pickedIds = new Set(picked.map((p) => p.id));
+  const treatments = await prisma.treatment.findMany({
+    where: { id: { in: [...new Set(picked.map((p) => p.treatmentId))] } },
+    include: { costRates: { orderBy: { sortOrder: "asc" } } },
+    orderBy: { name: "asc" },
+  });
+
+  const copied: string[] = [];
+  const skipped: Array<{ name: string; reason: string }> = [];
+  const writes = [];
+
+  for (const t of treatments) {
+    const taken = takenNames(t.costRates);
+    let position = 0;
+    for (const rate of t.costRates) {
+      if (rate.sortOrder !== position) {
+        writes.push(prisma.treatmentCostRate.update({ where: { id: rate.id }, data: { sortOrder: position } }));
+      }
+      position++;
+      if (!pickedIds.has(rate.id)) continue;
+      if (rate.ruleId == null) {
+        skipped.push({ name: `${t.name}: ${rate.name}`, reason: FALLBACK_COPY_REASON });
+        continue;
+      }
+      const name = copyName(rate.name, taken);
+      writes.push(
+        prisma.treatmentCostRate.create({
+          data: {
+            treatmentId: t.id,
+            name,
+            sortOrder: position,
+            ruleId: rate.ruleId,
+            unitCost: rate.unitCost,
+            costUnit: rate.costUnit,
+            mobilizationCost: rate.mobilizationCost,
+            annualMaintenanceCost: rate.annualMaintenanceCost,
+          },
+        })
+      );
+      copied.push(`${t.name}: ${name}`);
+      position++;
+    }
+  }
+
+  if (writes.length > 0) await prisma.$transaction(writes);
+  return { copied, skipped };
 }
 
 /** The single fallback rate a newly created treatment starts with, so it is

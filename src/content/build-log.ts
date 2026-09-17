@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-17",
+    title: "Copy or delete several prices at once",
+    summary:
+      "The Treatment Costs grid gains the same checkboxes, Select all, Copy selected and Delete selected as the other treatment lists, working across treatments.",
+    changes: [
+      "Deleting a price asks first and says what happens: assets it priced are charged by the next price down whose rule matches, ending at the treatment's fallback.",
+      "A treatment's fallback — its one price with no rule — is never deleted or copied, since every treatment needs exactly one. The confirmation and the result list any that were kept and why, so Select all is safe.",
+      "A copy is placed directly below its original with the same rule, named “(copy)”. Because the first matching price is charged, the copy is not used until you change its rule, so copying changes no price anyone pays.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-17",
     title: "Effects, rules and prices open in a pop-up",
     summary:
       "On the Treatment Effects and Treatment Rules pages, clicking an item or New opens the editor in a pop-up instead of a section further down the page. On Treatment Costs, clicking a treatment opens its prices in a pop-up rather than leaving for the treatment's page.",

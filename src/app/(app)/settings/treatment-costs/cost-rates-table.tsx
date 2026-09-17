@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { BulkDeleteBar, SelectAllCheckbox, useBulkSelection } from "@/components/ui/bulk-delete";
 import { Badge } from "@/components/ui/badge";
 import { EditorDialog } from "@/components/ui/editor-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,12 +11,17 @@ import { formatCurrency } from "@/lib/format";
 import type { RuleSummary } from "@/server/rules";
 import { CostEditor } from "../treatments/[id]/cost-editor";
 import { openTreatmentCostsAction, setTreatmentCostsAction } from "../treatments/[id]/actions";
+import { bulkCostRatesAction, type BulkCostState } from "./actions";
+
+const EMPTY: BulkCostState = { status: "idle", message: null };
 
 export type CostRateListRow = {
   id: string;
   treatmentId: string;
   treatmentName: string;
   name: string;
+  /** Null for the treatment's fallback, which can be neither deleted nor copied. */
+  ruleId: string | null;
   ruleName: string | null;
   unitCost: number;
   costUnit: string;
@@ -33,6 +39,9 @@ export type CostRateListRow = {
  *
  * A role that can read prices but not change treatments gets a link instead,
  * landing on the What it costs section rather than the top of the treatment.
+ *
+ * Prices can also be ticked across treatments to copy or delete several at
+ * once. A fallback is never either: every treatment needs exactly one.
  */
 export function CostRatesTable({
   rates,
@@ -44,6 +53,13 @@ export function CostRatesTable({
   canEdit: boolean;
   canEditRules: boolean;
 }) {
+  const [state, submit, pending] = useActionState(bulkCostRatesAction, EMPTY);
+  const selection = useBulkSelection(rates, state);
+  // A fallback cannot be deleted or copied, so the dialog splits it out.
+  const deletable = selection.selected.filter((r) => r.ruleId != null);
+  const fallbacks = selection.selected.filter((r) => r.ruleId == null);
+  const d = deletable.length;
+
   const [openId, setOpenId] = useState<string | null>(null);
   // Bumped per opening, so each opening fetches fresh and the editor starts
   // from what is stored now.
@@ -70,7 +86,10 @@ export function CostRatesTable({
   // Rules fetched again after one is written from inside the pop-up, so it
   // appears in the price's rule list — without refetching the prices, which
   // would throw away what is being edited.
-  const [freshRules, setFreshRules] = useState<{ opening: number; rules: RuleSummary[] } | null>(null);
+  const [freshRules, setFreshRules] = useState<{
+    opening: number;
+    rules: RuleSummary[];
+  } | null>(null);
   const refreshRules = async () => {
     if (!openId) return;
     const thisOpening = opening;
@@ -90,59 +109,149 @@ export function CostRatesTable({
   for (const rate of rates) groups.set(rate.treatmentId, [...(groups.get(rate.treatmentId) ?? []), rate]);
 
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Treatment</TableHead>
-            <TableHead>Price</TableHead>
-            <TableHead>Applies when</TableHead>
-            <TableHead className="text-right">Unit Cost</TableHead>
-            <TableHead className="text-right">Mobilization</TableHead>
-            <TableHead className="text-right">Maintenance / yr</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {[...groups.values()].flatMap((group) =>
-            group.map((r, index) => (
-              <TableRow key={r.id} className={r.treatmentId === openId ? "bg-muted/50" : undefined}>
-                <TableCell>
-                  {/* Only the first row of each treatment is labelled, so the
-                      grouping reads at a glance. */}
-                  {index !== 0 ? (
-                    <span className="sr-only">{r.treatmentName}</span>
-                  ) : canEdit ? (
-                    <button
-                      type="button"
-                      onClick={() => open(r.treatmentId)}
-                      className="text-left font-medium text-primary hover:underline"
-                      title={`Edit ${r.treatmentName}'s prices`}
-                    >
-                      {r.treatmentName}
-                    </button>
-                  ) : (
-                    <Link
-                      href={`/settings/treatments/${r.treatmentId}#costs`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {r.treatmentName}
-                    </Link>
+    <div>
+      {state.status !== "idle" && state.message && (
+        <div className="px-4 pt-4">
+          <div
+            className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm ${
+              state.status === "error"
+                ? "border-destructive/40 bg-destructive/5"
+                : "border-emerald-600/40 bg-emerald-50/50 dark:bg-emerald-950/20"
+            }`}
+          >
+            {state.status === "error" ? (
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            ) : (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            )}
+            <span>{state.message}</span>
+          </div>
+        </div>
+      )}
+
+      {canEdit && (
+        <BulkDeleteBar
+          selection={selection}
+          action={submit}
+          pending={pending}
+          noun="prices"
+          copy={{}}
+          // Only fallbacks ticked: the dialog explains why, and OK only closes it.
+          onConfirm={d === 0 ? () => {} : undefined}
+          title={d === 0 ? "None of these can be deleted" : `Delete ${d} price${d === 1 ? "" : "s"}?`}
+          confirmLabel={d === 0 ? "OK" : `Delete ${d} price${d === 1 ? "" : "s"}`}
+          description={
+            <div className="space-y-2">
+              {d > 0 && (
+                <p>
+                  <span className="font-medium text-foreground">
+                    {deletable.map((r) => `${r.treatmentName}: ${r.name}`).join(", ")}
+                  </span>{" "}
+                  will be deleted. Assets {d === 1 ? "it" : "they"} priced are then charged by the next price down whose
+                  rule matches, ending at the treatment&apos;s fallback. This cannot be undone.
+                </p>
+              )}
+              {fallbacks.length > 0 && (
+                <div className="text-amber-700 dark:text-amber-500">
+                  <p>
+                    {fallbacks.length === 1 ? "This fallback is" : `These ${fallbacks.length} fallbacks are`} kept —
+                    every treatment needs one price with no rule, or assets no rule matches cannot be priced:
+                  </p>
+                  <ul className="mt-1 max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5">
+                    {fallbacks.map((r) => (
+                      <li key={r.id}>
+                        <span className="font-medium">{r.treatmentName}</span>: {r.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          }
+        />
+      )}
+
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {canEdit && (
+                <TableHead className="w-10">
+                  <SelectAllCheckbox
+                    selection={selection}
+                    rowCount={rates.length}
+                    disabled={pending}
+                    label="Select all prices"
+                  />
+                </TableHead>
+              )}
+              <TableHead>Treatment</TableHead>
+              <TableHead>Price</TableHead>
+              <TableHead>Applies when</TableHead>
+              <TableHead className="text-right">Unit Cost</TableHead>
+              <TableHead className="text-right">Mobilization</TableHead>
+              <TableHead className="text-right">Maintenance / yr</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {[...groups.values()].flatMap((group) =>
+              group.map((r, index) => (
+                <TableRow
+                  key={r.id}
+                  className={
+                    selection.isPicked(r.id) ? "bg-muted/40" : r.treatmentId === openId ? "bg-muted/50" : undefined
+                  }
+                >
+                  {canEdit && (
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-primary align-middle"
+                        aria-label={`Select ${r.treatmentName}: ${r.name}`}
+                        checked={selection.isPicked(r.id)}
+                        disabled={pending}
+                        onChange={() => selection.toggle(r.id)}
+                      />
+                    </TableCell>
                   )}
-                </TableCell>
-                <TableCell className="font-medium">{r.name}</TableCell>
-                <TableCell className="whitespace-normal break-words text-sm">
-                  {r.ruleName ? r.ruleName : <Badge variant="secondary">anything else</Badge>}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right">
-                  {formatCurrency(r.unitCost)} {r.costUnit}
-                </TableCell>
-                <TableCell className="text-right">{formatCurrency(r.mobilizationCost)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(r.annualMaintenanceCost)}</TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+                  <TableCell>
+                    {/* Only the first row of each treatment is labelled, so the
+                      grouping reads at a glance. */}
+                    {index !== 0 ? (
+                      <span className="sr-only">{r.treatmentName}</span>
+                    ) : canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => open(r.treatmentId)}
+                        className="text-left font-medium text-primary hover:underline"
+                        title={`Edit ${r.treatmentName}'s prices`}
+                      >
+                        {r.treatmentName}
+                      </button>
+                    ) : (
+                      <Link
+                        href={`/settings/treatments/${r.treatmentId}#costs`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {r.treatmentName}
+                      </Link>
+                    )}
+                  </TableCell>
+                  <TableCell className="font-medium">{r.name}</TableCell>
+                  <TableCell className="whitespace-normal break-words text-sm">
+                    {r.ruleName ? r.ruleName : <Badge variant="secondary">anything else</Badge>}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-right">
+                    {formatCurrency(r.unitCost)} {r.costUnit}
+                  </TableCell>
+                  <TableCell className="text-right">{formatCurrency(r.mobilizationCost)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(r.annualMaintenanceCost)}</TableCell>
+                </TableRow>
+              )),
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       <EditorDialog
         open={openId != null}
