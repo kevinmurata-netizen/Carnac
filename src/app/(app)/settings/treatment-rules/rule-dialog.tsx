@@ -5,27 +5,31 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { EditorDialog } from "@/components/ui/editor-dialog";
 import type { RuleEffect } from "@/domain/waterline/decision-tree";
-import { RuleEditor } from "../../treatment-rules/rule-editor";
-import { openRuleAction, saveRuleAction, type OpenedRule } from "../../treatment-rules/actions";
+import { RuleEditor } from "./rule-editor";
+import { openRuleAction, saveRuleAction, deleteRuleAction, type OpenedRule } from "./actions";
 
 /** What to open: an existing rule, or a new one of the given kind. */
 export type RuleRequest = { id: string } | { id: null; effect: RuleEffect };
 
 /**
- * A rule, written or edited in a pop-up over the treatment that uses it.
+ * A rule, written or edited in a pop-up — over the Treatment Rules list, or
+ * over a treatment that uses it.
  *
- * Opening the Treatment Rules page meant leaving the treatment, with the
- * browser's back button as the only way home. Here the treatment stays put:
- * Cancel or Save & close and you are exactly where you were.
+ * Opening a rule used to mean leaving where you were: a section far down the
+ * rules page, or the rules page itself from a treatment, with the browser's
+ * back button as the only way home. Here nothing underneath moves: Cancel or
+ * Save & close and you are exactly where you were.
  *
- * The rule and its sample segments are fetched as it opens, not with the
- * treatment page. `onSaved` reports the rule's id and whether it allows or
- * blocks, so a new rule can be added to the treatment where it was written.
+ * The rule and its sample segments are fetched as it opens, not with the page
+ * beneath. `onSaved` reports the rule's id and whether it allows or blocks, so
+ * a new rule can be added to a treatment where it was written.
  */
 export function RuleDialog({
   request,
   usedBy,
   addingTo,
+  allowDelete = false,
+  addsOnCreate = false,
   onClose,
   onSaved,
 }: {
@@ -35,6 +39,11 @@ export function RuleDialog({
   usedBy: string[];
   /** Where a new rule goes once created, said in the dialog's description. */
   addingTo?: string;
+  /** Offer Delete — on the rules list, not over a treatment, where deleting a
+   * shared rule is not what anyone came to do. */
+  allowDelete?: boolean;
+  /** A new rule joins the treatment it was written from ("Create & add"). */
+  addsOnCreate?: boolean;
   onClose: () => void;
   onSaved?: (id: string, effect: RuleEffect, close: boolean) => void;
 }) {
@@ -87,7 +96,13 @@ export function RuleDialog({
             fieldOptions={rule.fieldOptions}
             onSave={saveRuleAction}
             inDialog
+            addsOnCreate={addsOnCreate}
             onCancel={onClose}
+            onDelete={allowDelete ? deleteRuleAction : undefined}
+            onDeleted={() => {
+              onClose();
+              router.refresh();
+            }}
             onSaved={(id, effect, close) => {
               onSaved?.(id, effect, close);
               router.refresh();

@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState } from "react";
-import Link from "next/link";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BulkDeleteBar, SelectAllCheckbox, useBulkSelection } from "@/components/ui/bulk-delete";
@@ -27,10 +26,14 @@ export function EffectList({
   effects,
   selectedId,
   canEdit,
+  onOpen,
 }: {
   effects: EffectSummary[];
+  /** The effect open in the editor, highlighted in the list. */
   selectedId: string | null;
   canEdit: boolean;
+  /** Open an effect in the editor. */
+  onOpen: (id: string) => void;
 }) {
   const [state, submit, pending] = useActionState(bulkEffectsAction, EMPTY);
   const selection = useBulkSelection(effects, state);
@@ -132,9 +135,17 @@ export function EffectList({
                     </TableCell>
                   )}
                   <TableCell>
-                    <Link href={`/settings/treatment-effects?effect=${e.id}`} className="font-medium text-primary hover:underline">
-                      {e.name}
-                    </Link>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpen(e.id)}
+                        className="text-left font-medium text-primary hover:underline"
+                      >
+                        {e.name}
+                      </button>
+                    ) : (
+                      <span className="font-medium">{e.name}</span>
+                    )}
                     {e.description && <div className="text-xs text-muted-foreground">{e.description}</div>}
                   </TableCell>
                   <TableCell className="text-sm tabular-nums">{conditionText(e)}</TableCell>

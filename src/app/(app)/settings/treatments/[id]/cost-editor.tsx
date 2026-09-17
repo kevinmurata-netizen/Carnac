@@ -11,7 +11,7 @@ import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { Plus, Trash2, ArrowUp, ArrowDown, CircleDot } from "lucide-react";
 import type { CostRateRow } from "@/server/cost-rates";
 import type { RuleSummary } from "@/server/rules";
-import { RuleDialog, type RuleRequest } from "./rule-dialog";
+import { RuleDialog, type RuleRequest } from "../../treatment-rules/rule-dialog";
 
 const control =
   "h-8 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -44,6 +44,10 @@ export function CostEditor({
   canEditRules,
   onSave,
   onChange,
+  inDialog = false,
+  onCancel,
+  onSaved,
+  onRuleSaved,
 }: {
   treatmentName: string;
   initial: CostRateRow[];
@@ -53,6 +57,14 @@ export function CostEditor({
   canEditRules: boolean;
   onSave?: (rates: Draft[]) => Promise<{ ok: boolean; message: string }>;
   onChange?: (rates: Draft[]) => void;
+  /** In a pop-up (the Treatment Costs page): Cancel, Save and Save & close
+   * along the bottom, in place of Discard and Save beside Add a price. */
+  inDialog?: boolean;
+  onCancel?: () => void;
+  onSaved?: (close: boolean) => void;
+  /** A rule was written from here. On a page the refresh brings it into the
+   * rule lists; a pop-up that fetched its rules itself needs telling. */
+  onRuleSaved?: () => void;
 }) {
   const router = useRouter();
   const toDraft = (r: CostRateRow): Draft => ({
@@ -112,7 +124,7 @@ export function CostEditor({
       return next;
     });
 
-  const save = async () => {
+  const save = async (close = false) => {
     if (!onSave) return;
     setBusy(true);
     setResult(null);
@@ -121,6 +133,7 @@ export function CostEditor({
     if (outcome.ok) {
       setSaved(rates);
       router.refresh();
+      onSaved?.(close);
     }
     setBusy(false);
   };
@@ -164,10 +177,10 @@ export function CostEditor({
               <Plus className="mr-1 h-3.5 w-3.5" />
               Add a price
             </Button>
-            {onSave && (
+            {onSave && !inDialog && (
               <>
                 <CancelOrDiscard dirty={dirty} onDiscard={() => setRates(saved)} disabled={busy} />
-                <Button type="button" size="sm" onClick={save} disabled={busy || !dirty}>
+                <Button type="button" size="sm" onClick={() => save()} disabled={busy || !dirty}>
                   {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
                 </Button>
               </>
@@ -322,11 +335,26 @@ export function CostEditor({
         {result && <p className={`text-sm ${result.ok ? "text-emerald-600" : "text-destructive"}`}>{result.message}</p>}
       </div>
 
+      {inDialog && canEdit && onSave && (
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+          <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={busy}>
+            {dirty ? "Cancel" : "Close"}
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => save(false)} disabled={busy || !dirty}>
+            {busy ? "Saving…" : "Save"}
+          </Button>
+          <Button type="button" size="sm" onClick={() => save(true)} disabled={busy || !dirty}>
+            {busy ? "Saving…" : "Save & close"}
+          </Button>
+        </div>
+      )}
+
       <RuleDialog
         request={request}
         usedBy={[]}
         addingTo="offered in each price's rule list here"
         onClose={() => setRequest(null)}
+        onSaved={() => onRuleSaved?.()}
       />
     </div>
   );

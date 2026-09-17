@@ -1,21 +1,19 @@
-import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, canWriteCard } from "@/server/guard";
 import { listAllCostRates } from "@/server/cost-rates";
 import { PageHeader } from "@/components/layout/page-header";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatCurrency } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
+import { CostRatesTable } from "./cost-rates-table";
 
 /**
  * Every price in the library on one screen.
  *
- * Rates are edited on the treatment they belong to, because a price is
- * meaningless without the work it pays for. This is the other view of the same
- * data: the one that makes an annual rate review a single pass rather than
- * thirteen visits.
+ * Rates belong to the treatment they price, because a price is meaningless
+ * without the work it pays for. This is the other view of the same data: the
+ * one that makes an annual rate review a single pass rather than thirteen
+ * visits — and a treatment's prices open in a pop-up here, so the review never
+ * has to leave the page.
  */
 export default async function TreatmentCostsPage() {
   const session = await auth();
@@ -23,24 +21,24 @@ export default async function TreatmentCostsPage() {
   const pageTitle = await getPageName(organizationId, "/settings/treatment-costs", "Treatment Costs");
   await requireCard("/settings/treatment-costs");
 
-  const rates = await listAllCostRates(organizationId);
+  const [rates, canEdit, canEditRules] = await Promise.all([
+    listAllCostRates(organizationId),
+    // Prices are saved on the treatment, so changing them is the treatment
+    // library's permission rather than this card's.
+    canWriteCard("/settings/treatments"),
+    canWriteCard("/settings/treatment-rules"),
+  ]);
 
-  // Grouped so the order a treatment tries its rates in is visible, which is
-  // what decides which one an asset is charged.
-  const byTreatment = new Map<string, typeof rates>();
-  for (const rate of rates) {
-    const list = byTreatment.get(rate.treatmentId) ?? [];
-    list.push(rate);
-    byTreatment.set(rate.treatmentId, list);
-  }
-
+  const treatmentCount = new Set(rates.map((r) => r.treatmentId)).size;
   const ruleSelected = rates.filter((r) => r.ruleName).length;
 
   return (
     <div>
       <PageHeader
         title={pageTitle}
-        description="What each treatment costs, and the rule that picks each price. Edited on the treatment itself; gathered here so a rate review is one screen."
+        description={`What each treatment costs, and the rule that picks each price. ${
+          canEdit ? "Click a treatment to change its prices." : "Changed on the treatment itself."
+        }`}
       />
 
       <Card>
@@ -48,7 +46,7 @@ export default async function TreatmentCostsPage() {
           <CardTitle>
             Rates <span className="text-muted-foreground">({rates.length})</span>
             <span className="ml-2 text-xs font-normal text-muted-foreground">
-              across {byTreatment.size} treatment{byTreatment.size === 1 ? "" : "s"}
+              across {treatmentCount} treatment{treatmentCount === 1 ? "" : "s"}
               {ruleSelected > 0 ? ` · ${ruleSelected} selected by a rule` : ""}
             </span>
           </CardTitle>
@@ -59,62 +57,14 @@ export default async function TreatmentCostsPage() {
               No rates yet. A treatment with no rate cannot be priced, so it is never recommended.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Treatment</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Applies when</TableHead>
-                    <TableHead className="text-right">Unit Cost</TableHead>
-                    <TableHead className="text-right">Mobilization</TableHead>
-                    <TableHead className="text-right">Maintenance / yr</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[...byTreatment.values()].flatMap((group) =>
-                    group.map((r, index) => (
-                      <TableRow key={r.id}>
-                        <TableCell>
-                          {/* Only the first row of each treatment is labelled, so
-                              the grouping reads at a glance. */}
-                          {index === 0 ? (
-                            <Link
-                              href={`/settings/treatments/${r.treatmentId}`}
-                              className="font-medium text-primary hover:underline"
-                            >
-                              {r.treatmentName}
-                            </Link>
-                          ) : (
-                            <span className="sr-only">{r.treatmentName}</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="font-medium">{r.name}</TableCell>
-                        <TableCell className="whitespace-normal break-words text-sm">
-                          {r.ruleName ? (
-                            r.ruleName
-                          ) : (
-                            <Badge variant="secondary">anything else</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right">
-                          {formatCurrency(r.unitCost)} {r.costUnit}
-                        </TableCell>
-                        <TableCell className="text-right">{formatCurrency(r.mobilizationCost)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(r.annualMaintenanceCost)}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
+            <CostRatesTable rates={rates} canEdit={canEdit} canEditRules={canEditRules} />
           )}
         </CardContent>
       </Card>
 
       <p className="mt-3 text-xs text-muted-foreground">
         Rates are tried top to bottom within a treatment and the first whose rule matches is charged, so the order
-        shown here is the order the model uses. Change a price on its treatment.
+        shown here is the order the model uses.
       </p>
     </div>
   );

@@ -20,7 +20,7 @@ import {
   type RuleNode,
 } from "@/domain/waterline/decision-tree";
 import type { RuleSummary } from "@/server/rules";
-import { RuleDialog, type RuleRequest } from "./rule-dialog";
+import { RuleDialog, type RuleRequest } from "../../treatment-rules/rule-dialog";
 
 const control =
   "h-8 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -272,6 +272,7 @@ export function RuleTreeEditor({
               ? "added to this treatment where you started it"
               : undefined
         }
+        addsOnCreate={target != null}
         onClose={() => {
           setRequest(null);
           setTarget(null);
