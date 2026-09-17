@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState } from "react";
-import Link from "next/link";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -25,11 +24,14 @@ export function RuleList({
   rules,
   selectedId,
   canEdit,
+  onOpen,
 }: {
   rules: RuleSummary[];
-  /** The rule open in the editor below, highlighted in the list. */
+  /** The rule open in the editor, highlighted in the list. */
   selectedId: string | null;
   canEdit: boolean;
+  /** Open a rule in the editor. */
+  onOpen: (id: string) => void;
 }) {
   const [state, submit, pending] = useActionState(bulkRulesAction, EMPTY);
   const selection = useBulkSelection(rules, state);
@@ -147,12 +149,17 @@ export function RuleList({
                     </TableCell>
                   )}
                   <TableCell>
-                    <Link
-                      href={`/settings/treatment-rules?rule=${r.id}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {r.name}
-                    </Link>
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpen(r.id)}
+                        className="text-left font-medium text-primary hover:underline"
+                      >
+                        {r.name}
+                      </button>
+                    ) : (
+                      <span className="font-medium">{r.name}</span>
+                    )}
                     {!r.enabled && <span className="ml-2 text-xs text-muted-foreground">(disabled)</span>}
                   </TableCell>
                   <TableCell>

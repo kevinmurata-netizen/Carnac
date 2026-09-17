@@ -66,8 +66,10 @@ export function RuleEditor({
   onSave,
   onDelete,
   onSaved,
+  onDeleted,
   onCancel,
   inDialog = false,
+  addsOnCreate = false,
 }: {
   initial: RuleDraft;
   usedBy: string[];
@@ -78,8 +80,13 @@ export function RuleEditor({
   onSave: (draft: RuleDraft) => Promise<{ ok: boolean; message: string; id?: string }>;
   onDelete?: (id: string) => Promise<{ ok: boolean; message: string }>;
   onSaved?: (id: string, effect: RuleEffect, close: boolean) => void;
+  /** In a pop-up, what to do once the rule is deleted. */
+  onDeleted?: () => void;
   onCancel?: () => void;
   inDialog?: boolean;
+  /** A new rule is added somewhere as it is created — to the treatment the
+   * pop-up was opened from — which is what "Create & add" promises. */
+  addsOnCreate?: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<RuleDraft>(initial);
@@ -138,7 +145,10 @@ export function RuleEditor({
     setResult(null);
     const outcome = await onDelete(draft.id);
     setResult(outcome);
-    if (outcome.ok) router.replace("/settings/treatment-rules");
+    if (outcome.ok) {
+      if (inDialog) onDeleted?.();
+      else router.replace("/settings/treatment-rules");
+    }
     setBusy(false);
   };
 
@@ -174,7 +184,7 @@ export function RuleEditor({
                 Unsaved changes
               </span>
             )}
-            {!inDialog && draft.id && onDelete && (
+            {draft.id && onDelete && (
               <ConfirmDelete
                 variant="ghost"
                 onConfirm={remove}
@@ -195,7 +205,7 @@ export function RuleEditor({
                   {busy ? "Saving…" : "Save"}
                 </Button>
                 <Button type="button" size="sm" onClick={() => save(true)} disabled={busy || !dirty}>
-                  {busy ? "Saving…" : draft.id ? "Save & close" : "Create & add"}
+                  {busy ? "Saving…" : draft.id ? "Save & close" : addsOnCreate ? "Create & add" : "Create & close"}
                 </Button>
               </>
             ) : (

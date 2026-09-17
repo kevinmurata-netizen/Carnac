@@ -10,23 +10,16 @@ import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { EditorDialog } from "@/components/ui/editor-dialog";
 import { combineEffects, effectLabel, roundMultiplier } from "@/domain/waterline/effect";
 import type { EffectSummary } from "@/server/effects";
-import { EffectEditor, BLANK_EFFECT, type EffectDraft } from "../../treatment-effects/effect-editor";
+import {
+  EffectEditor,
+  BLANK_EFFECT,
+  effectDraftOf as draftOf,
+  type EffectDraft,
+} from "../../treatment-effects/effect-editor";
 import { saveEffectAction } from "../../treatment-effects/actions";
 
 const control =
   "h-8 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-function draftOf(effect: EffectSummary): EffectDraft {
-  return {
-    id: effect.id,
-    name: effect.name,
-    description: effect.description ?? "",
-    conditionMode: effect.conditionMode,
-    conditionValue: effect.conditionValue == null ? "" : String(effect.conditionValue),
-    failureProbMultiplier: String(effect.failureProbMultiplier),
-    expectedLifeExtension: String(effect.expectedLifeExtension),
-  };
-}
 
 /**
  * The effects that say what a treatment does.

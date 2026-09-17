@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-17",
+    title: "Effects, rules and prices open in a pop-up",
+    summary:
+      "On the Treatment Effects and Treatment Rules pages, clicking an item or New opens the editor in a pop-up instead of a section further down the page. On Treatment Costs, clicking a treatment opens its prices in a pop-up rather than leaving for the treatment's page.",
+    changes: [
+      "Each pop-up has Cancel (or Close when nothing changed), Save, and Save & close. Delete is in the pop-up on the Effects and Rules pages.",
+      "A new effect or rule written on its own page says Create & close; written from a treatment it still says Create & add, since it joins that treatment.",
+      "The prices pop-up is the same editor as a treatment's What it costs section: add, reorder and remove prices, and write a rule without leaving — it appears in the price's rule list straight away.",
+      "A role that can view prices but not change treatments gets a link that lands on the What it costs section of the treatment, not the top of the page. Any section can now be linked to this way.",
+      "Old links that opened an effect or rule (…?effect= or …?rule=) now open it in the pop-up.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-17",
     title: "Copy several treatments, combinations, rules or effects at once",
     summary:
       "Every list with checkboxes (Treatments, Treatment Combinations, Treatment Rules and Treatment Effects) gains Copy selected beside Delete selected. Copies are named “(copy)”, then “(copy 2)” and so on.",

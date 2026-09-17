@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
-import { setTreatmentRuleTree } from "@/server/rules";
+import { setTreatmentRuleTree, listRules, type RuleSummary } from "@/server/rules";
 import { ruleIdsIn, type RuleGroup } from "@/domain/waterline/decision-tree";
-import { setTreatmentCosts, type CostRateInput } from "@/server/cost-rates";
+import { setTreatmentCosts, getTreatmentCosts, type CostRateInput, type TreatmentCosts } from "@/server/cost-rates";
 import { setTreatmentEffects } from "@/server/effects";
 
 /**
@@ -12,6 +12,28 @@ import { setTreatmentEffects } from "@/server/effects";
  * carries the same bar as editing the treatment itself.
  */
 /* Superseded by setTreatmentRuleTreeAction. */
+
+/**
+ * One treatment's prices and the rules they can choose from, for the prices
+ * pop-up on the Treatment Costs page. Fetched as it opens, so that page does
+ * not load every rule for a pop-up most visits never open.
+ */
+export async function openTreatmentCostsAction(
+  treatmentId: string
+): Promise<{ ok: true; costs: TreatmentCosts; rules: RuleSummary[] } | { ok: false; message: string }> {
+  try {
+    const session = await requireCardWrite(
+      "/settings/treatments",
+      "Only an Administrator can change what a treatment costs"
+    );
+    const organizationId = session.user.organizationId;
+    const [costs, rules] = await Promise.all([getTreatmentCosts(organizationId, treatmentId), listRules(organizationId)]);
+    if (!costs) throw new Error("That treatment no longer exists");
+    return { ok: true, costs, rules };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not open those prices" };
+  }
+}
 
 /**
  * What a treatment costs, and which rule picks each price. Same bar as editing
@@ -34,6 +56,7 @@ export async function setTreatmentCostsAction(
     for (const path of [
       "/settings/treatments",
       `/settings/treatments/${treatmentId}`,
+      "/settings/treatment-costs",
       "/treatment-planning",
       "/work-plan",
       "/scenario-planning",

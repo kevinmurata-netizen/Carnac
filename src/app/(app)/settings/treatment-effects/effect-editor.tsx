@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { describeEffect, type EffectConditionMode } from "@/domain/waterline/effect";
+import type { EffectSummary } from "@/server/effects";
 import type { EffectPayload } from "./actions";
 
 const input =
@@ -34,6 +35,19 @@ export const BLANK_EFFECT: EffectDraft = {
   expectedLifeExtension: "0",
 };
 
+/** A stored effect as the editor holds it. */
+export function effectDraftOf(effect: EffectSummary): EffectDraft {
+  return {
+    id: effect.id,
+    name: effect.name,
+    description: effect.description ?? "",
+    conditionMode: effect.conditionMode,
+    conditionValue: effect.conditionValue == null ? "" : String(effect.conditionValue),
+    failureProbMultiplier: String(effect.failureProbMultiplier),
+    expectedLifeExtension: String(effect.expectedLifeExtension),
+  };
+}
+
 function toPayload(draft: EffectDraft): EffectPayload {
   const number = (s: string) => (s.trim() === "" ? NaN : Number(s));
   return {
@@ -55,11 +69,12 @@ type SaveResult = { ok: boolean; message: string; id?: string };
  * Used in two places, and it has to work in both without either knowing
  * about the other:
  *
- *  - **On the Treatment Effects page**, where it is the page's own editor:
- *    Delete, Discard and Save, and the page decides where to go after.
- *  - **In a pop-up over a treatment**, where leaving would lose your place:
- *    Cancel, Save and Save & close — so there is always a way back to the
- *    treatment without the browser's back button.
+ *  - **In a pop-up** (`inDialog`) — over the Treatment Effects list, or over
+ *    a treatment, where leaving would lose your place: Cancel, Save and
+ *    Save & close, so there is always a way back without the browser's back
+ *    button. Delete is offered when the caller passes `onDelete`, which the
+ *    effects list does and a treatment does not.
+ *  - **Inline**, with Discard and Save in place of those.
  *
  * `onSaved` reports the id, and whether the caller asked to close, so the
  * treatment page can add a newly written effect to the treatment straight away.
@@ -228,7 +243,7 @@ export function EffectEditor({
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
-        {!inDialog && draft.id && onDelete && (
+        {draft.id && onDelete && (
           <div className="mr-auto">
             <ConfirmDelete
               variant="ghost"
@@ -268,7 +283,7 @@ export function EffectEditor({
               {busy ? "Saving…" : "Save"}
             </Button>
             <Button type="button" size="sm" onClick={() => save(true)} disabled={busy || !dirty}>
-              {busy ? "Saving…" : draft.id ? "Save & close" : "Create & add"}
+              {busy ? "Saving…" : draft.id ? "Save & close" : forTreatment ? "Create & add" : "Create & close"}
             </Button>
           </>
         ) : (

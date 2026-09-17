@@ -146,7 +146,10 @@ export function CollapsibleSection({
   const dirty = ctx?.isDirty(id) ?? false;
 
   return (
-    <Card className={dirty ? "border-amber-500/50" : undefined}>
+    // The id makes a section linkable — /settings/treatments/<id>#costs lands
+    // on the prices rather than the top of the page. The scroll margin keeps
+    // its heading clear of the sticky header.
+    <Card id={id} className={`scroll-mt-20 ${dirty ? "border-amber-500/50" : ""}`}>
       <button
         type="button"
         onClick={toggle}
