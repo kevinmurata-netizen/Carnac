@@ -833,6 +833,95 @@ its own category, in plan order) gained almost nothing over plain benefit ÷
 cost, because the first category funded each segment's cheap fix and closed it
 for the year.
 
+#### Work plans moved onto the same rule, 2026-09-17
+
+The revision above landed in scenarios only. Work plan generation
+(`server/workplans.ts`) kept its own, older allocation: it picked **one** option
+per segment up front by life-cycle saving, ranked those by a weighted sum of
+four normalized objectives (`domain/waterline/optimization.ts`), put work that
+paid for itself in a tier above work that did not, and walked the list year by
+year against a budget ledger. Two rules, two scores, and a plan that could not
+be compared with the scenario that was supposed to justify it.
+
+Work plans now build the same candidate set and buy it the same way: every
+applicable option on every segment, scored by the Priority Score (§5.4) with
+Expected Benefit normalized across the whole set, then `selectForYear` per year.
+Nothing in `selection.ts` changed.
+
+**What stays different, and why.** A work plan is a *static schedule*. Options
+are enumerated and priced once, against the network as it stands, and the years
+are then spent down; a scenario re-enumerates every year from the condition its
+own earlier work produced. So a plan says "here is the programme we would commit
+to now" and a scenario says "here is how the network behaves if we keep deciding
+afresh". Two consequences follow from the static form rather than from policy:
+Expected Benefit is normalized once, so a score means the same thing in year 5
+as in year 1 (a scenario's does not); and a segment is funded at most once
+across the whole plan, so the retreatment interval has nothing to do — there is
+no closed loop that could buy the same lining twice.
+
+Three things came with it:
+
+- The **effectiveness floor** moved from allocation time to candidate build.
+  Same rule, same segments; it has to be applied before the ladder exists,
+  because an option that may never be bought would otherwise sit on the ladder
+  as a rung nothing can climb past.
+- **Category weights now apply to work plans**, as the multiplier they are
+  everywhere else, and are chosen on the generate form rather than taken
+  silently from the organization's default. The *caps* on the same set, which
+  work plans already used, reach the selection engine as a funding plan —
+  `fundingPlanFromCaps`. The two say the same thing in the same units, so that
+  is a translation and not a policy.
+- The plan records `categoryWeightSetId` and the numbers that set held, which
+  the schema already had columns for and nothing had ever written.
+
+**Generating a plan *from* a scenario was already solved and stays that way.**
+`persistScenarioProgram` (`server/scenarios.ts`) materializes each run's funded
+projects as a WorkPlan carrying the scenario's id, so the plan a scenario
+produces *is* the run's own selection, year for year. Re-deriving it here could
+only disagree with the run — a static re-derivation cannot reproduce a closed
+loop — so `generateWorkPlan` no longer takes a `scenarioId` at all. It builds
+the plans that belong to no scenario; the unused parameter and the scenario
+criticality lookup behind it are gone, along with a footgun: a plan generated
+with a scenario's id would have been deleted by that scenario's next run.
+
+**Measured** on the seed network (226 segments), 5 years from 2026, $4.0M/yr
++3%, Balanced weighting, Even-handed categories. "Replay" walks the network
+forward with the plan applied. Re-derive with `npm run qa:workplan`.
+
+| | Previous | Incremental |
+| --- | --- | --- |
+| Segments funded | 121 | **187** |
+| Spend | $21.07M | $20.72M |
+| Condition points restored | 2,612 | **3,608** |
+| Risk points removed | 296 | **506** |
+| Life-cycle saving | $7.74M | **$15.14M** |
+| Replay WCI at 2030 | 52.0 | **56.6** |
+| Backlog | 71 segments / $0.87M | 5 segments / $4.38M |
+
+More segments for slightly less money, and the money goes further on every
+measure. The mix moves from 94% Renew / 6% Repair to 77% Renew / 13% Repair /
+11% Rehabilitate — because picking one option per segment by life-cycle saving
+had been picking Replacement almost every time, and the cheaper rungs on those
+segments were never on the list to be compared against it. 48 of the 187
+projects were bought as an **upgrade** over a cheaper option already chosen on
+the same segment, which is the behaviour the previous rule could not express at
+all.
+
+Backlog is counted differently and the figures are not comparable: it is now
+the highest-scoring option still wanted on each unfunded segment, where before
+it was the one option that segment had been given. Five segments left over
+against seventy-one is the real change; they are expensive renewals with no
+cheaper rung.
+
+**Not changed, and worth stating.** The scenario engine's two extra gates —
+`isEligible` (the strategy's filter) and "it must do something" (reach the
+condition target or cut risk by `MIN_RISK_REDUCTION_PCT`) — still do not apply
+to work plans, which gate on the effectiveness floor alone. The second exists
+because a closed loop will otherwise buy churn on the same segment forever, and
+a static plan cannot: it funds a segment once. Whether a plan should nonetheless
+decline an 11-point patch on a 33 WCI main is a policy question, not a
+consequence of this change, and is left open.
+
 #### Original, 2026-09-11
 
 **Settled 2026-09-11.** The simulation used to pick one option per asset by

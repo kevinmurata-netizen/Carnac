@@ -5,6 +5,7 @@ import { listWorkPlans } from "@/server/workplans";
 import { getAnnualBudget } from "@/server/scenarios";
 import { normalizeWeights, type ObjectiveWeights } from "@/domain/waterline/optimization";
 import { listWeightSets } from "@/server/weight-sets";
+import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,20 +23,23 @@ export default async function WorkPlanPage() {
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/work-plan", "Work Plan");
 
-  const [plans, annualBudget, weightSets] = await Promise.all([
+  const [plans, annualBudget, weightSets, categorySets] = await Promise.all([
     listWorkPlans(),
     getAnnualBudget(organizationId),
     listWeightSets(organizationId),
+    listCategoryWeightSets(organizationId),
   ]);
   const canEdit = canRecordFieldData(session);
   const currentYear = new Date().getFullYear();
   const defaultSet = weightSets.find((s) => s.isDefault) ?? weightSets[0];
+  const categoryChoices = categorySets.map(toCategoryChoice);
+  const defaultCategorySet = categoryChoices.find((s) => s.isDefault) ?? categoryChoices[0];
 
   return (
     <div>
       <PageHeader
         title={pageTitle}
-        description="Multi-year capital program built by weighted multi-objective prioritization under a budget constraint"
+        description="Multi-year capital program: every option on every segment scored, then the best next step up bought anywhere on the network until each year's budget runs out"
       />
 
       <Card>
@@ -130,34 +134,64 @@ export default async function WorkPlanPage() {
                   outlives one generation run, so it is a named row picked from
                   a list — and the plan records which one it used. */}
               <div>
-                <div className="mb-2 text-sm font-medium text-foreground">Objective Weights</div>
+                <div className="mb-2 text-sm font-medium text-foreground">How the work is ranked</div>
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Each candidate&apos;s objectives are rescaled 0–100 across the whole candidate set, then combined as
-                  a weighted sum — the published formula, no black box.{" "}
+                  Every option on every segment is scored as criticality × scale × category weight × expected benefit
+                  ÷ cost — the same published formula Treatment Planning ranks by and scenarios buy by. The plan then
+                  buys the best next step up anywhere on the network until each year&apos;s money runs out.{" "}
                   <Link href="/settings/scenario-weights" className="text-primary hover:underline">
                     Add or edit weightings →
                   </Link>
                 </p>
-                <div className="max-w-xl space-y-1.5">
-                  <Label htmlFor="weightSetId">Weighting</Label>
-                  <select id="weightSetId" name="weightSetId" defaultValue={defaultSet?.id ?? ""} className={inputClass}>
-                    {weightSets.length === 0 && <option value="">Built-in 30/40/20/10</option>}
-                    {weightSets.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                        {s.isDefault ? " (default)" : ""} — {describeSplit(s.weights)}
-                      </option>
-                    ))}
-                  </select>
-                  {weightSets.length === 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      No weightings saved yet, so the built-in defaults apply.{" "}
-                      <Link href="/settings/scenario-weights" className="text-primary hover:underline">
-                        Create one
-                      </Link>{" "}
-                      to compare policies rather than numbers.
-                    </p>
-                  )}
+                <div className="grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="weightSetId">Weighting</Label>
+                    <select id="weightSetId" name="weightSetId" defaultValue={defaultSet?.id ?? ""} className={inputClass}>
+                      {weightSets.length === 0 && <option value="">Built-in 30/40/20</option>}
+                      {weightSets.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                          {s.isDefault ? " (default)" : ""} — {describeSplit(s.weights)}
+                        </option>
+                      ))}
+                    </select>
+                    {weightSets.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        No weightings saved yet, so the built-in defaults apply.{" "}
+                        <Link href="/settings/scenario-weights" className="text-primary hover:underline">
+                          Create one
+                        </Link>{" "}
+                        to compare policies rather than numbers.
+                      </p>
+                    )}
+                  </div>
+                  {/* Chosen here rather than taken silently from the default:
+                      it sets both how far the plan leans toward each kind of
+                      work and the most of a year any one kind may take, and a
+                      plan that funded no renewals should say which setting
+                      decided that. */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="categoryWeightSetId">Category weighting</Label>
+                    <select
+                      id="categoryWeightSetId"
+                      name="categoryWeightSetId"
+                      defaultValue={defaultCategorySet?.id ?? ""}
+                      className={inputClass}
+                    >
+                      {categoryChoices.length === 0 && <option value="">Even-handed (built-in)</option>}
+                      {categoryChoices.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                          {s.isDefault ? " (default)" : ""} — {s.summary}
+                          {/* Said on the option itself rather than in a note
+                              below, which could only ever describe one of
+                              them: a set that funds no renewals should say so
+                              where it is chosen. */}
+                          {s.excluded.length > 0 ? `; no ${s.excluded.join(", ")}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -172,12 +206,19 @@ export default async function WorkPlanPage() {
   );
 }
 
-/** The normalized split, so an option reads as a policy rather than as four
- * numbers whose sum the reader has to work out. */
+/**
+ * The normalized split, so an option reads as a policy rather than as three
+ * numbers whose sum the reader has to work out.
+ *
+ * Criticality is left out, as it is on the scenario form and for the same
+ * reason: it is not one of the things weighed against each other. It
+ * multiplies the result instead — §5.3 — so printing it as a fourth share
+ * would describe a formula that no longer exists.
+ */
 function describeSplit(weights: ObjectiveWeights) {
   const n = normalizeWeights(weights);
   const pct = (v: number) => Math.round(v * 100);
   return `condition ${pct(n.conditionImprovement)}%, risk ${pct(n.riskReduction)}%, life-cycle ${pct(
     n.lifeCycleCost
-  )}%, criticality ${pct(n.criticality)}%`;
+  )}%`;
 }
