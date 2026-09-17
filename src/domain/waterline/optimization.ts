@@ -1,11 +1,16 @@
-// Optimization / prioritization (SPEC §16).
+// Optimization / prioritization (SPEC §16): the four objectives a utility
+// weighs, and what a named weighting holds.
 //
-// "The goal is not simply to find assets in poor condition" — it is the best
-// use of limited funds. So candidates are scored on several objectives at
-// once, with weights the user controls, and every score can be decomposed
-// back into the contribution of each objective. §16 explicitly rules out a
-// black-box algorithm, so this is a published weighted sum over normalized
-// objective values — nothing hidden, and reproducible by hand.
+// The scoring that used to live here — a weighted sum over all four, min-max
+// normalized across the candidate set — was the work plan's own ranking, and
+// the work plan was the only thing that used it. It is gone: plans and
+// scenarios now score the same way, through ./benefit.ts, where the first
+// three objectives become Expected Benefit and criticality moves to the
+// multiplier it always was in the Priority Score (§5.3, §5.4).
+//
+// What remains is the shape of a weighting: the keys, their labels and
+// descriptions for the editor, and the normalization that makes 30/40/20/10
+// and 3/4/2/1 the same policy.
 
 export type ObjectiveKey = "conditionImprovement" | "riskReduction" | "lifeCycleCost" | "criticality";
 
@@ -51,80 +56,3 @@ export function normalizeWeights(weights: ObjectiveWeights): ObjectiveWeights {
   }, {} as ObjectiveWeights);
 }
 
-/** Raw objective values for one candidate, in their natural units. */
-export type ObjectiveValues = Record<ObjectiveKey, number>;
-
-export type ScoredCandidate<T> = {
-  item: T;
-  raw: ObjectiveValues;
-  /** Each objective rescaled 0-100 across the candidate set. */
-  normalized: ObjectiveValues;
-  /** normalized × weight, per objective — this is what makes the total
-   * explainable ("risk reduction contributed 28 of the 61 points"). */
-  contributions: ObjectiveValues;
-  /** Weighted total, 0-100. */
-  priorityScore: number;
-};
-
-/**
- * Min-max normalize each objective across the whole candidate set, then take
- * the weighted sum. Min-max (rather than z-score) keeps the output on a plain
- * 0-100 scale that a reader can interpret without knowing the distribution.
- *
- * When every candidate has the same value for an objective, that objective
- * carries no information for this decision, so it scores 0 for everyone
- * rather than an arbitrary constant.
- */
-export function scoreCandidates<T>(
-  candidates: Array<{ item: T; raw: ObjectiveValues }>,
-  weights: ObjectiveWeights
-): Array<ScoredCandidate<T>> {
-  const w = normalizeWeights(weights);
-  if (candidates.length === 0) return [];
-
-  const ranges = OBJECTIVE_KEYS.reduce(
-    (acc, key) => {
-      const values = candidates.map((c) => c.raw[key]);
-      acc[key] = { min: Math.min(...values), max: Math.max(...values) };
-      return acc;
-    },
-    {} as Record<ObjectiveKey, { min: number; max: number }>
-  );
-
-  return candidates.map(({ item, raw }) => {
-    const normalized = {} as ObjectiveValues;
-    const contributions = {} as ObjectiveValues;
-    let priorityScore = 0;
-
-    for (const key of OBJECTIVE_KEYS) {
-      const { min, max } = ranges[key];
-      const span = max - min;
-      const n = span > 0 ? ((raw[key] - min) / span) * 100 : 0;
-      normalized[key] = Math.round(n * 10) / 10;
-      const contribution = n * w[key];
-      contributions[key] = Math.round(contribution * 10) / 10;
-      priorityScore += contribution;
-    }
-
-    return {
-      item,
-      raw,
-      normalized,
-      contributions,
-      priorityScore: Math.round(priorityScore * 10) / 10,
-    };
-  });
-}
-
-/** Human-readable justification for why an item ranked where it did. */
-export function explainPriority(
-  scored: Pick<ScoredCandidate<unknown>, "priorityScore" | "contributions" | "raw">,
-  weights: ObjectiveWeights
-): string {
-  const w = normalizeWeights(weights);
-  const ordered = OBJECTIVE_KEYS.slice().sort((a, b) => scored.contributions[b] - scored.contributions[a]);
-  const parts = ordered
-    .filter((k) => w[k] > 0)
-    .map((k) => `${OBJECTIVE_LABELS[k]} ${scored.contributions[k]} pts (weight ${Math.round(w[k] * 100)}%)`);
-  return `Priority ${scored.priorityScore}/100 — ${parts.join(", ")}.`;
-}

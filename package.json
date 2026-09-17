@@ -22,7 +22,8 @@
     "qa:matrix": "tsx scripts/qualification-matrix.ts",
     "qa:options": "tsx scripts/check-option-arithmetic.ts",
     "qa:raw": "tsx scripts/check-raw-queries.ts",
-    "qa:priority": "tsx scripts/priority-ranking.ts"
+    "qa:priority": "tsx scripts/priority-ranking.ts",
+    "qa:workplan": "tsx scripts/work-plan-allocation.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

@@ -30,6 +30,26 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-17",
+    title: "Work plans buy work the same way scenarios do",
+    summary:
+      "Work plan generation now uses the same rule scenarios were moved to last week: every option on every segment is scored, and each year buys the best next step up anywhere on the network. On the seed network, the same five years and the same $4M a year fund 187 segments instead of 121 and leave the network 4.6 WCI points higher.",
+    changes: [
+      "A plan used to pick one treatment per segment up front — whichever saved the most over the asset's life — and then rank those against each other. A segment's cheaper options were never on the list, so a relining or a dig-once bundle could be the right answer and never get compared with the replacement that beat it on paper.",
+      "Every applicable option on every segment is now scored the same way Treatment Planning ranks and scenarios buy: criticality × scale × category weight × expected benefit ÷ cost. The plan buys the best next step up anywhere on the network, whether that is a first fix on one segment or a move from a patch to a relining on another, until each year's money runs out.",
+      "Measured on the seed network over five years at $4M a year: 187 segments funded rather than 121 for slightly less money, 3,608 condition points restored rather than 2,612, $15.1M of life-cycle saving rather than $7.7M, and the network 56.6 WCI at the end rather than 52.0. 48 of the 187 projects were an upgrade over a cheaper option on the same segment — something the old rule could not express.",
+      "The Generate a Work Plan form gains a Category weighting, chosen beside the objective weighting instead of silently taken from the organization's default. It decides both how far the plan leans toward each kind of work and the most of any year one kind may take, and the plan now records which set it used.",
+      "Each item's Why now reads in the terms it was actually chosen by — the five numbers behind its priority, and, where the plan bought an upgrade, which cheaper option it was chosen over and what it added per extra dollar.",
+      "Work that pays for itself no longer goes first as a tier; life-cycle saving still counts through Expected Benefit, as it does for scenarios.",
+    ],
+    fixes: [
+      "A plan generated for a scenario would have been silently deleted by that scenario's next run, which rebuilds its own funded programme. Generating from a scenario was never reachable from any screen and is now gone: the work plan a scenario produces is the run's own selection, year for year.",
+      "The category weighting a plan was generated with was never recorded, so Settings always showed nothing using it and would have let it be deleted without warning.",
+      "A freshly set up demo never got its 5-Year Capital Work Plan, though the setup said it had. The step before it runs the funding scenarios, and each of those leaves a programme of its own behind, which was enough to convince the next step that a work plan already existed. A scenario's programme is a 20-year forecast rebuilt on every run; the capital work plan is the five years you would take to a board, and the only one whose Move and Status controls survive.",
+    ],
+    note: "No migration. Existing work plans were built by the old rule and are left exactly as they were — generate a new one to see the new one. The Priority figure on a plan's items is now the same Priority Score the rest of the system shows, so it is not comparable with the 0–100 figure older plans carry.",
+  },
+  {
+    date: "2026-09-17",
     title: "Criticality is worked out again each year of a scenario",
     summary:
       "A scenario used to read each segment's criticality once and hold it for the whole run. A formula that reads condition, age or risk now follows the network as the run changes it, so a segment treated in year three stops scoring as the pipe that needed treating.",

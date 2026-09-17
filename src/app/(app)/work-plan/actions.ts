@@ -59,6 +59,7 @@ export async function generateWorkPlanAction(formData: FormData) {
     fundingGrowth: d.fundingGrowthPct / 100,
     weights: chosen.weights,
     weightSetId: chosen.weightSetId,
+    categoryWeights: categories.weights,
     caps: categories.caps,
     categoryWeightSetId: categories.categoryWeightSetId,
   });

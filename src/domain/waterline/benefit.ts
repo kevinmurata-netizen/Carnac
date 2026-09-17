@@ -129,11 +129,12 @@ export type ScoredBenefit<T> = {
  * take the weighted average.
  *
  * The set matters as much as the arithmetic. Normalizing per asset would make
- * benefit incomparable between assets, and the work plan already suffers from
- * two different notions of "best" — `buildCandidates` picks one option per
- * asset by life-cycle saving while the optimizer ranks assets by a weighted
- * sum, which is why a bundle could win 80 recommendations and reach the plan
- * zero times. One set means one answer to both questions.
+ * benefit incomparable between assets, which is the whole basis for ranking
+ * them against each other. It is also why the work plan used to hold two
+ * different notions of "best": it picked one option per asset by life-cycle
+ * saving and then ranked those by a weighted sum, so a bundle could win 80
+ * recommendations and reach the plan zero times. Work plans score through here
+ * now, on one set — see §5.7 and `server/workplans.ts`.
  *
  * The cost of min-max is that scores are relative to the run: adding one
  * extreme asset rescales everyone. That is already true of `scoreCandidates`,
