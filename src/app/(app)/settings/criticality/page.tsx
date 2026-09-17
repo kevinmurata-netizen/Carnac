@@ -140,6 +140,11 @@ export default async function CriticalityPage({
         </Link>{" "}
         consequence-of-failure rating.
       </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Inside a scenario, criticality is worked out again each year from the network as that run has left it — so a
+        formula reading condition, age or risk follows the work the scenario funds, and a segment replaced in year
+        three stops scoring as the pipe that needed replacing.
+      </p>
     </div>
   );
 }
