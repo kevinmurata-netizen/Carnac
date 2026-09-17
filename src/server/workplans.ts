@@ -600,9 +600,29 @@ export async function deleteWorkPlan(id: string) {
   await prisma.workPlan.delete({ where: { id } });
 }
 
-/** Idempotently create a baseline 5-year plan for the demo. */
+/**
+ * Idempotently create a baseline 5-year plan for the demo.
+ *
+ * The guard looks only for a plan belonging to **no scenario**, and that is
+ * the whole point of it. It used to ask whether any work plan at all existed,
+ * which by the time the seed reached here was always true: the step before it
+ * runs the baseline scenarios, and every run materializes its funded projects
+ * as a work plan (`persistScenarioProgram`). So this had never once created
+ * anything — the seed announced a 5-year capital work plan and made none, from
+ * the first commit onward.
+ *
+ * A scenario's funded programme cannot stand in for it either. That is a
+ * 20-year forecast, rebuilt and thrown away on every run; this is the five
+ * years a utility would take to a board, and the only kind of plan whose Move
+ * and Status controls mean anything, because nothing regenerates over them.
+ *
+ * Not scoped to the organization, because a work plan does not belong to one:
+ * the model has no organizationId and `listWorkPlans` above reads them all.
+ * Reaching an organization from here would mean joining through the items,
+ * which would also mean an empty plan never counted as existing.
+ */
 export async function ensureBaselineWorkPlan(organizationId: string): Promise<boolean> {
-  const existing = await prisma.workPlan.findFirst();
+  const existing = await prisma.workPlan.findFirst({ where: { scenarioId: null } });
   if (existing) return false;
 
   const budget = await prisma.budget.findFirst({ where: { organizationId }, orderBy: { fiscalYear: "desc" } });

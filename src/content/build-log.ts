@@ -44,6 +44,7 @@ export const ENTRIES: BuildEntry[] = [
     fixes: [
       "A plan generated for a scenario would have been silently deleted by that scenario's next run, which rebuilds its own funded programme. Generating from a scenario was never reachable from any screen and is now gone: the work plan a scenario produces is the run's own selection, year for year.",
       "The category weighting a plan was generated with was never recorded, so Settings always showed nothing using it and would have let it be deleted without warning.",
+      "A freshly set up demo never got its 5-Year Capital Work Plan, though the setup said it had. The step before it runs the funding scenarios, and each of those leaves a programme of its own behind, which was enough to convince the next step that a work plan already existed. A scenario's programme is a 20-year forecast rebuilt on every run; the capital work plan is the five years you would take to a board, and the only one whose Move and Status controls survive.",
     ],
     note: "No migration. Existing work plans were built by the old rule and are left exactly as they were — generate a new one to see the new one. The Priority figure on a plan's items is now the same Priority Score the rest of the system shows, so it is not comparable with the 0–100 figure older plans carry.",
   },

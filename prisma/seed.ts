@@ -383,8 +383,8 @@ async function main() {
   console.log(`  ${scenarios} scenarios created and run`);
 
   console.log("Generating baseline work plan…");
-  await ensureBaselineWorkPlan(org.id);
-  console.log("  5-year capital work plan generated");
+  const workPlanCreated = await ensureBaselineWorkPlan(org.id);
+  console.log(workPlanCreated ? "  5-year capital work plan generated" : "  one already exists, left alone");
 
   console.log("Seed complete.");
   console.log("Demo logins (password: Carnac#2026):");
