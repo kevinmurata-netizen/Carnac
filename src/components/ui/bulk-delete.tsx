@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
-import { Trash2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Copy, Trash2 } from "lucide-react";
 import { formatNumber } from "@/lib/format";
 
 /**
@@ -65,7 +73,8 @@ export function useBulkSelection<T extends { id: string }>(rows: T[], resetOn: {
 export type BulkSelection<T extends { id: string }> = ReturnType<typeof useBulkSelection<T>>;
 
 /**
- * The bar above a table: Select all, the count, and Delete selected.
+ * The bar above a table: Select all, the count, Delete selected, and Copy
+ * selected where the list offers it.
  *
  * It is a form, and its hidden ids are what the delete action receives, so
  * the action sees exactly the rows ticked on screen. The confirmation's words
@@ -81,6 +90,7 @@ export function BulkDeleteBar<T extends { id: string }>({
   description,
   confirmLabel,
   onConfirm,
+  copy,
 }: {
   selection: BulkSelection<T>;
   action: (formData: FormData) => void;
@@ -93,8 +103,20 @@ export function BulkDeleteBar<T extends { id: string }>({
   /** Set to close the dialog without deleting — for when nothing selected can
    * actually be deleted and the dialog is only explaining why. */
   onConfirm?: () => void;
+  /**
+   * Offer Copy selected beside Delete selected. It submits the same form with
+   * `intent=copy`, so the page's action decides which it was asked for.
+   *
+   * `warning`, when given, is asked about first — for copies that change
+   * something the moment they exist. Without it the copy is made straight
+   * away, since a copy nothing uses yet changes nothing.
+   */
+  copy?: { warning?: ReactNode };
 }) {
   const { selected, allSelected, selectAll, clear } = selection;
+  const [confirmingCopy, setConfirmingCopy] = useState(false);
+  const copySubmit = useRef<HTMLButtonElement>(null);
+  const count = selected.length > 0 ? ` (${formatNumber(selected.length)})` : "";
 
   return (
     <form action={action} className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
@@ -107,7 +129,9 @@ export function BulkDeleteBar<T extends { id: string }>({
       </Button>
 
       <span className="text-sm tabular-nums text-muted-foreground">
-        {selected.length === 0 ? `Tick ${noun} to delete several at once` : `${formatNumber(selected.length)} selected`}
+        {selected.length === 0
+          ? `Tick ${noun} to ${copy ? "copy or delete" : "delete"} several at once`
+          : `${formatNumber(selected.length)} selected`}
       </span>
 
       {selected.length > 0 && !allSelected && (
@@ -116,7 +140,64 @@ export function BulkDeleteBar<T extends { id: string }>({
         </Button>
       )}
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
+        {copy && (
+          <>
+            {/* The button that actually submits as a copy. With a warning it
+                is pressed by the dialog, not by the person. */}
+            <Button
+              ref={copySubmit}
+              type="submit"
+              name="intent"
+              value="copy"
+              size="sm"
+              variant="outline"
+              disabled={selected.length === 0 || pending}
+              className={copy.warning ? "hidden" : undefined}
+            >
+              <Copy className="mr-1 h-3.5 w-3.5" />
+              Copy selected{count}
+            </Button>
+            {copy.warning && (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={selected.length === 0 || pending}
+                  onClick={() => setConfirmingCopy(true)}
+                >
+                  <Copy className="mr-1 h-3.5 w-3.5" />
+                  Copy selected{count}
+                </Button>
+                <Dialog open={confirmingCopy} onOpenChange={setConfirmingCopy}>
+                  <DialogContent showCloseButton={false}>
+                    <DialogHeader>
+                      <DialogTitle>
+                        Copy {formatNumber(selected.length)} {selected.length === 1 ? noun.replace(/s$/, "") : noun}?
+                      </DialogTitle>
+                      <DialogDescription render={<div />}>{copy.warning}</DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setConfirmingCopy(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setConfirmingCopy(false);
+                          copySubmit.current?.click();
+                        }}
+                      >
+                        Copy
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
+          </>
+        )}
         <ConfirmDelete
           disabled={selected.length === 0}
           pendingLabel="Deleting…"
@@ -126,7 +207,7 @@ export function BulkDeleteBar<T extends { id: string }>({
           description={description}
         >
           <Trash2 className="mr-1 h-3.5 w-3.5" />
-          Delete selected{selected.length > 0 ? ` (${formatNumber(selected.length)})` : ""}
+          Delete selected{count}
         </ConfirmDelete>
       </div>
     </form>

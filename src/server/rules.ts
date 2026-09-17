@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { copyName, takenNames } from "@/lib/copy-name";
 import {
   isValidNode,
   countConditions,
@@ -267,6 +268,29 @@ export async function deleteRules(
     await prisma.rule.deleteMany({ where: { id: { in: deletable.map((r) => r.id) }, organizationId } });
   }
   return { deleted: deletable.map((r) => r.name).sort(), kept };
+}
+
+/**
+ * Copy several rules. Each copy has the original's conditions, effect and
+ * enabled state under a "(copy)" name, and is attached to nothing — so copying
+ * changes no treatment, combination or price until a copy is put to use.
+ */
+export async function copyRules(organizationId: string, ids: string[]): Promise<string[]> {
+  const [rows, all] = await Promise.all([
+    prisma.rule.findMany({ where: { id: { in: ids }, organizationId }, orderBy: { name: "asc" } }),
+    prisma.rule.findMany({ where: { organizationId }, select: { name: true } }),
+  ]);
+  const taken = takenNames(all);
+  const copies = rows.map((r) => ({
+    organizationId,
+    name: copyName(r.name, taken),
+    description: r.description,
+    effect: r.effect,
+    enabled: r.enabled,
+    definition: r.definition as object,
+  }));
+  if (copies.length > 0) await prisma.rule.createMany({ data: copies });
+  return copies.map((c) => c.name);
 }
 
 export function newRuleDraft(): RuleInput {

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { copyName, takenNames } from "@/lib/copy-name";
 import { parseRules } from "@/server/rules";
 import type { CombinationDef } from "@/domain/waterline/treatment";
 
@@ -256,6 +257,48 @@ export async function deleteCombinations(organizationId: string, ids: string[]):
     });
   }
   return rows.map((r) => r.name).sort();
+}
+
+/**
+ * Copy several combinations: same members, required flags, gating rules and
+ * mobilization, under "(copy)" names.
+ *
+ * Copies start **disabled**. An enabled copy would be the same bundle offered
+ * twice on every segment it qualifies for, changing rankings and any scenario
+ * that considers all options, before anyone has changed it. Enable it once it
+ * differs from the original. Scenario option lists are not copied either.
+ */
+export async function copyCombinations(organizationId: string, ids: string[]): Promise<string[]> {
+  const [rows, all] = await Promise.all([
+    prisma.treatmentCombination.findMany({
+      where: { id: { in: ids }, organizationId },
+      include: { members: true, rules: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.treatmentCombination.findMany({ where: { organizationId }, select: { name: true } }),
+  ]);
+  const taken = takenNames(all);
+
+  const names: string[] = [];
+  await prisma.$transaction(
+    rows.map((c) => {
+      const name = copyName(c.name, taken);
+      names.push(name);
+      return prisma.treatmentCombination.create({
+        data: {
+          organizationId,
+          name,
+          description: c.description,
+          enabled: false,
+          qualifyMode: c.qualifyMode,
+          mobilizationCost: c.mobilizationCost,
+          members: { create: c.members.map((m) => ({ treatmentId: m.treatmentId, required: m.required })) },
+          rules: { create: c.rules.map((r) => ({ ruleId: r.ruleId })) },
+        },
+      });
+    })
+  );
+  return names;
 }
 
 export async function deleteCombination(organizationId: string, id: string) {

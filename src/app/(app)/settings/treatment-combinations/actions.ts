@@ -7,6 +7,7 @@ import {
   updateCombination,
   deleteCombination,
   deleteCombinations,
+  copyCombinations,
 } from "@/server/combinations";
 
 /** Combinations decide what the model may propose and what it costs, so
@@ -101,6 +102,29 @@ export async function deleteCombinationAction(id: string): Promise<{ ok: boolean
 export type BulkDeleteState = { status: "idle" | "success" | "error"; message: string | null };
 
 /** Delete the combinations ticked on the list. */
+/** The list's bar: Copy selected and Delete selected share one form, and the
+ * button pressed says which. */
+export async function bulkCombinationsAction(prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
+  return formData.get("intent") === "copy" ? copyCombinationsAction(formData) : deleteCombinationsAction(prev, formData);
+}
+
+async function copyCombinationsAction(formData: FormData): Promise<BulkDeleteState> {
+  try {
+    const session = await requireWriteAccess();
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No combinations were selected." };
+    const names = await copyCombinations(session.user.organizationId, ids);
+    // Disabled copies change no option, so only the list needs refreshing.
+    revalidatePath("/settings/treatment-combinations");
+    return {
+      status: "success",
+      message: `Copied ${names.length}: ${names.join(", ")}. Copies start disabled, so the same bundle is not offered twice — change a copy, then enable it.`,
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not copy those combinations" };
+  }
+}
+
 export async function deleteCombinationsAction(
   _prev: BulkDeleteState,
   formData: FormData

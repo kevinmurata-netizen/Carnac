@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { copyName, takenNames } from "@/lib/copy-name";
 import {
   combineEffects,
   describeEffect,
@@ -192,6 +193,31 @@ export async function deleteEffects(
     await prisma.effect.deleteMany({ where: { id: { in: deletable.map((r) => r.id) }, organizationId } });
   }
   return { deleted: deletable.map((r) => r.name).sort(), kept };
+}
+
+/**
+ * Copy several effects under "(copy)" names. A copy belongs to no treatment,
+ * so copying changes nothing until one is added somewhere — which is the
+ * point: copy a shared effect, then change the copy for one treatment without
+ * changing the others.
+ */
+export async function copyEffects(organizationId: string, ids: string[]): Promise<string[]> {
+  const [rows, all] = await Promise.all([
+    prisma.effect.findMany({ where: { id: { in: ids }, organizationId }, orderBy: { name: "asc" } }),
+    prisma.effect.findMany({ where: { organizationId }, select: { name: true } }),
+  ]);
+  const taken = takenNames(all);
+  const copies = rows.map((e) => ({
+    organizationId,
+    name: copyName(e.name, taken),
+    description: e.description,
+    conditionMode: e.conditionMode,
+    conditionValue: e.conditionValue,
+    failureProbMultiplier: e.failureProbMultiplier,
+    expectedLifeExtension: e.expectedLifeExtension,
+  }));
+  if (copies.length > 0) await prisma.effect.createMany({ data: copies });
+  return copies.map((c) => c.name);
 }
 
 // ---------------------------------------------------------------------------

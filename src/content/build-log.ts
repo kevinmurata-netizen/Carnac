@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-17",
+    title: "Copy several treatments, combinations, rules or effects at once",
+    summary:
+      "Every list with checkboxes (Treatments, Treatment Combinations, Treatment Rules and Treatment Effects) gains Copy selected beside Delete selected. Copies are named “(copy)”, then “(copy 2)” and so on.",
+    changes: [
+      "Rules and effects copy with everything they hold, attached to nothing — so a copy changes nothing until you use it. Copy a shared effect or rule, change the copy, and add it where it applies without touching the original.",
+      "A treatment copies with its definition, rule arrangement and blocks, prices in order, and effects. Because it qualifies wherever the original does, it asks first and says so. Work plans, scenario option lists and combination memberships are not copied.",
+      "A combination copies with its members, gating rules and mobilization, and starts disabled so the same bundle is not offered twice. Change it, then enable it.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-09-16",
     title: "Alternatives explain their outcomes, and say what is filtered",
     summary:
