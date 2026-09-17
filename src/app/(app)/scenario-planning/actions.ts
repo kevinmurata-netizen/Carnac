@@ -69,7 +69,7 @@ function parseForm(formData: FormData): {
     // Likewise: empty means "the organization's default", not "no weighting".
     weightSetId: d.weightSetId?.trim() || null,
     categoryWeightSetId: d.categoryWeightSetId?.trim() || null,
-    // Empty means "no category order", which is a real choice here rather
+    // Empty means "no category limits", which is a real choice here rather
     // than a missing one — it is how allocation worked before order existed.
     categoryFundingPlanId: d.categoryFundingPlanId?.trim() || null,
     // Empty means "not in a set". The server checks the set belongs to this

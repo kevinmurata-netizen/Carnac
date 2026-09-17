@@ -232,6 +232,8 @@ export default async function AlternativesPage({
                 cost: r.cost,
                 benefit: r.benefit,
                 priority: r.priority,
+                incremental: r.incremental,
+                incrementalOver: r.incrementalOver,
                 criticality: r.criticality,
                 scaleFactor: r.scaleFactor,
                 categoryWeight: r.categoryWeight,
@@ -246,11 +248,14 @@ export default async function AlternativesPage({
 
           <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
             Priority Score is Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost, computed
-            against that year&apos;s condition. Expected Benefit is normalized across the options considered in a year,
-            so scores rank options within their own year and are not comparable across years — a segment&apos;s score
-            moving between years says its standing among that year&apos;s options changed, not that it is worth more.
-            Options ruled out before scoring — locked out by a retreatment interval, or on a segment the strategy
-            passed over — have no score.
+            against that year&apos;s condition. The Incremental score is what decides what is bought: each option on a
+            segment is scored on the weighted benefit it adds over the next cheaper option worth having, per dollar
+            of the extra it costs, and the year buys the best next step anywhere on the network until the money — or
+            a category&apos;s share of it — runs out. The cheapest option on a segment scores the same both ways; larger
+            ones score lower, and are bought only when what they add is worth it. Expected Benefit is normalized
+            across the options considered in a year, so both scores rank options within their own year and are not
+            comparable across years. Options ruled out before scoring — locked out by a retreatment interval, or on a
+            segment the strategy passed over — have neither score.
           </p>
         </CardContent>
       </Card>

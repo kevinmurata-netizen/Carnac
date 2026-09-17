@@ -2,21 +2,22 @@ import { CATEGORY_KEYS } from "./category-weight";
 import type { TreatmentCategory } from "./treatment";
 
 /**
- * How a year's budget is divided between categories, and in what order.
+ * The most of a year's budget each category may take.
  *
  * See docs/TREATMENT-MODEL-REBUILD.md §5.7.
  *
- * This is the half of category policy that decides what gets *bought*. Its
- * twin, `CategoryWeights`, decides what gets *ranked first*, and the two are
- * deliberately unrelated: a utility can rank renewals highly and still cap them
- * at a fifth of the year, or rank them low and fund whatever survives.
+ * This is the half of category policy that limits what gets *bought*. Its
+ * twin, `CategoryWeights`, changes what gets *scored* higher, and the two are
+ * deliberately unrelated: a utility can weight renewals highly and still cap
+ * them at a fifth of the year, or weight them low and fund whatever survives.
  *
- * Order is the part that is new and the part that matters. Spending works
- * through the categories one at a time. The first takes what it can up to its
- * share, then the second, and so on — so a plan reading "Repair 20%, then
- * Rehabilitate 40%, then Renew 100%" buys a fifth of a year of patching, then
- * up to two fifths of relining, then puts everything still unspent into
- * replacement.
+ * A share is a limit, not a turn. The year's work is chosen across every
+ * category at once by incremental benefit/cost (see ./selection.ts), and no
+ * category may take more than its share. Plans used to be spent in order —
+ * the first category taking what it could, then the next — but that let a
+ * cheap patch in an early category claim a segment before a relining worth
+ * far more could be considered, so the order a plan lists its categories in
+ * now changes nothing.
  */
 export type FundingStep = {
   category: TreatmentCategory;
@@ -24,9 +25,8 @@ export type FundingStep = {
   maxPct: number;
 };
 
-/** No plan: one pass down the whole ranked list, ignoring category entirely.
- * What allocation did before order existed, and what a scenario that has not
- * chosen a plan still does. */
+/** No plan: no category limits, only the year's budget. What a scenario that
+ * has not chosen a plan does. */
 export type FundingPlan = FundingStep[] | null;
 
 /** Clamped to 0–1. Above 100% says nothing the budget does not already say;
@@ -37,20 +37,17 @@ export function stepShare(step: FundingStep): number {
 }
 
 /**
- * The passes to make over the ranked list, in order.
+ * Each listed category's limit for one year, in dollars. A category the plan
+ * does not list has no entry, and so may spend nothing.
  *
- * A plan with no steps and a null plan both come back as one pass over
- * everything, because an empty ordered list is not a statement that nothing
- * may be funded — it is a plan nobody finished writing, and refusing to fund
- * anything would be a surprising way to say so.
+ * Null — no limits at all — for a null plan and for a plan with no steps: an
+ * empty plan is not a statement that nothing may be funded, it is a plan
+ * nobody finished writing, and refusing to fund anything would be a
+ * surprising way to say so.
  */
-export function fundingPasses(plan: FundingPlan): Array<{
-  /** Null means "every category", the single-pass case. */
-  categories: TreatmentCategory[] | null;
-  share: number;
-}> {
-  if (plan == null || plan.length === 0) return [{ categories: null, share: 1 }];
-  return plan.map((step) => ({ categories: [step.category], share: stepShare(step) }));
+export function categoryLimits(plan: FundingPlan, budget: number): Map<TreatmentCategory, number> | null {
+  if (plan == null || plan.length === 0) return null;
+  return new Map(plan.map((step) => [step.category, stepShare(step) * budget]));
 }
 
 /**
@@ -70,8 +67,8 @@ export function unfundedCategories(plan: FundingPlan): TreatmentCategory[] {
  * Whether the shares can leave money unspent.
  *
  * Shares are of the whole year, not of each other, so they need not sum to
- * 100% — and a category at 100% late in the order is the usual way to make
- * sure nothing is stranded. But if every share is below 100% and they total
+ * 100% — and one category at 100% is the usual way to make sure nothing is
+ * stranded. But if every share is below 100% and they total
  * less than 100%, the shortfall genuinely cannot be spent, and that is worth
  * saying out loud rather than leaving to be noticed in a run.
  */

@@ -70,27 +70,22 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
   [NOT_SELECTED.betterOption]: {
     stage: "not-funded",
     description:
-      "Another option on the same segment was funded instead. A segment gets one option a year: options that pay for themselves over their life come first, then a combination, then the highest Priority Score that fits the budget.",
+      "A larger option on the same segment was funded instead. A segment gets one option a year, and the step up to the larger one added enough for its extra cost to be bought.",
   },
-  [NOT_SELECTED.bundle]: {
+  [NOT_SELECTED.notEfficient]: {
     stage: "not-funded",
     description:
-      "A combination on this segment was funded instead, covering the work in one visit. Bundles are preferred over single treatments, but never over options that pay for themselves when the bundle does not.",
-  },
-  [NOT_SELECTED.alreadyTreated]: {
-    stage: "not-funded",
-    description:
-      "The segment was already funded this year, by a higher-ranked option or in an earlier category's share of the budget.",
+      "Never worth buying on this segment: another option costs no more for more benefit, or stepping straight past this one to a larger option adds more per extra dollar. It has a Priority Score but no incremental score.",
   },
   [NOT_SELECTED.budgetSpent]: {
     stage: "not-funded",
     description:
-      "By the time its turn came in Priority Score order, what was left of the year's budget could not cover its cost.",
+      "Its step — from nothing, or from the smaller option funded on the segment — did not fit what was left of the year's budget by the time better steps elsewhere had been bought.",
   },
   [NOT_SELECTED.categoryFull]: {
     stage: "not-funded",
     description:
-      "The year still had money, but this category's share under the scenario's funding plan was used up — a limit of the plan, not of the budget.",
+      "The year still had money, but this option's category had used its share under the scenario's funding plan — a limit of the plan, not of the budget.",
   },
   [NOT_SELECTED.unpriced]: {
     stage: "not-funded",

@@ -226,9 +226,11 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
 
   const candidates = await buildCandidates(organizationId, scenarioCriticality);
 
-  // Paying for itself is a tier, not a filter — the same rule the scenario
-  // simulation follows. Work that pays back is scheduled first; work that does
-  // not is still available to a budget that has exhausted it.
+  // Paying for itself is a tier, not a filter. Work that pays back is
+  // scheduled first; work that does not is still available to a budget that
+  // has exhausted it. (Scenarios no longer work this way — they buy by
+  // incremental benefit/cost, see domain/waterline/selection.ts. Work plans
+  // pick one best option per asset up front and have not been moved over.)
   const scored = scoreCandidates(
     candidates.map((c) => ({ item: c, raw: objectiveValues(c) })),
     weights

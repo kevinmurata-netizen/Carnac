@@ -787,6 +787,54 @@ shape of answer the question was asking for.
 
 ### 5.7 Choosing a year's work
 
+#### Revised 2026-09-17: incremental benefit/cost, categories as limits
+
+Steps 2–5 below, and the pays-for-itself tier in §5.8, are **superseded**.
+Scoring, the gates, one treatment per asset and the closed yearly loop are
+unchanged. What changed is how the scored options are bought
+(`domain/waterline/selection.ts`):
+
+1. On each segment, options are laid out cheapest first. Anything costing more
+   for no more value is dropped, and so is any option whose step up is a better
+   deal than the step below it (the lower convex hull) — its rung would never
+   be bought on its own merits.
+2. Each remaining option's **incremental score** is the value it adds over the
+   rung below — value being the Priority Score's numerator, criticality × scale
+   × category weight × expected benefit — divided by the extra cost. The
+   cheapest rung is measured against doing nothing, so it scores exactly its
+   Priority Score.
+3. Across the network the best next step is bought first: a first fix on one
+   segment, or an upgrade from a patch to a relining on another. An upgrade
+   replaces the segment's current choice, and only the difference is spent.
+4. A funding plan's shares are **limits, not turns**. A step whose option would
+   take its category past its share is not bought; an upgrade that moves a
+   segment into another category moves its whole cost with it. The order a
+   plan lists categories in plays no part.
+5. The combination preference and the pays-for-itself tier are gone. A bundle
+   is a rung like any other; life-cycle saving still counts through Expected
+   Benefit, and the retreatment interval (§5.8) is what stops the same lining
+   being bought every year.
+
+Why: ranking each option by its own benefit ÷ cost almost always bought the
+cheapest option on a segment (21 of 1,144 projects were not), and under an
+ordered plan the first category claimed segments before a larger job worth far
+more could compete. Measured on the seed network, Current Funding, 20 years:
+
+| Rule | Final WCI | Below target | Spend | Failures |
+| --- | --- | --- | --- | --- |
+| Previous (tier + bundle preference) | 72.3 | 76 | $107.0M | 117 |
+| Plain benefit ÷ cost | 72.9 | 71 | $65.0M | 112 |
+| **Incremental, across categories** | **74.6** | **47** | $87.5M | **112** |
+
+Under the three funding plans applied to the same scenario, incremental across
+categories had the highest final WCI, fewest segments below target and fewest
+failures in every case. Incremental *within* category (each share buying only
+its own category, in plan order) gained almost nothing over plain benefit ÷
+cost, because the first category funded each segment's cheap fix and closed it
+for the year.
+
+#### Original, 2026-09-11
+
 **Settled 2026-09-11.** The simulation used to pick one option per asset by
 risk reduction per dollar, rank the assets by the scenario's strategy, and fund
 down that list. The Priority Score played no part in it, so the ranking shown

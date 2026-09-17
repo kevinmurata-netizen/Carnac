@@ -398,7 +398,7 @@ export function ScenarioFields({
             onChange={(e) => onChange({ categoryFundingPlanId: e.target.value })}
             className={mark("categoryFundingPlanId")}
           >
-            <option value="">No category order — one pass down the ranked list</option>
+            <option value="">No category limits — only the yearly budget</option>
             {fundingPlanChoices.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -407,8 +407,8 @@ export function ScenarioFields({
             ))}
           </select>
           <p className="text-xs text-muted-foreground">
-            How much of each year goes to each kind of work, and which kind is funded first. Unlike the weighting
-            above, this does not change what ranks highest — it decides what the money buys. Edit the plans under
+            The most of each year each kind of work may take. Unlike the weighting above, this does not change
+            what scores highest — it limits what the money buys. Edit the plans under
             Settings &rsaquo; Category Funding.
           </p>
         </div>

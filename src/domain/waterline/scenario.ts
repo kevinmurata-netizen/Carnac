@@ -2,8 +2,8 @@
 // funding constraint and a prioritization strategy, and report what actually
 // happens to condition, risk, backlog, failures and spend.
 //
-// The simulation is deliberately legible: each year we rank candidates by the
-// strategy's published rule, fund down the list until the budget runs out,
+// The simulation is deliberately legible: each year we score candidates, buy
+// the best step up in benefit per extra dollar until the budget runs out,
 // apply the treatment's stored effects, and deteriorate everything that went
 // untreated. No optimizer, no black box — Phase 7 adds the optimization layer
 // on top of this.
@@ -163,11 +163,11 @@ export type ScenarioYearResult = {
   failureCost: number;
   belowTargetCount: number;
   aboveRiskThresholdCount: number;
-  /** The actual projects funded this year, in the order they were selected. */
+  /** The actual projects funded this year, in the order each segment was first funded. */
   selected: ScenarioProject[];
   /** What each category took, and what it was allowed to take. Present so a
-   * plan can show that renewal absorbed what the capped categories left,
-   * rather than leaving that to be inferred from the project list. */
+   * plan can show which categories reached their limit, rather than leaving
+   * that to be inferred from the project list. */
   byCategory: Array<{ category: string; spent: number; cap: number }>;
   /** Cost of work skipped this year because its category was full, though the
    * budget was not. Zero when nothing is capped. */
@@ -228,6 +228,16 @@ export type YearAlternative = {
   /** Null for an option that never reached scoring — it was ruled out first. */
   benefit: number | null;
   priority: number | null;
+  /**
+   * What choosing this option adds over the next cheaper option worth having
+   * on the segment, per dollar of the extra it costs — the score the year's
+   * work is actually bought by. Null for an option ruled out before scoring,
+   * or one never worth buying because another gives more for the money.
+   */
+  incremental: number | null;
+  /** The option `incremental` is measured against; null when it is the
+   * cheapest, measured against doing nothing. */
+  incrementalOver: string | null;
   criticality: number;
   scaleFactor: number;
   categoryWeight: number;
@@ -280,13 +290,13 @@ type Candidate = {
   /** Criticality x Scale Factor x Category Weight x Expected Benefit / Total
    * Cost. Null when the option could not be priced. */
   priority: number | null;
+  /** The Priority Score's numerator, unrounded — what a step up to this
+   * option adds is measured in it. */
+  value: number;
   /** The three terms behind the benefit half, kept so a funded project can
    * explain itself. */
   terms: BenefitTerms;
   benefit: number;
-  /** Whether the work pays for itself over the horizon. Not a filter but a
-   * tier: everything that does is bought before anything that does not. */
-  paysForItself: boolean;
 };
 
 function buildContext(asset: SimAsset): AssetTreatmentContext {
@@ -343,7 +353,7 @@ function rankCandidates(
    * the run is not being traced. */
   trace: YearAlternative[] | null
 ): Candidate[] {
-  type Pending = Omit<Candidate, "priority" | "benefit" | "terms" | "paysForItself">;
+  type Pending = Omit<Candidate, "priority" | "benefit" | "terms" | "value">;
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
 
   /** An option that got no further, with the year's figures for the segment as
@@ -363,6 +373,8 @@ function rankCandidates(
       cost: Math.round(option.cost),
       benefit: null,
       priority: null,
+      incremental: null,
+      incrementalOver: null,
       criticality: round1(asset.criticalityScore),
       scaleFactor: Math.round(asset.scaleFactor * 100) / 100,
       categoryWeight: categoryWeight(ctx.categoryWeights, option.category),
@@ -453,19 +465,22 @@ function rankCandidates(
     }
   }
 
-  const scored = scoreBenefits(pending, ctx.benefitWeights).map<Candidate>((s) => ({
-    ...s.item,
-    terms: s.raw,
-    benefit: s.benefit,
-    paysForItself: s.raw.lifeCycleSaving > 0,
-    priority: priorityScore({
-      criticality: s.item.asset.criticalityScore,
-      scaleFactor: s.item.asset.scaleFactor,
-      categoryWeight: categoryWeight(ctx.categoryWeights, s.item.option.category),
+  const scored = scoreBenefits(pending, ctx.benefitWeights).map<Candidate>((s) => {
+    const weight = categoryWeight(ctx.categoryWeights, s.item.option.category);
+    return {
+      ...s.item,
+      terms: s.raw,
       benefit: s.benefit,
-      totalCost: s.item.cost,
-    }),
-  }));
+      value: s.item.asset.criticalityScore * s.item.asset.scaleFactor * weight * s.benefit,
+      priority: priorityScore({
+        criticality: s.item.asset.criticalityScore,
+        scaleFactor: s.item.asset.scaleFactor,
+        categoryWeight: weight,
+        benefit: s.benefit,
+        totalCost: s.item.cost,
+      }),
+    };
+  });
 
   const riskPct = (c: Candidate) =>
     c.riskNow > 0 ? ((c.riskNow - c.riskAfter) / c.riskNow) * 100 : null;
@@ -505,6 +520,8 @@ function rankCandidates(
     if (trace) {
       trace.push({
         ...traceOf(c, year, ctx.categoryWeights),
+        incremental: null,
+        incrementalOver: null,
         selected: false,
         reason: enough ? NOT_RANKED.belowFloor : NOT_RANKED.tooLittle,
       });
@@ -512,24 +529,16 @@ function rankCandidates(
     return false;
   });
 
-  // **Paying for itself is a tier, not a filter.** Everything whose life-cycle
-  // saving is positive is bought before anything whose is not, but the rest
-  // stay on the list — so a budget larger than the work that pays back spends
-  // the surplus on the next best thing rather than not at all.
+  // Sorted by Priority Score only so ties in the selection resolve toward the
+  // higher-priority segment. What is bought is decided in ./selection.ts, by
+  // what each option adds over the cheaper ones on its segment.
   //
-  // It was a hard filter first, and excluding the second tier entirely made
-  // every scenario converge: budgets differing by two and a half times reached
-  // the same condition, because the constraint stopped being money. It was a
-  // filter at all because without it the model bought $336,012 of lining on
-  // one segment every year for eighteen years — the benefit term is min-max
-  // normalized, so in a year when everything left is marginal the best of a
-  // marginal set still scores near 100. The retreatment interval is what makes
-  // demotion safe: that purchase can now happen once every five years at
-  // worst, not every year.
-  return fundable.sort((a, b) => {
-    if (a.paysForItself !== b.paysForItself) return a.paysForItself ? -1 : 1;
-    return (b.priority ?? -1) - (a.priority ?? -1);
-  });
+  // Life-cycle saving is part of Expected Benefit, so work that pays for
+  // itself still scores for it; it no longer has a tier of its own. The tier
+  // was a patch on ranking each option by its own benefit ÷ cost, and the
+  // retreatment interval — not the tier — is what stops the same lining being
+  // bought on one segment every year.
+  return fundable.sort((a, b) => (b.priority ?? -1) - (a.priority ?? -1));
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -547,7 +556,11 @@ function keep<T>(items: T[], allowed: (item: T) => boolean, dropped: (item: T) =
 
 /** The trace row for an option that was scored: everything but what happened
  * to it, which its caller knows and this does not. */
-function traceOf(c: Candidate, year: number, weights: CategoryWeights): Omit<YearAlternative, "selected" | "reason"> {
+function traceOf(
+  c: Candidate,
+  year: number,
+  weights: CategoryWeights
+): Omit<YearAlternative, "selected" | "reason" | "incremental" | "incrementalOver"> {
   return {
     year,
     assetId: c.asset.id,
@@ -607,7 +620,7 @@ export type ScenarioRunOptions = {
    * the Priority Score. */
   categoryWeights?: CategoryWeights;
   /** The share of each year each category may take, and the order they take
-   * it in. Null means one pass down the ranked list, ignoring category. */
+   * it in. Null means no category limits, only the year's budget. */
   fundingPlan?: FundingPlan;
   /** Deterioration curves by material. */
   curves?: Record<string, CurveParams>;
@@ -716,8 +729,9 @@ export function runScenario(
       fallbackReplacement,
     }, trace);
 
-    // 2. Choose what the year buys: categories in the plan's order, one
-    //    treatment per asset, a combination preferred over its parts. §5.7.
+    // 2. Choose what the year buys: one treatment per asset, each step up
+    //    judged by what it adds for what it costs, across every category,
+    //    with each category held to its share. §5.7.
     const outcome = selectForYear(candidates, budget, fundingPlan);
 
     // Recorded here rather than inside the selection engine, which is written
@@ -725,7 +739,14 @@ export function runScenario(
     if (trace) {
       for (const candidate of candidates) {
         const reason = outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
-        trace.push({ ...traceOf(candidate, year, categoryWeights), selected: reason === SELECTED, reason });
+        const step = outcome.incremental.get(candidate);
+        trace.push({
+          ...traceOf(candidate, year, categoryWeights),
+          incremental: step?.score ?? null,
+          incrementalOver: step ? (step.over?.option.label ?? null) : null,
+          selected: reason === SELECTED,
+          reason,
+        });
       }
     }
 

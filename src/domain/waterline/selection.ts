@@ -1,37 +1,46 @@
-import { fundingPasses, type FundingPlan } from "./category-funding";
+import { categoryLimits, type FundingPlan } from "./category-funding";
 import type { TreatmentCategory, TreatmentOption } from "./treatment";
 
 /**
- * Choosing one year's work from a ranked list.
+ * Choosing one year's work: incremental benefit/cost across categories.
  *
  * See docs/TREATMENT-MODEL-REBUILD.md §5.7.
  *
- * The list arrives already sorted by Priority Score, highest first, with every
- * applicable treatment and every applicable combination on every asset in it.
- * This decides which of them the year's money buys, under four rules:
+ * Every applicable treatment and combination on every asset arrives scored.
+ * The year's money is spent to buy the most weighted benefit it can, under
+ * three rules:
  *
- *  1. **Categories spend in order.** The funding plan's first category takes
- *     what it can up to its share of the year, then the second, and so on.
- *     Order is a decision, not a detail: with a fixed budget, "repair before
- *     renewal" and "renewal before repair" buy different networks.
- *
- *  2. **One treatment per asset per year.** Once an asset is funded, it is out
- *     for the rest of the year — including for every later category. A segment
- *     does not get relined in March and replaced in September.
- *
- *  3. **Within a category, the best option on an asset wins** and the rest of
- *     that asset's options in that category are passed over. They are
+ *  1. **One treatment per asset per year.** The options on a segment are
  *     alternatives to each other, not a shopping list.
  *
- *  4. **A combination beats a single treatment on the same asset**, even when
- *     it scores lower, provided it fits what is left. Doing two things in one
- *     visit is worth something the Priority Score does not measure — the
- *     second excavation, the second shutdown, the second round of customer
- *     notices — and the model would otherwise buy the patch and come back.
- *     Rule 2 then keeps it from coming back anyway.
+ *  2. **Each step up is judged on what it adds.** A segment's options are
+ *     laid out cheapest first, and every option is scored on the benefit it
+ *     adds over the next cheaper one, divided by the extra it costs — doing
+ *     nothing being the rung below the cheapest. Across the whole network the
+ *     best next step is bought first, whether that is a first fix somewhere
+ *     or a move from a patch to a relining somewhere else.
+ *
+ *     This replaced ranking each option on its own benefit ÷ cost. That
+ *     almost always bought the cheapest option on every segment — the average
+ *     benefit per dollar of a larger job includes the cheap first gains, and
+ *     still loses — so a relining that was well worth its extra cost over a
+ *     patch never got the chance. Measured on the seed network before the
+ *     change: the same budget ended 2.3 WCI points higher with 29 fewer
+ *     segments below target. It also retired two rules that existed to prop
+ *     the old score up: combinations no longer need a preference (a bundle is
+ *     simply a rung, bought when its step is worth it) and work that pays for
+ *     itself no longer needs its own tier.
+ *
+ *  3. **A category's share of the year is a limit, not a turn.** Moving a
+ *     segment up can move it into another category, and then its whole cost
+ *     counts against that category. No category may exceed its share; the
+ *     order categories are listed in a plan plays no part.
+ *
+ * Options that cost more for no more benefit, or whose step up is a worse deal
+ * than skipping straight past them, are never on the ladder at all.
  */
 
-/** What the caller must be able to tell us about a ranked option. */
+/** What the caller must be able to tell us about a scored option. */
 export type Rankable = {
   assetId: string;
   option: TreatmentOption;
@@ -39,23 +48,21 @@ export type Rankable = {
   /** Priority Score. Null means it could not be priced; such an option is
    * never selected. */
   priority: number | null;
-  /** Whether the work pays for itself over the horizon. Options that do are
-   * bought before options that do not — including for the combination
-   * preference below, which must not reach past a tier to find a bundle. */
-  paysForItself: boolean;
+  /** The Priority Score's numerator, unrounded: criticality × scale factor ×
+   * category weight × expected benefit. What a step up adds is measured in it. */
+  value: number;
 };
 
 /**
  * Why an option the year could have bought was not bought, in a few words.
  *
  * Kept as a closed set rather than free text: these are the only things that
- * stop a ranked option, they are what the alternatives page filters on, and a
+ * stop a scored option, they are what the alternatives page filters on, and a
  * sentence assembled per row would drift from the rule that produced it.
  */
 export const NOT_SELECTED = {
-  betterOption: "Better option on this segment",
-  bundle: "Bundle chosen on this segment",
-  alreadyTreated: "Segment already treated this year",
+  betterOption: "Larger option funded on this segment",
+  notEfficient: "Another option gives more for the money",
   budgetSpent: "Year's budget spent",
   categoryFull: "Category budget full",
   unpriced: "Could not be priced",
@@ -64,16 +71,19 @@ export const NOT_SELECTED = {
 
 export const SELECTED = "Selected";
 
+/** A rung's incremental score, and the option it was measured against — null
+ * for the cheapest rung, which is measured against doing nothing. */
+export type IncrementalScore<T> = { score: number; over: T | null };
+
 export type SelectionResult<T extends Rankable> = {
-  /** In the order they were selected, which is the order they were funded. */
+  /** In the order each segment was first funded. */
   selected: T[];
-  /**
-   * Every candidate, against what happened to it: `SELECTED`, or one of
-   * `NOT_SELECTED`. Built during the walk rather than worked out afterwards,
-   * because "the budget was spent" is only true of the moment the option's
-   * turn came — by the end of the year the figures no longer show it.
-   */
+  /** Every candidate, against what happened to it: `SELECTED`, or one of
+   * `NOT_SELECTED`. */
   outcome: Map<T, string>;
+  /** Each option on a segment's ladder, with its incremental score. Options
+   * off the ladder, or never priced, are absent. */
+  incremental: Map<T, IncrementalScore<T>>;
   /** What each category took, and what it was allowed to take. */
   byCategory: Array<{ category: TreatmentCategory | "All"; spent: number; cap: number }>;
   totalSpent: number;
@@ -85,124 +95,187 @@ export type SelectionResult<T extends Rankable> = {
   cappedOut: number;
 };
 
+/** Incremental scores are shown beside Priority Scores, in the same units and
+ * to the same precision. */
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
 /**
- * `candidates` must be sorted by priority, highest first. It is not sorted
- * here: the caller has already paid for the sort, and re-sorting would hide
- * the fact that the order is an input rather than an implementation detail.
+ * One segment's options that could ever be worth buying, cheapest first.
+ *
+ * Drops anything costing more for no more value, then anything whose step up
+ * is a better deal than the step before it — its lower rung would never be
+ * bought on its own merits, so the ladder skips it. What remains has falling
+ * incremental scores, which is what makes buying the best next step anywhere
+ * on the network the right order.
  */
+export function efficientLadder<T extends Rankable>(options: T[]): T[] {
+  const sorted = [...options].sort((a, b) => a.cost - b.cost || b.value - a.value);
+  const ladder: T[] = [];
+  for (const option of sorted) {
+    if (ladder.length > 0 && option.value <= ladder[ladder.length - 1].value) continue;
+    while (ladder.length > 0) {
+      const last = ladder[ladder.length - 1];
+      const below = ladder.length > 1 ? ladder[ladder.length - 2] : null;
+      const lastStep = (last.value - (below?.value ?? 0)) / (last.cost - (below?.cost ?? 0));
+      const nextStep = (option.value - last.value) / (option.cost - last.cost);
+      if (nextStep >= lastStep) ladder.pop();
+      else break;
+    }
+    ladder.push(option);
+  }
+  return ladder;
+}
+
+/** A max-heap of each segment's next step, so the best step on the network is
+ * found without rescanning every segment each time one is bought. */
+class StepHeap {
+  private items: Array<{ assetId: string; rung: number; score: number; seq: number }> = [];
+  private seq = 0;
+
+  get size() {
+    return this.items.length;
+  }
+
+  push(assetId: string, rung: number, score: number) {
+    this.items.push({ assetId, rung, score, seq: this.seq++ });
+    let i = this.items.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (!this.before(i, parent)) break;
+      [this.items[i], this.items[parent]] = [this.items[parent], this.items[i]];
+      i = parent;
+    }
+  }
+
+  pop() {
+    const top = this.items[0];
+    const last = this.items.pop()!;
+    if (this.items.length > 0) {
+      this.items[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let best = i;
+        if (l < this.items.length && this.before(l, best)) best = l;
+        if (r < this.items.length && this.before(r, best)) best = r;
+        if (best === i) break;
+        [this.items[i], this.items[best]] = [this.items[best], this.items[i]];
+        i = best;
+      }
+    }
+    return top;
+  }
+
+  /** Higher score first; on a tie, whichever was offered first — candidates
+   * arrive sorted by Priority Score, so that is the higher-priority segment. */
+  private before(a: number, b: number) {
+    const x = this.items[a];
+    const y = this.items[b];
+    return x.score > y.score || (x.score === y.score && x.seq < y.seq);
+  }
+}
+
 export function selectForYear<T extends Rankable>(
   candidates: T[],
   budget: number,
   plan: FundingPlan
 ): SelectionResult<T> {
-  const selected: T[] = [];
-  const treatedAssets = new Set<string>();
-  const byCategory: SelectionResult<T>["byCategory"] = [];
+  const limits = categoryLimits(plan, budget);
+  const limitOf = (category: TreatmentCategory) => (limits == null ? budget : (limits.get(category) ?? 0));
+
   const outcome = new Map<T, string>();
+  const incremental = new Map<T, IncrementalScore<T>>();
 
-  let totalSpent = 0;
-  let cappedOut = 0;
-
-  for (const pass of fundingPasses(plan)) {
-    const cap = pass.share * budget;
-    let categorySpent = 0;
-
-    // Everything this pass may consider, still in priority order.
-    const inPass = candidates.filter(
-      (c) => pass.categories == null || pass.categories.includes(c.option.category)
-    );
-
-    // Group by asset once, so rules 3 and 4 are decided per asset rather than
-    // rediscovered on every row.
-    const byAsset = new Map<string, T[]>();
-    for (const candidate of inPass) {
-      const list = byAsset.get(candidate.assetId) ?? [];
-      list.push(candidate);
-      byAsset.set(candidate.assetId, list);
+  // Segments' ladders, in the order segments first appear (Priority Score
+  // order), which the heap uses to break ties.
+  const bySegment = new Map<string, T[]>();
+  for (const c of candidates) {
+    if (c.priority == null || !(c.cost > 0) || !Number.isFinite(c.value)) {
+      outcome.set(c, NOT_SELECTED.unpriced);
+    } else if (limitOf(c.option.category) <= 0) {
+      outcome.set(c, NOT_SELECTED.categoryUnfunded);
+    } else {
+      bySegment.set(c.assetId, [...(bySegment.get(c.assetId) ?? []), c]);
     }
-
-    // Walk assets in the order their best option appears in the ranked list,
-    // which is what "start from the top of the list" means once an asset can
-    // only be funded once.
-    for (const candidate of inPass) {
-      if (treatedAssets.has(candidate.assetId)) {
-        // Funded in an earlier pass, or by the line above in this one. Rule 2.
-        if (!outcome.has(candidate)) outcome.set(candidate, NOT_SELECTED.alreadyTreated);
-        continue;
-      }
-
-      const onAsset = byAsset.get(candidate.assetId);
-      if (!onAsset || onAsset[0] !== candidate) continue; // not this asset's turn yet
-
-      const affordable = (c: T) =>
-        c.priority != null &&
-        c.cost > 0 &&
-        totalSpent + c.cost <= budget &&
-        categorySpent + c.cost <= cap;
-
-      // Rule 4 before rule 3 — but inside a tier, never across one.
-      //
-      // The preference for a bundle is about avoiding a second visit, and that
-      // is worth giving up some Priority Score for. It is not worth giving up
-      // the difference between work that pays for itself and work that does
-      // not. Measured before this was tiered: on one segment at 69 WCI the
-      // engine kept buying a $336,012 bundle whose life-cycle saving was
-      // −$277,402, passing over a $9,880 valve replacement that saved $81,403,
-      // because the bundle was a bundle and reached first.
-      const pick = (pool: T[]) =>
-        pool.find((c) => c.option.members.length > 1 && affordable(c)) ?? pool.find((c) => affordable(c));
-
-      const paying = onAsset.filter((c) => c.paysForItself);
-      const rest = onAsset.filter((c) => !c.paysForItself);
-      const chosen = pick(paying) ?? pick(rest);
-
-      if (!chosen) {
-        // Nothing on this asset fits. Each option says which wall it hit, at
-        // the moment it hit it.
-        for (const c of onAsset) {
-          if (outcome.has(c)) continue;
-          outcome.set(
-            c,
-            c.priority == null
-              ? NOT_SELECTED.unpriced
-              : totalSpent + c.cost > budget
-                ? NOT_SELECTED.budgetSpent
-                : NOT_SELECTED.categoryFull
-          );
-        }
-
-        // Report it as capped out only when the year still had room —
-        // otherwise it is simply the budget.
-        const cheapest = onAsset.reduce<T | null>(
-          (best, c) => (c.priority != null && (best == null || c.cost < best.cost) ? c : best),
-          null
-        );
-        if (cheapest && totalSpent + cheapest.cost <= budget) cappedOut += cheapest.cost;
-        continue;
-      }
-
-      selected.push(chosen);
-      outcome.set(chosen, SELECTED);
-      // Rule 3, and rule 4 where the winner was a bundle: the rest of this
-      // asset's options were alternatives to the one that won.
-      const beaten = chosen.option.members.length > 1 ? NOT_SELECTED.bundle : NOT_SELECTED.betterOption;
-      for (const c of onAsset) if (c !== chosen && !outcome.has(c)) outcome.set(c, beaten);
-
-      treatedAssets.add(chosen.assetId);
-      totalSpent += chosen.cost;
-      categorySpent += chosen.cost;
-    }
-
-    byCategory.push({
-      category: pass.categories == null ? "All" : pass.categories[0],
-      spent: categorySpent,
-      cap,
-    });
   }
 
-  // A plan that names only some categories never opens a pass for the rest, so
-  // their options were never in the running at all.
-  for (const c of candidates) if (!outcome.has(c)) outcome.set(c, NOT_SELECTED.categoryUnfunded);
+  const ladders = new Map<string, T[]>();
+  for (const [assetId, options] of bySegment) {
+    const ladder = efficientLadder(options);
+    ladders.set(assetId, ladder);
+    ladder.forEach((rung, i) => {
+      const below = i > 0 ? ladder[i - 1] : null;
+      incremental.set(rung, {
+        score: round4((rung.value - (below?.value ?? 0)) / (rung.cost - (below?.cost ?? 0))),
+        over: below,
+      });
+    });
+    for (const option of options) if (!ladder.includes(option)) outcome.set(option, NOT_SELECTED.notEfficient);
+  }
 
-  return { selected, outcome, byCategory, totalSpent, cappedOut };
+  const heap = new StepHeap();
+  const stepScore = (assetId: string, rung: number) => {
+    const ladder = ladders.get(assetId)!;
+    const below = rung > 0 ? ladder[rung - 1] : null;
+    return (ladder[rung].value - (below?.value ?? 0)) / (ladder[rung].cost - (below?.cost ?? 0));
+  };
+  for (const assetId of ladders.keys()) heap.push(assetId, 0, stepScore(assetId, 0));
+
+  const level = new Map<string, number>();
+  const firstFunded: string[] = [];
+  /** Why a segment stopped climbing, for every rung above where it stopped. */
+  const stoppedBy = new Map<string, string>();
+  const spentBy = new Map<TreatmentCategory, number>();
+  let totalSpent = 0;
+
+  while (heap.size > 0) {
+    const { assetId, rung } = heap.pop();
+    const ladder = ladders.get(assetId)!;
+    const next = ladder[rung];
+    const current = rung > 0 ? ladder[rung - 1] : null;
+    const category = next.option.category;
+
+    const totalAfter = totalSpent - (current?.cost ?? 0) + next.cost;
+    const categoryAfter =
+      (spentBy.get(category) ?? 0) - (current && current.option.category === category ? current.cost : 0) + next.cost;
+
+    if (totalAfter > budget) {
+      stoppedBy.set(assetId, NOT_SELECTED.budgetSpent);
+      continue;
+    }
+    if (categoryAfter > limitOf(category)) {
+      stoppedBy.set(assetId, NOT_SELECTED.categoryFull);
+      continue;
+    }
+
+    if (current) spentBy.set(current.option.category, (spentBy.get(current.option.category) ?? 0) - current.cost);
+    else firstFunded.push(assetId);
+    spentBy.set(category, (spentBy.get(category) ?? 0) + next.cost);
+    totalSpent = totalAfter;
+    level.set(assetId, rung);
+    if (rung + 1 < ladder.length) heap.push(assetId, rung + 1, stepScore(assetId, rung + 1));
+  }
+
+  const selected: T[] = [];
+  let cappedOut = 0;
+  for (const [assetId, ladder] of ladders) {
+    const chosen = level.get(assetId) ?? -1;
+    ladder.forEach((rung, i) => {
+      if (i < chosen) outcome.set(rung, NOT_SELECTED.betterOption);
+      else if (i === chosen) outcome.set(rung, SELECTED);
+      else outcome.set(rung, stoppedBy.get(assetId) ?? NOT_SELECTED.budgetSpent);
+    });
+    // Nothing at all on this segment, because its first step's category was
+    // full while the year still had money.
+    if (chosen < 0 && stoppedBy.get(assetId) === NOT_SELECTED.categoryFull) cappedOut += ladder[0].cost;
+  }
+  for (const assetId of firstFunded) selected.push(ladders.get(assetId)![level.get(assetId)!]);
+
+  const byCategory: SelectionResult<T>["byCategory"] =
+    limits == null
+      ? [{ category: "All", spent: totalSpent, cap: budget }]
+      : [...limits].map(([category, cap]) => ({ category, spent: spentBy.get(category) ?? 0, cap }));
+
+  return { selected, outcome, incremental, byCategory, totalSpent, cappedOut };
 }
