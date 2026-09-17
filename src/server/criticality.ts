@@ -8,6 +8,7 @@ import {
   type Node,
 } from "@/domain/waterline/criticality-formula";
 import { assertAssetTypeInOrg, validateExpression, validateFormulaName } from "@/server/formula";
+import type { CriticalityState } from "@/domain/waterline/scenario";
 
 /**
  * Criticality formulas: the field catalogue they can read, and running one.
@@ -485,6 +486,50 @@ export async function getActiveFormula(assetTypeId: string): Promise<CompiledFor
  * formula is to see its effect now, without waiting for a model run to write
  * it down.
  */
+/**
+ * A criticality formula as a scenario can run it: rescored from the network as
+ * the simulation changes it, year after year.
+ *
+ * Static inputs — customers served, diameter, district, failures to date — are
+ * loaded once. The three that move during a run are supplied per call, so a
+ * segment replaced in year 3 stops scoring as the pipe that needed replacing.
+ * Returns null when there is no formula to run, which leaves each asset's
+ * stored score in charge for the whole run, exactly as before formulas could
+ * read condition.
+ *
+ * `modelId` is the scenario's own formula when it names one; otherwise the
+ * active formula for the asset type is used, so a scenario and the rest of the
+ * system agree about what an asset is worth.
+ */
+export async function criticalityRescorer(
+  organizationId: string,
+  assetTypeId: string,
+  modelId?: string | null
+): Promise<{ name: string; score: (assetId: string, state: CriticalityState) => number | null } | null> {
+  const compiled = modelId
+    ? await compileCriticalityModel(modelId)
+    : await getActiveFormula(assetTypeId);
+  if (!compiled || compiled.assetTypeId !== assetTypeId) return null;
+
+  const values = await loadAssetValues(organizationId, assetTypeId, compiled.valueMaps);
+  const staticValues = new Map(values.map((v) => [v.assetId, v.values]));
+
+  return {
+    name: compiled.name,
+    score: (assetId, state) => {
+      const base = staticValues.get(assetId);
+      if (!base) return null;
+      const result = evaluate(compiled.tree, {
+        ...base,
+        CONDITION: state.condition,
+        AGE_YEARS: state.ageYears,
+        RISK_SCORE: state.riskScore,
+      });
+      return result.ok ? toCriticalityScore(result.value) : null;
+    },
+  };
+}
+
 export async function criticalityForModel(
   organizationId: string,
   modelId: string

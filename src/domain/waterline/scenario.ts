@@ -107,10 +107,23 @@ export type SimAsset = {
   serviceArea: string | null;
   pressureZone: string | null;
 
-  /** What the asset is worth, 0-100 — the Priority Score's first term. Fixed
-   * for the run: criticality describes what the asset serves, which treating
-   * the pipe does not change. */
+  /**
+   * What the asset is worth, 0-100 — the Priority Score's first term.
+   *
+   * Carried as state rather than a constant, because a criticality formula
+   * may read the asset's condition, age or risk, and all three move during a
+   * run. With `criticality` in the run options this is rescored every year
+   * from the network as it then stands; without one it keeps the stored score
+   * for the whole run, which is right for a formula over what the asset
+   * serves.
+   */
   criticalityScore: number;
+
+  /** Calendar age at the start of the run, in years, so a formula reading
+   * AGE_YEARS can be given the right age in later years. Unlike
+   * `effectiveAge` this is not moved by a treatment: renewing a pipe does not
+   * change when it was installed. */
+  ageYears: number;
 
   /** How big a piece of work this asset is — the Priority Score's second
    * term. Also fixed: it is a formula over length, diameter and the like,
@@ -607,6 +620,17 @@ function isEligible(asset: SimAsset, a: ScenarioAssumptions): boolean {
  * order arrived, and a call site reading `runScenario(a, b, c, d, e, f, g)`
  * tells the reader nothing about which is which.
  */
+/** What a criticality formula may read that changes during a run. Everything
+ * else about an asset — customers served, diameter, district — is static and
+ * held by whoever supplies the callback. */
+export type CriticalityState = {
+  condition: number;
+  /** Calendar age in this year of the run. */
+  ageYears: number;
+  /** Probability × consequence as the run computes it, from current condition. */
+  riskScore: number;
+};
+
 export type ScenarioRunOptions = {
   library?: TreatmentDef[];
   combinations?: CombinationDef[];
@@ -631,6 +655,19 @@ export type ScenarioRunOptions = {
    * current year. When the run starts later than this, the network is aged
    * forward to the start year with no work done first. */
   conditionYear?: number;
+  /**
+   * Rescore an asset's criticality from the network as it stands, called once
+   * a year before the year's options are ranked.
+   *
+   * Supplied by the caller because criticality formulas are configuration,
+   * which this module knows nothing about. Returning null leaves the score
+   * alone — a formula that no longer parses degrades to the stored score
+   * rather than to zero.
+   *
+   * Absent means what the model did before condition could enter a formula:
+   * the stored score stands for the whole run.
+   */
+  criticality?: (assetId: string, state: CriticalityState) => number | null;
   /**
    * Record every alternative the run considered, year by year, with what
    * happened to it.
@@ -715,6 +752,21 @@ export function runScenario(
   for (let i = 0; i < assumptions.analysisPeriodYears; i++) {
     const year = startYear + i;
     const budget = assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, i);
+
+    // 0. Criticality, from the network as it now stands. A formula may read
+    //    condition, age or risk, and a segment replaced in year 3 must stop
+    //    scoring as though it were still the pipe that needed replacing —
+    //    otherwise the money keeps following what has already been fixed.
+    if (options.criticality) {
+      for (const asset of state) {
+        const rescored = options.criticality(asset.id, {
+          condition: asset.condition,
+          ageYears: asset.ageYears + agedYears + i,
+          riskScore: pofFromCondition(asset.condition) * asset.cof,
+        });
+        if (rescored != null) asset.criticalityScore = rescored;
+      }
+    }
 
     // 1. Every option on every eligible asset, priced and scored against this
     //    year's condition. Rebuilt each year on purpose — last year's work

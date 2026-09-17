@@ -50,6 +50,18 @@ export const ENTRIES: BuildEntry[] = [
   },
   {
     date: "2026-09-17",
+    title: "Criticality is worked out again each year of a scenario",
+    summary:
+      "A scenario used to read each segment's criticality once and hold it for the whole run. A formula that reads condition, age or risk now follows the network as the run changes it, so a segment treated in year three stops scoring as the pipe that needed treating.",
+    changes: [
+      "Each year, before the year's work is chosen, every segment is rescored from its current condition, its age that year, and the risk the run computes for it. Relining a segment at WCI 23 now drops its criticality the following year instead of leaving it at its starting value for twenty years.",
+      "A scenario that names its own criticality formula now runs its simulation with that formula. Previously the choice only affected work plans and the ranking, and the simulation quietly used the stored scores.",
+      "Nothing changes for an asset type with no formula, or for a formula written only over what an asset serves: those scores do not move during a run, and results are identical.",
+    ],
+    note: "No migration. Scenario results already stored were calculated the old way — re-run scenarios to pick this up.",
+  },
+  {
+    date: "2026-09-17",
     title: "Scenarios buy work by incremental benefit/cost",
     summary:
       "Scenarios now choose each year's work by what each step up adds for its extra cost, across every category at once, with a category funding plan's percentages acting only as limits. On the seed network, Current Funding ends 2.3 WCI points higher with 29 fewer segments below target and $19.6M less spent.",

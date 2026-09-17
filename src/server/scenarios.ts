@@ -24,6 +24,7 @@ import { getMaterialCurves } from "@/server/settings";
 import { assetScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
+import { criticalityRescorer } from "@/server/criticality";
 import { resultsOutOfWindow, type ScenarioSetStatusValue, type ScenarioWindow } from "@/lib/scenario-sets";
 import { assertSetInOrganization } from "@/server/scenario-sets";
 
@@ -78,6 +79,7 @@ export async function buildSimAssets(organizationId: string): Promise<SimAsset[]
       cof: asset.riskAssessments[0]?.consequenceScore ?? 3,
       condition,
       effectiveAge: effectiveAgeForCondition(curve, condition),
+      ageYears: age,
       curve,
       criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
       customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
@@ -253,7 +255,12 @@ export async function loadScenarioRun(
   // A set decides the years: its base year starts the run and its planning
   // period replaces the scenario's own, so every member covers the same span.
   const assumptions = effectiveAssumptions(scenario.assumptions, scenario.scenarioSet);
-  const [simAssets, library, combinations, weights, categories, funding, selection, curves] = await Promise.all([
+  const waterlineType = await prisma.assetType.findFirst({
+    where: { organizationId, code: "WATERLINE" },
+    select: { id: true },
+  });
+  const [simAssets, library, combinations, weights, categories, funding, selection, curves, criticality] =
+    await Promise.all([
     buildSimAssets(organizationId),
     // Run against the configured library so edited treatments and decision
     // trees change what a scenario is allowed to fund.
@@ -269,6 +276,11 @@ export async function loadScenarioRun(
     // And what it is allowed to consider at all. Null means the whole library.
     resolveOptionSelection(organizationId, scenarioId),
     getMaterialCurves(organizationId),
+    // How criticality is rescored as the run changes the network — the
+    // scenario's own formula where it names one, otherwise the active one.
+    waterlineType
+      ? criticalityRescorer(organizationId, waterlineType.id, scenario.criticalityModelId)
+      : Promise.resolve(null),
   ]);
 
   return {
@@ -290,6 +302,9 @@ export async function loadScenarioRun(
       fundingPlan: funding.plan,
       curves,
       startYear: scenario.scenarioSet?.baseYear,
+      // Absent when no formula is configured, in which case each asset keeps
+      // its stored criticality for the whole run.
+      criticality: criticality?.score,
     },
   };
 }

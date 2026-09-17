@@ -853,11 +853,15 @@ are enumerated and priced once, against the network as it stands, and the years
 are then spent down; a scenario re-enumerates every year from the condition its
 own earlier work produced. So a plan says "here is the programme we would commit
 to now" and a scenario says "here is how the network behaves if we keep deciding
-afresh". Two consequences follow from the static form rather than from policy:
+afresh". Three consequences follow from the static form rather than from policy.
 Expected Benefit is normalized once, so a score means the same thing in year 5
-as in year 1 (a scenario's does not); and a segment is funded at most once
-across the whole plan, so the retreatment interval has nothing to do — there is
-no closed loop that could buy the same lining twice.
+as in year 1 (a scenario's does not). A segment is funded at most once across
+the whole plan, so the retreatment interval has nothing to do — there is no
+closed loop that could buy the same lining twice. And criticality is read once,
+from the stored score, where a scenario now rescores it every year from the
+condition its own work produced (`criticalityRescorer`, added alongside this):
+a plan has no later condition to rescore *from*, since it never applies
+anything to the network.
 
 Three things came with it:
 
