@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BulkDeleteBar, SelectAllCheckbox, useBulkSelection } from "@/components/ui/bulk-delete";
 import type { RuleSummary } from "@/server/rules";
-import { deleteRulesAction, type BulkDeleteState } from "./actions";
+import { bulkRulesAction, type BulkDeleteState } from "./actions";
 
 const EMPTY: BulkDeleteState = { status: "idle", message: null };
 
@@ -31,7 +31,7 @@ export function RuleList({
   selectedId: string | null;
   canEdit: boolean;
 }) {
-  const [state, submit, pending] = useActionState(deleteRulesAction, EMPTY);
+  const [state, submit, pending] = useActionState(bulkRulesAction, EMPTY);
   const selection = useBulkSelection(rules, state);
   const { selected } = selection;
 
@@ -66,6 +66,7 @@ export function RuleList({
           action={submit}
           pending={pending}
           noun="rules"
+          copy={{}}
           // Nothing deletable: the dialog explains why, and OK only closes it.
           onConfirm={d === 0 ? () => {} : undefined}
           title={d === 0 ? "None of these can be deleted" : `Delete ${d} rule${d === 1 ? "" : "s"}?`}

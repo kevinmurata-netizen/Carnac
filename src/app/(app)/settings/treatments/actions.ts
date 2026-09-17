@@ -8,6 +8,7 @@ import {
   updateTreatment,
   deleteTreatment,
   deleteTreatments,
+  copyTreatments,
   type TreatmentInput,
 } from "@/server/treatment-config";
 import { setTreatmentCosts, validateCostRates, type CostRateInput } from "@/server/cost-rates";
@@ -223,6 +224,34 @@ export async function deleteTreatmentAction(
  * most went: "5 deleted" in green over a list still showing two of them reads
  * as a bug. The message names what stayed and why.
  */
+/** The list's bar: Copy selected and Delete selected share one form, and the
+ * button pressed says which. */
+export async function bulkTreatmentsAction(
+  prev: TreatmentActionState,
+  formData: FormData
+): Promise<TreatmentActionState> {
+  return formData.get("intent") === "copy" ? copyTreatmentsAction(formData) : deleteTreatmentsAction(prev, formData);
+}
+
+async function copyTreatmentsAction(formData: FormData): Promise<TreatmentActionState> {
+  try {
+    const session = await requireWriteAccess();
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No treatments were selected." };
+    const names = await copyTreatments(session.user.organizationId, ids);
+    revalidateAffected();
+    revalidatePath("/settings/treatment-rules");
+    revalidatePath("/settings/treatment-effects");
+    revalidatePath("/settings/treatment-costs");
+    return {
+      status: "success",
+      message: `Copied ${names.length}: ${names.join(", ")} — each with its rules, prices and effects. A copy qualifies wherever the original does, so change its rules or effects before running a scenario that considers every treatment.`,
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not copy those treatments" };
+  }
+}
+
 export async function deleteTreatmentsAction(
   _prev: TreatmentActionState,
   formData: FormData

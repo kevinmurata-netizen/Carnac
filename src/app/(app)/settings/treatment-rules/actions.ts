@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
 import { prisma } from "@/lib/prisma";
-import { createRule, updateRule, deleteRule, deleteRules, getRuleForEditing } from "@/server/rules";
+import { createRule, updateRule, deleteRule, deleteRules, copyRules, getRuleForEditing } from "@/server/rules";
 import { loadRuleSamples, loadRuleFieldOptions, type RuleSample } from "@/server/rule-samples";
 import {
   emptyGroup,
@@ -162,6 +162,28 @@ export type BulkDeleteState = { status: "idle" | "success" | "error"; message: s
  * named, and a partial result reads as an error so it is never mistaken for
  * everything having gone.
  */
+/** The list's bar: Copy selected and Delete selected share one form, and the
+ * button pressed says which. */
+export async function bulkRulesAction(prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
+  return formData.get("intent") === "copy" ? copyRulesAction(formData) : deleteRulesAction(prev, formData);
+}
+
+async function copyRulesAction(formData: FormData): Promise<BulkDeleteState> {
+  try {
+    const session = await requireWriteAccess();
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No rules were selected." };
+    const names = await copyRules(session.user.organizationId, ids);
+    revalidatePath("/settings/treatment-rules");
+    return {
+      status: "success",
+      message: `Copied ${names.length}: ${names.join(", ")}. The copies are not attached to anything yet, so nothing is gated by them until you add them to a treatment, combination or price.`,
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not copy those rules" };
+  }
+}
+
 export async function deleteRulesAction(_prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
   try {
     const session = await requireWriteAccess();

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { copyName, takenNames } from "@/lib/copy-name";
 import {
   WATERLINE_TREATMENTS,
   rulesFromWindow,
@@ -347,6 +348,67 @@ export async function deleteTreatments(
   }
 
   return { deleted: deletable.map((r) => r.name), kept };
+}
+
+/**
+ * Copy several treatments, with everything that makes one usable: its
+ * definition, the arrangement of rules deciding when it can be used and its
+ * blocks, its prices in order, and its effects — under "(copy)" names.
+ *
+ * Rules and effects are shared, so a copy points at the same ones rather than
+ * duplicating them; change the copy's by attaching different ones. What is
+ * not copied is what records decisions about the original: work plan
+ * projects, scenario option lists and combination memberships.
+ */
+export async function copyTreatments(organizationId: string, ids: string[]): Promise<string[]> {
+  const [rows, all] = await Promise.all([
+    prisma.treatment.findMany({
+      where: { id: { in: ids }, assetType: { code: "WATERLINE", organizationId } },
+      include: { costRates: { orderBy: { sortOrder: "asc" } }, ruleLinks: true, effectLinks: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.treatment.findMany({
+      where: { assetType: { code: "WATERLINE", organizationId } },
+      select: { name: true },
+    }),
+  ]);
+  const taken = takenNames(all);
+
+  const names: string[] = [];
+  await prisma.$transaction(
+    rows.map((t) => {
+      const name = copyName(t.name, taken);
+      names.push(name);
+      return prisma.treatment.create({
+        data: {
+          assetTypeId: t.assetTypeId,
+          name,
+          description: t.description,
+          applicability: t.applicability ?? undefined,
+          expectedLifeExtension: t.expectedLifeExtension,
+          effectOnCondition: t.effectOnCondition,
+          effectOnFailureProb: t.effectOnFailureProb,
+          usefulLife: t.usefulLife,
+          retreatmentIntervalYears: t.retreatmentIntervalYears,
+          ruleTree: t.ruleTree ?? undefined,
+          ruleLinks: { create: t.ruleLinks.map((l) => ({ ruleId: l.ruleId })) },
+          effectLinks: { create: t.effectLinks.map((l) => ({ effectId: l.effectId, sortOrder: l.sortOrder })) },
+          costRates: {
+            create: t.costRates.map((r) => ({
+              name: r.name,
+              sortOrder: r.sortOrder,
+              ruleId: r.ruleId,
+              unitCost: r.unitCost,
+              costUnit: r.costUnit,
+              mobilizationCost: r.mobilizationCost,
+              annualMaintenanceCost: r.annualMaintenanceCost,
+            })),
+          },
+        },
+      });
+    })
+  );
+  return names;
 }
 
 export async function deleteTreatment(organizationId: string, id: string) {

@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BulkDeleteBar, SelectAllCheckbox, useBulkSelection } from "@/components/ui/bulk-delete";
 import { formatNumber } from "@/lib/format";
 import type { TreatmentAdminRow } from "@/server/treatment-config";
-import { deleteTreatmentsAction } from "./actions";
+import { bulkTreatmentsAction } from "./actions";
 import { Feedback } from "./treatment-fields";
 import { EMPTY_TREATMENT_STATE, type TreatmentActionState } from "./state";
 
@@ -39,7 +39,7 @@ export function TreatmentLibrary({
   canEdit: boolean;
 }) {
   const [state, submit, pending] = useActionState<TreatmentActionState, FormData>(
-    deleteTreatmentsAction,
+    bulkTreatmentsAction,
     EMPTY_TREATMENT_STATE
   );
   const selection = useBulkSelection(treatments, state);
@@ -63,6 +63,26 @@ export function TreatmentLibrary({
           action={submit}
           pending={pending}
           noun="treatments"
+          // Unlike a copied rule or effect, a copied treatment is live at
+          // once: it has the original's rules, so it qualifies wherever the
+          // original does. Worth a sentence before it happens.
+          copy={{
+            warning: (
+              <div className="space-y-2">
+                <p>
+                  <span className="font-medium text-foreground">{selected.map((t) => t.name).join(", ")}</span> will
+                  be copied with {selected.length === 1 ? "its" : "their"} rules, blocks, prices and effects, named
+                  &ldquo;(copy)&rdquo;. Rules and effects are shared, so {selected.length === 1 ? "the copy uses" : "the copies use"}{" "}
+                  the same ones.
+                </p>
+                <p className="text-amber-700 dark:text-amber-500">
+                  A copy is offered wherever the original is — in Treatment Planning and in any scenario that considers
+                  every treatment — until you change its rules or effects. Scenarios with their own option list are
+                  not affected, and work plans are not copied.
+                </p>
+              </div>
+            ),
+          }}
           // Nothing deletable: the dialog explains why, and OK just closes it
           // rather than sending a request that can only be refused.
           onConfirm={deletable.length === 0 ? () => {} : undefined}

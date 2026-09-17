@@ -6,7 +6,7 @@ import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BulkDeleteBar, SelectAllCheckbox, useBulkSelection } from "@/components/ui/bulk-delete";
 import type { EffectSummary } from "@/server/effects";
-import { deleteEffectsAction, type BulkDeleteState } from "./actions";
+import { bulkEffectsAction, type BulkDeleteState } from "./actions";
 
 const EMPTY: BulkDeleteState = { status: "idle", message: null };
 
@@ -32,7 +32,7 @@ export function EffectList({
   selectedId: string | null;
   canEdit: boolean;
 }) {
-  const [state, submit, pending] = useActionState(deleteEffectsAction, EMPTY);
+  const [state, submit, pending] = useActionState(bulkEffectsAction, EMPTY);
   const selection = useBulkSelection(effects, state);
   const { selected } = selection;
   const deletable = selected.filter((e) => e.deleteBlocker == null);
@@ -66,6 +66,7 @@ export function EffectList({
           action={submit}
           pending={pending}
           noun="effects"
+          copy={{}}
           onConfirm={d === 0 ? () => {} : undefined}
           title={d === 0 ? "None of these can be deleted" : `Delete ${d} effect${d === 1 ? "" : "s"}?`}
           confirmLabel={d === 0 ? "OK" : `Delete ${d} effect${d === 1 ? "" : "s"}`}

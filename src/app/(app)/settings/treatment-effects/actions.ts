@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
-import { createEffect, updateEffect, deleteEffect, deleteEffects } from "@/server/effects";
+import { createEffect, updateEffect, deleteEffect, deleteEffects, copyEffects } from "@/server/effects";
 import type { EffectConditionMode } from "@/domain/waterline/effect";
 
 /** What a treatment does decides what the model recommends, so changing an
@@ -87,6 +87,29 @@ export type BulkDeleteState = { status: "idle" | "success" | "error"; message: s
 
 /** Delete the effects ticked on the list, keeping any still in use and saying
  * why. A partial result reads as an error so it is never taken for the lot. */
+/** The list's bar: Copy selected and Delete selected share one form, and the
+ * button pressed says which. */
+export async function bulkEffectsAction(prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
+  return formData.get("intent") === "copy" ? copyEffectsAction(formData) : deleteEffectsAction(prev, formData);
+}
+
+async function copyEffectsAction(formData: FormData): Promise<BulkDeleteState> {
+  try {
+    const session = await requireWriteAccess();
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No effects were selected." };
+    const names = await copyEffects(session.user.organizationId, ids);
+    revalidatePath("/settings/treatment-effects");
+    revalidatePath("/settings/treatments", "layout");
+    return {
+      status: "success",
+      message: `Copied ${names.length}: ${names.join(", ")}. The copies belong to no treatment yet — change one and add it where it applies, and the original stays as it is.`,
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not copy those effects" };
+  }
+}
+
 export async function deleteEffectsAction(_prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
   try {
     const session = await requireWriteAccess();

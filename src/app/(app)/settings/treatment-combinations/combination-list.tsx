@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BulkDeleteBar, SelectAllCheckbox, useBulkSelection } from "@/components/ui/bulk-delete";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { CombinationSummary } from "@/server/combinations";
-import { deleteCombinationsAction, type BulkDeleteState } from "./actions";
+import { bulkCombinationsAction, type BulkDeleteState } from "./actions";
 
 export type CombinationListRow = CombinationSummary & {
   /** What mobilizing costs when the combination has not set its own figure —
@@ -37,7 +37,7 @@ export function CombinationList({
   selectedId: string | null;
   canEdit: boolean;
 }) {
-  const [state, submit, pending] = useActionState(deleteCombinationsAction, EMPTY);
+  const [state, submit, pending] = useActionState(bulkCombinationsAction, EMPTY);
   const selection = useBulkSelection(combinations, state);
   const { selected } = selection;
 
@@ -71,6 +71,9 @@ export function CombinationList({
           action={submit}
           pending={pending}
           noun="combinations"
+          // No question needed: copies start disabled, so nothing is offered
+          // until one is changed and enabled. The result says so.
+          copy={{}}
           title={`Delete ${n} combination${n === 1 ? "" : "s"}?`}
           confirmLabel={`Delete ${n} combination${n === 1 ? "" : "s"}`}
           description={
