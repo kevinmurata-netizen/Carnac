@@ -16,7 +16,9 @@ import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { moveItemAction, updateStatusAction, deleteWorkPlanAction } from "../actions";
+import { moveItemAction, updateStatusAction, deleteWorkPlanAction, removeItemAction } from "../actions";
+import { AddWorkDialog } from "./add-work-dialog";
+import { listTreatments } from "@/server/treatments";
 import { CalendarRange, DollarSign, ListChecks, TriangleAlert } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
@@ -43,7 +45,11 @@ export default async function WorkPlanDetailPage({
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [plan, orgBudget] = await Promise.all([getWorkPlan(id), getAnnualBudget(organizationId)]);
+  const [plan, orgBudget, treatments] = await Promise.all([
+    getWorkPlan(id),
+    getAnnualBudget(organizationId),
+    listTreatments(organizationId),
+  ]);
   if (!plan) notFound();
 
   const canEdit = canRecordFieldData(session);
@@ -67,6 +73,17 @@ export default async function WorkPlanDetailPage({
         description={`${plan.startYear}–${plan.endYear}${plan.scenarioName ? ` · from scenario "${plan.scenarioName}"` : ""}`}
         actions={
           <div className="flex items-center gap-2">
+            {/* A mirror is rebuilt by its scenario on every run, so work added
+                to it would disappear. Its own page says so rather than
+                offering the button and losing the work later. */}
+            {canEdit && !plan.isScenarioMirror && (
+              <AddWorkDialog
+                workPlanId={plan.id}
+                treatments={treatments.map((t) => ({ id: t.id, name: t.name, category: t.category }))}
+                years={years.map((y) => y.year)}
+                defaultYear={plan.startYear}
+              />
+            )}
             {canEdit && (
               <form action={deleteWorkPlanAction}>
                 <input type="hidden" name="workPlanId" value={plan.id} />
@@ -274,6 +291,7 @@ export default async function WorkPlanDetailPage({
                         <TableHead>Funding</TableHead>
                         <TableHead>Status</TableHead>
                         {canEdit && <TableHead>Move To</TableHead>}
+                        {canEdit && <TableHead className="sr-only">Remove</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -291,7 +309,22 @@ export default async function WorkPlanDetailPage({
                               </Link>
                             </TableCell>
                             <TableCell className="text-xs">{item.serviceArea ?? "—"}</TableCell>
-                            <TableCell>{item.treatment}</TableCell>
+                            <TableCell>
+                              {item.treatment}
+                              {item.addedByHand && (
+                                <Badge
+                                  variant={item.forcedAgainstRules ? "destructive" : "secondary"}
+                                  className="ml-1.5"
+                                  title={
+                                    item.forcedAgainstRules
+                                      ? `Added by hand. Its rules refuse it here — ${item.refusedBy ?? "the treatment's own rules"}.`
+                                      : "Added by hand rather than chosen by the model."
+                                  }
+                                >
+                                  {item.forcedAgainstRules ? "forced" : "added"}
+                                </Badge>
+                              )}
+                            </TableCell>
                             <TableCell style={cBand ? { color: cBand.color } : undefined}>
                               {item.conditionNow ?? "—"}
                             </TableCell>
@@ -345,6 +378,26 @@ export default async function WorkPlanDetailPage({
                                   <Button type="submit" size="xs" variant="outline">
                                     Move
                                   </Button>
+                                </form>
+                              </TableCell>
+                            )}
+                            {canEdit && (
+                              <TableCell>
+                                <form action={removeItemAction}>
+                                  <input type="hidden" name="itemId" value={item.id} />
+                                  <ConfirmDelete
+                                    size="xs"
+                                    variant="ghost"
+                                    ariaLabel={`Remove ${item.treatment} on ${item.assetCode}`}
+                                    title={`Remove ${item.treatment} on ${item.assetCode}?`}
+                                    description={
+                                      item.addedByHand
+                                        ? "It was added by hand, so nothing regenerates it. This cannot be undone."
+                                        : "It came from the scenario this plan was made from. Removing it changes this plan only; the scenario is untouched, and making a new plan from that scenario would bring it back."
+                                    }
+                                  >
+                                    Remove
+                                  </ConfirmDelete>
                                 </form>
                               </TableCell>
                             )}
