@@ -636,6 +636,11 @@ export type WorkPlanYear = {
     riskNow: number | null;
     priorityScore: number | null;
     riskReductionPct: number | null;
+    /** Rows sharing this are one visit. */
+    bundleId: string | null;
+    bundleName: string | null;
+    /** Put into one visit by hand rather than funded as a combination. */
+    combinedByHand: boolean;
     /** Put here by someone rather than chosen by the model. */
     addedByHand: boolean;
     /** Added although the treatment's rules refuse it on this segment — a
@@ -666,6 +671,7 @@ export async function getWorkPlan(id: string) {
     const benefit = (item.expectedBenefit ?? {}) as {
       priorityScore?: number;
       riskReductionPct?: number;
+      combinedByHand?: boolean;
       addedByHand?: boolean;
       forcedAgainstRules?: boolean;
       refusedBy?: string | null;
@@ -682,6 +688,12 @@ export async function getWorkPlan(id: string) {
       riskNow: item.asset.riskAssessments[0]?.riskScore ?? null,
       priorityScore: benefit.priorityScore ?? null,
       riskReductionPct: benefit.riskReductionPct ?? null,
+      /** Rows sharing this are one visit: one mobilization, one set of
+       * effects, the cost divided between them. */
+      bundleId: item.bundleId,
+      bundleName: item.bundleName,
+      /** Put into one visit by hand rather than funded as a combination. */
+      combinedByHand: benefit.combinedByHand === true,
       /** Put here by someone rather than chosen by the model. */
       addedByHand: benefit.addedByHand === true,
       /** Added although the treatment's rules refuse it on this segment. */
@@ -1038,6 +1050,261 @@ export async function addWorkPlanItem(
   });
 
   return { added: preview };
+}
+
+// ---------------------------------------------------------------------------
+// Combining scheduled work into one visit
+// ---------------------------------------------------------------------------
+
+/** Everything this plan holds for one segment, so a row can be combined with
+ * its neighbours — including the ones in other years, which is usually the
+ * point: a repair in 2027 and a lining in 2031 become one visit. */
+export async function segmentRowsInPlan(workPlanId: string, assetId: string) {
+  const rows = await prisma.workPlanItem.findMany({
+    where: { workPlanId, assetId },
+    select: {
+      id: true,
+      year: true,
+      estimatedCost: true,
+      bundleId: true,
+      bundleName: true,
+      treatment: { select: { id: true, name: true } },
+    },
+    orderBy: [{ year: "asc" }, { estimatedCost: "desc" }],
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    year: r.year,
+    cost: r.estimatedCost,
+    treatment: r.treatment.name,
+    treatmentId: r.treatment.id,
+    bundleId: r.bundleId,
+    bundleName: r.bundleName,
+  }));
+}
+
+export type CombinePreview = {
+  assetCode: string;
+  /** What the visit is called: a matching combination from the library, or the
+   * members joined together. */
+  name: string;
+  members: Array<{ treatment: string; year: number; separateCost: number; share: number }>;
+  separateCost: number;
+  combinedCost: number;
+  /** What doing it in one visit saves — mobilization charged once rather than
+   * once per job. Zero is possible and is not a reason to refuse. */
+  saving: number;
+  conditionBefore: number | null;
+  conditionAfter: number;
+  riskBefore: number;
+  riskAfter: number;
+  /** A combination in the library with exactly these members, when there is
+   * one: its name and its own mobilization figure are used. */
+  matchedCombination: string | null;
+  /** Members whose own rules refuse them on this segment. Allowed, and said. */
+  refused: string[];
+};
+
+async function planItemsForCombining(workPlanId: string, itemIds: string[]) {
+  const items = await prisma.workPlanItem.findMany({
+    where: { id: { in: itemIds }, workPlanId },
+    select: {
+      id: true,
+      assetId: true,
+      year: true,
+      estimatedCost: true,
+      treatment: { select: { id: true, name: true } },
+    },
+  });
+  if (items.length !== itemIds.length) throw new Error("Some of those rows are no longer in this plan");
+  if (items.length < 2) throw new Error("Choose at least two treatments to combine");
+  const assetId = items[0].assetId;
+  if (items.some((i) => i.assetId !== assetId)) {
+    throw new Error("Only work on the same segment can be combined — one visit is to one segment");
+  }
+  const names = items.map((i) => i.treatment.name);
+  if (new Set(names).size !== names.length) {
+    throw new Error("That would put the same treatment in the visit twice");
+  }
+  return { items, assetId };
+}
+
+/**
+ * What combining these rows into one visit would mean.
+ *
+ * Priced as the engine prices any bundle: every member's own unit cost, and
+ * mobilization once at the largest of their rates — one crew, one traffic
+ * plan, one shutdown. Where the library already has a combination with exactly
+ * these members, its name and its own mobilization figure are used instead, so
+ * a plan and the model describe the same job the same way.
+ */
+export async function previewCombine(
+  organizationId: string,
+  input: { workPlanId: string; itemIds: string[]; year: number }
+): Promise<CombinePreview> {
+  const { items, assetId } = await planItemsForCombining(input.workPlanId, input.itemIds);
+  const [found, library, combinations] = await Promise.all([
+    assetTreatmentContext(organizationId, assetId),
+    loadTreatmentDefs(organizationId),
+    loadCombinations(organizationId),
+  ]);
+  if (!found) throw new Error("That segment is not an active one the model runs");
+
+  const defs = items.map((i) => {
+    const def = library.find((d) => d.name === i.treatment.name);
+    if (!def) throw new Error(`${i.treatment.name} is no longer in the treatment library`);
+    return def;
+  });
+
+  const wanted = new Set(defs.map((d) => d.name));
+  const matched = combinations.find(
+    (c) => c.members.length === wanted.size && c.members.every((m) => wanted.has(m.treatment))
+  );
+
+  const option = buildOption(
+    `plan-bundle:${assetId}`,
+    matched?.name ?? defs.map((d) => d.name).join(" + "),
+    defs,
+    found.ctx,
+    matched?.mobilizationCost ?? null
+  );
+  if (!option) {
+    throw new Error("One of those treatments has no price for this segment, so the visit cannot be costed");
+  }
+
+  const shares = splitOptionCost(option, found.ctx);
+  const separateCost = items.reduce((sum, i) => sum + i.estimatedCost, 0);
+  const riskBefore = (found.ctx.pof ?? 3) * (found.ctx.cof ?? 3);
+
+  return {
+    assetCode: found.assetCode,
+    name: option.label,
+    members: defs.map((def, index) => ({
+      treatment: def.name,
+      year: items[index].year,
+      separateCost: Math.round(items[index].estimatedCost),
+      share: shares[index] ?? 0,
+    })),
+    separateCost: Math.round(separateCost),
+    combinedCost: Math.round(option.cost),
+    saving: Math.round(separateCost - option.cost),
+    conditionBefore: found.ctx.conditionScore,
+    conditionAfter: Math.round(option.projectedCondition * 10) / 10,
+    riskBefore: Math.round(riskBefore * 10) / 10,
+    riskAfter: Math.round(Math.max(1, riskBefore * option.failureProbMultiplier) * 10) / 10,
+    matchedCombination: matched?.name ?? null,
+    refused: defs.filter((def) => !explainApplicability(def, found.ctx).pass).map((def) => def.name),
+  };
+}
+
+/**
+ * Combine scheduled work on one segment into a single visit in one year.
+ *
+ * The rows stay rows — one per treatment, as everything downstream expects —
+ * but they now share a bundleId, sit in the same year, and carry the visit's
+ * cost divided between them. Running the plan then treats them as one job,
+ * mobilizing once, exactly as a funded combination does.
+ */
+export async function combineWorkPlanItems(
+  organizationId: string,
+  input: { workPlanId: string; itemIds: string[]; year: number }
+): Promise<CombinePreview> {
+  const plan = await prisma.workPlan.findUnique({
+    where: { id: input.workPlanId },
+    select: { id: true, name: true, startYear: true, endYear: true, isScenarioMirror: true },
+  });
+  if (!plan) throw new Error("That work plan no longer exists");
+  if (plan.isScenarioMirror) {
+    throw new Error(
+      `“${plan.name}” is a scenario run's own record and is rebuilt every time that scenario runs. Make a plan from the scenario first, then combine work on that.`
+    );
+  }
+  if (!Number.isFinite(input.year) || input.year < plan.startYear || input.year > plan.endYear) {
+    throw new Error(`Choose a year between ${plan.startYear} and ${plan.endYear}`);
+  }
+
+  const preview = await previewCombine(organizationId, input);
+  const { items } = await planItemsForCombining(input.workPlanId, input.itemIds);
+  const bundleId = `${plan.id}:${items[0].assetId}:${input.year}:${preview.name}`;
+
+  await prisma.$transaction(
+    items.map((item, index) => {
+      const member = preview.members.find((m) => m.treatment === item.treatment.name)!;
+      return prisma.workPlanItem.update({
+        where: { id: item.id },
+        data: {
+          year: input.year,
+          bundleId,
+          bundleName: preview.name,
+          estimatedCost: member.share,
+          expectedBenefit: {
+            conditionBefore: preview.conditionBefore,
+            conditionAfter: preview.conditionAfter,
+            riskBefore: preview.riskBefore,
+            riskAfter: preview.riskAfter,
+            riskReductionPct:
+              preview.riskBefore > 0
+                ? Math.round(((preview.riskBefore - preview.riskAfter) / preview.riskBefore) * 1000) / 10
+                : 0,
+            combinedByHand: true,
+            // Kept per member so a split can say what it is going back to.
+            costApart: member.separateCost,
+            yearApart: member.year,
+          },
+          reasonExplanation:
+            `Combined by hand into ${preview.name} in ${input.year}` +
+            (index === 0 ? "" : "") +
+            `. Doing ${preview.members.length} jobs in one visit costs $${preview.combinedCost.toLocaleString("en-US")} rather than $${preview.separateCost.toLocaleString("en-US")}, because mobilization is charged once.` +
+            (preview.refused.length > 0
+              ? ` ${preview.refused.join(", ")} ${preview.refused.length === 1 ? "is" : "are"} refused here by its own rules and was kept anyway.`
+              : ""),
+          fundingSource: "Added by hand",
+        },
+      });
+    })
+  );
+
+  return preview;
+}
+
+/**
+ * Undo a combined visit: each treatment stands alone again, priced on its own
+ * and back in the year it came from where that is known.
+ */
+export async function splitWorkPlanVisit(organizationId: string, workPlanId: string, bundleId: string) {
+  const items = await prisma.workPlanItem.findMany({
+    where: { workPlanId, bundleId },
+    select: { id: true, assetId: true, year: true, expectedBenefit: true, treatment: { select: { name: true } } },
+  });
+  if (items.length === 0) throw new Error("That visit no longer exists");
+
+  const [found, library] = await Promise.all([
+    assetTreatmentContext(organizationId, items[0].assetId),
+    loadTreatmentDefs(organizationId),
+  ]);
+  if (!found) throw new Error("That segment is not an active one the model runs");
+
+  await prisma.$transaction(
+    items.map((item) => {
+      const benefit = (item.expectedBenefit ?? {}) as { yearApart?: number; costApart?: number };
+      const def = library.find((d) => d.name === item.treatment.name);
+      const alone = def ? buildOption(`t:${def.name}`, def.name, [def], found.ctx) : null;
+      return prisma.workPlanItem.update({
+        where: { id: item.id },
+        data: {
+          bundleId: null,
+          bundleName: null,
+          // Priced alone again; the cost it had before being combined is the
+          // fallback for a treatment the library no longer prices.
+          estimatedCost: alone ? Math.round(alone.cost) : (benefit.costApart ?? 0),
+          year: benefit.yearApart ?? item.year,
+          reasonExplanation: `Split out of a combined visit, and priced on its own again.`,
+        },
+      });
+    })
+  );
+
+  return items.length;
 }
 
 /** Take a row out of a plan. Only ever a row someone put there or moved — the

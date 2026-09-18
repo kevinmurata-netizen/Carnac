@@ -16,10 +16,17 @@ import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { moveItemAction, updateStatusAction, deleteWorkPlanAction, removeItemAction } from "../actions";
+import {
+  moveItemAction,
+  updateStatusAction,
+  deleteWorkPlanAction,
+  removeItemAction,
+  splitVisitAction,
+} from "../actions";
 import { AddWorkDialog } from "./add-work-dialog";
+import { CombineDialog } from "./combine-dialog";
 import { listTreatments } from "@/server/treatments";
-import { CalendarRange, DollarSign, ListChecks, TriangleAlert } from "lucide-react";
+import { CalendarRange, DollarSign, ListChecks, Split, TriangleAlert } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
 
@@ -291,6 +298,7 @@ export default async function WorkPlanDetailPage({
                         <TableHead>Funding</TableHead>
                         <TableHead>Status</TableHead>
                         {canEdit && <TableHead>Move To</TableHead>}
+                        {canEdit && <TableHead className="sr-only">Combine</TableHead>}
                         {canEdit && <TableHead className="sr-only">Remove</TableHead>}
                       </TableRow>
                     </TableHeader>
@@ -311,6 +319,19 @@ export default async function WorkPlanDetailPage({
                             <TableCell className="text-xs">{item.serviceArea ?? "—"}</TableCell>
                             <TableCell>
                               {item.treatment}
+                              {item.bundleName && (
+                                <Badge
+                                  variant="outline"
+                                  className="ml-1.5"
+                                  title={
+                                    item.combinedByHand
+                                      ? `Combined by hand into ${item.bundleName}: one visit, mobilization charged once.`
+                                      : `Part of ${item.bundleName}, funded as one visit.`
+                                  }
+                                >
+                                  {item.bundleName}
+                                </Badge>
+                              )}
                               {item.addedByHand && (
                                 <Badge
                                   variant={item.forcedAgainstRules ? "destructive" : "secondary"}
@@ -379,6 +400,34 @@ export default async function WorkPlanDetailPage({
                                     Move
                                   </Button>
                                 </form>
+                              </TableCell>
+                            )}
+                            {canEdit && (
+                              <TableCell className="whitespace-nowrap">
+                                {item.bundleId ? (
+                                  <form action={splitVisitAction}>
+                                    <input type="hidden" name="workPlanId" value={plan.id} />
+                                    <input type="hidden" name="bundleId" value={item.bundleId} />
+                                    <Button
+                                      type="submit"
+                                      size="xs"
+                                      variant="ghost"
+                                      title={`Split ${item.bundleName} back into separate jobs`}
+                                    >
+                                      <Split className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </form>
+                                ) : (
+                                  <CombineDialog
+                                    workPlanId={plan.id}
+                                    assetId={item.assetId}
+                                    assetCode={item.assetCode}
+                                    itemId={item.id}
+                                    treatment={item.treatment}
+                                    year={y.year}
+                                    years={years.map((yy) => yy.year)}
+                                  />
+                                )}
                               </TableCell>
                             )}
                             {canEdit && (

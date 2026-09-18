@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-18",
+    title: "Combine scheduled work on a segment into one visit",
+    summary:
+      "Work a plan holds on the same segment — even years apart — can be put into a single visit. Mobilization is charged once, so the visit costs less than the same jobs done separately, and the page shows the saving before you commit to it.",
+    changes: [
+      "Combine on any row lists the segment's other scheduled work, whatever year it sits in. Pick what joins the visit and which year it all happens in.",
+      "Before anything changes, it shows the visit's cost against the cost apart, what each job contributes, and what the visit does to condition and risk.",
+      "Where your library already defines a combination with exactly those treatments, the visit takes that combination's name and its own mobilization figure — so the plan and the model describe the same job the same way.",
+      "A visit can be split back into separate jobs, each priced on its own again and returned to the year it came from.",
+      "A treatment whose rules refuse it on that segment can still be part of a visit, and the rows say so.",
+    ],
+    note: "No migration. Rows still name one treatment each; a visit is rows sharing a bundle, which is how a funded combination has always been stored.",
+  },
+  {
+    date: "2026-09-18",
     title: "Add work to a plan the model did not choose",
     summary:
       "A work plan gains Add work: pick a segment, a treatment and a year, and it goes in — priced from that treatment's own rates for that segment. For jobs already committed for reasons the model knows nothing about.",

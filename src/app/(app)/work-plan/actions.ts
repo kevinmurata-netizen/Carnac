@@ -16,6 +16,10 @@ import {
   previewWorkPlanAddition,
   addWorkPlanItem,
   removeWorkPlanItem,
+  segmentRowsInPlan,
+  previewCombine,
+  combineWorkPlanItems,
+  splitWorkPlanVisit,
 } from "@/server/workplans";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
@@ -125,6 +129,46 @@ export async function addWorkPlanItemAction(input: {
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : "Could not add that work" };
   }
+}
+
+/** The other work this plan holds on the same segment, for the combine picker. */
+export async function segmentRowsAction(workPlanId: string, assetId: string) {
+  await requireEditor();
+  return segmentRowsInPlan(workPlanId, assetId);
+}
+
+export async function previewCombineAction(input: { workPlanId: string; itemIds: string[]; year: number }) {
+  const session = await requireEditor();
+  try {
+    return { ok: true as const, preview: await previewCombine(session.user.organizationId, input) };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not price that visit" };
+  }
+}
+
+export async function combineItemsAction(input: { workPlanId: string; itemIds: string[]; year: number }) {
+  const session = await requireEditor();
+  try {
+    const preview = await combineWorkPlanItems(session.user.organizationId, input);
+    revalidatePath(`/work-plan/${input.workPlanId}`);
+    return {
+      ok: true as const,
+      message: `${preview.name} on ${preview.assetCode} is now one visit in ${input.year}${
+        preview.saving > 0 ? `, saving $${preview.saving.toLocaleString("en-US")}` : ""
+      }.`,
+    };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not combine that work" };
+  }
+}
+
+export async function splitVisitAction(formData: FormData) {
+  const session = await requireEditor();
+  const workPlanId = String(formData.get("workPlanId") ?? "");
+  const bundleId = String(formData.get("bundleId") ?? "");
+  if (!workPlanId || !bundleId) throw new Error("Plan and visit are required");
+  await splitWorkPlanVisit(session.user.organizationId, workPlanId, bundleId);
+  revalidatePath(`/work-plan/${workPlanId}`);
 }
 
 export async function removeItemAction(formData: FormData) {
