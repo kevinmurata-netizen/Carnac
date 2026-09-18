@@ -75,7 +75,12 @@ export async function updateScenarioSetAction(_prev: SetFormState, formData: For
  * that follows is going to happen. */
 export async function copyScenarioSetAction(formData: FormData) {
   const organizationId = await organizationFor("create");
-  const copyId = await copyScenarioSet(organizationId, String(formData.get("id") ?? ""));
+  // "pick" marks a form that chose scenarios, so unticking every one copies
+  // the set alone rather than reading as "nothing was said, copy them all".
+  const scenarioIds = formData.has("pick")
+    ? formData.getAll("scenarioIds").map(String).filter(Boolean)
+    : undefined;
+  const copyId = await copyScenarioSet(organizationId, String(formData.get("id") ?? ""), scenarioIds);
   revalidate();
   redirect(`/scenario-planning/sets/${copyId}`);
 }

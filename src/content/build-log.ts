@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-18",
+    title: "Copy a scenario set from Scenario Planning, choosing its scenarios",
+    summary:
+      "A Copy Scenario Set button sits beside New Scenario Set. Pick the set to copy from a dropdown, then pick which of its scenarios come with it — all ticked to start with.",
+    changes: [
+      "Each set in the dropdown shows its years and how many scenarios it holds, so the right one is picked without opening it first.",
+      "Select all and Clear are there for a long list. Unticking everything copies the set by itself, and the button says so: it reads “Copy set and 3 scenarios”, or “Copy set only”.",
+      "The copy keeps the window and everything each scenario is set to consider, but none of their results — it has not run. It starts as a Draft whatever the original was, and opens as soon as it is made.",
+      "Copying from a set's own page is unchanged and still takes everything in it.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-09-17",
     title: "Work plans buy work the same way scenarios do",
     summary:
