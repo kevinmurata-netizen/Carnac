@@ -3,8 +3,10 @@ import { WorkPlanItemStatus } from "@prisma/client";
 import { DEFAULT_WEIGHTS, type ObjectiveWeights } from "@/domain/waterline/optimization";
 import {
   WATERLINE_TREATMENTS,
+  buildOption,
   clearsEffectivenessFloor,
   enumerateOptions,
+  explainApplicability,
   splitOptionCost,
   type AssetTreatmentContext,
 } from "@/domain/waterline/treatment";
@@ -634,6 +636,13 @@ export type WorkPlanYear = {
     riskNow: number | null;
     priorityScore: number | null;
     riskReductionPct: number | null;
+    /** Put here by someone rather than chosen by the model. */
+    addedByHand: boolean;
+    /** Added although the treatment's rules refuse it on this segment — a
+     * committed job the library would not have proposed. */
+    forcedAgainstRules: boolean;
+    /** The rule that refuses it, when one does. */
+    refusedBy: string | null;
     reason: string | null;
     fundingSource: string | null;
     status: WorkPlanItemStatus;
@@ -657,6 +666,9 @@ export async function getWorkPlan(id: string) {
     const benefit = (item.expectedBenefit ?? {}) as {
       priorityScore?: number;
       riskReductionPct?: number;
+      addedByHand?: boolean;
+      forcedAgainstRules?: boolean;
+      refusedBy?: string | null;
     };
     const entry = byYear.get(item.year) ?? { year: item.year, items: [], totalCost: 0 };
     entry.items.push({
@@ -670,6 +682,11 @@ export async function getWorkPlan(id: string) {
       riskNow: item.asset.riskAssessments[0]?.riskScore ?? null,
       priorityScore: benefit.priorityScore ?? null,
       riskReductionPct: benefit.riskReductionPct ?? null,
+      /** Put here by someone rather than chosen by the model. */
+      addedByHand: benefit.addedByHand === true,
+      /** Added although the treatment's rules refuse it on this segment. */
+      forcedAgainstRules: benefit.forcedAgainstRules === true,
+      refusedBy: benefit.refusedBy ?? null,
       reason: item.reasonExplanation,
       fundingSource: item.fundingSource,
       status: item.status,
@@ -792,6 +809,244 @@ export async function runWorkPlan(organizationId: string, workPlanId: string) {
           }
         : null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Adding work by hand
+// ---------------------------------------------------------------------------
+
+/**
+ * One segment's treatment context, as the model sees it today.
+ *
+ * The same shape `buildCandidates` assembles, for the one segment someone is
+ * adding work to — so a hand-added row is priced and judged by exactly the
+ * rules and rates the model would have used had it chosen the work itself.
+ */
+async function assetTreatmentContext(
+  organizationId: string,
+  assetId: string
+): Promise<{ ctx: AssetTreatmentContext; assetCode: string } | null> {
+  const since = new Date(Date.now() - TEN_YEARS_MS);
+  const asset = await prisma.asset.findFirst({
+    // Active only, so work cannot be planned on a segment no run will touch.
+    where: { id: assetId, organizationId, deletedAt: null, status: "ACTIVE" },
+    include: {
+      attributeValues: { include: { definition: true } },
+      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
+      riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+      failureEvents: { where: { failureDate: { gte: since } }, select: { id: true } },
+      location: { select: { serviceArea: true, pressureZone: true } },
+    },
+  });
+  if (!asset) return null;
+
+  const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
+  const risk = asset.riskAssessments[0];
+  const pof = risk?.probabilityScore ?? 3;
+  const cof = risk?.consequenceScore ?? 3;
+
+  return {
+    assetCode: asset.assetCode,
+    ctx: {
+      conditionScore: asset.conditionMeasurements[0]?.score ?? null,
+      material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
+      diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
+      lengthFt: attr(WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null,
+      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
+      pof,
+      cof,
+      riskScore: risk?.riskScore ?? pof * cof,
+      failuresLast10Years: asset.failureEvents.length,
+      ageYears: ageInYears(asset.installationDate),
+      expectedUsefulLife: asset.expectedUsefulLife ?? 75,
+      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+      serviceArea: asset.location?.serviceArea ?? null,
+      pressureZone: asset.location?.pressureZone ?? null,
+    },
+  };
+}
+
+/**
+ * Segments to add work to, by code or district.
+ *
+ * Only segments the model actually runs — active and not deleted, the same
+ * population `buildSimAssets` builds from. Offering a retired main would let
+ * work be scheduled that no run could ever carry out, and the plan would
+ * quietly report it as skipped years later.
+ *
+ * Capped: this feeds a picker, and a list nobody can read is not a list.
+ */
+export async function searchSegments(organizationId: string, query: string) {
+  const q = query.trim();
+  const assets = await prisma.asset.findMany({
+    where: {
+      organizationId,
+      assetType: { code: "WATERLINE" },
+      deletedAt: null,
+      status: "ACTIVE",
+      ...(q
+        ? {
+            OR: [
+              { assetCode: { contains: q, mode: "insensitive" as const } },
+              { location: { serviceArea: { contains: q, mode: "insensitive" as const } } },
+            ],
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+      assetCode: true,
+      location: { select: { serviceArea: true } },
+      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
+    },
+    orderBy: { assetCode: "asc" },
+    take: 25,
+  });
+  return assets.map((a) => ({
+    id: a.id,
+    assetCode: a.assetCode,
+    serviceArea: a.location?.serviceArea ?? null,
+    condition: a.conditionMeasurements[0]?.score ?? null,
+  }));
+}
+
+export type PlannedAddition = {
+  assetCode: string;
+  treatment: string;
+  category: string;
+  cost: number;
+  conditionBefore: number | null;
+  conditionAfter: number;
+  riskBefore: number;
+  riskAfter: number;
+  /** Whether the treatment's own rules allow it here. False is allowed — a
+   * programmed job is a decision, not a recommendation — but it is said. */
+  qualifies: boolean;
+  /** The rule that refuses it, when one does, so the warning can name it. */
+  refusedBy: string | null;
+};
+
+/**
+ * What adding this treatment to this segment would mean, before anything is
+ * written: the price, the effect, and whether the library would have allowed
+ * it. The page shows this and asks.
+ */
+export async function previewWorkPlanAddition(
+  organizationId: string,
+  input: { assetId: string; treatmentId: string }
+): Promise<PlannedAddition> {
+  const [found, library, treatment] = await Promise.all([
+    assetTreatmentContext(organizationId, input.assetId),
+    loadTreatmentDefs(organizationId),
+    prisma.treatment.findFirst({
+      where: { id: input.treatmentId, assetType: { code: "WATERLINE", organizationId } },
+      select: { name: true },
+    }),
+  ]);
+  if (!found) throw new Error("That segment is not an active one the model runs, so work cannot be planned on it");
+  if (!treatment) throw new Error("That treatment no longer exists");
+
+  const def = library.find((d) => d.name === treatment.name);
+  if (!def) throw new Error(`${treatment.name} is not in the treatment library`);
+
+  const option = buildOption(`t:${def.name}`, def.name, [def], found.ctx);
+  if (!option) {
+    throw new Error(
+      `No price applies to ${found.assetCode} for ${def.name}. Add a rate that covers this segment under Treatment Costs.`
+    );
+  }
+
+  const outcome = explainApplicability(def, found.ctx);
+  const riskBefore = (found.ctx.pof ?? 3) * (found.ctx.cof ?? 3);
+
+  return {
+    assetCode: found.assetCode,
+    treatment: def.name,
+    category: option.category,
+    cost: Math.round(option.cost),
+    conditionBefore: found.ctx.conditionScore,
+    conditionAfter: Math.round(option.projectedCondition * 10) / 10,
+    riskBefore: Math.round(riskBefore * 10) / 10,
+    riskAfter: Math.round(Math.max(1, riskBefore * option.failureProbMultiplier) * 10) / 10,
+    qualifies: outcome.pass,
+    refusedBy: outcome.blockedBy?.name ?? (outcome.pass ? null : "the treatment's own rules"),
+  };
+}
+
+/**
+ * Add a treatment to a plan by hand.
+ *
+ * A plan holds what an organization has decided to do, and that includes work
+ * already committed for reasons the model knows nothing about — a road scheme
+ * the main sits under, a developer contribution, a council promise. So the
+ * rules are consulted and reported, never enforced: a row the library would
+ * refuse goes in marked, and says which rule refused it.
+ */
+export async function addWorkPlanItem(
+  organizationId: string,
+  input: { workPlanId: string; assetId: string; treatmentId: string; year: number }
+): Promise<{ added: PlannedAddition }> {
+  const plan = await prisma.workPlan.findUnique({
+    where: { id: input.workPlanId },
+    select: { id: true, startYear: true, endYear: true, isScenarioMirror: true, name: true },
+  });
+  if (!plan) throw new Error("That work plan no longer exists");
+  if (plan.isScenarioMirror) {
+    throw new Error(
+      `“${plan.name}” is a scenario run's own record and is rebuilt every time that scenario runs. Make a plan from the scenario first, then add work to that.`
+    );
+  }
+  if (!Number.isFinite(input.year) || input.year < plan.startYear || input.year > plan.endYear) {
+    throw new Error(`Choose a year between ${plan.startYear} and ${plan.endYear}`);
+  }
+
+  const preview = await previewWorkPlanAddition(organizationId, input);
+
+  await prisma.workPlanItem.create({
+    data: {
+      workPlanId: plan.id,
+      assetId: input.assetId,
+      treatmentId: input.treatmentId,
+      year: input.year,
+      estimatedCost: preview.cost,
+      expectedBenefit: {
+        conditionBefore: preview.conditionBefore,
+        conditionAfter: preview.conditionAfter,
+        riskBefore: preview.riskBefore,
+        riskAfter: preview.riskAfter,
+        riskReductionPct:
+          preview.riskBefore > 0
+            ? Math.round(((preview.riskBefore - preview.riskAfter) / preview.riskBefore) * 1000) / 10
+            : 0,
+        // What marks a row nobody's model chose. Read by the page, and worth
+        // keeping for anyone asking later why the plan holds this.
+        addedByHand: true,
+        forcedAgainstRules: !preview.qualifies,
+        refusedBy: preview.qualifies ? null : preview.refusedBy,
+      },
+      reasonExplanation: [
+        `Added by hand in ${input.year}.`,
+        preview.qualifies
+          ? "The treatment's rules allow it on this segment."
+          : `The treatment's rules refuse it here — ${preview.refusedBy} — and it was added anyway.`,
+        `Condition ${preview.conditionBefore ?? "unknown"} → ${preview.conditionAfter}, risk ${preview.riskBefore} → ${preview.riskAfter}.`,
+      ].join(" "),
+      fundingSource: "Added by hand",
+      status: WorkPlanItemStatus.PLANNED,
+    },
+  });
+
+  return { added: preview };
+}
+
+/** Take a row out of a plan. Only ever a row someone put there or moved — the
+ * plan is a schedule, and removing from it changes no scenario. */
+export async function removeWorkPlanItem(itemId: string) {
+  const item = await prisma.workPlanItem.findUnique({ where: { id: itemId }, select: { workPlanId: true } });
+  if (!item) throw new Error("That row no longer exists");
+  await prisma.workPlanItem.delete({ where: { id: itemId } });
+  return item.workPlanId;
 }
 
 /** Move an item to a different year (SPEC §17). Year totals are recomputed on

@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-18",
+    title: "Add work to a plan the model did not choose",
+    summary:
+      "A work plan gains Add work: pick a segment, a treatment and a year, and it goes in — priced from that treatment's own rates for that segment. For jobs already committed for reasons the model knows nothing about.",
+    changes: [
+      "Before anything is written, the page shows what it would cost and what it would do to condition and risk, and says whether the treatment's rules allow it there.",
+      "Work the rules refuse can still be added. The warning names the rule that refuses it, the button reads Add anyway, and the row is marked “forced” with the rule recorded against it. Work the rules allow is marked “added”.",
+      "Rows can be removed, with a confirmation that says whether anything would bring them back.",
+      "Added work counts in everything: run the plan and it appears in that year's spend, in the segments treated, and in what the network does. A year pushed over its budget is marked rather than prevented.",
+      "Only segments the model actually runs — active ones — can be chosen, so work cannot be scheduled where no run would ever carry it out.",
+      "A scenario run's own plan takes no additions, since it is rebuilt on every run; make a plan from the scenario and add to that.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-18",
     title: "Run a work plan and see what your edits did",
     summary:
       "A work plan can now be run as it stands: the work happens in the years it is scheduled, the network ages around it, and the page reports condition, failures and spend against the scenario the plan came from. Moving a job later now has a visible price.",

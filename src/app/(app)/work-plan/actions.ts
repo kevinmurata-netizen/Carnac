@@ -12,6 +12,10 @@ import {
   moveWorkPlanItem,
   updateWorkPlanItemStatus,
   deleteWorkPlan,
+  searchSegments,
+  previewWorkPlanAddition,
+  addWorkPlanItem,
+  removeWorkPlanItem,
 } from "@/server/workplans";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
@@ -86,6 +90,49 @@ export async function createFromScenarioAction(formData: FormData) {
   );
   revalidatePath("/work-plan");
   redirect(`/work-plan/${workPlanId}`);
+}
+
+/** Segments for the add-work picker. */
+export async function searchSegmentsAction(query: string) {
+  const session = await requireEditor();
+  return searchSegments(session.user.organizationId, query);
+}
+
+/** What adding this treatment here would mean, before anything is written. */
+export async function previewAdditionAction(input: { assetId: string; treatmentId: string }) {
+  const session = await requireEditor();
+  try {
+    return { ok: true as const, preview: await previewWorkPlanAddition(session.user.organizationId, input) };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not price that work" };
+  }
+}
+
+export async function addWorkPlanItemAction(input: {
+  workPlanId: string;
+  assetId: string;
+  treatmentId: string;
+  year: number;
+}) {
+  const session = await requireEditor();
+  try {
+    const { added } = await addWorkPlanItem(session.user.organizationId, input);
+    revalidatePath(`/work-plan/${input.workPlanId}`);
+    return {
+      ok: true as const,
+      message: `${added.treatment} added to ${added.assetCode} in ${input.year}${added.qualifies ? "" : ", against its rules"}.`,
+    };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not add that work" };
+  }
+}
+
+export async function removeItemAction(formData: FormData) {
+  await requireEditor();
+  const itemId = String(formData.get("itemId") ?? "");
+  if (!itemId) throw new Error("Item is required");
+  const workPlanId = await removeWorkPlanItem(itemId);
+  revalidatePath(`/work-plan/${workPlanId}`);
 }
 
 export async function moveItemAction(formData: FormData) {
