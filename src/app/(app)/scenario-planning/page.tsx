@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { ScenarioComparison } from "./scenario-comparison";
 import { ScenarioSetCards } from "./sets/set-cards";
+import { CopyScenarioSetDialog } from "./sets/copy-set-dialog";
+import { copyScenarioSetAction } from "./sets/actions";
 import { DollarSign, FolderKanban, GitCompare, TrendingUp, Wallet } from "lucide-react";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
@@ -59,12 +61,36 @@ export default async function ScenarioPlanningPage() {
     />
   );
 
+  // Copying is the other way to start: take a programme that exists and ask a
+  // different question of it. Beside the create button, because that is the
+  // moment the choice is made.
+  const headerButtons = (
+    <div className="flex flex-wrap items-center gap-2">
+      {sets.length > 0 && (
+        <CopyScenarioSetDialog
+          sets={sets.map((s) => ({
+            id: s.id,
+            name: s.name,
+            status: s.status,
+            baseYear: s.baseYear,
+            planningPeriodYears: s.planningPeriodYears,
+          }))}
+          scenarios={scenarios.flatMap((s) =>
+            s.scenarioSet ? [{ id: s.id, name: s.name, setId: s.scenarioSet.id }] : []
+          )}
+          action={copyScenarioSetAction}
+        />
+      )}
+      {newSetButton}
+    </div>
+  );
+
   return (
     <div>
       <PageHeader
         title={pageTitle}
         description="Group scenarios into sets that share a planning window, then compare what each one does to the network"
-        actions={canEdit && newSetButton}
+        actions={canEdit && headerButtons}
       />
 
       <section aria-labelledby="scenario-sets-heading" className="mb-6">

@@ -122,16 +122,24 @@ export async function updateScenarioSet(organizationId: string, id: string, inpu
  * Copy a set and everything in it.
  *
  * The copy is for asking a different question of the same programme: same
- * scenarios, same window, then change one thing and run it. So every member
- * scenario is copied too, with its assumptions, its weightings and what it may
- * consider — but not its results. A copy has never run, and saying it has by
- * carrying the original's numbers across would be a lie that survives until
- * someone notices the figures never change.
+ * scenarios, same window, then change one thing and run it. So member
+ * scenarios are copied too — those named in `scenarioIds`, or all of them —
+ * with their assumptions, their weightings and what they may consider, but not
+ * their results. A copy has never run, and saying it has by carrying the
+ * original's numbers across would be a lie that survives until someone notices
+ * the figures never change.
  *
  * The copy starts as a Draft whatever the original's status: it has not been
  * reviewed or approved, and inheriting "Approved" would launder that.
  */
-export async function copyScenarioSet(organizationId: string, id: string): Promise<string> {
+export async function copyScenarioSet(
+  organizationId: string,
+  id: string,
+  /** Which of the set's scenarios to copy. Undefined copies all of them, which
+   * is what copying from the set's own page means; an empty array copies the
+   * set and none of its scenarios, which is a real thing to ask for. */
+  scenarioIds?: string[]
+): Promise<string> {
   const source = await prisma.scenarioSet.findFirst({
     where: { id, organizationId },
     include: {
@@ -146,6 +154,10 @@ export async function copyScenarioSet(organizationId: string, id: string): Promi
     },
   });
   if (!source) throw new Error("Scenario set not found");
+
+  // Filtered against the set's own members rather than trusted: the ids arrive
+  // from a form, and a scenario from another set must not be dragged in.
+  const chosen = scenarioIds == null ? source.scenarios : source.scenarios.filter((s) => scenarioIds.includes(s.id));
 
   const name = await freeName(organizationId, source.name);
 
@@ -162,7 +174,7 @@ export async function copyScenarioSet(organizationId: string, id: string): Promi
       select: { id: true },
     });
 
-    for (const scenario of source.scenarios) {
+    for (const scenario of chosen) {
       await tx.scenario.create({
         data: {
           organizationId,
