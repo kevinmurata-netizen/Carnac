@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { generateWorkPlanAction } from "./actions";
+import { generateWorkPlanAction, createFromScenarioAction } from "./actions";
+import { listScenarios } from "@/server/scenarios";
 import { getPageName } from "@/server/navigation";
 
 const inputClass =
@@ -23,11 +24,12 @@ export default async function WorkPlanPage() {
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/work-plan", "Work Plan");
 
-  const [plans, annualBudget, weightSets, categorySets] = await Promise.all([
+  const [plans, annualBudget, weightSets, categorySets, scenarios] = await Promise.all([
     listWorkPlans(),
     getAnnualBudget(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
+    listScenarios(organizationId),
   ]);
   const canEdit = canRecordFieldData(session);
   const currentYear = new Date().getFullYear();
@@ -75,7 +77,17 @@ export default async function WorkPlanPage() {
                   <TableCell>
                     {p.startYear}–{p.endYear}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{p.scenarioName ?? "—"}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {p.scenarioName ?? "—"}
+                    {p.isScenarioMirror && (
+                      <span
+                        className="ml-1.5 rounded border px-1.5 py-0.5 text-[10px]"
+                        title="Written by the scenario run itself, and replaced every time that scenario runs again. Create a plan from the scenario below to have one you can change."
+                      >
+                        run&apos;s own
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>{formatNumber(p.itemCount)}</TableCell>
                   <TableCell>{formatCurrency(p.totalCost, { compact: true })}</TableCell>
                 </TableRow>
@@ -88,7 +100,60 @@ export default async function WorkPlanPage() {
       {canEdit && (
         <Card className="mt-4">
           <CardHeader>
+            <CardTitle>Plan from a scenario</CardTitle>
+            <p className="text-sm font-normal text-muted-foreground">
+              Takes what the scenario funds, year by year, as a plan you can change — the scenario decides, and this is
+              where you move the work about. The plan keeps the scenario&apos;s budget, and re-running the scenario
+              leaves it alone.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {scenarios.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No scenarios yet.{" "}
+                <Link href="/scenario-planning" className="text-primary hover:underline">
+                  Create one in Scenario Planning
+                </Link>{" "}
+                and run it first.
+              </p>
+            ) : (
+              <form action={createFromScenarioAction} className="flex flex-wrap items-end gap-4">
+                <div className="min-w-64 flex-1 space-y-1.5">
+                  <Label htmlFor="scenarioId">Scenario</Label>
+                  <select id="scenarioId" name="scenarioId" required className={inputClass}>
+                    {scenarios.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — {formatCurrency(s.assumptions.annualBudget, { compact: true })}/yr,{" "}
+                        {s.assumptions.analysisPeriodYears} years
+                        {s.scenarioSet ? ` · ${s.scenarioSet.name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="min-w-64 flex-1 space-y-1.5">
+                  <Label htmlFor="planName">Plan name</Label>
+                  <input
+                    id="planName"
+                    name="name"
+                    placeholder="Defaults to the scenario's name"
+                    className={inputClass}
+                  />
+                </div>
+                <Button type="submit">Create plan</Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {canEdit && (
+        <Card className="mt-4">
+          <CardHeader>
             <CardTitle>Generate a Work Plan</CardTitle>
+            <p className="text-sm font-normal text-muted-foreground">
+              A plan with no scenario behind it: every option on every segment scored, then bought year by year against
+              the budget below.
+            </p>
           </CardHeader>
           <CardContent>
             <form action={generateWorkPlanAction} className="space-y-4">

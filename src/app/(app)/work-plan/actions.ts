@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import {
   generateWorkPlan,
+  createWorkPlanFromScenario,
   moveWorkPlanItem,
   updateWorkPlanItemStatus,
   deleteWorkPlan,
@@ -65,6 +66,26 @@ export async function generateWorkPlanAction(formData: FormData) {
   });
 
   redirect(`/work-plan/${result.workPlanId}`);
+}
+
+/**
+ * A plan from a scenario: the run's own funded work, as rows you can move.
+ *
+ * The scenario is run as it stands, so the plan matches what Scenario Planning
+ * would show for it right now rather than whatever was stored last time.
+ */
+export async function createFromScenarioAction(formData: FormData) {
+  const session = await requireEditor();
+  const scenarioId = String(formData.get("scenarioId") ?? "").trim();
+  if (!scenarioId) throw new Error("Choose a scenario to plan from");
+
+  const { workPlanId } = await createWorkPlanFromScenario(
+    session.user.organizationId,
+    scenarioId,
+    String(formData.get("name") ?? "")
+  );
+  revalidatePath("/work-plan");
+  redirect(`/work-plan/${workPlanId}`);
 }
 
 export async function moveItemAction(formData: FormData) {

@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-18",
+    title: "Make a work plan from a scenario, and keep your edits",
+    summary:
+      "Work Plan gains “Plan from a scenario”: it takes what that scenario funds, year by year, as a plan you can change. The scenario decides what is worth doing; the plan is where the work is moved about.",
+    changes: [
+      "Choose a scenario and a name. The plan holds the run's funded work, with each row saying why it was chosen and what it was scored — nothing is worked out a second time.",
+      "The plan keeps the scenario's budget and growth as they were when it was made, so a year can be shown as over or under its money once work has been moved.",
+      "Re-running a scenario no longer touches plans made this way. The plan a run writes for its own record is still replaced each time, and is now marked “run's own” in the list so the two are not confused.",
+      "Generating a plan without a scenario is unchanged and still available underneath.",
+    ],
+    note: "1 migration, adding three columns to work plans. Existing plans linked to a scenario are marked as that run's own record, which is what they were.",
+  },
+  {
+    date: "2026-09-18",
     title: "Copy a scenario set from Scenario Planning, choosing its scenarios",
     summary:
       "A Copy Scenario Set button sits beside New Scenario Set. Pick the set to copy from a dropdown, then pick which of its scenarios come with it — all ticked to start with.",

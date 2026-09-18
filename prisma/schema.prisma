@@ -1242,6 +1242,19 @@ model WorkPlan {
   startYear  Int
   endYear    Int
 
+  /// True for the plan a scenario run writes out of its own funded projects.
+  /// It belongs to the run and is replaced wholesale every time the scenario
+  /// runs again, so it is never a place to edit: an editable plan made from
+  /// the same scenario carries this false and survives.
+  isScenarioMirror Boolean @default(false)
+
+  /// The budget the plan was built against, frozen at creation. A scenario's
+  /// own budget can be edited afterwards, and a plan has to be able to say
+  /// whether a year is over or under the money it was planned with — which is
+  /// the question moving work between years asks.
+  annualBudget   Float?
+  fundingGrowth  Float?
+
   /// Which named set was chosen, for provenance.
   weightSetId String?
   weightSet   ScenarioWeightSet? @relation(fields: [weightSetId], references: [id], onDelete: SetNull)

@@ -160,6 +160,16 @@ export type ScenarioProject = {
   conditionAfter: number;
   riskBefore: number;
   riskAfter: number;
+  /** What it scored, so a work plan built from this run can explain each row
+   * without scoring anything a second time. */
+  priority: number | null;
+  /** What the step up to it added per extra dollar, and over which option —
+   * null for an option that was the first step on its segment. */
+  incremental: number | null;
+  incrementalOver: string | null;
+  criticality: number;
+  scaleFactor: number;
+  benefit: number;
 };
 
 export type ScenarioYearResult = {
@@ -828,6 +838,12 @@ export function runScenario(
         conditionAfter: Math.round(candidate.projectedCondition * 10) / 10,
         riskBefore: Math.round(candidate.riskNow * 10) / 10,
         riskAfter: Math.round(candidate.riskAfter * 10) / 10,
+        priority: candidate.priority,
+        incremental: outcome.incremental.get(candidate)?.score ?? null,
+        incrementalOver: outcome.incremental.get(candidate)?.over?.option.label ?? null,
+        criticality: round1(candidate.asset.criticalityScore),
+        scaleFactor: Math.round(candidate.asset.scaleFactor * 100) / 100,
+        benefit: round1(candidate.benefit),
       });
       recordTreatment(history, candidate.assetId, candidate.option, year);
       candidate.asset.condition = candidate.projectedCondition;
