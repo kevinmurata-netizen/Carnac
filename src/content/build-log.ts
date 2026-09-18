@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-18",
+    title: "Money charts had an axis of zeroes",
+    summary:
+      "Allocation by Year on a work plan, and Cost by Treatment on Treatment Planning, drew their vertical axis as 0, 0, 0, 0 — the real figures were there but cut off.",
+    changes: [
+      "The axis now reads the way the tooltip does — $0, $2.0M, $4.0M — and is given as much room as its labels need.",
+      "Charts that count things are unchanged.",
+    ],
+    fixes: [
+      "The axis had a fixed 40-pixel gutter and no formatting, so a value like 4,000,000 was drawn into a space that could not hold it and lost its leading digits, leaving what looked like a column of zeroes.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-18",
     title: "Make a work plan from a scenario, and keep your edits",
     summary:
       "Work Plan gains “Plan from a scenario”: it takes what that scenario funds, year by year, as a plan you can change. The scenario decides what is worth doing; the plan is where the work is moved about.",
