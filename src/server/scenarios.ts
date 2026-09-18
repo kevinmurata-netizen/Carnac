@@ -344,7 +344,7 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       ],
     });
   }
-  await persistScenarioProgram(scenarioId, run.name, result);
+  await persistScenarioProgram(scenarioId, run.name, result, run.assumptions);
   // Measured across everything the run actually did — loading, simulating and
   // persisting — because that is what the person waiting experiences. Written
   // only on success, so a failed run cannot poison the next estimate.
@@ -381,13 +381,25 @@ export async function runScenarioSet(organizationId: string, setId: string): Pro
  * a scenario run *is* a program of work, so storing it as one means the
  * project list is queryable and shows up wherever work plans do, rather than
  * being summarized away into yearly totals.
+ *
+ * This plan is the run's own record and is replaced whenever the scenario runs
+ * again, so it is marked `isScenarioMirror` and is not a place to edit. An
+ * editable plan made from the same scenario — see `createWorkPlanFromScenario`
+ * — carries the flag false and is left alone here.
  */
 async function persistScenarioProgram(
   scenarioId: string,
   scenarioName: string,
-  result: ScenarioRunResult
+  result: ScenarioRunResult,
+  assumptions: ScenarioAssumptions
 ) {
-  const existing = await prisma.workPlan.findMany({ where: { scenarioId }, select: { id: true } });
+  // Only this run's own mirror. An editable plan someone made from the same
+  // scenario is theirs — moved years, statuses and all — and a re-run must not
+  // silently throw that away.
+  const existing = await prisma.workPlan.findMany({
+    where: { scenarioId, isScenarioMirror: true },
+    select: { id: true },
+  });
   if (existing.length > 0) {
     const ids = existing.map((w) => w.id);
     await prisma.workPlanItem.deleteMany({ where: { workPlanId: { in: ids } } });
@@ -406,6 +418,9 @@ async function persistScenarioProgram(
       name: `${scenarioName} — Funded Program`,
       startYear: years[0].year,
       endYear: years[years.length - 1].year,
+      isScenarioMirror: true,
+      annualBudget: assumptions.annualBudget,
+      fundingGrowth: assumptions.fundingGrowth,
     },
   });
 

@@ -39,6 +39,8 @@ import {
 } from "@/domain/waterline/category-weight";
 import type { FundingPlan } from "@/domain/waterline/category-funding";
 import { selectForYear, type Rankable } from "@/domain/waterline/selection";
+import { runScenario } from "@/domain/waterline/scenario";
+import { loadScenarioRun } from "@/server/scenarios";
 
 /**
  * Generating a multi-year capital program (SPEC §17).
@@ -65,6 +67,112 @@ import { selectForYear, type Rankable } from "@/domain/waterline/selection";
  * re-derivation that could disagree with it. This function builds the plans
  * that belong to no scenario.
  */
+
+/**
+ * A work plan made from a scenario: the run's own funded work, year for year,
+ * as a plan you can then change.
+ *
+ * Nothing is re-derived. The scenario decides what is worth doing and when;
+ * this copies that decision into rows that can be moved between years, and
+ * records the budget it was planned against so a year can be shown as over or
+ * under once work has been moved. The run's own mirror plan (see
+ * `persistScenarioProgram`) is replaced every time the scenario runs; this one
+ * is not, which is what makes it safe to edit.
+ */
+export async function createWorkPlanFromScenario(
+  organizationId: string,
+  scenarioId: string,
+  name?: string
+): Promise<{ workPlanId: string; planned: number; years: number }> {
+  const run = await loadScenarioRun(organizationId, scenarioId);
+  if (!run) throw new Error("That scenario no longer exists");
+
+  const result = runScenario(run.simAssets, run.assumptions, run.options);
+  const years = result.years.filter((y) => y.selected.length > 0);
+  if (years.length === 0) {
+    throw new Error(`${run.name} funds no work, so there is nothing to plan. Check its budget and what it considers.`);
+  }
+
+  const scenario = await prisma.scenario.findFirst({
+    where: { id: scenarioId, organizationId },
+    select: { weightSetId: true, categoryWeightSetId: true, categoryFundingPlanId: true },
+  });
+
+  const treatmentRows = await prisma.treatment.findMany({
+    where: { assetType: { code: "WATERLINE", organizationId } },
+    select: { id: true, name: true },
+  });
+  const treatmentIdByName = new Map(treatmentRows.map((t) => [t.name, t.id]));
+
+  const workPlan = await prisma.workPlan.create({
+    data: {
+      scenarioId,
+      name: name?.trim() || `${run.name} — Work Plan`,
+      startYear: years[0].year,
+      endYear: years[years.length - 1].year,
+      isScenarioMirror: false,
+      annualBudget: run.assumptions.annualBudget,
+      fundingGrowth: run.assumptions.fundingGrowth,
+      weightSetId: scenario?.weightSetId ?? null,
+      categoryWeightSetId: scenario?.categoryWeightSetId ?? null,
+      categoryFundingPlanId: scenario?.categoryFundingPlanId ?? null,
+    },
+  });
+
+  // One row per treatment, so a funded bundle becomes several rows sharing a
+  // bundleId: one visit, one set of effects, the cost divided between them.
+  const items = years.flatMap((year) =>
+    year.selected.flatMap((p) => {
+      const isBundle = p.bundleName != null;
+      const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${year.year}:${p.treatment}` : null;
+      return p.members.flatMap((member) => {
+        const treatmentId = treatmentIdByName.get(member.treatment);
+        if (!treatmentId) return [];
+        return [
+          {
+            workPlanId: workPlan.id,
+            assetId: p.assetId,
+            treatmentId,
+            bundleId,
+            bundleName: p.bundleName,
+            year: year.year,
+            estimatedCost: member.cost,
+            expectedBenefit: {
+              conditionBefore: p.conditionBefore,
+              conditionAfter: p.conditionAfter,
+              riskBefore: p.riskBefore,
+              riskAfter: p.riskAfter,
+              riskReductionPct:
+                p.riskBefore > 0 ? Math.round(((p.riskBefore - p.riskAfter) / p.riskBefore) * 1000) / 10 : 0,
+              priorityScore: p.priority,
+              incremental: p.incremental,
+              incrementalOver: p.incrementalOver,
+              criticality: p.criticality,
+              scaleFactor: p.scaleFactor,
+              expectedBenefitScore: p.benefit,
+            },
+            reasonExplanation: [
+              `Funded by the ${run.name} run in ${year.year}${isBundle ? ` as part of ${p.treatment}` : ""}.`,
+              p.incremental != null
+                ? p.incrementalOver
+                  ? `Chosen over ${p.incrementalOver}: ${p.incremental} more weighted benefit per dollar of the extra it costs.`
+                  : `The first step worth taking on this segment, at ${p.incremental} per dollar.`
+                : "",
+              `Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
+            ]
+              .filter(Boolean)
+              .join(" "),
+            fundingSource: "Scenario Budget",
+            status: WorkPlanItemStatus.PLANNED,
+          },
+        ];
+      });
+    })
+  );
+
+  if (items.length > 0) await prisma.workPlanItem.createMany({ data: items });
+  return { workPlanId: workPlan.id, planned: items.length, years: years.length };
+}
 
 export type GenerateWorkPlanInput = {
   name: string;
@@ -498,6 +606,9 @@ export async function listWorkPlans() {
     startYear: p.startYear,
     endYear: p.endYear,
     scenarioName: p.scenario?.name ?? null,
+    /** A run's own record, rewritten whenever the scenario runs again. Not a
+     * plan to edit — the page says so. */
+    isScenarioMirror: p.isScenarioMirror,
     itemCount: p.items.length,
     totalCost: Math.round(p.items.reduce((s, i) => s + i.estimatedCost, 0)),
     createdAt: p.createdAt,
