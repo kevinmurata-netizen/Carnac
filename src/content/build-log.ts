@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-18",
+    title: "A scenario run's own plan says why it cannot be edited",
+    summary:
+      "The plan a scenario writes for itself is rebuilt on every run, so nothing edited there survives. It now says so at the top and offers to make the editable copy, instead of leaving you hunting for buttons that are not there.",
+    changes: [
+      "A “— Funded Program” plan opens with a note naming the scenario that rewrites it, and a Make an editable plan button that creates the copy and opens it.",
+      "Its table is read-only to match: no Move, Status, Combine or Remove, and no Add work.",
+    ],
+    fixes: [
+      "Combine appeared on those plans and failed with an error when used, and Add work was simply missing with nothing to explain the absence.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-18",
     title: "Combine scheduled work on a segment into one visit",
     summary:
       "Work a plan holds on the same segment — even years apart — can be put into a single visit. Mobilization is charged once, so the visit costs less than the same jobs done separately, and the page shows the saving before you commit to it.",

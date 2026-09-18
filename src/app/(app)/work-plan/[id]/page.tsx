@@ -22,6 +22,7 @@ import {
   deleteWorkPlanAction,
   removeItemAction,
   splitVisitAction,
+  createFromScenarioAction,
 } from "../actions";
 import { AddWorkDialog } from "./add-work-dialog";
 import { CombineDialog } from "./combine-dialog";
@@ -60,6 +61,10 @@ export default async function WorkPlanDetailPage({
   if (!plan) notFound();
 
   const canEdit = canRecordFieldData(session);
+  // A scenario run's own record is rebuilt from scratch every time that
+  // scenario runs, so every edit here would be thrown away. The page says so
+  // and offers the editable copy instead of quietly losing someone's work.
+  const editable = canEdit && !plan.isScenarioMirror;
   const years = plan.years;
   // The plan's own budget where it froze one, so a plan made from a scenario
   // is measured against that scenario's money rather than today's.
@@ -80,10 +85,7 @@ export default async function WorkPlanDetailPage({
         description={`${plan.startYear}–${plan.endYear}${plan.scenarioName ? ` · from scenario "${plan.scenarioName}"` : ""}`}
         actions={
           <div className="flex items-center gap-2">
-            {/* A mirror is rebuilt by its scenario on every run, so work added
-                to it would disappear. Its own page says so rather than
-                offering the button and losing the work later. */}
-            {canEdit && !plan.isScenarioMirror && (
+            {editable && (
               <AddWorkDialog
                 workPlanId={plan.id}
                 treatments={treatments.map((t) => ({ id: t.id, name: t.name, category: t.category }))}
@@ -110,6 +112,35 @@ export default async function WorkPlanDetailPage({
           </div>
         }
       />
+
+      {/* Said before anything else on the page: this is the run's record, and
+          the controls someone came here for are deliberately absent. */}
+      {plan.isScenarioMirror && (
+        <Card className="mb-4 border-dashed">
+          <CardContent className="flex flex-wrap items-start justify-between gap-3 py-4">
+            <div className="min-w-0 space-y-1">
+              <p className="font-medium">This is the scenario run&apos;s own record</p>
+              <p className="max-w-3xl text-sm text-muted-foreground">
+                {plan.scenarioName
+                  ? `“${plan.scenarioName}” writes this plan every time it runs, replacing whatever was here. `
+                  : "The scenario that produced this plan rewrites it on every run. "}
+                So it cannot be edited: moving work between years, adding work, combining jobs into one visit or
+                changing a status would all be lost the next time that scenario runs. Make a plan from the scenario
+                and the copy is yours to change.
+              </p>
+            </div>
+            {canEdit && plan.scenarioId && (
+              <form action={createFromScenarioAction} className="shrink-0">
+                <input type="hidden" name="scenarioId" value={plan.scenarioId} />
+                <input type="hidden" name="name" value={`${plan.scenarioName ?? plan.name} — Work Plan`} />
+                <Button type="submit" size="sm">
+                  Make an editable plan
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Projects" value={formatNumber(plan.itemCount)} sublabel="Across all years" icon={ListChecks} />
@@ -297,9 +328,9 @@ export default async function WorkPlanDetailPage({
                         <TableHead>Expected Benefit</TableHead>
                         <TableHead>Funding</TableHead>
                         <TableHead>Status</TableHead>
-                        {canEdit && <TableHead>Move To</TableHead>}
-                        {canEdit && <TableHead className="sr-only">Combine</TableHead>}
-                        {canEdit && <TableHead className="sr-only">Remove</TableHead>}
+                        {editable && <TableHead>Move To</TableHead>}
+                        {editable && <TableHead className="sr-only">Combine</TableHead>}
+                        {editable && <TableHead className="sr-only">Remove</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -359,7 +390,7 @@ export default async function WorkPlanDetailPage({
                             </TableCell>
                             <TableCell className="text-xs">{item.fundingSource ?? "—"}</TableCell>
                             <TableCell>
-                              {canEdit ? (
+                              {editable ? (
                                 <form action={updateStatusAction} className="flex items-center gap-1">
                                   <input type="hidden" name="itemId" value={item.id} />
                                   <select
@@ -381,7 +412,7 @@ export default async function WorkPlanDetailPage({
                                 <Badge variant={STATUS_VARIANT[item.status] ?? "outline"}>{item.status}</Badge>
                               )}
                             </TableCell>
-                            {canEdit && (
+                            {editable && (
                               <TableCell>
                                 <form action={moveItemAction} className="flex items-center gap-1">
                                   <input type="hidden" name="itemId" value={item.id} />
@@ -402,7 +433,7 @@ export default async function WorkPlanDetailPage({
                                 </form>
                               </TableCell>
                             )}
-                            {canEdit && (
+                            {editable && (
                               <TableCell className="whitespace-nowrap">
                                 {item.bundleId ? (
                                   <form action={splitVisitAction}>
@@ -430,7 +461,7 @@ export default async function WorkPlanDetailPage({
                                 )}
                               </TableCell>
                             )}
-                            {canEdit && (
+                            {editable && (
                               <TableCell>
                                 <form action={removeItemAction}>
                                   <input type="hidden" name="itemId" value={item.id} />
