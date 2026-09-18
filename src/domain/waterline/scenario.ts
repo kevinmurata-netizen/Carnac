@@ -322,6 +322,13 @@ type Candidate = {
   benefit: number;
 };
 
+/** The treatment context for a simulated asset as it now stands. Exported so a
+ * work plan can price and apply the work it schedules against the same view of
+ * the segment a scenario would have had. */
+export function simAssetContext(asset: SimAsset): AssetTreatmentContext {
+  return buildContext(asset);
+}
+
 function buildContext(asset: SimAsset): AssetTreatmentContext {
   const pof = pofFromCondition(asset.condition);
   return {

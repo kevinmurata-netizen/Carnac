@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { WorkPlanItemStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
-import { getWorkPlan } from "@/server/workplans";
+import { getWorkPlan, runWorkPlan } from "@/server/workplans";
 import { getAnnualBudget } from "@/server/scenarios";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { getRiskBand } from "@/domain/waterline/risk";
@@ -30,19 +30,34 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   CANCELLED: "destructive",
 };
 
-export default async function WorkPlanDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function WorkPlanDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ run?: string }>;
+}) {
   const { id } = await params;
+  const { run } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [plan, annualBudget] = await Promise.all([getWorkPlan(id), getAnnualBudget(organizationId)]);
+  const [plan, orgBudget] = await Promise.all([getWorkPlan(id), getAnnualBudget(organizationId)]);
   if (!plan) notFound();
 
   const canEdit = canRecordFieldData(session);
   const years = plan.years;
-  const budgetFor = (index: number) => (annualBudget ?? 0) * Math.pow(1.03, index);
+  // The plan's own budget where it froze one, so a plan made from a scenario
+  // is measured against that scenario's money rather than today's.
+  const annualBudget = plan.annualBudget ?? orgBudget;
+  const growth = plan.fundingGrowth ?? 0.03;
+  const budgetFor = (index: number) => (annualBudget ?? 0) * Math.pow(1 + growth, index);
   const overBudgetYears = years.filter((y, i) => annualBudget != null && y.totalCost > budgetFor(i));
+
+  // Run on request rather than on every view: it walks the whole network for
+  // every year of the plan, and most visits are here to read the schedule.
+  const outcome = run === "1" ? await runWorkPlan(organizationId, id) : null;
 
   return (
     <div>
@@ -83,7 +98,7 @@ export default async function WorkPlanDetailPage({ params }: { params: Promise<{
         <KpiCard
           label="Annual Budget"
           value={annualBudget != null ? formatCurrency(annualBudget, { compact: true }) : "—"}
-          sublabel="Base year, grows 3%/yr"
+          sublabel={`Base year, grows ${Math.round(growth * 1000) / 10}%/yr`}
           icon={CalendarRange}
         />
         <KpiCard
@@ -94,6 +109,118 @@ export default async function WorkPlanDetailPage({ params }: { params: Promise<{
           tone={overBudgetYears.length > 0 ? "danger" : "default"}
         />
       </div>
+
+      {/* What this schedule does to the network. Run on request: the plan is
+          the decision, and this is the consequence of having moved it about. */}
+      <Card className="mt-4">
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+          <div>
+            <CardTitle>What this plan does</CardTitle>
+            <p className="mt-1 text-sm font-normal text-muted-foreground">
+              Applies the work in the years it is scheduled, then ages the network — so moving a job later shows up as
+              the years of deterioration it buys.
+              {plan.scenarioName ? ` Compared against the scenario “${plan.scenarioName}”.` : ""}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant={outcome ? "outline" : "default"}
+            nativeButton={false}
+            render={<Link href={`/work-plan/${plan.id}?run=1`}>{outcome ? "Run again" : "Run this plan"}</Link>}
+          />
+        </CardHeader>
+        {outcome && (
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <KpiCard
+                label="Final Condition"
+                value={String(outcome.result.finalAvgCondition)}
+                sublabel={
+                  outcome.scenario?.finalAvgCondition != null
+                    ? `Scenario ends at ${outcome.scenario.finalAvgCondition}`
+                    : `From ${outcome.result.startAvgCondition} today`
+                }
+                icon={CalendarRange}
+              />
+              <KpiCard
+                label="Expected Failures"
+                value={formatNumber(outcome.result.totalFailures)}
+                sublabel={
+                  outcome.scenario ? `Scenario ${formatNumber(Math.round(outcome.scenario.totalFailures))}` : "Over the plan"
+                }
+                icon={TriangleAlert}
+              />
+              <KpiCard
+                label="Spend"
+                value={formatCurrency(outcome.result.totalSpend, { compact: true })}
+                sublabel={
+                  outcome.scenario
+                    ? `Scenario ${formatCurrency(outcome.scenario.totalSpend, { compact: true })}`
+                    : "As scheduled"
+                }
+                icon={DollarSign}
+              />
+              <KpiCard
+                label="Failure Cost"
+                value={formatCurrency(outcome.result.totalFailureCost, { compact: true })}
+                sublabel="Expected, over the plan"
+                icon={DollarSign}
+              />
+            </div>
+
+            {outcome.result.skipped.length > 0 && (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-500">
+                {formatNumber(outcome.result.skipped.length)} scheduled{" "}
+                {outcome.result.skipped.length === 1 ? "job" : "jobs"} could not be carried out:{" "}
+                {[...new Set(outcome.result.skipped.map((s) => s.reason))].join("; ")}.
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Year</TableHead>
+                    <TableHead className="text-right">Spend</TableHead>
+                    <TableHead className="text-right">Budget</TableHead>
+                    <TableHead className="text-right">Segments treated</TableHead>
+                    <TableHead className="text-right">Avg condition</TableHead>
+                    <TableHead className="text-right">Scenario</TableHead>
+                    <TableHead className="text-right">Expected failures</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {outcome.result.years.map((y) => {
+                    const scenarioYear = outcome.scenario?.years.find((s) => s.year === y.year);
+                    return (
+                      <TableRow key={y.year} className={y.overBudget ? "bg-destructive/5" : undefined}>
+                        <TableCell className="font-medium tabular-nums">{y.year}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrency(y.spend, { compact: true })}
+                          {y.overBudget && (
+                            <Badge variant="destructive" className="ml-2">
+                              Over
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {formatCurrency(y.budget, { compact: true })}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{formatNumber(y.treatedCount)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{y.avgCondition}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {scenarioYear?.avgCondition ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{y.expectedFailures}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        )}
+      </Card>
 
       <Card className="mt-4">
         <CardHeader>
