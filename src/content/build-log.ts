@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-18",
+    title: "Run a work plan and see what your edits did",
+    summary:
+      "A work plan can now be run as it stands: the work happens in the years it is scheduled, the network ages around it, and the page reports condition, failures and spend against the scenario the plan came from. Moving a job later now has a visible price.",
+    changes: [
+      "“Run this plan” on a work plan applies each scheduled visit in its year — treatments bundled on one segment mobilize once, as they did when funded — then reports each year's spend against that year's budget, segments treated, average condition and expected failures.",
+      "Where the plan came from a scenario, the scenario's own figures sit beside it: final condition, failures and spend, and a per-year condition column. An unedited plan reproduces its scenario exactly, which is the check that the two agree.",
+      "A year scheduled over its budget is marked rather than prevented — the schedule is yours, and the overspend is something to argue for.",
+      "Anything that cannot be carried out — a segment that has left the network, a treatment removed from the library, work with no price — is listed rather than quietly dropped.",
+      "A plan measures itself against the budget it was created with, rather than today's organization-wide figure.",
+    ],
+    note: "No migration. Running a plan changes nothing: it reports.",
+  },
+  {
+    date: "2026-09-18",
     title: "Money charts had an axis of zeroes",
     summary:
       "Allocation by Year on a work plan, and Cost by Treatment on Treatment Planning, drew their vertical axis as 0, 0, 0, 0 — the real figures were there but cut off.",

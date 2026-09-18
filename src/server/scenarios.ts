@@ -723,6 +723,20 @@ export async function deleteScenario(organizationId: string, scenarioId: string)
 
 /** The utility's current annual capital budget, used for dashboard KPIs and
  * as the default when creating a scenario. */
+/** A scenario's assumptions as it would run them — its set's window included.
+ * For a work plan made from it, which reports against the same terms. */
+export async function getScenarioAssumptions(
+  organizationId: string,
+  scenarioId: string
+): Promise<ScenarioAssumptions | null> {
+  const scenario = await prisma.scenario.findFirst({
+    where: { id: scenarioId, organizationId },
+    include: { assumptions: true, scenarioSet: { select: { baseYear: true, planningPeriodYears: true } } },
+  });
+  if (!scenario) return null;
+  return effectiveAssumptions(scenario.assumptions, scenario.scenarioSet);
+}
+
 export async function getAnnualBudget(organizationId: string): Promise<number | null> {
   const budget = await prisma.budget.findFirst({
     where: { organizationId },

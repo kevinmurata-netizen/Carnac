@@ -39,8 +39,14 @@ import {
 } from "@/domain/waterline/category-weight";
 import type { FundingPlan } from "@/domain/waterline/category-funding";
 import { selectForYear, type Rankable } from "@/domain/waterline/selection";
-import { runScenario } from "@/domain/waterline/scenario";
-import { loadScenarioRun } from "@/server/scenarios";
+import { runScenario, DEFAULT_ASSUMPTIONS, type ScenarioAssumptions } from "@/domain/waterline/scenario";
+import { runSchedule, type ScheduledVisit } from "@/domain/waterline/schedule";
+import {
+  loadScenarioRun,
+  buildSimAssets,
+  getAnnualBudget,
+  getScenarioAssumptions,
+} from "@/server/scenarios";
 
 /**
  * Generating a multi-year capital program (SPEC §17).
@@ -683,9 +689,108 @@ export async function getWorkPlan(id: string) {
     startYear: plan.startYear,
     endYear: plan.endYear,
     scenarioName: plan.scenario?.name ?? null,
+    scenarioId: plan.scenarioId,
+    /** A run's own record, replaced whenever that scenario runs again. */
+    isScenarioMirror: plan.isScenarioMirror,
+    /** The money the plan was built against, when it holds it. */
+    annualBudget: plan.annualBudget,
+    fundingGrowth: plan.fundingGrowth,
     years: [...byYear.values()].sort((a, b) => a.year - b.year),
     totalCost: Math.round(plan.items.reduce((s, i) => s + i.estimatedCost, 0)),
     itemCount: plan.items.length,
+  };
+}
+
+/**
+ * Run a plan as it now stands: what this schedule does to the network.
+ *
+ * Nothing is chosen here — the plan already says what happens and when, and
+ * this reports the consequences, which is what makes moving work between years
+ * answerable. Rows sharing a bundleId are one visit, so a bundle mobilizes
+ * once, exactly as the scenario that funded it did.
+ *
+ * Budgets come from the plan itself where it has them (a plan made from a
+ * scenario freezes the money it was planned against); otherwise from the
+ * organization's current budget, so an older plan still reports against
+ * something honest.
+ *
+ * Where the plan came from a scenario, that scenario's own stored results are
+ * returned beside it, so "what did my edits cost" is a comparison rather than
+ * a number without a reference.
+ */
+export async function runWorkPlan(organizationId: string, workPlanId: string) {
+  const plan = await prisma.workPlan.findUnique({
+    where: { id: workPlanId },
+    include: {
+      items: { select: { assetId: true, year: true, estimatedCost: true, bundleId: true, treatment: { select: { name: true } } } },
+      scenario: { select: { id: true, name: true } },
+    },
+  });
+  if (!plan) return null;
+
+  // One visit per segment per year, with rows that share a bundleId folded
+  // back into the single job they were split from.
+  const visits = new Map<string, ScheduledVisit>();
+  for (const item of plan.items) {
+    const key = item.bundleId ?? `${item.year}:${item.assetId}:${item.treatment.name}`;
+    const visit = visits.get(key) ?? { year: item.year, assetId: item.assetId, treatments: [], cost: 0 };
+    visit.treatments.push(item.treatment.name);
+    visit.cost += item.estimatedCost;
+    visits.set(key, visit);
+  }
+
+  const [simAssets, library, orgBudget, scenarioAssumptions] = await Promise.all([
+    buildSimAssets(organizationId),
+    loadTreatmentDefs(organizationId),
+    getAnnualBudget(organizationId),
+    plan.scenario ? getScenarioAssumptions(organizationId, plan.scenario.id) : Promise.resolve(null),
+  ]);
+
+  const assumptions: ScenarioAssumptions = {
+    ...(scenarioAssumptions ?? DEFAULT_ASSUMPTIONS),
+    annualBudget: plan.annualBudget ?? scenarioAssumptions?.annualBudget ?? orgBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
+    fundingGrowth: plan.fundingGrowth ?? scenarioAssumptions?.fundingGrowth ?? DEFAULT_ASSUMPTIONS.fundingGrowth,
+    analysisPeriodYears: plan.endYear - plan.startYear + 1,
+  };
+
+  const result = runSchedule(simAssets, assumptions, [...visits.values()], {
+    library,
+    startYear: plan.startYear,
+    years: plan.endYear - plan.startYear + 1,
+  });
+
+  // The scenario's own figures, as Scenario Planning shows them, for the
+  // comparison. Read rather than re-run: this is what the scenario says.
+  const stored = plan.scenario
+    ? await prisma.scenarioResult.findMany({
+        where: { scenarioId: plan.scenario.id },
+        select: { year: true, metricKey: true, metricValue: true },
+      })
+    : [];
+  const scenarioByYear = new Map<number, Record<string, number>>();
+  for (const row of stored) {
+    scenarioByYear.set(row.year, { ...(scenarioByYear.get(row.year) ?? {}), [row.metricKey]: row.metricValue });
+  }
+  const scenarioYears = [...scenarioByYear.entries()].sort((a, b) => a[0] - b[0]);
+
+  return {
+    plan: { id: plan.id, name: plan.name, scenarioName: plan.scenario?.name ?? null },
+    result,
+    scenario:
+      scenarioYears.length > 0
+        ? {
+            name: plan.scenario!.name,
+            finalAvgCondition: scenarioYears[scenarioYears.length - 1][1].avgCondition ?? null,
+            totalSpend: scenarioYears.reduce((sum, [, m]) => sum + (m.spend ?? 0), 0),
+            totalFailures: scenarioYears.reduce((sum, [, m]) => sum + (m.expectedFailures ?? 0), 0),
+            years: scenarioYears.map(([year, m]) => ({
+              year,
+              spend: m.spend ?? 0,
+              avgCondition: m.avgCondition ?? null,
+              expectedFailures: m.expectedFailures ?? null,
+            })),
+          }
+        : null,
   };
 }
 
