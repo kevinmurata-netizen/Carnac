@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-21",
+    title: "Say when something is loading, and label Combine and Split",
+    summary:
+      "Every page now shows a spinner while it loads, and slow buttons say what they are doing. On a work plan, Combine and Split are labelled buttons beside the treatment instead of an unlabelled icon at the far edge of the table.",
+    changes: [
+      "Clicking into a page that takes a moment — a work plan, a scenario, the alternatives table — shows a spinner and “Loading…” in the page area while the sidebar stays put. A page that loads quickly shows nothing, so there is no flicker.",
+      "Buttons that start slow work say so while it runs and cannot be pressed twice: Run this plan (“Running the plan…”), Create plan (“Running the scenario…”), Make an editable plan and Generate Work Plan.",
+      "A work plan's new Visit column, right after Treatment, holds Combine… for work that can join a visit and Split visit for work already in one — both visible without scrolling the table.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-09-18",
     title: "A scenario run's own plan says why it cannot be edited",
     summary:

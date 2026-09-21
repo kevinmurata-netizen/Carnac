@@ -94,14 +94,15 @@ export function CombineDialog({
       <Button
         type="button"
         size="xs"
-        variant="ghost"
-        title={`Combine other work on ${assetCode} into one visit with this`}
+        variant="outline"
+        title={`Combine other work on ${assetCode} into one visit with this, so mobilization is charged once`}
         onClick={() => {
           setOpen(true);
           load();
         }}
       >
-        <Combine className="h-3.5 w-3.5" />
+        <Combine className="mr-1 h-3.5 w-3.5" />
+        Combine…
       </Button>
 
       <EditorDialog
