@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Combine } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { EditorDialog } from "@/components/ui/editor-dialog";
@@ -95,35 +95,34 @@ export function CombineDialog({
         type="button"
         size="xs"
         variant="outline"
-        title={`Combine other work on ${assetCode} into one visit with this, so mobilization is charged once`}
+        title={`Combine other work on ${assetCode} with this into one project, so mobilization is charged once`}
         onClick={() => {
           setOpen(true);
           load();
         }}
       >
-        <Combine className="mr-1 h-3.5 w-3.5" />
-        Combine…
+        Combine
       </Button>
 
       <EditorDialog
         open={open}
         onClose={() => setOpen(false)}
         title={`Combine work on ${assetCode}`}
-        description={`Everything you pick happens in one visit with ${treatment}. Mobilization is charged once, so the visit costs less than the same jobs apart.`}
+        description={`Everything you pick becomes one project with ${treatment}. Mobilization is charged once, so the project costs less than the same treatments done apart.`}
       >
         <div className="space-y-4">
           {busy && !rows && <p className="py-6 text-sm text-muted-foreground">Looking for other work on this segment…</p>}
 
           {rows && others.length === 0 && (
             <p className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
-              Nothing else is scheduled on {assetCode} that could join this visit. Work already part of another visit
-              has to be split out first.
+              Nothing else is scheduled on {assetCode} that could join this project. Work already part of another
+              project has to be split out first.
             </p>
           )}
 
           {others.length > 0 && (
             <div className="space-y-1.5">
-              <Label>Also do in this visit</Label>
+              <Label>Also do in this project</Label>
               <ul className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
                 {others.map((r) => {
                   const on = chosen.includes(r.id);
@@ -187,7 +186,7 @@ export function CombineDialog({
                 )}
               </p>
               <p>
-                {formatCurrency(preview.combinedCost)} as one visit, against {formatCurrency(preview.separateCost)}{" "}
+                {formatCurrency(preview.combinedCost)} as one project, against {formatCurrency(preview.separateCost)}{" "}
                 apart
                 {preview.saving > 0 ? (
                   <span className="font-medium text-emerald-700 dark:text-emerald-400">
@@ -204,7 +203,7 @@ export function CombineDialog({
                 {preview.members.map((m) => (
                   <li key={m.treatment}>
                     {m.treatment}: {formatCurrency(m.separateCost)} in {m.year} → {formatCurrency(m.share)} as part of
-                    the visit
+                    the project
                   </li>
                 ))}
               </ul>
@@ -213,7 +212,7 @@ export function CombineDialog({
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
                     {preview.refused.join(", ")} {preview.refused.length === 1 ? "is" : "are"} refused on this segment
-                    by {preview.refused.length === 1 ? "its" : "their"} own rules. The visit can still be made, and the
+                    by {preview.refused.length === 1 ? "its" : "their"} own rules. The project can still be made, and the
                     rows will say so.
                   </span>
                 </p>
