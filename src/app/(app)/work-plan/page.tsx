@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { generateWorkPlanAction, createFromScenarioAction } from "./actions";
+import { SubmitButton } from "@/components/ui/pending-button";
 import { listScenarios } from "@/server/scenarios";
 import { getPageName } from "@/server/navigation";
 
@@ -139,7 +140,11 @@ export default async function WorkPlanPage() {
                     className={inputClass}
                   />
                 </div>
-                <Button type="submit">Create plan</Button>
+                {/* Creating a plan runs the whole scenario first, which takes a
+                    few seconds; the button says so rather than looking dead. */}
+                <SubmitButton size="default" pendingLabel="Running the scenario…">
+                  Create plan
+                </SubmitButton>
               </form>
             )}
           </CardContent>
@@ -261,7 +266,9 @@ export default async function WorkPlanPage() {
               </div>
 
               <div className="flex justify-end">
-                <Button type="submit">Generate Work Plan</Button>
+                <SubmitButton size="default" pendingLabel="Generating the plan…">
+                  Generate Work Plan
+                </SubmitButton>
               </div>
             </form>
           </CardContent>

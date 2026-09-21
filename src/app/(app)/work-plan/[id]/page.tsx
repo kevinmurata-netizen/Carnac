@@ -26,6 +26,7 @@ import {
 } from "../actions";
 import { AddWorkDialog } from "./add-work-dialog";
 import { CombineDialog } from "./combine-dialog";
+import { SubmitButton, PendingLinkButton } from "@/components/ui/pending-button";
 import { listTreatments } from "@/server/treatments";
 import { CalendarRange, DollarSign, ListChecks, Split, TriangleAlert } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
@@ -133,9 +134,7 @@ export default async function WorkPlanDetailPage({
               <form action={createFromScenarioAction} className="shrink-0">
                 <input type="hidden" name="scenarioId" value={plan.scenarioId} />
                 <input type="hidden" name="name" value={`${plan.scenarioName ?? plan.name} — Work Plan`} />
-                <Button type="submit" size="sm">
-                  Make an editable plan
-                </Button>
+                <SubmitButton pendingLabel="Creating the plan…">Make an editable plan</SubmitButton>
               </form>
             )}
           </CardContent>
@@ -177,12 +176,16 @@ export default async function WorkPlanDetailPage({
               {plan.scenarioName ? ` Compared against the scenario “${plan.scenarioName}”.` : ""}
             </p>
           </div>
-          <Button
-            size="sm"
+          {/* Same page, new query — no loading screen appears for that, so the
+              button itself says the plan is running. It takes a few seconds:
+              it walks the whole network for every year of the plan. */}
+          <PendingLinkButton
+            href={`/work-plan/${plan.id}?run=1`}
             variant={outcome ? "outline" : "default"}
-            nativeButton={false}
-            render={<Link href={`/work-plan/${plan.id}?run=1`}>{outcome ? "Run again" : "Run this plan"}</Link>}
-          />
+            pendingLabel="Running the plan…"
+          >
+            {outcome ? "Run again" : "Run this plan"}
+          </PendingLinkButton>
         </CardHeader>
         {outcome && (
           <CardContent className="space-y-4">
@@ -321,6 +324,7 @@ export default async function WorkPlanDetailPage({
                         <TableHead>Asset</TableHead>
                         <TableHead>Location</TableHead>
                         <TableHead>Treatment</TableHead>
+                        {editable && <TableHead>Visit</TableHead>}
                         <TableHead>Condition</TableHead>
                         <TableHead>Risk</TableHead>
                         <TableHead>Priority</TableHead>
@@ -329,7 +333,6 @@ export default async function WorkPlanDetailPage({
                         <TableHead>Funding</TableHead>
                         <TableHead>Status</TableHead>
                         {editable && <TableHead>Move To</TableHead>}
-                        {editable && <TableHead className="sr-only">Combine</TableHead>}
                         {editable && <TableHead className="sr-only">Remove</TableHead>}
                       </TableRow>
                     </TableHeader>
@@ -377,6 +380,38 @@ export default async function WorkPlanDetailPage({
                                 </Badge>
                               )}
                             </TableCell>
+                            {/* Right beside the treatment, in words: a merge icon at
+                                the far edge of a wide table went unnoticed, and
+                                nobody could tell what it did. */}
+                            {editable && (
+                              <TableCell className="whitespace-nowrap">
+                                {item.bundleId ? (
+                                  <form action={splitVisitAction}>
+                                    <input type="hidden" name="workPlanId" value={plan.id} />
+                                    <input type="hidden" name="bundleId" value={item.bundleId} />
+                                    <SubmitButton
+                                      size="xs"
+                                      variant="outline"
+                                      pendingLabel="Splitting…"
+                                      title={`Split ${item.bundleName} back into separate jobs, each priced on its own`}
+                                    >
+                                      <Split className="mr-1 h-3.5 w-3.5" />
+                                      Split visit
+                                    </SubmitButton>
+                                  </form>
+                                ) : (
+                                  <CombineDialog
+                                    workPlanId={plan.id}
+                                    assetId={item.assetId}
+                                    assetCode={item.assetCode}
+                                    itemId={item.id}
+                                    treatment={item.treatment}
+                                    year={y.year}
+                                    years={years.map((yy) => yy.year)}
+                                  />
+                                )}
+                              </TableCell>
+                            )}
                             <TableCell style={cBand ? { color: cBand.color } : undefined}>
                               {item.conditionNow ?? "—"}
                             </TableCell>
@@ -431,34 +466,6 @@ export default async function WorkPlanDetailPage({
                                     Move
                                   </Button>
                                 </form>
-                              </TableCell>
-                            )}
-                            {editable && (
-                              <TableCell className="whitespace-nowrap">
-                                {item.bundleId ? (
-                                  <form action={splitVisitAction}>
-                                    <input type="hidden" name="workPlanId" value={plan.id} />
-                                    <input type="hidden" name="bundleId" value={item.bundleId} />
-                                    <Button
-                                      type="submit"
-                                      size="xs"
-                                      variant="ghost"
-                                      title={`Split ${item.bundleName} back into separate jobs`}
-                                    >
-                                      <Split className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </form>
-                                ) : (
-                                  <CombineDialog
-                                    workPlanId={plan.id}
-                                    assetId={item.assetId}
-                                    assetCode={item.assetCode}
-                                    itemId={item.id}
-                                    treatment={item.treatment}
-                                    year={y.year}
-                                    years={years.map((yy) => yy.year)}
-                                  />
-                                )}
                               </TableCell>
                             )}
                             {editable && (
