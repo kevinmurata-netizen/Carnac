@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-21",
+    title: "Show combined treatments as one project",
+    summary:
+      "Treatments combined on a segment now appear on a work plan as a single project — “WL-0058 - Leak Repair, Spot Repair” — instead of one row per treatment under the same asset. Click the project to see the treatments inside it.",
+    changes: [
+      "One line per project, with its total cost. Click the project name to twirl it open and see each treatment's share of the cost, its benefit and its status.",
+      "Move, Status and Remove on a project act on all of its treatments together, so a project cannot be pulled apart by accident. To change one treatment on its own, Split the project first.",
+      "The buttons now say just Combine and Split, and the plan talks about projects rather than visits.",
+      "Project counts — on the plan list, the plan's summary and each year's heading — count a combined project once.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-21",
     title: "Say when something is loading, and label Combine and Split",
     summary:
       "Every page now shows a spinner while it loads, and slow buttons say what they are doing. On a work plan, Combine and Split are labelled buttons beside the treatment instead of an unlabelled icon at the far edge of the table.",

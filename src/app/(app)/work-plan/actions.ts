@@ -142,7 +142,7 @@ export async function previewCombineAction(input: { workPlanId: string; itemIds:
   try {
     return { ok: true as const, preview: await previewCombine(session.user.organizationId, input) };
   } catch (e) {
-    return { ok: false as const, message: e instanceof Error ? e.message : "Could not price that visit" };
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not price that project" };
   }
 }
 
@@ -153,7 +153,7 @@ export async function combineItemsAction(input: { workPlanId: string; itemIds: s
     revalidatePath(`/work-plan/${input.workPlanId}`);
     return {
       ok: true as const,
-      message: `${preview.name} on ${preview.assetCode} is now one visit in ${input.year}${
+      message: `${preview.name} on ${preview.assetCode} is now one project in ${input.year}${
         preview.saving > 0 ? `, saving $${preview.saving.toLocaleString("en-US")}` : ""
       }.`,
     };
@@ -166,7 +166,7 @@ export async function splitVisitAction(formData: FormData) {
   const session = await requireEditor();
   const workPlanId = String(formData.get("workPlanId") ?? "");
   const bundleId = String(formData.get("bundleId") ?? "");
-  if (!workPlanId || !bundleId) throw new Error("Plan and visit are required");
+  if (!workPlanId || !bundleId) throw new Error("Plan and project are required");
   await splitWorkPlanVisit(session.user.organizationId, workPlanId, bundleId);
   revalidatePath(`/work-plan/${workPlanId}`);
 }

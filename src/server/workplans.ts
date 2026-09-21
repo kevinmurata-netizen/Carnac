@@ -605,7 +605,10 @@ const workPlanItemInclude = {
 
 export async function listWorkPlans() {
   const plans = await prisma.workPlan.findMany({
-    include: { items: { select: { estimatedCost: true, year: true, status: true } }, scenario: { select: { name: true } } },
+    include: {
+      items: { select: { id: true, bundleId: true, estimatedCost: true, year: true, status: true } },
+      scenario: { select: { name: true } },
+    },
     orderBy: { createdAt: "desc" },
   });
   return plans.map((p) => ({
@@ -617,7 +620,7 @@ export async function listWorkPlans() {
     /** A run's own record, rewritten whenever the scenario runs again. Not a
      * plan to edit — the page says so. */
     isScenarioMirror: p.isScenarioMirror,
-    itemCount: p.items.length,
+    itemCount: countProjects(p.items),
     totalCost: Math.round(p.items.reduce((s, i) => s + i.estimatedCost, 0)),
     createdAt: p.createdAt,
   }));
@@ -726,7 +729,8 @@ export async function getWorkPlan(id: string) {
     fundingGrowth: plan.fundingGrowth,
     years: [...byYear.values()].sort((a, b) => a.year - b.year),
     totalCost: Math.round(plan.items.reduce((s, i) => s + i.estimatedCost, 0)),
-    itemCount: plan.items.length,
+    /** Projects, not rows: a combined project counts once. */
+    itemCount: countProjects(plan.items),
   };
 }
 
@@ -1120,11 +1124,11 @@ async function planItemsForCombining(workPlanId: string, itemIds: string[]) {
   if (items.length < 2) throw new Error("Choose at least two treatments to combine");
   const assetId = items[0].assetId;
   if (items.some((i) => i.assetId !== assetId)) {
-    throw new Error("Only work on the same segment can be combined — one visit is to one segment");
+    throw new Error("Only work on the same segment can be combined — a project is on one segment");
   }
   const names = items.map((i) => i.treatment.name);
   if (new Set(names).size !== names.length) {
-    throw new Error("That would put the same treatment in the visit twice");
+    throw new Error("That would put the same treatment in the project twice");
   }
   return { items, assetId };
 }
@@ -1169,7 +1173,7 @@ export async function previewCombine(
     matched?.mobilizationCost ?? null
   );
   if (!option) {
-    throw new Error("One of those treatments has no price for this segment, so the visit cannot be costed");
+    throw new Error("One of those treatments has no price for this segment, so the project cannot be costed");
   }
 
   const shares = splitOptionCost(option, found.ctx);
@@ -1228,7 +1232,7 @@ export async function combineWorkPlanItems(
   const bundleId = `${plan.id}:${items[0].assetId}:${input.year}:${preview.name}`;
 
   await prisma.$transaction(
-    items.map((item, index) => {
+    items.map((item) => {
       const member = preview.members.find((m) => m.treatment === item.treatment.name)!;
       return prisma.workPlanItem.update({
         where: { id: item.id },
@@ -1253,8 +1257,7 @@ export async function combineWorkPlanItems(
           },
           reasonExplanation:
             `Combined by hand into ${preview.name} in ${input.year}` +
-            (index === 0 ? "" : "") +
-            `. Doing ${preview.members.length} jobs in one visit costs $${preview.combinedCost.toLocaleString("en-US")} rather than $${preview.separateCost.toLocaleString("en-US")}, because mobilization is charged once.` +
+            `. Doing ${preview.members.length} treatments as one project costs $${preview.combinedCost.toLocaleString("en-US")} rather than $${preview.separateCost.toLocaleString("en-US")}, because mobilization is charged once.` +
             (preview.refused.length > 0
               ? ` ${preview.refused.join(", ")} ${preview.refused.length === 1 ? "is" : "are"} refused here by its own rules and was kept anyway.`
               : ""),
@@ -1276,7 +1279,7 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
     where: { workPlanId, bundleId },
     select: { id: true, assetId: true, year: true, expectedBenefit: true, treatment: { select: { name: true } } },
   });
-  if (items.length === 0) throw new Error("That visit no longer exists");
+  if (items.length === 0) throw new Error("That project no longer exists");
 
   const [found, library] = await Promise.all([
     assetTreatmentContext(organizationId, items[0].assetId),
@@ -1298,7 +1301,7 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
           // fallback for a treatment the library no longer prices.
           estimatedCost: alone ? Math.round(alone.cost) : (benefit.costApart ?? 0),
           year: benefit.yearApart ?? item.year,
-          reasonExplanation: `Split out of a combined visit, and priced on its own again.`,
+          reasonExplanation: `Split out of a combined project, and priced on its own again.`,
         },
       });
     })
@@ -1307,30 +1310,52 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
   return items.length;
 }
 
-/** Take a row out of a plan. Only ever a row someone put there or moved — the
- * plan is a schedule, and removing from it changes no scenario. */
-export async function removeWorkPlanItem(itemId: string) {
-  const item = await prisma.workPlanItem.findUnique({ where: { id: itemId }, select: { workPlanId: true } });
+/**
+ * The rows an action on this row should reach: the row alone, or — when it is
+ * part of a combined project — every treatment in that project. A project is
+ * one job, so moving, removing or setting the status of one of its treatments
+ * without the others would quietly break it apart; Split is how to do that.
+ */
+async function projectRows(itemId: string) {
+  const item = await prisma.workPlanItem.findUnique({
+    where: { id: itemId },
+    select: { id: true, workPlanId: true, bundleId: true, workPlan: { select: { startYear: true, endYear: true } } },
+  });
   if (!item) throw new Error("That row no longer exists");
-  await prisma.workPlanItem.delete({ where: { id: itemId } });
+  const where = item.bundleId ? { workPlanId: item.workPlanId, bundleId: item.bundleId } : { id: item.id };
+  return { item, where };
+}
+
+/** Take a row — or a whole combined project — out of a plan. The plan is a
+ * schedule, and removing from it changes no scenario. */
+export async function removeWorkPlanItem(itemId: string) {
+  const { item, where } = await projectRows(itemId);
+  await prisma.workPlanItem.deleteMany({ where });
   return item.workPlanId;
 }
 
-/** Move an item to a different year (SPEC §17). Year totals are recomputed on
- * read, so the caller sees the budget impact immediately. */
+/** Move a row, or a whole combined project, to a different year (SPEC §17).
+ * Year totals are recomputed on read, so the caller sees the budget impact
+ * immediately. */
 export async function moveWorkPlanItem(itemId: string, targetYear: number) {
-  const item = await prisma.workPlanItem.findUnique({ where: { id: itemId }, include: { workPlan: true } });
-  if (!item) throw new Error("Work plan item not found");
+  const { item, where } = await projectRows(itemId);
   if (targetYear < item.workPlan.startYear || targetYear > item.workPlan.endYear) {
     throw new Error(`Year must be between ${item.workPlan.startYear} and ${item.workPlan.endYear}`);
   }
-  await prisma.workPlanItem.update({ where: { id: itemId }, data: { year: targetYear } });
+  await prisma.workPlanItem.updateMany({ where, data: { year: targetYear } });
   return item.workPlanId;
 }
 
 export async function updateWorkPlanItemStatus(itemId: string, status: WorkPlanItemStatus) {
-  const item = await prisma.workPlanItem.update({ where: { id: itemId }, data: { status } });
+  const { item, where } = await projectRows(itemId);
+  await prisma.workPlanItem.updateMany({ where, data: { status } });
   return item.workPlanId;
+}
+
+/** How many projects a set of rows makes: a combined project counts once,
+ * however many treatments it holds. */
+export function countProjects(items: Array<{ id: string; bundleId: string | null }>) {
+  return new Set(items.map((i) => i.bundleId ?? i.id)).size;
 }
 
 export async function deleteWorkPlan(id: string) {

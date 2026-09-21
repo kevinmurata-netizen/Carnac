@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { WorkPlanItemStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
-import { getWorkPlan, runWorkPlan } from "@/server/workplans";
+import { getWorkPlan, runWorkPlan, type WorkPlanYear } from "@/server/workplans";
 import { getAnnualBudget } from "@/server/scenarios";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { getRiskBand } from "@/domain/waterline/risk";
@@ -26,9 +26,10 @@ import {
 } from "../actions";
 import { AddWorkDialog } from "./add-work-dialog";
 import { CombineDialog } from "./combine-dialog";
+import { ProjectRows } from "./project-rows";
 import { SubmitButton, PendingLinkButton } from "@/components/ui/pending-button";
 import { listTreatments } from "@/server/treatments";
-import { CalendarRange, DollarSign, ListChecks, Split, TriangleAlert } from "lucide-react";
+import { CalendarRange, DollarSign, ListChecks, TriangleAlert } from "lucide-react";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
 
@@ -125,7 +126,7 @@ export default async function WorkPlanDetailPage({
                 {plan.scenarioName
                   ? `“${plan.scenarioName}” writes this plan every time it runs, replacing whatever was here. `
                   : "The scenario that produced this plan rewrites it on every run. "}
-                So it cannot be edited: moving work between years, adding work, combining jobs into one visit or
+                So it cannot be edited: moving work between years, adding work, combining treatments into a project or
                 changing a status would all be lost the next time that scenario runs. Make a plan from the scenario
                 and the copy is yours to change.
               </p>
@@ -297,11 +298,12 @@ export default async function WorkPlanDetailPage({
       {years.map((y, i) => {
         const budget = budgetFor(i);
         const over = annualBudget != null && y.totalCost > budget;
+        const projects = groupProjects(y.items);
         return (
           <Card key={y.year} className="mt-4">
             <CardHeader className="flex-row items-center justify-between space-y-0">
               <CardTitle>
-                {y.year} — {formatNumber(y.items.length)} project{y.items.length === 1 ? "" : "s"}
+                {y.year} — {formatNumber(projects.length)} project{projects.length === 1 ? "" : "s"}
               </CardTitle>
               <div className="text-sm">
                 <span className={over ? "font-medium text-destructive" : "font-medium text-foreground"}>
@@ -314,17 +316,17 @@ export default async function WorkPlanDetailPage({
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              {y.items.length === 0 ? (
+              {projects.length === 0 ? (
                 <p className="px-6 pb-6 text-sm text-muted-foreground">No work scheduled in this year.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Asset</TableHead>
+                        <TableHead>Project</TableHead>
                         <TableHead>Location</TableHead>
                         <TableHead>Treatment</TableHead>
-                        {editable && <TableHead>Visit</TableHead>}
+                        {editable && <TableHead className="sr-only">Combine or split</TableHead>}
                         <TableHead>Condition</TableHead>
                         <TableHead>Risk</TableHead>
                         <TableHead>Priority</TableHead>
@@ -337,47 +339,42 @@ export default async function WorkPlanDetailPage({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {y.items.map((item) => {
-                        const cBand = item.conditionNow != null ? getConditionBand(item.conditionNow, conditionBands) : null;
-                        const rBand = item.riskNow != null ? getRiskBand(item.riskNow) : null;
-                        return (
-                          <TableRow key={item.id}>
+                      {projects.map((project) => {
+                        const first = project.items[0];
+                        const cBand = first.conditionNow != null ? getConditionBand(first.conditionNow, conditionBands) : null;
+                        const rBand = first.riskNow != null ? getRiskBand(first.riskNow) : null;
+                        const combined = project.items.length > 1 || first.bundleId != null;
+                        const priority = maxOf(project.items.map((m) => m.priorityScore));
+                        const riskCut = maxOf(project.items.map((m) => m.riskReductionPct));
+                        const funding = [...new Set(project.items.map((m) => m.fundingSource).filter(Boolean))].join(", ");
+                        const statuses = [...new Set(project.items.map((m) => m.status))];
+
+                        // Every cell after the first, shared by a single
+                        // treatment and a combined project. Actions go through
+                        // the first row; the server applies them to the whole
+                        // project, since a project is one job.
+                        const cells = (
+                          <>
+                            <TableCell className="text-xs">{first.serviceArea ?? "—"}</TableCell>
                             <TableCell>
-                              <Link
-                                href={`/assets/${item.assetId}?tab=treatments`}
-                                className="font-medium text-primary hover:underline"
-                              >
-                                {item.assetCode}
-                              </Link>
-                            </TableCell>
-                            <TableCell className="text-xs">{item.serviceArea ?? "—"}</TableCell>
-                            <TableCell>
-                              {item.treatment}
-                              {item.bundleName && (
-                                <Badge
-                                  variant="outline"
-                                  className="ml-1.5"
-                                  title={
-                                    item.combinedByHand
-                                      ? `Combined by hand into ${item.bundleName}: one visit, mobilization charged once.`
-                                      : `Part of ${item.bundleName}, funded as one visit.`
-                                  }
-                                >
-                                  {item.bundleName}
-                                </Badge>
-                              )}
-                              {item.addedByHand && (
-                                <Badge
-                                  variant={item.forcedAgainstRules ? "destructive" : "secondary"}
-                                  className="ml-1.5"
-                                  title={
-                                    item.forcedAgainstRules
-                                      ? `Added by hand. Its rules refuse it here — ${item.refusedBy ?? "the treatment's own rules"}.`
-                                      : "Added by hand rather than chosen by the model."
-                                  }
-                                >
-                                  {item.forcedAgainstRules ? "forced" : "added"}
-                                </Badge>
+                              {combined ? (
+                                <span className="text-muted-foreground">
+                                  {project.items.length} treatments
+                                  {first.bundleName && !first.combinedByHand && (
+                                    <Badge
+                                      variant="outline"
+                                      className="ml-1.5"
+                                      title={`Funded by the model as ${first.bundleName}: one project, mobilization charged once.`}
+                                    >
+                                      {first.bundleName}
+                                    </Badge>
+                                  )}
+                                </span>
+                              ) : (
+                                <>
+                                  {first.treatment}
+                                  <HandBadges item={first} />
+                                </>
                               )}
                             </TableCell>
                             {/* Right beside the treatment, in words: a merge icon at
@@ -385,27 +382,26 @@ export default async function WorkPlanDetailPage({
                                 nobody could tell what it did. */}
                             {editable && (
                               <TableCell className="whitespace-nowrap">
-                                {item.bundleId ? (
+                                {first.bundleId ? (
                                   <form action={splitVisitAction}>
                                     <input type="hidden" name="workPlanId" value={plan.id} />
-                                    <input type="hidden" name="bundleId" value={item.bundleId} />
+                                    <input type="hidden" name="bundleId" value={first.bundleId} />
                                     <SubmitButton
                                       size="xs"
                                       variant="outline"
                                       pendingLabel="Splitting…"
-                                      title={`Split ${item.bundleName} back into separate jobs, each priced on its own`}
+                                      title={`Split ${project.projectId} back into separate treatments, each priced on its own`}
                                     >
-                                      <Split className="mr-1 h-3.5 w-3.5" />
-                                      Split visit
+                                      Split
                                     </SubmitButton>
                                   </form>
                                 ) : (
                                   <CombineDialog
                                     workPlanId={plan.id}
-                                    assetId={item.assetId}
-                                    assetCode={item.assetCode}
-                                    itemId={item.id}
-                                    treatment={item.treatment}
+                                    assetId={first.assetId}
+                                    assetCode={first.assetCode}
+                                    itemId={first.id}
+                                    treatment={first.treatment}
                                     year={y.year}
                                     years={years.map((yy) => yy.year)}
                                   />
@@ -413,24 +409,20 @@ export default async function WorkPlanDetailPage({
                               </TableCell>
                             )}
                             <TableCell style={cBand ? { color: cBand.color } : undefined}>
-                              {item.conditionNow ?? "—"}
+                              {first.conditionNow ?? "—"}
                             </TableCell>
-                            <TableCell style={rBand ? { color: rBand.color } : undefined}>
-                              {item.riskNow ?? "—"}
-                            </TableCell>
-                            <TableCell className="font-medium">{item.priorityScore ?? "—"}</TableCell>
-                            <TableCell>{formatCurrency(item.estimatedCost)}</TableCell>
-                            <TableCell>
-                              {item.riskReductionPct != null ? `${item.riskReductionPct}% risk cut` : "—"}
-                            </TableCell>
-                            <TableCell className="text-xs">{item.fundingSource ?? "—"}</TableCell>
+                            <TableCell style={rBand ? { color: rBand.color } : undefined}>{first.riskNow ?? "—"}</TableCell>
+                            <TableCell className="font-medium">{priority ?? "—"}</TableCell>
+                            <TableCell>{formatCurrency(project.cost)}</TableCell>
+                            <TableCell>{riskCut != null ? `${riskCut}% risk cut` : "—"}</TableCell>
+                            <TableCell className="text-xs">{funding || "—"}</TableCell>
                             <TableCell>
                               {editable ? (
                                 <form action={updateStatusAction} className="flex items-center gap-1">
-                                  <input type="hidden" name="itemId" value={item.id} />
+                                  <input type="hidden" name="itemId" value={first.id} />
                                   <select
                                     name="status"
-                                    defaultValue={item.status}
+                                    defaultValue={first.status}
                                     className="h-8 rounded-md border border-input bg-background px-1.5 text-xs"
                                   >
                                     {Object.values(WorkPlanItemStatus).map((s) => (
@@ -443,14 +435,16 @@ export default async function WorkPlanDetailPage({
                                     Set
                                   </Button>
                                 </form>
+                              ) : statuses.length === 1 ? (
+                                <Badge variant={STATUS_VARIANT[first.status] ?? "outline"}>{first.status}</Badge>
                               ) : (
-                                <Badge variant={STATUS_VARIANT[item.status] ?? "outline"}>{item.status}</Badge>
+                                <Badge variant="outline">MIXED</Badge>
                               )}
                             </TableCell>
                             {editable && (
                               <TableCell>
                                 <form action={moveItemAction} className="flex items-center gap-1">
-                                  <input type="hidden" name="itemId" value={item.id} />
+                                  <input type="hidden" name="itemId" value={first.id} />
                                   <select
                                     name="targetYear"
                                     defaultValue={y.year}
@@ -471,16 +465,18 @@ export default async function WorkPlanDetailPage({
                             {editable && (
                               <TableCell>
                                 <form action={removeItemAction}>
-                                  <input type="hidden" name="itemId" value={item.id} />
+                                  <input type="hidden" name="itemId" value={first.id} />
                                   <ConfirmDelete
                                     size="xs"
                                     variant="ghost"
-                                    ariaLabel={`Remove ${item.treatment} on ${item.assetCode}`}
-                                    title={`Remove ${item.treatment} on ${item.assetCode}?`}
+                                    ariaLabel={`Remove ${project.projectId}`}
+                                    title={`Remove ${project.projectId}?`}
                                     description={
-                                      item.addedByHand
-                                        ? "It was added by hand, so nothing regenerates it. This cannot be undone."
-                                        : "It came from the scenario this plan was made from. Removing it changes this plan only; the scenario is untouched, and making a new plan from that scenario would bring it back."
+                                      combined
+                                        ? `All ${project.items.length} treatments in this project are removed from this plan. To remove just one, split the project first. The scenario is untouched.`
+                                        : first.addedByHand
+                                          ? "It was added by hand, so nothing regenerates it. This cannot be undone."
+                                          : "It came from the scenario this plan was made from. Removing it changes this plan only; the scenario is untouched, and making a new plan from that scenario would bring it back."
                                     }
                                   >
                                     Remove
@@ -488,7 +484,68 @@ export default async function WorkPlanDetailPage({
                                 </form>
                               </TableCell>
                             )}
-                          </TableRow>
+                          </>
+                        );
+
+                        if (!combined) {
+                          return (
+                            <TableRow key={project.key}>
+                              <TableCell>
+                                <Link
+                                  href={`/assets/${first.assetId}?tab=treatments`}
+                                  className="font-medium text-primary hover:underline"
+                                >
+                                  {first.assetCode}
+                                </Link>
+                              </TableCell>
+                              {cells}
+                            </TableRow>
+                          );
+                        }
+
+                        // Twirled open: one row per treatment, with what is
+                        // its own — its share of the cost, its benefit, its
+                        // status. Moving or removing it alone would break the
+                        // project apart, so those stay on the project row.
+                        return (
+                          <ProjectRows key={project.key} projectId={project.projectId} cells={cells}>
+                            {project.items.map((m, index) => (
+                              <TableRow
+                                key={m.id}
+                                className={`bg-muted/30 text-muted-foreground ${index < project.items.length - 1 ? "border-b-0" : ""}`}
+                              >
+                                <TableCell className="pl-10 text-xs">
+                                  {index === 0 && (
+                                    <Link
+                                      href={`/assets/${m.assetId}?tab=treatments`}
+                                      className="text-primary hover:underline"
+                                    >
+                                      Open {m.assetCode}
+                                    </Link>
+                                  )}
+                                </TableCell>
+                                <TableCell />
+                                <TableCell className="text-foreground">
+                                  {m.treatment}
+                                  <HandBadges item={m} />
+                                </TableCell>
+                                {editable && <TableCell />}
+                                <TableCell />
+                                <TableCell />
+                                <TableCell>{m.priorityScore ?? "—"}</TableCell>
+                                <TableCell>{formatCurrency(m.estimatedCost)}</TableCell>
+                                <TableCell>
+                                  {m.riskReductionPct != null ? `${m.riskReductionPct}% risk cut` : "—"}
+                                </TableCell>
+                                <TableCell className="text-xs">{m.fundingSource ?? "—"}</TableCell>
+                                <TableCell>
+                                  <Badge variant={STATUS_VARIANT[m.status] ?? "outline"}>{m.status}</Badge>
+                                </TableCell>
+                                {editable && <TableCell />}
+                                {editable && <TableCell />}
+                              </TableRow>
+                            ))}
+                          </ProjectRows>
                         );
                       })}
                     </TableBody>
@@ -498,9 +555,10 @@ export default async function WorkPlanDetailPage({
                       Why these projects, in this order?
                     </summary>
                     <ul className="mt-2 space-y-1.5">
-                      {y.items.map((item) => (
-                        <li key={item.id} className="text-xs text-muted-foreground">
-                          <span className="font-medium text-foreground">{item.assetCode}</span> — {item.reason}
+                      {projects.map((project) => (
+                        <li key={project.key} className="text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">{project.projectId}</span> —{" "}
+                          {project.items[0].reason}
                         </li>
                       ))}
                     </ul>
@@ -519,5 +577,55 @@ export default async function WorkPlanDetailPage({
         person to make.
       </p>
     </div>
+  );
+}
+
+type PlanItem = WorkPlanYear["items"][number];
+
+/**
+ * A year's rows as projects: a treatment on its own, or every treatment
+ * combined into one job on a segment. Kept in the order the rows came, which
+ * is by priority, so a project sits where its best treatment ranks.
+ */
+function groupProjects(items: PlanItem[]) {
+  const projects = new Map<string, { key: string; items: PlanItem[] }>();
+  for (const item of items) {
+    const key = item.bundleId ?? item.id;
+    const project = projects.get(key) ?? { key, items: [] };
+    project.items.push(item);
+    projects.set(key, project);
+  }
+  return [...projects.values()].map((p) => ({
+    ...p,
+    /** "WL-0058 - Leak Repair, Spot Repair" for a combined project; the
+     * asset code alone for one treatment. */
+    projectId:
+      p.items.length > 1 || p.items[0].bundleId
+        ? `${p.items[0].assetCode} - ${p.items.map((m) => m.treatment).join(", ")}`
+        : p.items[0].assetCode,
+    cost: p.items.reduce((sum, m) => sum + m.estimatedCost, 0),
+  }));
+}
+
+function maxOf(values: Array<number | null>) {
+  const known = values.filter((v): v is number => v != null);
+  return known.length ? Math.max(...known) : null;
+}
+
+/** Says when a treatment was put here by a person rather than the model. */
+function HandBadges({ item }: { item: PlanItem }) {
+  if (!item.addedByHand) return null;
+  return (
+    <Badge
+      variant={item.forcedAgainstRules ? "destructive" : "secondary"}
+      className="ml-1.5"
+      title={
+        item.forcedAgainstRules
+          ? `Added by hand. Its rules refuse it here — ${item.refusedBy ?? "the treatment's own rules"}.`
+          : "Added by hand rather than chosen by the model."
+      }
+    >
+      {item.forcedAgainstRules ? "forced" : "added"}
+    </Badge>
   );
 }
