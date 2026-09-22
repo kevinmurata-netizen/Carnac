@@ -30,6 +30,22 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-22",
+    title: "Show when work is paid for and when it is built",
+    summary:
+      "A plan made from a scenario with delivery lead times now says, for every project, the year it was decided, the year it is paid for and the year it is built — and the money and the work are charted separately.",
+    changes: [
+      "Two new columns on a work plan, Decided and Built, shown only on a plan whose work is not all done in the year it is paid for. A project built after the plan's last funded year is marked.",
+      "Two charts instead of one: Spending by Year, when the money leaves the budget, beside Work Built by Year, when the network actually improves. The gap between them is the delivery time.",
+      "Running a plan takes each project's money in the year the plan pays for it and applies the work in the year it is built, then carries on past the last funded year so work still under way is counted rather than lost.",
+      "Moving a project moves its whole schedule — decided, paid and built shift together, because the lead time is a fact about delivery rather than about the year.",
+      "A cost spread over years is now spread on the plan too: the row says “$71K in 2026, $644K in 2031”, and each year's total is the money that actually leaves it. Before this a year could be flagged over budget for money it did not spend.",
+      "A scenario's funded projects list, and its export, carry the same three years.",
+      "Fixed: making an editable plan from a scenario ignored its delivery lead times, so the plan disagreed with the run it came from about when work happens.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-22",
     title: "Scenarios can programme work years before it is built",
     summary:
       "A scenario can now be given delivery lead times, and then it decides work in one year, pays for it in another and improves the network in a third — judging every option against the segment it will meet in the year it would be built.",

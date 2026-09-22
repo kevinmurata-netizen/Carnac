@@ -328,19 +328,33 @@ export async function loadScenarioRun(
   };
 }
 
+/**
+ * Run a loaded scenario through the engine its lead times call for.
+ *
+ * One place, because there are two engines and every caller must choose
+ * between them the same way: a scenario with no lead time set, or one whose
+ * set leaves everything immediate, runs exactly as it always has. An editable
+ * work plan made from a scenario goes through here too, so the plan and the
+ * run it came from cannot disagree about when work happens.
+ */
+export function runForScenario(run: {
+  simAssets: SimAsset[];
+  assumptions: ScenarioAssumptions;
+  options: ScenarioRunOptions;
+  leadTimes: LeadTimes;
+}): ScenarioRunResult {
+  return isImmediate(run.leadTimes)
+    ? runScenario(run.simAssets, run.assumptions, run.options)
+    : runDeliveryScenario(run.simAssets, run.assumptions, { ...run.options, leadTimes: run.leadTimes });
+}
+
 /** Run the simulation and replace this scenario's stored results. */
 export async function runAndStoreScenario(organizationId: string, scenarioId: string): Promise<ScenarioRunResult> {
   const startedAt = Date.now();
   const run = await loadScenarioRun(organizationId, scenarioId);
   if (!run) throw new Error("Scenario not found");
 
-  // Two engines, one difference: whether work is decided, paid for and built
-  // in the same year. A scenario with no lead time set, or one whose set
-  // leaves everything immediate, runs exactly as it always has — which is what
-  // keeps every earlier run comparable.
-  const result = isImmediate(run.leadTimes)
-    ? runScenario(run.simAssets, run.assumptions, run.options)
-    : runDeliveryScenario(run.simAssets, run.assumptions, { ...run.options, leadTimes: run.leadTimes });
+  const result = runForScenario(run);
 
   await prisma.scenarioResult.deleteMany({ where: { scenarioId } });
   await prisma.scenarioResult.createMany({
@@ -532,7 +546,12 @@ async function persistScenarioProgram(
 }
 
 export type ScenarioProjectRow = {
+  /** The year the money comes out. */
   year: number;
+  /** The year it was decided and the year it is built — the same year unless
+   * the scenario ran with delivery lead times. */
+  programmedYear: number;
+  buildYear: number;
   assetId: string;
   assetCode: string;
   serviceArea: string | null;
@@ -573,6 +592,8 @@ export async function getScenarioProjects(
     };
     return {
       year: i.year,
+      programmedYear: i.programmedYear ?? i.year,
+      buildYear: i.buildYear ?? i.year,
       assetId: i.asset.id,
       assetCode: i.asset.assetCode,
       serviceArea: i.asset.location?.serviceArea ?? null,

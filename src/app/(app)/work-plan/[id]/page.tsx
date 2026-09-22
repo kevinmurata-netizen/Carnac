@@ -174,8 +174,9 @@ export default async function WorkPlanDetailPage({
           <div>
             <CardTitle>What this plan does</CardTitle>
             <p className="mt-1 text-sm font-normal text-muted-foreground">
-              Applies the work in the years it is scheduled, then ages the network — so moving a job later shows up as
-              the years of deterioration it buys.
+              {plan.hasLeadTimes
+                ? "Takes each project's money in the year this plan pays for it and applies the work in the year it is built, then ages the network — so the gap between paying and building shows up as the deterioration it allows."
+                : "Applies the work in the years it is scheduled, then ages the network — so moving a job later shows up as the years of deterioration it buys."}
               {plan.scenarioName ? ` Compared against the scenario “${plan.scenarioName}”.` : ""}
             </p>
           </div>
@@ -229,6 +230,19 @@ export default async function WorkPlanDetailPage({
               />
             </div>
 
+            {/* A plan with delivery lead times pays for work later years build.
+                The run walks on past the last year the plan pays for, so that
+                work is shown arriving rather than dropped — and the years past
+                the end spend nothing, which is why they are worth explaining. */}
+            {plan.lastBuildYear > plan.endYear && (
+              <div className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+                {formatNumber(builtAfter(years, plan.endYear))} project
+                {builtAfter(years, plan.endYear) === 1 ? " is" : "s are"} built after {plan.endYear}, the last year
+                this plan pays for. The run carries on to {plan.lastBuildYear} so that work is counted; those years
+                spend nothing.
+              </div>
+            )}
+
             {outcome.result.skipped.length > 0 && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-sm text-amber-700 dark:text-amber-500">
                 {formatNumber(outcome.result.skipped.length)} scheduled{" "}
@@ -244,7 +258,7 @@ export default async function WorkPlanDetailPage({
                     <TableHead>Year</TableHead>
                     <TableHead className="text-right">Spend</TableHead>
                     <TableHead className="text-right">Budget</TableHead>
-                    <TableHead className="text-right">Segments treated</TableHead>
+                    <TableHead className="text-right">{plan.hasLeadTimes ? "Segments built" : "Segments treated"}</TableHead>
                     <TableHead className="text-right">Avg condition</TableHead>
                     <TableHead className="text-right">Scenario</TableHead>
                     <TableHead className="text-right">Expected failures</TableHead>
@@ -283,19 +297,43 @@ export default async function WorkPlanDetailPage({
         )}
       </Card>
 
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Allocation by Year</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <SimpleBarChart
-            data={years.map((y) => ({ year: String(y.year), cost: y.totalCost }))}
-            xKey="year"
-            yKey="cost"
-            valueFormat="currency-compact"
-          />
-        </CardContent>
-      </Card>
+      <div className={plan.hasLeadTimes ? "mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2" : ""}>
+        <Card className={plan.hasLeadTimes ? "" : "mt-4"}>
+          <CardHeader>
+            <CardTitle>{plan.hasLeadTimes ? "Spending by Year" : "Allocation by Year"}</CardTitle>
+            {plan.hasLeadTimes && (
+              <p className="mt-1 text-sm font-normal text-muted-foreground">
+                When the money leaves the budget.
+              </p>
+            )}
+          </CardHeader>
+          <CardContent>
+            <SimpleBarChart
+              data={years.map((y) => ({ year: String(y.year), cost: y.totalCost }))}
+              xKey="year"
+              yKey="cost"
+              valueFormat="currency-compact"
+            />
+          </CardContent>
+        </Card>
+
+        {/* The other half of the same plan: what it pays for, and when that
+            work actually reaches the network. Two charts rather than one
+            because the gap between them is the thing worth seeing. */}
+        {plan.hasLeadTimes && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Work Built by Year</CardTitle>
+              <p className="mt-1 text-sm font-normal text-muted-foreground">
+                When the network actually improves.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <SimpleBarChart data={builtByYear(years, plan.lastBuildYear)} xKey="year" yKey="cost" valueFormat="currency-compact" />
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {years.map((y, i) => {
         const budget = budgetFor(i);
@@ -304,9 +342,25 @@ export default async function WorkPlanDetailPage({
         return (
           <Card key={y.year} className="mt-4">
             <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle>
-                {y.year} — {formatNumber(projects.length)} project{projects.length === 1 ? "" : "s"}
-              </CardTitle>
+              <div>
+                <CardTitle>
+                  {y.year} — {formatNumber(projects.length)} project{projects.length === 1 ? "" : "s"}
+                </CardTitle>
+                {/* Said once per year rather than on every row: with delivery
+                    lead times this heading is about money, and the work itself
+                    happens in the year each row's Built column gives. */}
+                {plan.hasLeadTimes && (
+                  <p className="mt-1 text-xs font-normal text-muted-foreground">
+                    What {y.year} pays for. Each project is built in the year its own row says.
+                    {/* A project whose cost is spread pays part of it in years
+                        it is not listed in, so a year's total can exceed the
+                        rows under it. Said where the number is, not in a
+                        footnote nobody reads. */}
+                    {Math.abs(y.totalCost - y.items.reduce((sum, i) => sum + i.estimatedCost, 0)) > 1 &&
+                      " The total includes instalments of projects listed under other years."}
+                  </p>
+                )}
+              </div>
               <div className="text-sm">
                 <span className={over ? "font-medium text-destructive" : "font-medium text-foreground"}>
                   {formatCurrency(y.totalCost, { compact: true })}
@@ -317,6 +371,7 @@ export default async function WorkPlanDetailPage({
                 {over && <Badge variant="destructive" className="ml-2">Over budget</Badge>}
               </div>
             </CardHeader>
+
             <CardContent className="p-0">
               {projects.length === 0 ? (
                 <p className="px-6 pb-6 text-sm text-muted-foreground">No work scheduled in this year.</p>
@@ -328,6 +383,8 @@ export default async function WorkPlanDetailPage({
                         <TableHead>Project</TableHead>
                         <TableHead>Location</TableHead>
                         <TableHead>Treatment</TableHead>
+                        {plan.hasLeadTimes && <TableHead>Decided</TableHead>}
+                        {plan.hasLeadTimes && <TableHead>Built</TableHead>}
                         {editable && <TableHead className="sr-only">Combine or split</TableHead>}
                         <TableHead>Condition</TableHead>
                         <TableHead>Risk</TableHead>
@@ -379,6 +436,26 @@ export default async function WorkPlanDetailPage({
                                 </>
                               )}
                             </TableCell>
+                            {/* The year it was decided and the year it is done.
+                                A project waiting years for construction is the
+                                thing a reader most needs to see beside it. */}
+                            {plan.hasLeadTimes && (
+                              <TableCell className="tabular-nums">{first.programmedYear}</TableCell>
+                            )}
+                            {plan.hasLeadTimes && (
+                              <TableCell className="tabular-nums">
+                                {first.buildYear}
+                                {first.buildYear > plan.endYear && (
+                                  <Badge
+                                    variant="outline"
+                                    className="ml-1.5"
+                                    title="Paid for inside this plan, but built after it ends"
+                                  >
+                                    after
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            )}
                             {/* Right beside the treatment, in words: a merge icon at
                                 the far edge of a wide table went unnoticed, and
                                 nobody could tell what it did. */}
@@ -415,7 +492,23 @@ export default async function WorkPlanDetailPage({
                             </TableCell>
                             <TableCell style={rBand ? { color: rBand.color } : undefined}>{first.riskNow ?? "—"}</TableCell>
                             <TableCell className="font-medium">{priority ?? "—"}</TableCell>
-                            <TableCell>{formatCurrency(project.cost)}</TableCell>
+                            <TableCell>
+                              {formatCurrency(project.cost)}
+                              {/* Where the cost is spread, the row sits in the
+                                  year that carries most of it and says where
+                                  the rest goes, rather than claiming a year
+                                  spends money it does not. */}
+                              {first.instalments && (
+                                <div
+                                  className="text-[11px] text-muted-foreground"
+                                  title="This project's cost leaves the budget over more than one year"
+                                >
+                                  {first.instalments
+                                    .map((i) => `${formatCurrency(i.amount, { compact: true })} in ${i.year}`)
+                                    .join(", ")}
+                                </div>
+                              )}
+                            </TableCell>
                             <TableCell>{riskCut != null ? `${riskCut}% risk cut` : "—"}</TableCell>
                             <TableCell className="text-xs">{funding || "—"}</TableCell>
                             <TableCell>
@@ -531,6 +624,8 @@ export default async function WorkPlanDetailPage({
                                   {m.treatment}
                                   <HandBadges item={m} />
                                 </TableCell>
+                                {plan.hasLeadTimes && <TableCell />}
+                                {plan.hasLeadTimes && <TableCell />}
                                 {editable && <TableCell />}
                                 <TableCell />
                                 <TableCell />
@@ -607,6 +702,28 @@ function groupProjects(items: PlanItem[]) {
         : p.items[0].assetCode,
     cost: p.items.reduce((sum, m) => sum + m.estimatedCost, 0),
   }));
+}
+
+/** Projects built after the last year the plan pays for anything. */
+function builtAfter(years: WorkPlanYear[], endYear: number) {
+  const bundles = new Set<string>();
+  for (const year of years) {
+    for (const item of year.items) if (item.buildYear > endYear) bundles.add(item.bundleId ?? item.id);
+  }
+  return bundles.size;
+}
+
+/** What the plan builds each year, by the cost of the work done in it — which
+ * is not what each year pays for once delivery lead times separate the two. */
+function builtByYear(years: WorkPlanYear[], lastBuildYear: number) {
+  const cost = new Map<number, number>();
+  for (const year of years) {
+    for (const item of year.items) cost.set(item.buildYear, (cost.get(item.buildYear) ?? 0) + item.estimatedCost);
+  }
+  const first = years[0]?.year ?? lastBuildYear;
+  const out: Array<{ year: string; cost: number }> = [];
+  for (let y = first; y <= lastBuildYear; y++) out.push({ year: String(y), cost: Math.round(cost.get(y) ?? 0) });
+  return out;
 }
 
 function maxOf(values: Array<number | null>) {

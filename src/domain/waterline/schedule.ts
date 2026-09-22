@@ -7,8 +7,10 @@ import { pofFromCondition, simAssetContext, type ScenarioAssumptions, type SimAs
  * Running a work plan exactly as it is written.
  *
  * A scenario decides what to buy; a plan is what someone decided to do. So
- * this chooses nothing: it applies each scheduled visit in the year it sits
- * in, ages the network a year, and reports what that produced. Moving a
+ * this chooses nothing: it applies each scheduled visit in the year it is
+ * built, takes its money in the year the plan pays for it — the same year,
+ * unless delivery lead times separate them — ages the network a year, and
+ * reports what that produced. Moving a
  * relining from 2027 to 2031 therefore shows up as four more years of
  * deterioration and whatever that costs in failures — which is the question
  * moving it asks.
@@ -20,7 +22,16 @@ import { pofFromCondition, simAssetContext, type ScenarioAssumptions, type SimAs
 
 /** One visit: everything done to one segment in one year, together. */
 export type ScheduledVisit = {
+  /** The year the money comes out. */
   year: number;
+  /**
+   * The year the work is done and the network improves.
+   *
+   * The same year in all but a plan with delivery lead times, where a renewal
+   * is paid for years before anyone digs. Applying its effects when the money
+   * left would credit the network with a pipe nobody has laid yet.
+   */
+  buildYear?: number;
   assetId: string;
   /** Treatment names applied in the same visit. Several means one bundle:
    * mobilization is charged once, exactly as a combination is. */
@@ -28,6 +39,9 @@ export type ScheduledVisit = {
   /** What the plan holds as the cost of this visit. Used for spend rather than
    * re-pricing, so the money reported is the money the plan shows. */
   cost: number;
+  /** When that cost leaves the budget, where it is spread over years rather
+   * than paid in one. Absent means all of it in `year`. */
+  cash?: Array<{ year: number; amount: number }>;
 };
 
 export type ScheduleYearResult = {
@@ -54,6 +68,9 @@ export type SkippedVisit = {
 
 export type ScheduleRunResult = {
   years: ScheduleYearResult[];
+  /** Paid for inside the plan but built after it ends — money the run shows
+   * and benefit it never sees. Empty without delivery lead times. */
+  inFlight: SkippedVisit[];
   totalSpend: number;
   totalFailures: number;
   totalFailureCost: number;
@@ -79,8 +96,31 @@ export function runSchedule(
   // Copies, so running a plan never disturbs the caller's network.
   const state: SimAsset[] = assets.map((a) => ({ ...a }));
   const byId = new Map(state.map((a) => [a.id, a]));
-  const byYear = new Map<number, ScheduledVisit[]>();
-  for (const visit of visits) byYear.set(visit.year, [...(byYear.get(visit.year) ?? []), visit]);
+  const endYear = options.startYear + options.years - 1;
+  const buildYearOf = (visit: ScheduledVisit) => visit.buildYear ?? visit.year;
+
+  // Money and work are kept apart, because a plan with delivery lead times
+  // pays for a renewal years before it is built.
+  const spendByYear = new Map<number, number>();
+  const buildsByYear = new Map<number, ScheduledVisit[]>();
+  const inFlight: SkippedVisit[] = [];
+  for (const visit of visits) {
+    const instalments = visit.cash?.length ? visit.cash : [{ year: visit.year, amount: visit.cost }];
+    for (const instalment of instalments) {
+      spendByYear.set(instalment.year, (spendByYear.get(instalment.year) ?? 0) + instalment.amount);
+    }
+    const built = buildYearOf(visit);
+    if (built > endYear) {
+      inFlight.push({
+        year: built,
+        assetId: visit.assetId,
+        treatments: visit.treatments,
+        reason: `Paid for in ${visit.year} and built in ${built}, after this plan ends`,
+      });
+      continue;
+    }
+    buildsByYear.set(built, [...(buildsByYear.get(built) ?? []), visit]);
+  }
 
   const average = () => state.reduce((sum, a) => sum + a.condition, 0) / (state.length || 1);
   const startAvgCondition = average();
@@ -95,10 +135,10 @@ export function runSchedule(
   for (let i = 0; i < options.years; i++) {
     const year = options.startYear + i;
     const budget = assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, i);
-    let spend = 0;
+    const spend = spendByYear.get(year) ?? 0;
     const treated = new Set<string>();
 
-    for (const visit of byYear.get(year) ?? []) {
+    for (const visit of buildsByYear.get(year) ?? []) {
       const asset = byId.get(visit.assetId);
       if (!asset) {
         skipped.push({ ...visit, reason: "That segment is no longer in the network" });
@@ -127,7 +167,6 @@ export function runSchedule(
 
       asset.condition = option.projectedCondition;
       asset.effectiveAge = effectiveAgeForCondition(asset.curve, option.projectedCondition);
-      spend += visit.cost;
       treated.add(visit.assetId);
       appliedCount++;
     }
@@ -170,6 +209,7 @@ export function runSchedule(
 
   return {
     years: results,
+    inFlight,
     totalSpend: Math.round(totalSpend),
     totalFailures: Math.round(totalFailures),
     totalFailureCost: Math.round(totalFailureCost),
