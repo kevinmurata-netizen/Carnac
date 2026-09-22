@@ -62,7 +62,7 @@ export type ValidationReport = {
 };
 
 /** Minimal RFC4180-aware splitter — handles quoted fields containing commas. */
-function splitCsvLine(line: string): string[] {
+export function splitCsvLine(line: string): string[] {
   const out: string[] = [];
   let current = "";
   let inQuotes = false;
