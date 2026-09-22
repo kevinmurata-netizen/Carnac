@@ -1,5 +1,6 @@
 import {
   Activity,
+  CalendarClock,
   Compass,
   Database,
   DollarSign,
@@ -266,6 +267,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     icon: ListOrdered,
     detail:
       "The most of each year's budget that repair, rehabilitation and renewal may each take. Limits, not a spending order: work is chosen across all of them at once.",
+  },
+  {
+    key: "lead-times",
+    href: "/settings/lead-times",
+    tab: "modeling",
+    title: "Delivery Lead Times",
+    icon: CalendarClock,
+    detail:
+      "How long after work is decided its money leaves the budget, and how long before it is built. Per category, with exceptions per treatment. Named sets, so two delivery policies can be run over the same network.",
   },
   {
     key: "deterioration-models",
