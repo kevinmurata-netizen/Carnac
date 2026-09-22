@@ -28,6 +28,7 @@ export type ScenarioValues = {
   weightSetId: string;
   categoryWeightSetId: string;
   categoryFundingPlanId: string;
+  leadTimeSetId: string;
   scenarioSetId: string;
 };
 
@@ -45,6 +46,7 @@ export type ScenarioFieldDefaults = {
   weightSetId: string | null;
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
+  leadTimeSetId: string | null;
   scenarioSetId: string | null;
 };
 
@@ -63,6 +65,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     weightSetId: d.weightSetId ?? "",
     categoryWeightSetId: d.categoryWeightSetId ?? "",
     categoryFundingPlanId: d.categoryFundingPlanId ?? "",
+    leadTimeSetId: d.leadTimeSetId ?? "",
     scenarioSetId: d.scenarioSetId ?? "",
   };
 }
@@ -98,6 +101,11 @@ export type CategoryWeightSetChoice = {
  * itself, because the order is the thing being chosen. */
 export type FundingPlanChoice = { id: string; name: string; isDefault: boolean; summary: string };
 
+/** How long this scenario's work takes to be paid for and built. `summary`
+ * names only the categories that wait, since that is what distinguishes one
+ * set from another. */
+export type LeadTimeChoice = { id: string; name: string; isDefault: boolean; summary: string };
+
 /**
  * The scenario parameter inputs, shared by the create and edit forms so the two
  * cannot drift apart. `idPrefix` keeps label/input ids unique when both forms
@@ -121,6 +129,7 @@ export function ScenarioFields({
   weightSetChoices = [],
   categoryWeightSetChoices = [],
   fundingPlanChoices = [],
+  leadTimeChoices = [],
   scenarioSetChoices = [],
   lockSet = false,
 }: {
@@ -133,6 +142,7 @@ export function ScenarioFields({
   weightSetChoices?: WeightSetChoice[];
   categoryWeightSetChoices?: CategoryWeightSetChoice[];
   fundingPlanChoices?: FundingPlanChoice[];
+  leadTimeChoices?: LeadTimeChoice[];
   scenarioSetChoices?: ScenarioSetChoice[];
   /** Show the chosen set as fixed rather than as a choice. */
   lockSet?: boolean;
@@ -410,6 +420,35 @@ export function ScenarioFields({
             The most of each year each kind of work may take. Unlike the weighting above, this does not change
             what scores highest — it limits what the money buys. Edit the plans under
             Settings &rsaquo; Category Funding.
+          </p>
+        </div>
+      )}
+
+      {/* How long the work takes to arrive, which is a different question from
+          how much of it there is: these decide when money leaves and when the
+          network improves, not what is worth doing. */}
+      {leadTimeChoices.length > 0 && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("leadTimeSetId")}>Delivery lead times</Label>
+          <select
+            id={id("leadTimeSetId")}
+            name="leadTimeSetId"
+            value={values.leadTimeSetId}
+            onChange={(e) => onChange({ leadTimeSetId: e.target.value })}
+            className={mark("leadTimeSetId")}
+          >
+            <option value="">Everything in the year it is decided</option>
+            {leadTimeChoices.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+                {l.isDefault ? " (default)" : ""} — {l.summary}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            With lead times, work is programmed in one year, paid for in another and built in a third — and each
+            option is judged against the segment it will meet in the year it is built, so a renewal can be programmed
+            before the pipe needs it. Edit the sets under Settings &rsaquo; Delivery Lead Times.
           </p>
         </div>
       )}

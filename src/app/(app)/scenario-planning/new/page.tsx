@@ -7,6 +7,7 @@ import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { getScenarioOptionCatalogue } from "@/server/scenario-options";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
+import { listLeadTimeSets } from "@/server/lead-times";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
@@ -38,13 +39,22 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
   const set = requestedSet ? await getScenarioSet(organizationId, requestedSet) : null;
   if (!set || set.status === "ARCHIVED") redirect("/scenario-planning");
 
-  const [annualBudget, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate] =
-    await Promise.all([
+  const [
+    annualBudget,
+    criticalityChoices,
+    weightSets,
+    categoryWeightSets,
+    fundingPlans,
+    leadTimeSets,
+    catalogue,
+    estimate,
+  ] = await Promise.all([
     getAnnualBudget(organizationId),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
     listFundingPlans(organizationId),
+    listLeadTimeSets(organizationId),
     getScenarioOptionCatalogue(organizationId),
     // The set's period, since that is what the run will cover. The first run
     // then measures itself and every later estimate comes from that.
@@ -81,6 +91,12 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     isDefault: p.isDefault,
     summary: describeFundingPlan(p),
   }));
+  const leadTimeChoices = leadTimeSets.map((l) => ({
+    id: l.id,
+    name: l.name,
+    isDefault: l.isDefault,
+    summary: l.summary,
+  }));
 
   return (
     <div>
@@ -100,6 +116,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
+            leadTimeChoices={leadTimeChoices}
             scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}
@@ -110,6 +127,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
               weightSetId: weightSets.find((w) => w.isDefault)?.id ?? null,
               categoryWeightSetId: categoryWeightSets.find((c) => c.isDefault)?.id ?? null,
               categoryFundingPlanId: fundingPlans.find((p) => p.isDefault)?.id ?? null,
+              leadTimeSetId: leadTimeSets.find((l) => l.isDefault)?.id ?? null,
               scenarioSetId: set.id,
               annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
               fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),

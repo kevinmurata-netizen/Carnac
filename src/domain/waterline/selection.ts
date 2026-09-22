@@ -67,6 +67,9 @@ export const NOT_SELECTED = {
   categoryFull: "Category budget full",
   unpriced: "Could not be priced",
   categoryUnfunded: "Category not in the funding plan",
+  /** Only with delivery lead times: the money would fall in a year past the
+   * end of the run, which has no budget to check it against. */
+  beyondHorizon: "Would be paid for after the run ends",
 } as const;
 
 export const SELECTED = "Selected";
@@ -78,6 +81,10 @@ export type IncrementalScore<T> = { score: number; over: T | null };
 export type SelectionResult<T extends Rankable> = {
   /** In the order each segment was first funded. */
   selected: T[];
+  /** What each segment ends up with, including a segment that stepped up from
+   * work it already held — which `selected` leaves out, since that segment was
+   * not funded here for the first time. */
+  chosen: Map<string, T>;
   /** Every candidate, against what happened to it: `SELECTED`, or one of
    * `NOT_SELECTED`. */
   outcome: Map<T, string>;
@@ -176,14 +183,95 @@ class StepHeap {
   }
 }
 
+/**
+ * Where the money comes from, and what it may be spent on.
+ *
+ * Separated from the algorithm above because the two engines differ only in
+ * this. A scenario with no lead times spends one year's budget: a purse of a
+ * single number. A scenario that programs work years before it is built spends
+ * against a ledger of many years at once, and stepping a segment up refunds
+ * what its earlier choice had reserved. Everything else — the ladders, the
+ * heap, what counts as the best next step — must stay identical, or the two
+ * could not be compared.
+ */
+export type Purse<T extends Rankable> = {
+  /** Null when it can be afforded; otherwise a NOT_SELECTED reason. `current`
+   * is what the segment already holds and would be refunded. */
+  check(next: T, current: T | null): string | null;
+  /** Take the money, giving back whatever `current` had reserved. */
+  commit(next: T, current: T | null): void;
+  /** Refused outright, before any ladder is built — a category with nothing to
+   * spend at all. Null when it is spendable. */
+  unfunded(candidate: T): string | null;
+  byCategory(): SelectionResult<T>["byCategory"];
+  totalSpent(): number;
+};
+
+/** One year's money, spent on one year's work: how every scenario ran before
+ * delivery lead times existed. */
+export function yearPurse<T extends Rankable>(budget: number, plan: FundingPlan): Purse<T> {
+  const limits = categoryLimits(plan, budget);
+  const limitOf = (category: TreatmentCategory) => (limits == null ? budget : (limits.get(category) ?? 0));
+  const spentBy = new Map<TreatmentCategory, number>();
+  let spent = 0;
+
+  const after = (next: T, current: T | null) => {
+    const category = next.option.category;
+    return {
+      category,
+      total: spent - (current?.cost ?? 0) + next.cost,
+      inCategory:
+        (spentBy.get(category) ?? 0) -
+        (current && current.option.category === category ? current.cost : 0) +
+        next.cost,
+    };
+  };
+
+  return {
+    unfunded: (candidate) => (limitOf(candidate.option.category) <= 0 ? NOT_SELECTED.categoryUnfunded : null),
+    check(next, current) {
+      const { category, total, inCategory } = after(next, current);
+      if (total > budget) return NOT_SELECTED.budgetSpent;
+      if (inCategory > limitOf(category)) return NOT_SELECTED.categoryFull;
+      return null;
+    },
+    commit(next, current) {
+      const { category, total, inCategory } = after(next, current);
+      // The refund first, in case the two are in different categories.
+      if (current) spentBy.set(current.option.category, (spentBy.get(current.option.category) ?? 0) - current.cost);
+      spentBy.set(category, current?.option.category === category ? inCategory : (spentBy.get(category) ?? 0) + next.cost);
+      spent = total;
+    },
+    byCategory: () =>
+      limits == null
+        ? [{ category: "All" as const, spent, cap: budget }]
+        : [...limits].map(([category, cap]) => ({ category, spent: spentBy.get(category) ?? 0, cap })),
+    totalSpent: () => spent,
+  };
+}
+
 export function selectForYear<T extends Rankable>(
   candidates: T[],
   budget: number,
   plan: FundingPlan
 ): SelectionResult<T> {
-  const limits = categoryLimits(plan, budget);
-  const limitOf = (category: TreatmentCategory) => (limits == null ? budget : (limits.get(category) ?? 0));
+  return selectAgainst(candidates, yearPurse<T>(budget, plan));
+}
 
+/**
+ * The selection itself: ladders, then the best next step anywhere, until the
+ * purse says no. What the purse is — one year's budget or a ledger of years —
+ * is deliberately none of this function's business.
+ *
+ * `held` is work a segment already has reserved but has not yet received: it
+ * sits at the bottom of that segment's ladder, so stepping up means replacing
+ * it and getting its money back.
+ */
+export function selectAgainst<T extends Rankable>(
+  candidates: T[],
+  purse: Purse<T>,
+  held?: Map<string, T>
+): SelectionResult<T> {
   const outcome = new Map<T, string>();
   const incremental = new Map<T, IncrementalScore<T>>();
 
@@ -191,10 +279,11 @@ export function selectForYear<T extends Rankable>(
   // order), which the heap uses to break ties.
   const bySegment = new Map<string, T[]>();
   for (const c of candidates) {
+    const unfunded = purse.unfunded(c);
     if (c.priority == null || !(c.cost > 0) || !Number.isFinite(c.value)) {
       outcome.set(c, NOT_SELECTED.unpriced);
-    } else if (limitOf(c.option.category) <= 0) {
-      outcome.set(c, NOT_SELECTED.categoryUnfunded);
+    } else if (unfunded) {
+      outcome.set(c, unfunded);
     } else {
       bySegment.set(c.assetId, [...(bySegment.get(c.assetId) ?? []), c]);
     }
@@ -202,7 +291,15 @@ export function selectForYear<T extends Rankable>(
 
   const ladders = new Map<string, T[]>();
   for (const [assetId, options] of bySegment) {
-    const ladder = efficientLadder(options);
+    let ladder = efficientLadder(options);
+    // Work the segment already holds stands at the bottom of its ladder even
+    // when the hull would have dropped it: it is already paid for, so what
+    // matters is what each larger option adds over *it*, and buying one gives
+    // its money back.
+    const owned = held?.get(assetId);
+    if (owned && !ladder.includes(owned)) {
+      ladder = [owned, ...ladder.filter((o) => o.cost > owned.cost && o.value > owned.value)];
+    }
     ladders.set(assetId, ladder);
     ladder.forEach((rung, i) => {
       const below = i > 0 ? ladder[i - 1] : null;
@@ -220,39 +317,35 @@ export function selectForYear<T extends Rankable>(
     const below = rung > 0 ? ladder[rung - 1] : null;
     return (ladder[rung].value - (below?.value ?? 0)) / (ladder[rung].cost - (below?.cost ?? 0));
   };
-  for (const assetId of ladders.keys()) heap.push(assetId, 0, stepScore(assetId, 0));
-
   const level = new Map<string, number>();
   const firstFunded: string[] = [];
+  // A segment that already holds work starts where that work sits, and climbs
+  // from there; its money is already out, so it is not "first funded" here.
+  for (const [assetId, ladder] of ladders) {
+    const owned = held?.get(assetId);
+    const start = owned ? ladder.indexOf(owned) : -1;
+    if (start >= 0) level.set(assetId, start);
+    const next = start + 1;
+    if (next < ladder.length) heap.push(assetId, next, stepScore(assetId, next));
+  }
+
   /** Why a segment stopped climbing, for every rung above where it stopped. */
   const stoppedBy = new Map<string, string>();
-  const spentBy = new Map<TreatmentCategory, number>();
-  let totalSpent = 0;
 
   while (heap.size > 0) {
     const { assetId, rung } = heap.pop();
     const ladder = ladders.get(assetId)!;
     const next = ladder[rung];
     const current = rung > 0 ? ladder[rung - 1] : null;
-    const category = next.option.category;
 
-    const totalAfter = totalSpent - (current?.cost ?? 0) + next.cost;
-    const categoryAfter =
-      (spentBy.get(category) ?? 0) - (current && current.option.category === category ? current.cost : 0) + next.cost;
-
-    if (totalAfter > budget) {
-      stoppedBy.set(assetId, NOT_SELECTED.budgetSpent);
-      continue;
-    }
-    if (categoryAfter > limitOf(category)) {
-      stoppedBy.set(assetId, NOT_SELECTED.categoryFull);
+    const refused = purse.check(next, current);
+    if (refused) {
+      stoppedBy.set(assetId, refused);
       continue;
     }
 
-    if (current) spentBy.set(current.option.category, (spentBy.get(current.option.category) ?? 0) - current.cost);
-    else firstFunded.push(assetId);
-    spentBy.set(category, (spentBy.get(category) ?? 0) + next.cost);
-    totalSpent = totalAfter;
+    purse.commit(next, current);
+    if (!current) firstFunded.push(assetId);
     level.set(assetId, rung);
     if (rung + 1 < ladder.length) heap.push(assetId, rung + 1, stepScore(assetId, rung + 1));
   }
@@ -272,10 +365,19 @@ export function selectForYear<T extends Rankable>(
   }
   for (const assetId of firstFunded) selected.push(ladders.get(assetId)![level.get(assetId)!]);
 
-  const byCategory: SelectionResult<T>["byCategory"] =
-    limits == null
-      ? [{ category: "All", spent: totalSpent, cap: budget }]
-      : [...limits].map(([category, cap]) => ({ category, spent: spentBy.get(category) ?? 0, cap }));
+  const chosen = new Map<string, T>();
+  for (const [assetId, ladder] of ladders) {
+    const at = level.get(assetId);
+    if (at != null && at >= 0) chosen.set(assetId, ladder[at]);
+  }
 
-  return { selected, outcome, incremental, byCategory, totalSpent, cappedOut };
+  return {
+    selected,
+    chosen,
+    outcome,
+    incremental,
+    byCategory: purse.byCategory(),
+    totalSpent: purse.totalSpent(),
+    cappedOut,
+  };
 }

@@ -30,6 +30,22 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-22",
+    title: "Scenarios can programme work years before it is built",
+    summary:
+      "A scenario can now be given delivery lead times, and then it decides work in one year, pays for it in another and improves the network in a third — judging every option against the segment it will meet in the year it would be built.",
+    changes: [
+      "Choose a lead time set on a scenario. Without one, nothing changes: a scenario decides, pays for and builds in the same year, exactly as before, and every existing scenario still does.",
+      "With one, a renewal decided in 2026 can draw its money in 2028 and improve the network in 2032. Each year's budget is held to, whichever year's decision spends it.",
+      "Work is judged against the future it will meet. A replacement is scored on the condition its segment is forecast to have in the year it would be built, which is what lets the model programme one before the pipe needs it.",
+      "A segment holds one project at a time, from the year it is decided until the year it is built. A larger project can replace one not yet built, and the money it had reserved goes back to the years it came from.",
+      "The run then goes round again to spend what came back, and says how many times it went round and whether the last pass was still finding work.",
+      "Every project records all three years, and a scenario's work plan says so: “Programmed in 2026, paid for in 2031, built in 2032.”",
+      "Work paid for inside the run but built after it ends is reported rather than dropped — a line under the results says how much.",
+    ],
+    note: "One migration: a lead time set on a scenario, and a programmed year and build year on work plan rows. Both are optional and nothing existing changes.",
+  },
+  {
+    date: "2026-09-22",
     title: "Write down how long work takes to deliver",
     summary:
       "A new Settings card, Delivery Lead Times: how many years after work is decided its money leaves the budget, and how many more before it is built. Nothing runs against it yet — this is the first piece of teaching scenarios that a replacement is programmed years before anyone digs.",

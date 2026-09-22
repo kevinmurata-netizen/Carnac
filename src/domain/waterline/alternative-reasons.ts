@@ -95,6 +95,11 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
     stage: "not-funded",
     description: "The scenario's funding plan gives this category no share of the budget, so its options never compete.",
   },
+  [NOT_SELECTED.beyondHorizon]: {
+    stage: "not-funded",
+    description:
+      "With delivery lead times, this work would be paid for in a year after the run ends — a year with no budget to check it against. A longer run is what would decide it, not a bigger one.",
+  },
 };
 
 export const STAGE_LABEL: Record<OutcomeStage, string> = {

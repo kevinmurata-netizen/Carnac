@@ -12,6 +12,9 @@ import {
   type ScenarioRunResult,
   type ScenarioRunOptions,
 } from "@/domain/waterline/scenario";
+import { runDeliveryScenario, type DeliveryRunResult } from "@/domain/waterline/delivery-scenario";
+import { isImmediate, type LeadTimes } from "@/domain/waterline/lead-time";
+import { resolveLeadTimes } from "@/server/lead-times";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
@@ -148,6 +151,10 @@ export async function createScenario(
     /** The most of its budget each category may take. Null
      * means no category limits at all. */
     categoryFundingPlanId?: string | null;
+    /** How long its work takes to be paid for and built. Null uses the
+     * organization's default set, and no default means everything happens in
+     * the year it is decided. */
+    leadTimeSetId?: string | null;
     /** The set it belongs to. Null leaves it on its own. */
     scenarioSetId?: string | null;
   }
@@ -162,6 +169,7 @@ export async function createScenario(
       weightSetId: input.weightSetId || null,
       categoryWeightSetId: input.categoryWeightSetId || null,
       categoryFundingPlanId: input.categoryFundingPlanId || null,
+      leadTimeSetId: input.leadTimeSetId || null,
       scenarioSetId: input.scenarioSetId || null,
       assumptions: {
         create: Object.entries(input.assumptions).map(([key, value]) => ({ key, value })),
@@ -193,6 +201,9 @@ export async function updateScenario(
     /** The most of its budget each category may take. Null
      * means no category limits at all. */
     categoryFundingPlanId?: string | null;
+    /** How long its work takes to be paid for and built. Null uses the
+     * organization's default set. */
+    leadTimeSetId?: string | null;
     /** The set it belongs to. Null takes it out of any set. */
     scenarioSetId?: string | null;
   }
@@ -217,6 +228,7 @@ export async function updateScenario(
         weightSetId: input.weightSetId || null,
         categoryWeightSetId: input.categoryWeightSetId || null,
         categoryFundingPlanId: input.categoryFundingPlanId || null,
+        leadTimeSetId: input.leadTimeSetId || null,
         scenarioSetId: input.scenarioSetId || null,
       },
     }),
@@ -245,6 +257,9 @@ export async function loadScenarioRun(
   assumptions: ScenarioAssumptions;
   simAssets: SimAsset[];
   options: ScenarioRunOptions;
+  /** How long this scenario's work takes to be paid for and built. Everything
+   * immediate — the default — is the engine this app has always had. */
+  leadTimes: LeadTimes;
 } | null> {
   const scenario = await prisma.scenario.findFirst({
     where: { id: scenarioId, organizationId },
@@ -259,7 +274,7 @@ export async function loadScenarioRun(
     where: { organizationId, code: "WATERLINE" },
     select: { id: true },
   });
-  const [simAssets, library, combinations, weights, categories, funding, selection, curves, criticality] =
+  const [simAssets, library, combinations, weights, categories, funding, selection, curves, criticality, leadTimes] =
     await Promise.all([
     buildSimAssets(organizationId),
     // Run against the configured library so edited treatments and decision
@@ -281,12 +296,16 @@ export async function loadScenarioRun(
     waterlineType
       ? criticalityRescorer(organizationId, waterlineType.id, scenario.criticalityModelId)
       : Promise.resolve(null),
+    // How long its work takes to be paid for and built. No set, or a set that
+    // leaves everything immediate, is the engine this app has always had.
+    resolveLeadTimes(organizationId, scenario.leadTimeSetId),
   ]);
 
   return {
     name: scenario.name,
     assumptions,
     simAssets,
+    leadTimes,
     options: {
       library,
       combinations,
@@ -315,7 +334,13 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
   const run = await loadScenarioRun(organizationId, scenarioId);
   if (!run) throw new Error("Scenario not found");
 
-  const result = runScenario(run.simAssets, run.assumptions, run.options);
+  // Two engines, one difference: whether work is decided, paid for and built
+  // in the same year. A scenario with no lead time set, or one whose set
+  // leaves everything immediate, runs exactly as it always has — which is what
+  // keeps every earlier run comparable.
+  const result = isImmediate(run.leadTimes)
+    ? runScenario(run.simAssets, run.assumptions, run.options)
+    : runDeliveryScenario(run.simAssets, run.assumptions, { ...run.options, leadTimes: run.leadTimes });
 
   await prisma.scenarioResult.deleteMany({ where: { scenarioId } });
   await prisma.scenarioResult.createMany({
@@ -334,6 +359,21 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
   // How the run got to its first year, stored against that year so no extra
   // year appears in the results. Only written when something was aged: its
   // absence means the run started from the network as measured.
+  // What a delivery-lead-time run has to say about itself: work it paid for
+  // but will not see built, and how many times it went round. Stored against
+  // the first year, as the ageing figures are, so no extra year appears.
+  if ("inFlight" in result && result.years.length > 0) {
+    const delivery = result as DeliveryRunResult;
+    const year = result.years[0].year;
+    await prisma.scenarioResult.createMany({
+      data: [
+        { scenarioId, year, metricKey: "inFlightCount", metricValue: delivery.inFlight.length },
+        { scenarioId, year, metricKey: "inFlightCost", metricValue: delivery.inFlightCost },
+        { scenarioId, year, metricKey: "passes", metricValue: delivery.passes },
+        { scenarioId, year, metricKey: "addedInLastPass", metricValue: delivery.addedInLastPass },
+      ],
+    });
+  }
   if (result.agedYears > 0 && result.years.length > 0) {
     const year = result.years[0].year;
     await prisma.scenarioResult.createMany({
@@ -412,12 +452,15 @@ async function persistScenarioProgram(
   const treatments = await prisma.treatment.findMany({ select: { id: true, name: true } });
   const treatmentIdByName = new Map(treatments.map((t) => [t.name, t.id]));
 
+  // The span of the money, not of the decisions: a row sits in the year it is
+  // paid for, and with delivery lead times that is not the year it was chosen.
+  const fundedYears = years.flatMap((y) => y.selected.map((p) => p.fundedYear));
   const workPlan = await prisma.workPlan.create({
     data: {
       scenarioId,
       name: `${scenarioName} — Funded Program`,
-      startYear: years[0].year,
-      endYear: years[years.length - 1].year,
+      startYear: Math.min(...fundedYears),
+      endYear: Math.max(...fundedYears),
       isScenarioMirror: true,
       annualBudget: assumptions.annualBudget,
       fundingGrowth: assumptions.fundingGrowth,
@@ -433,7 +476,9 @@ async function persistScenarioProgram(
   const items = years.flatMap((year) =>
     year.selected.flatMap((p) => {
       const isBundle = p.bundleName != null;
-      const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${year.year}:${p.treatment}` : null;
+      // Keyed on the year the work is done, so two projects on one segment in
+      // different years cannot collide even when both are the same bundle.
+      const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${p.buildYear}:${p.treatment}` : null;
 
       return p.members.flatMap((member) => {
         const treatmentId = treatmentIdByName.get(member.treatment);
@@ -445,7 +490,12 @@ async function persistScenarioProgram(
             treatmentId,
             bundleId,
             bundleName: p.bundleName,
-            year: year.year,
+            // `year` is the year the money comes out. Without delivery lead
+            // times all three are the same year, which is every row written
+            // before they existed.
+            year: p.fundedYear,
+            programmedYear: p.programmedYear,
+            buildYear: p.buildYear,
             estimatedCost: member.cost,
             expectedBenefit: {
               // The effects belong to the whole visit, not to one member of
@@ -456,10 +506,19 @@ async function persistScenarioProgram(
               riskAfter: p.riskAfter,
               riskReductionPct:
                 p.riskBefore > 0 ? Math.round(((p.riskBefore - p.riskAfter) / p.riskBefore) * 1000) / 10 : 0,
+              // Kept where the cost is spread over years, so a plan can show
+              // the profile rather than only the year that carries most of it.
+              // Absent in the usual case, where the row's own year is the
+              // whole answer.
+              ...(p.cash.length > 1 ? { cash: p.cash } : {}),
             },
             reasonExplanation:
               `Selected by the ${scenarioName} run in ${year.year}` +
               (isBundle ? ` as part of ${p.treatment}` : "") +
+              (p.buildYear !== p.programmedYear
+                ? `. Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}`
+                : "") +
+              (p.supersededTreatment ? `, replacing ${p.supersededTreatment} programmed earlier on this segment` : "") +
               `. Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
             fundingSource: "Scenario Budget",
             status: WorkPlanItemStatus.PLANNED,
@@ -558,6 +617,19 @@ export type ScenarioSummary = {
    * means no category limits, only the year's budget. */
   categoryFundingPlanId: string | null;
   categoryFundingPlanName: string | null;
+  /** How long this scenario's work takes to be paid for and built, when it
+   * names a set. Null follows the default, and no default means everything is
+   * decided, paid for and built in the same year. */
+  leadTimeSetId: string | null;
+  leadTimeSetName: string | null;
+  /** Work the run paid for but never saw built, because its lead time carries
+   * construction past the end. Null for a run with no lead times. */
+  inFlightCount: number | null;
+  inFlightCost: number | null;
+  /** How many times the run went round, and whether the last pass still found
+   * work to add — which is how an answer says it had not settled. */
+  passes: number | null;
+  addedInLastPass: number | null;
   /** When the stored results were produced, and how long that took. Null until
    * the scenario has run since these were recorded. */
   lastRunAt: Date | null;
@@ -596,6 +668,7 @@ export async function listScenarios(
       weightSet: { select: { name: true } },
       categoryWeightSet: { select: { name: true } },
       categoryFundingPlan: { select: { name: true } },
+      leadTimeSet: { select: { name: true } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -608,6 +681,10 @@ export async function listScenarios(
     const spends = byMetric("spend");
     const failures = byMetric("expectedFailures");
     const aged = byMetric("agedYears")[0];
+    const inFlightCount = byMetric("inFlightCount")[0];
+    const inFlightCost = byMetric("inFlightCost")[0];
+    const passes = byMetric("passes")[0];
+    const addedInLastPass = byMetric("addedInLastPass")[0];
     const agedFrom = byMetric("conditionYearAvgCondition")[0];
     const agedTo = byMetric("startAvgCondition")[0];
 
@@ -625,6 +702,17 @@ export async function listScenarios(
       categoryWeightSetName: s.categoryWeightSet?.name ?? null,
       categoryFundingPlanId: s.categoryFundingPlanId,
       categoryFundingPlanName: s.categoryFundingPlan?.name ?? null,
+      leadTimeSetId: s.leadTimeSetId,
+      leadTimeSetName: s.leadTimeSet?.name ?? null,
+      /** Work the run paid for that it never sees built, because its lead time
+       * carries construction past the end. Null for a run with no lead times,
+       * where no work can be in flight. */
+      inFlightCount: inFlightCount?.metricValue ?? null,
+      inFlightCost: inFlightCost?.metricValue ?? null,
+      /** How many times the run went round, and whether the last pass was
+       * still finding work — which is how an answer says it has not settled. */
+      passes: passes?.metricValue ?? null,
+      addedInLastPass: addedInLastPass?.metricValue ?? null,
       lastRunAt: s.lastRunAt,
       lastRunMs: s.lastRunMs,
       finalAvgCondition: conditions.at(-1)?.metricValue ?? null,
