@@ -21,6 +21,7 @@ import {
   combineWorkPlanItems,
   splitWorkPlanVisit,
 } from "@/server/workplans";
+import { previewWorkPlanImport, commitWorkPlanImport, type WorkPlanImportPreview } from "@/server/workplan-import";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
 
@@ -159,6 +160,46 @@ export async function combineItemsAction(input: { workPlanId: string; itemIds: s
     };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : "Could not combine that work" };
+  }
+}
+
+/** A spreadsheet upload, read into memory. Capped well under what a request
+ * may carry, with a message rather than a failed request. */
+async function uploadedSheet(formData: FormData) {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) throw new Error("Choose a spreadsheet to import.");
+  if (file.size > 3 * 1024 * 1024) {
+    throw new Error("That file is over 3 MB. Remove other sheets or columns and try again.");
+  }
+  return { name: file.name, bytes: await file.arrayBuffer() };
+}
+
+type ImportOutcome =
+  | { ok: true; preview: WorkPlanImportPreview; imported: number | null }
+  | { ok: false; message: string };
+
+/** Check a spreadsheet against the plan and the library; writes nothing. */
+export async function previewImportAction(formData: FormData): Promise<ImportOutcome> {
+  const session = await requireEditor();
+  try {
+    const workPlanId = String(formData.get("workPlanId") ?? "");
+    const preview = await previewWorkPlanImport(session.user.organizationId, workPlanId, await uploadedSheet(formData));
+    return { ok: true, preview, imported: null };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not read that file" };
+  }
+}
+
+/** Import it — checked again first, and refused while any row has an error. */
+export async function commitImportAction(formData: FormData): Promise<ImportOutcome> {
+  const session = await requireEditor();
+  try {
+    const workPlanId = String(formData.get("workPlanId") ?? "");
+    const result = await commitWorkPlanImport(session.user.organizationId, workPlanId, await uploadedSheet(formData));
+    if (result.imported > 0) revalidatePath(`/work-plan/${workPlanId}`);
+    return { ok: true, preview: result.preview, imported: result.imported };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not import that file" };
   }
 }
 

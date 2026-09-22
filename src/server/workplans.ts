@@ -646,6 +646,8 @@ export type WorkPlanYear = {
     combinedByHand: boolean;
     /** Put here by someone rather than chosen by the model. */
     addedByHand: boolean;
+    /** Came in from a spreadsheet of programmed work. */
+    imported: boolean;
     /** Added although the treatment's rules refuse it on this segment — a
      * committed job the library would not have proposed. */
     forcedAgainstRules: boolean;
@@ -676,6 +678,7 @@ export async function getWorkPlan(id: string) {
       riskReductionPct?: number;
       combinedByHand?: boolean;
       addedByHand?: boolean;
+      imported?: boolean;
       forcedAgainstRules?: boolean;
       refusedBy?: string | null;
     };
@@ -699,6 +702,7 @@ export async function getWorkPlan(id: string) {
       combinedByHand: benefit.combinedByHand === true,
       /** Put here by someone rather than chosen by the model. */
       addedByHand: benefit.addedByHand === true,
+      imported: benefit.imported === true,
       /** Added although the treatment's rules refuse it on this segment. */
       forcedAgainstRules: benefit.forcedAgainstRules === true,
       refusedBy: benefit.refusedBy ?? null,
@@ -838,7 +842,7 @@ export async function runWorkPlan(organizationId: string, workPlanId: string) {
  * adding work to — so a hand-added row is priced and judged by exactly the
  * rules and rates the model would have used had it chosen the work itself.
  */
-async function assetTreatmentContext(
+export async function assetTreatmentContext(
   organizationId: string,
   assetId: string
 ): Promise<{ ctx: AssetTreatmentContext; assetCode: string } | null> {

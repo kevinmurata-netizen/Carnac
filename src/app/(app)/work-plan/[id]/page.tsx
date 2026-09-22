@@ -27,6 +27,7 @@ import {
 import { AddWorkDialog } from "./add-work-dialog";
 import { CombineDialog } from "./combine-dialog";
 import { ProjectRows } from "./project-rows";
+import { ImportDialog } from "./import-dialog";
 import { SubmitButton, PendingLinkButton } from "@/components/ui/pending-button";
 import { listTreatments } from "@/server/treatments";
 import { CalendarRange, DollarSign, ListChecks, TriangleAlert } from "lucide-react";
@@ -95,6 +96,7 @@ export default async function WorkPlanDetailPage({
                 defaultYear={plan.startYear}
               />
             )}
+            {editable && <ImportDialog workPlanId={plan.id} startYear={plan.startYear} endYear={plan.endYear} />}
             {canEdit && (
               <form action={deleteWorkPlanAction}>
                 <input type="hidden" name="workPlanId" value={plan.id} />
@@ -621,11 +623,13 @@ function HandBadges({ item }: { item: PlanItem }) {
       className="ml-1.5"
       title={
         item.forcedAgainstRules
-          ? `Added by hand. Its rules refuse it here — ${item.refusedBy ?? "the treatment's own rules"}.`
-          : "Added by hand rather than chosen by the model."
+          ? `${item.imported ? "Imported" : "Added by hand"}. Its rules refuse it here — ${item.refusedBy ?? "the treatment's own rules"}.`
+          : item.imported
+            ? "Imported from a spreadsheet of programmed work rather than chosen by the model."
+            : "Added by hand rather than chosen by the model."
       }
     >
-      {item.forcedAgainstRules ? "forced" : "added"}
+      {item.forcedAgainstRules ? "forced" : item.imported ? "imported" : "added"}
     </Badge>
   );
 }

@@ -29,6 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-22",
+    title: "Import programmed work into a work plan from a spreadsheet",
+    summary:
+      "Work that is already committed — a main under next summer's road scheme, a job out to tender — can now come into a work plan in bulk from an Excel or CSV file, checked row by row before anything is written.",
+    changes: [
+      "An Import button on any editable work plan, beside Add work. Choose a file and every row is checked against the plan and the treatment library; the preview shows what would be imported, what is already there, and anything wrong, with nothing written until you press Import.",
+      "One row per project: Asset ID, Treatment and Year are required; Cost, Status, Funding and Notes are optional. A blank cost is priced from the library, a given one is used as it is.",
+      "The Treatment column takes a treatment or a treatment combination by its library name. A combination imports as one project; two rows on the same segment and year stay two projects. A name the library does not know is an error — create it in Settings first.",
+      "Work already in the plan is kept. Only an exact repeat — the same work on the same segment in the same year — is skipped, so importing the same file twice adds nothing the second time.",
+      "Treatments the rules refuse on a segment are imported anyway and marked, as with Add work. Imported rows carry an “imported” label, and their reasons name the file, the row and any notes.",
+      "Download the template from the Import window: the columns, how to fill each one in, and every treatment and combination name the library accepts.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-09-21",
     title: "Show combined treatments as one project",
     summary:
