@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
+import { EditorDialog } from "@/components/ui/editor-dialog";
 import { AlertTriangle, CheckCircle2, CircleDot, Copy, Plus, Star, Trash2 } from "lucide-react";
 import { CATEGORY_KEYS, CATEGORY_DESCRIPTIONS } from "@/domain/waterline/category-weight";
 import { describeLeadTime, MAX_OFFSET, type CashInstalment, type LeadTime } from "@/domain/waterline/lead-time";
@@ -93,11 +94,23 @@ export function LeadTimeList({
   onCopy: Action;
   onDelete: Action;
 }) {
-  const [saveState, save] = useActionState(onSave, EMPTY);
   const [defaultState, makeDefault] = useActionState(onSetDefault, EMPTY);
   const [copyState, copy] = useActionState(onCopy, EMPTY);
   const [deleteState, remove] = useActionState(onDelete, EMPTY);
   const [editing, setEditing] = useState<Draft | null>(null);
+
+  // Saving is driven by hand rather than through useActionState, so that a
+  // save which worked can close the editor in the same breath. Leaving the
+  // form open with what was just saved still in it read as "nothing
+  // happened", which is exactly what it was not.
+  const [saveState, setSaveState] = useState<State>(EMPTY);
+  const [saving, startSaving] = useTransition();
+  const save = (formData: FormData) =>
+    startSaving(async () => {
+      const result = await onSave(EMPTY, formData);
+      setSaveState(result);
+      if (result.status === "success") setEditing(null);
+    });
 
   const spoken = [saveState, defaultState, copyState, deleteState].find((s) => s.status !== "idle") ?? EMPTY;
 
@@ -224,15 +237,28 @@ export function LeadTimeList({
         </CardContent>
       </Card>
 
-      {editing && canEdit && (
-        <LeadTimeEditor
-          key={editing.id || "new"}
-          draft={editing}
-          treatments={treatments}
-          thisYear={thisYear}
-          action={save}
+      {/* A dialog rather than a panel below the list, like the treatment and
+          rule editors: it opens over the list, and saving closes it, so the
+          list is what is on screen when the work is done. */}
+      {canEdit && (
+        <EditorDialog
+          open={editing != null}
           onClose={() => setEditing(null)}
-        />
+          title={editing?.id ? `Edit ${editing.name}` : "New lead times"}
+          description="How many years after the work is decided its money leaves the budget, and how many more before it is built and the network improves. Both counted from the year a scenario programs the work — 0 and 0 is what every scenario has always done."
+        >
+          {editing && (
+            <LeadTimeEditor
+              key={editing.id || "new"}
+              draft={editing}
+              treatments={treatments}
+              thisYear={thisYear}
+              action={save}
+              saving={saving}
+              onClose={() => setEditing(null)}
+            />
+          )}
+        </EditorDialog>
       )}
     </div>
   );
@@ -243,12 +269,14 @@ function LeadTimeEditor({
   treatments,
   thisYear,
   action,
+  saving,
   onClose,
 }: {
   draft: Draft;
   treatments: TreatmentChoice[];
   thisYear: number;
   action: (formData: FormData) => void;
+  saving: boolean;
   onClose: () => void;
 }) {
   const [values, setValues] = useState(draft);
@@ -277,20 +305,15 @@ function LeadTimeEditor({
     }
   }
   if (values.overrides.some((o) => !o.treatmentId)) problems.push("An exception has no treatment chosen.");
+  // The name is a problem like any other rather than a silently disabled
+  // button: not being able to save, with nothing saying why, is the thing
+  // this list exists to prevent.
+  if (!values.name.trim()) problems.push("The lead times need a name.");
 
   const unused = treatments.filter((t) => !values.overrides.some((o) => o.treatmentId === t.id));
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{draft.id ? `Edit ${draft.name}` : "New lead times"}</CardTitle>
-        <p className="text-sm font-normal text-muted-foreground">
-          How many years after the work is decided its money leaves the budget, and how many more before it is built
-          and the network improves. Both counted from the year a scenario programs the work — 0 and 0 is what every
-          scenario has always done.
-        </p>
-      </CardHeader>
-      <CardContent>
+    <>
         <form action={action} className="space-y-4">
           <input type="hidden" name="id" value={values.id} />
           <input
@@ -301,11 +324,15 @@ function LeadTimeEditor({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="lt-name">Name</Label>
+              <Label htmlFor="lt-name">
+                Name <span className="text-destructive">*</span>
+                <span className="ml-1 font-normal text-muted-foreground">required</span>
+              </Label>
               <input
                 id="lt-name"
                 name="name"
                 required
+                aria-required
                 placeholder="e.g. Typical delivery"
                 value={values.name}
                 onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
@@ -454,37 +481,51 @@ function LeadTimeEditor({
             )}
           </div>
 
-          {problems.length > 0 && (
-            <ul className="space-y-1 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {problems.map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-            </ul>
-          )}
+          {/* What is stopping the save, where the save is — a disabled button
+              with the reason elsewhere, or nowhere, is how someone ends up
+              hunting for a missing name. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            <div className="min-w-0 flex-1 text-sm">
+              {problems.length > 0 ? (
+                <ul className="space-y-0.5 text-destructive">
+                  {problems.map((p) => (
+                    <li key={p} className="flex items-start gap-1.5">
+                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                dirty && (
+                  <span className="flex items-center gap-1 text-xs font-medium text-amber-600">
+                    <CircleDot className="h-3 w-3" />
+                    Unsaved changes
+                  </span>
+                )
+              )}
+            </div>
 
-          <div className="flex items-center justify-end gap-2 border-t pt-4">
-            {dirty && (
-              <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
-                <CircleDot className="h-3 w-3" />
-                Unsaved changes
-              </span>
-            )}
-            {dirty ? (
-              <Button type="button" size="sm" variant="outline" onClick={() => setValues(draft)}>
-                Discard changes
-              </Button>
-            ) : (
+            <div className="flex shrink-0 items-center gap-2">
+              {dirty && draft.id ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => setValues(draft)}>
+                  Discard changes
+                </Button>
+              ) : null}
               <Button type="button" size="sm" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
-            )}
-            <Button type="submit" size="sm" disabled={problems.length > 0 || !values.name.trim()}>
-              {draft.id ? "Save lead times" : "Create lead times"}
-            </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={problems.length > 0 || saving}
+                title={problems.length > 0 ? problems.join(" ") : undefined}
+              >
+                {saving ? "Saving…" : draft.id ? "Save lead times" : "Create lead times"}
+              </Button>
+            </div>
           </div>
         </form>
-      </CardContent>
-    </Card>
+    </>
   );
 }
 

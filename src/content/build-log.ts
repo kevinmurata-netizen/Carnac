@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-22",
+    title: "Say what is missing, close when saved, and spin when opening",
+    summary:
+      "Three fixes from using the app: the lead times editor is now a pop-up that closes when you save, it says what is stopping you saving, and clicking a work plan shows the spinner straight away.",
+    changes: [
+      "Editing lead times happens in a pop-up, like treatments and rules. Saving closes it, so the list behind it is what you are left looking at — before, the form stayed open with what you had just saved still in it, which read as nothing having happened.",
+      "The name is marked required, and anything stopping the save is listed beside the button rather than leaving a disabled button with no explanation.",
+      "Clicking a work plan, a scenario, a segment, an inspection, a report or a scenario set now shows the spinner within a second. The indicator existed but never appeared on these pages, because a loading state has to sit in the folder whose page is being waited for.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-22",
     title: "Show when work is paid for and when it is built",
     summary:
       "A plan made from a scenario with delivery lead times now says, for every project, the year it was decided, the year it is paid for and the year it is built — and the money and the work are charted separately.",
