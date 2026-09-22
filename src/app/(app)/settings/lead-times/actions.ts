@@ -92,7 +92,9 @@ export async function saveLeadTimeSetAction(_prev: State, formData: FormData): P
     revalidateAffected();
     return {
       status: "success",
-      message: id ? "Saved." : "Created. Nothing runs against lead times yet — the engine comes next.",
+      message: id
+        ? "Saved. Scenarios using these lead times run by them from the next run."
+        : "Created. Choose it on a scenario to run by it.",
     };
   } catch (err) {
     return { status: "error", message: err instanceof Error ? err.message : "Could not save the lead times" };

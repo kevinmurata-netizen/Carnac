@@ -18,13 +18,12 @@ import {
 /**
  * Delivery lead times: how long work takes to be paid for and built.
  *
- * A scenario has always decided, paid for and improved the network in the same
- * year. That is true of a leak repair and false of a replacement, which is
+ * A leak repair is decided, paid for and done in one year. A replacement is
  * programmed years before the money moves and years more before anyone digs.
  *
- * Nothing runs against a set yet — the engine that spends by them comes next.
- * The page ships first so a utility's real delivery times can be written down
- * and argued over before anything depends on them.
+ * A scenario runs by the set chosen on it; one with none chosen behaves as
+ * every scenario did before these existed. See domain/waterline/lead-time.ts
+ * for what the offsets mean and delivery-scenario.ts for what spends by them.
  */
 export default async function LeadTimesPage() {
   const session = await auth();
@@ -68,9 +67,10 @@ export default async function LeadTimesPage() {
 
       <div className="mt-4 space-y-2 text-xs text-muted-foreground">
         <p>
-          Nothing uses these yet. A scenario still decides, pays for and builds its work in one year; the engine that
-          spends by these lead times is the next piece of work. Writing the set down first means the numbers can be
-          argued over against how your own projects actually run.
+          A scenario runs by the set chosen on it: it programs work in one year, draws the money in another and
+          improves the network in a third, judging each option against the segment it will meet in the year it would
+          be built. A scenario with none chosen decides, pays for and builds in the same year, as every scenario did
+          before these existed.
         </p>
         <p>
           Both figures count from the year a scenario decides to do the work. Repair 0 and 0 means a repair is decided,
