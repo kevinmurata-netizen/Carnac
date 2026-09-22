@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-22",
+    title: "Write down how long work takes to deliver",
+    summary:
+      "A new Settings card, Delivery Lead Times: how many years after work is decided its money leaves the budget, and how many more before it is built. Nothing runs against it yet — this is the first piece of teaching scenarios that a replacement is programmed years before anyone digs.",
+    changes: [
+      "Named sets, like the weightings: a default per category and an exception for any treatment that differs. Both figures count from the year a scenario decides to do the work, so Repair 0 and 0 means decided, paid for and built in the same year.",
+      "Each row says what it means in plain years — “Decided in 2026: paid in 2028, built in 2032” — so a set can be checked against how your own projects actually run.",
+      "A category's cost can be split across years where that is how it is really paid, such as 10% for design now and 90% at construction.",
+      "One set can be the default, and the default can be cleared to go back to everything happening in the year it is decided.",
+      "Nothing uses these yet: scenarios still decide, pay for and build in one year. The engine that spends by them is the next piece of work.",
+    ],
+    note: "One migration: two new tables, lead_time_sets and lead_time_overrides. Nothing existing changes.",
+  },
+  {
+    date: "2026-09-22",
     title: "Import programmed work into a work plan from a spreadsheet",
     summary:
       "Work that is already committed — a main under next summer's road scheme, a job out to tender — can now come into a work plan in bulk from an Excel or CSV file, checked row by row before anything is written.",

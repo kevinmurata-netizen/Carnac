@@ -691,6 +691,7 @@ model Treatment {
   scenarioOptions        ScenarioTreatment[]
   ruleLinks              TreatmentRuleLink[]
   combinationMemberships CombinationMember[]
+  leadTimeOverrides      LeadTimeOverride[]
 
   /// What this treatment does, as named effects shared across the library.
   /// Several combine the way a treatment combination's members do: the
@@ -1074,6 +1075,80 @@ model CategoryFundingStep {
   @@map("category_funding_steps")
 }
 
+/// How long work takes to deliver: programmed, funded, built.
+///
+/// A scenario has always decided, paid for and improved the network in one
+/// year. That is true of a leak repair and false of a replacement, which is
+/// programmed years before the money moves and years more before anyone digs.
+/// A set holds the offsets per category, in years from the year the work is
+/// decided, and any treatment may differ from its category.
+///
+/// Named rather than a single setting, for the same reason weightings are:
+/// "what if renewals took three years to deliver rather than six" is itself a
+/// question worth running two ways. See domain/waterline/lead-time.ts.
+model LeadTimeSet {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  /// One pair per TreatmentCategory: the year the money leaves and the year
+  /// the work is built, both counted from the year it is programmed. Columns
+  /// rather than a JSON map, as on CategoryWeightSet and for the same reason —
+  /// the set of categories is closed and defined in code, so a mistyped key
+  /// should fail to compile rather than read as a silent zero.
+  assessFund        Int @default(0)
+  assessBuild       Int @default(0)
+  repairFund        Int @default(0)
+  repairBuild       Int @default(0)
+  rehabilitateFund  Int @default(0)
+  rehabilitateBuild Int @default(0)
+  renewFund         Int @default(0)
+  renewBuild        Int @default(0)
+  retireFund        Int @default(0)
+  retireBuild       Int @default(0)
+
+  /// How a category's cost is spread over years, where it is spread at all:
+  /// { "Renew": [{ "offset": 0, "percent": 10 }, { "offset": 6, "percent": 90 }] }.
+  /// Absent means the usual case — the whole cost in the funding year — which
+  /// is why this is a map of exceptions rather than columns for everything.
+  cashSplits Json @default("{}")
+
+  overrides LeadTimeOverride[]
+
+  /// What is used when nobody chose. At most one per organization, enforced in
+  /// `setDefaultLeadTimeSet` as elsewhere: "exactly one" is a transition, not a
+  /// row-level fact.
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("lead_time_sets")
+}
+
+/// One treatment that does not take as long as the rest of its category.
+///
+/// The exception, not the rule: a utility thinks in categories, and carrying a
+/// row for every treatment would bury the three that actually differ.
+model LeadTimeOverride {
+  id          String      @id @default(cuid())
+  setId       String
+  set         LeadTimeSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  treatmentId String
+  treatment   Treatment   @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  fundOffset  Int @default(0)
+  buildOffset Int @default(0)
+
+  /// As on the set, for this treatment alone: [{ "offset": 0, "percent": 10 }, …].
+  cashSplit Json?
+
+  @@unique([setId, treatmentId])
+  @@map("lead_time_overrides")
+}
+
 model Scenario {
   id             String  @id @default(cuid())
   organizationId String
@@ -1252,8 +1327,8 @@ model WorkPlan {
   /// own budget can be edited afterwards, and a plan has to be able to say
   /// whether a year is over or under the money it was planned with — which is
   /// the question moving work between years asks.
-  annualBudget   Float?
-  fundingGrowth  Float?
+  annualBudget  Float?
+  fundingGrowth Float?
 
   /// Which named set was chosen, for provenance.
   weightSetId String?
