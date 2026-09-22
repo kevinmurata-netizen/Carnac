@@ -41,10 +41,11 @@ import {
 } from "@/domain/waterline/category-weight";
 import type { FundingPlan } from "@/domain/waterline/category-funding";
 import { selectForYear, type Rankable } from "@/domain/waterline/selection";
-import { runScenario, DEFAULT_ASSUMPTIONS, type ScenarioAssumptions } from "@/domain/waterline/scenario";
+import { DEFAULT_ASSUMPTIONS, type ScenarioAssumptions } from "@/domain/waterline/scenario";
 import { runSchedule, type ScheduledVisit } from "@/domain/waterline/schedule";
 import {
   loadScenarioRun,
+  runForScenario,
   buildSimAssets,
   getAnnualBudget,
   getScenarioAssumptions,
@@ -95,7 +96,10 @@ export async function createWorkPlanFromScenario(
   const run = await loadScenarioRun(organizationId, scenarioId);
   if (!run) throw new Error("That scenario no longer exists");
 
-  const result = runScenario(run.simAssets, run.assumptions, run.options);
+  // Through the same engine the scenario itself runs on, lead times and all.
+  // Running the immediate engine here would have produced a plan that
+  // disagreed with the run it was made from about when work happens.
+  const result = runForScenario(run);
   const years = result.years.filter((y) => y.selected.length > 0);
   if (years.length === 0) {
     throw new Error(`${run.name} funds no work, so there is nothing to plan. Check its budget and what it considers.`);
@@ -116,8 +120,10 @@ export async function createWorkPlanFromScenario(
     data: {
       scenarioId,
       name: name?.trim() || `${run.name} — Work Plan`,
-      startYear: years[0].year,
-      endYear: years[years.length - 1].year,
+      // The span of the money: a row sits in the year it is paid for, which
+      // delivery lead times can put after the year that decided it.
+      startYear: Math.min(...years.flatMap((y) => y.selected.map((p) => p.fundedYear))),
+      endYear: Math.max(...years.flatMap((y) => y.selected.map((p) => p.fundedYear))),
       isScenarioMirror: false,
       annualBudget: run.assumptions.annualBudget,
       fundingGrowth: run.assumptions.fundingGrowth,
@@ -132,7 +138,7 @@ export async function createWorkPlanFromScenario(
   const items = years.flatMap((year) =>
     year.selected.flatMap((p) => {
       const isBundle = p.bundleName != null;
-      const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${year.year}:${p.treatment}` : null;
+      const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${p.buildYear}:${p.treatment}` : null;
       return p.members.flatMap((member) => {
         const treatmentId = treatmentIdByName.get(member.treatment);
         if (!treatmentId) return [];
@@ -143,7 +149,9 @@ export async function createWorkPlanFromScenario(
             treatmentId,
             bundleId,
             bundleName: p.bundleName,
-            year: year.year,
+            year: p.fundedYear,
+            programmedYear: p.programmedYear,
+            buildYear: p.buildYear,
             estimatedCost: member.cost,
             expectedBenefit: {
               conditionBefore: p.conditionBefore,
@@ -158,9 +166,16 @@ export async function createWorkPlanFromScenario(
               criticality: p.criticality,
               scaleFactor: p.scaleFactor,
               expectedBenefitScore: p.benefit,
+              // Kept where the cost is spread over years, so the plan's yearly
+              // totals are the money that actually leaves each year rather
+              // than the whole cost landing in one of them.
+              ...(p.cash.length > 1 ? { cash: p.cash } : {}),
             },
             reasonExplanation: [
               `Funded by the ${run.name} run in ${year.year}${isBundle ? ` as part of ${p.treatment}` : ""}.`,
+              p.buildYear !== p.programmedYear
+                ? `Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}.`
+                : "",
               p.incremental != null
                 ? p.incrementalOver
                   ? `Chosen over ${p.incrementalOver}: ${p.incremental} more weighted benefit per dollar of the extra it costs.`
@@ -627,6 +642,7 @@ export async function listWorkPlans() {
 }
 
 export type WorkPlanYear = {
+  /** The year the money comes out. */
   year: number;
   items: Array<{
     id: string;
@@ -634,6 +650,19 @@ export type WorkPlanYear = {
     assetCode: string;
     serviceArea: string | null;
     treatment: string;
+    /** The year the work was decided, and the year it is built. Equal to the
+     * row's own year unless delivery lead times separate them. */
+    programmedYear: number;
+    buildYear: number;
+    /**
+     * When this row's cost actually leaves the budget, where that is not all
+     * in one year — design money years before construction money.
+     *
+     * The row sits in the year that carries most of it, because a row sits in
+     * one year; the instalments are what the year totals are built from, so a
+     * year is not shown as over budget for money it does not spend.
+     */
+    instalments: Array<{ year: number; amount: number }> | null;
     estimatedCost: number;
     conditionNow: number | null;
     riskNow: number | null;
@@ -660,6 +689,22 @@ export type WorkPlanYear = {
   totalCost: number;
 };
 
+/** One row's share of its project's payment profile, or null when the cost is
+ * paid in one go — which is every row without delivery lead times. */
+function shareOf(
+  cash: Array<{ year: number; amount: number }> | undefined,
+  cost: number
+): Array<{ year: number; amount: number }> | null {
+  if (!cash || cash.length < 2) return null;
+  const total = cash.reduce((sum, c) => sum + c.amount, 0);
+  if (!(total > 0)) return null;
+
+  const amounts = cash.map((c) => Math.round((c.amount / total) * cost));
+  const drift = Math.round(cost) - amounts.reduce((sum, a) => sum + a, 0);
+  amounts[amounts.indexOf(Math.max(...amounts))] += drift;
+  return cash.map((c, i) => ({ year: c.year, amount: amounts[i] }));
+}
+
 export async function getWorkPlan(id: string) {
   const plan = await prisma.workPlan.findUnique({
     where: { id },
@@ -681,6 +726,8 @@ export async function getWorkPlan(id: string) {
       imported?: boolean;
       forcedAgainstRules?: boolean;
       refusedBy?: string | null;
+      /** The project's own payment profile, where its cost is spread. */
+      cash?: Array<{ year: number; amount: number }>;
     };
     const entry = byYear.get(item.year) ?? { year: item.year, items: [], totalCost: 0 };
     entry.items.push({
@@ -689,6 +736,12 @@ export async function getWorkPlan(id: string) {
       assetCode: item.asset.assetCode,
       serviceArea: item.asset.location?.serviceArea ?? null,
       treatment: item.treatment.name,
+      programmedYear: item.programmedYear ?? item.year,
+      buildYear: item.buildYear ?? item.year,
+      // The project's profile applied to this row's share of its cost, since
+      // a bundle's cost is divided between its treatments but paid on one
+      // schedule.
+      instalments: shareOf(benefit.cash, item.estimatedCost),
       estimatedCost: item.estimatedCost,
       conditionNow: item.asset.conditionMeasurements[0]?.score ?? null,
       riskNow: item.asset.riskAssessments[0]?.riskScore ?? null,
@@ -710,7 +763,16 @@ export async function getWorkPlan(id: string) {
       fundingSource: item.fundingSource,
       status: item.status,
     });
-    entry.totalCost += item.estimatedCost;
+    // A year's total is the money that actually leaves it. For all but a cost
+    // spread over years that is the row's own figure; for those, each year
+    // takes its instalment, so no year is called over budget for money it does
+    // not spend.
+    const instalments = shareOf(benefit.cash, item.estimatedCost) ?? [{ year: item.year, amount: item.estimatedCost }];
+    for (const instalment of instalments) {
+      const paying = byYear.get(instalment.year) ?? { year: instalment.year, items: [], totalCost: 0 };
+      paying.totalCost += instalment.amount;
+      byYear.set(instalment.year, paying);
+    }
     byYear.set(item.year, entry);
   }
 
@@ -731,6 +793,13 @@ export async function getWorkPlan(id: string) {
     /** The money the plan was built against, when it holds it. */
     annualBudget: plan.annualBudget,
     fundingGrowth: plan.fundingGrowth,
+    /** True when any row is built in a different year from the one that pays
+     * for it. Such a plan needs its extra columns; every other plan is better
+     * off without them. */
+    hasLeadTimes: plan.items.some((i) => (i.buildYear ?? i.year) !== i.year || (i.programmedYear ?? i.year) !== i.year),
+    /** The last year any of its work is built, which may be after the last
+     * year it pays for anything. */
+    lastBuildYear: Math.max(plan.endYear, ...plan.items.map((i) => i.buildYear ?? i.year)),
     years: [...byYear.values()].sort((a, b) => a.year - b.year),
     totalCost: Math.round(plan.items.reduce((s, i) => s + i.estimatedCost, 0)),
     /** Projects, not rows: a combined project counts once. */
@@ -759,20 +828,46 @@ export async function runWorkPlan(organizationId: string, workPlanId: string) {
   const plan = await prisma.workPlan.findUnique({
     where: { id: workPlanId },
     include: {
-      items: { select: { assetId: true, year: true, estimatedCost: true, bundleId: true, treatment: { select: { name: true } } } },
+      items: {
+        select: {
+          assetId: true,
+          year: true,
+          buildYear: true,
+          estimatedCost: true,
+          expectedBenefit: true,
+          bundleId: true,
+          treatment: { select: { name: true } },
+        },
+      },
       scenario: { select: { id: true, name: true } },
     },
   });
   if (!plan) return null;
 
   // One visit per segment per year, with rows that share a bundleId folded
-  // back into the single job they were split from.
+  // back into the single job they were split from. Two years, not one: the
+  // money comes out when the plan says, and the network improves when the work
+  // is built, which delivery lead times can put years apart.
   const visits = new Map<string, ScheduledVisit>();
   for (const item of plan.items) {
-    const key = item.bundleId ?? `${item.year}:${item.assetId}:${item.treatment.name}`;
-    const visit = visits.get(key) ?? { year: item.year, assetId: item.assetId, treatments: [], cost: 0 };
+    const built = item.buildYear ?? item.year;
+    const key = item.bundleId ?? `${item.year}:${built}:${item.assetId}:${item.treatment.name}`;
+    const visit = visits.get(key) ?? {
+      year: item.year,
+      buildYear: built,
+      assetId: item.assetId,
+      treatments: [],
+      cost: 0,
+      cash: [] as Array<{ year: number; amount: number }>,
+    };
     visit.treatments.push(item.treatment.name);
     visit.cost += item.estimatedCost;
+    // Where a row's cost is spread over years, the visit spends it the same
+    // way, so the run's yearly spend is the plan's own yearly spend.
+    const benefit = (item.expectedBenefit ?? {}) as { cash?: Array<{ year: number; amount: number }> };
+    for (const instalment of shareOf(benefit.cash, item.estimatedCost) ?? [{ year: item.year, amount: item.estimatedCost }]) {
+      visit.cash!.push(instalment);
+    }
     visits.set(key, visit);
   }
 
@@ -790,10 +885,14 @@ export async function runWorkPlan(organizationId: string, workPlanId: string) {
     analysisPeriodYears: plan.endYear - plan.startYear + 1,
   };
 
+  // The walk covers every year the plan touches, so work paid for inside it
+  // but built after its last funded year is still shown being built rather
+  // than reported as never happening.
+  const lastYear = Math.max(plan.endYear, ...plan.items.map((i) => i.buildYear ?? i.year));
   const result = runSchedule(simAssets, assumptions, [...visits.values()], {
     library,
     startYear: plan.startYear,
-    years: plan.endYear - plan.startYear + 1,
+    years: lastYear - plan.startYear + 1,
   });
 
   // The scenario's own figures, as Scenario Planning shows them, for the
@@ -1241,7 +1340,12 @@ export async function combineWorkPlanItems(
       return prisma.workPlanItem.update({
         where: { id: item.id },
         data: {
+          // A visit someone puts together by hand is decided, paid for and
+          // done in the year they chose. Any lead time the rows carried
+          // belonged to work that is no longer what is happening.
           year: input.year,
+          programmedYear: input.year,
+          buildYear: input.year,
           bundleId,
           bundleName: preview.name,
           estimatedCost: member.share,
@@ -1305,6 +1409,8 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
           // fallback for a treatment the library no longer prices.
           estimatedCost: alone ? Math.round(alone.cost) : (benefit.costApart ?? 0),
           year: benefit.yearApart ?? item.year,
+          programmedYear: benefit.yearApart ?? item.year,
+          buildYear: benefit.yearApart ?? item.year,
           reasonExplanation: `Split out of a combined project, and priced on its own again.`,
         },
       });
@@ -1323,7 +1429,13 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
 async function projectRows(itemId: string) {
   const item = await prisma.workPlanItem.findUnique({
     where: { id: itemId },
-    select: { id: true, workPlanId: true, bundleId: true, workPlan: { select: { startYear: true, endYear: true } } },
+    select: {
+      id: true,
+      workPlanId: true,
+      bundleId: true,
+      year: true,
+      workPlan: { select: { startYear: true, endYear: true } },
+    },
   });
   if (!item) throw new Error("That row no longer exists");
   const where = item.bundleId ? { workPlanId: item.workPlanId, bundleId: item.bundleId } : { id: item.id };
@@ -1346,7 +1458,27 @@ export async function moveWorkPlanItem(itemId: string, targetYear: number) {
   if (targetYear < item.workPlan.startYear || targetYear > item.workPlan.endYear) {
     throw new Error(`Year must be between ${item.workPlan.startYear} and ${item.workPlan.endYear}`);
   }
-  await prisma.workPlanItem.updateMany({ where, data: { year: targetYear } });
+
+  // The whole project shifts together. Moving a renewal's money two years out
+  // without moving its construction would say the pipe is laid before it is
+  // paid for; the lead time is a fact about delivery, not about the year.
+  const rows = await prisma.workPlanItem.findMany({
+    where,
+    select: { id: true, year: true, programmedYear: true, buildYear: true },
+  });
+  const shift = targetYear - item.year;
+  await prisma.$transaction(
+    rows.map((row) =>
+      prisma.workPlanItem.update({
+        where: { id: row.id },
+        data: {
+          year: row.year + shift,
+          ...(row.programmedYear != null ? { programmedYear: row.programmedYear + shift } : {}),
+          ...(row.buildYear != null ? { buildYear: row.buildYear + shift } : {}),
+        },
+      })
+    )
+  );
   return item.workPlanId;
 }
 

@@ -158,6 +158,10 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const band = last ? getConditionBand(last.avgCondition, conditionBands) : null;
   const peak = years.length ? Math.max(...years.map((y) => y.avgCondition)) : null;
   const totalFailureCost = years.reduce((s, y) => s + y.failureCost, 0);
+  // A run with delivery lead times has projects whose three years differ, and
+  // only such a run earns the extra columns.
+  const projectsHaveLeadTimes = projects.some((p) => p.buildYear !== p.year || p.programmedYear !== p.year);
+  const lastRunYear = last?.year ?? 0;
 
   const body = (
     <div>
@@ -406,10 +410,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Year</TableHead>
+                        <TableHead>{projectsHaveLeadTimes ? "Paid" : "Year"}</TableHead>
                         <TableHead>Asset</TableHead>
                         <TableHead>Location</TableHead>
                         <TableHead>Treatment</TableHead>
+                        {projectsHaveLeadTimes && <TableHead>Decided</TableHead>}
+                        {projectsHaveLeadTimes && <TableHead>Built</TableHead>}
                         <TableHead>Cost</TableHead>
                         <TableHead>Condition</TableHead>
                         <TableHead>Risk</TableHead>
@@ -445,6 +451,22 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                                   </div>
                                 )}
                               </TableCell>
+                              {projectsHaveLeadTimes && (
+                                <TableCell className="tabular-nums text-xs">{p.programmedYear}</TableCell>
+                              )}
+                              {projectsHaveLeadTimes && (
+                                <TableCell className="whitespace-nowrap tabular-nums text-xs">
+                                  {p.buildYear}
+                                  {p.buildYear > lastRunYear && (
+                                    <span
+                                      className="ml-1.5 rounded border px-1 py-0.5 text-[10px]"
+                                      title="Paid for inside the run, but built after it ends — so none of the condition above includes it"
+                                    >
+                                      after
+                                    </span>
+                                  )}
+                                </TableCell>
+                              )}
                               <TableCell>{formatCurrency(p.cost)}</TableCell>
                               <TableCell className="whitespace-nowrap text-xs">
                                 {p.conditionBefore} → {p.conditionAfter}
@@ -461,6 +483,13 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                   <p className="border-t px-4 py-3 text-xs text-muted-foreground">
                     These are the individual segments the run actually funded, in the order the strategy selected
                     them. They are also stored as a work plan linked to this scenario.
+                    {projectsHaveLeadTimes && (
+                      <>
+                        {" "}
+                        Grouped by the year each one is paid for; a project is decided earlier and built later, as its
+                        own row says.
+                      </>
+                    )}
                   </p>
                 </div>
               )}

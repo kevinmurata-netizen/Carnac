@@ -16,7 +16,12 @@ import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } fro
  * happened to be rendered.
  */
 const COLUMNS: ExcelColumn[] = [
-  { key: "year", header: "Year", type: "integer", width: 8 },
+  // Three years, because delivery lead times can put them three years apart:
+  // when the money leaves, when the work was decided, when it is built. All
+  // the same figure for a run without them.
+  { key: "year", header: "Paid Year", type: "integer", width: 11 },
+  { key: "programmedYear", header: "Decided Year", type: "integer", width: 13 },
+  { key: "buildYear", header: "Built Year", type: "integer", width: 11 },
   { key: "assetCode", header: "Segment", width: 14 },
   { key: "serviceArea", header: "Service Area", width: 18 },
   { key: "treatment", header: "Treatment", width: 22 },
