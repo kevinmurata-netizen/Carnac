@@ -7,6 +7,7 @@ import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
+import { listLeadTimeSets } from "@/server/lead-times";
 import {
   describeSelection,
   getScenarioOptionCatalogue,
@@ -28,6 +29,7 @@ import type {
   WeightSetChoice,
   CategoryWeightSetChoice,
   FundingPlanChoice,
+  LeadTimeChoice,
   ScenarioSetChoice,
 } from "../scenario-fields";
 import { ScenarioEditForm } from "../scenario-form";
@@ -49,14 +51,25 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const organizationId = session!.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
-  const [scenario, projects, criticalityChoices, weightSets, categoryWeightSets, fundingPlans, catalogue, estimate, sets] =
-    await Promise.all([
+  const [
+    scenario,
+    projects,
+    criticalityChoices,
+    weightSets,
+    categoryWeightSets,
+    fundingPlans,
+    leadTimeSets,
+    catalogue,
+    estimate,
+    sets,
+  ] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
     listFormulaChoices(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
     listFundingPlans(organizationId),
+    listLeadTimeSets(organizationId),
     getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
     listScenarioSets(organizationId),
@@ -96,6 +109,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     isDefault: p.isDefault,
     summary: describeFundingPlan(p),
   }));
+  const leadTimeChoices: LeadTimeChoice[] = leadTimeSets.map((l) => ({
+    id: l.id,
+    name: l.name,
+    isDefault: l.isDefault,
+    summary: l.summary,
+  }));
 
   const projectsByYear = new Map<number, typeof projects>();
   for (const p of projects) {
@@ -116,6 +135,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     weightSetId: scenario.weightSetId ?? null,
     categoryWeightSetId: scenario.categoryWeightSetId ?? null,
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
+    leadTimeSetId: scenario.leadTimeSetId ?? null,
     scenarioSetId: scenario.scenarioSet?.id ?? null,
     annualBudget: a.annualBudget,
     fundingGrowthPct: toPercent(a.fundingGrowth),
@@ -239,7 +259,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -275,7 +295,28 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             />
           </div>
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          {/* Only a run with delivery lead times can have work in flight, and
+              only such a run should have to explain itself: money spent whose
+              benefit this run never sees, and whether the answer settled. */}
+          {scenario.inFlightCount != null && scenario.inFlightCount > 0 && (
+            <div className="mt-4 rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {formatNumber(scenario.inFlightCount)} project{scenario.inFlightCount === 1 ? "" : "s"} still to be
+                built when the run ends
+              </span>{" "}
+              — {formatCurrency(scenario.inFlightCost ?? 0, { compact: true })} programmed and paid for inside the run
+              whose benefit falls after it. A longer run is what would show them.
+              {scenario.addedInLastPass != null && scenario.addedInLastPass > 0 && (
+                <>
+                  {" "}
+                  The run went round {scenario.passes} times and the last pass was still finding work, so this answer
+                  had not quite settled.
+                </>
+              )}
+            </div>
+          )}
+
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -517,6 +558,7 @@ function AssumptionsCard({
   weightSetChoices,
   categoryWeightSetChoices,
   fundingPlanChoices,
+  leadTimeChoices,
   scenarioSetChoices,
   catalogue,
 }: {
@@ -526,6 +568,7 @@ function AssumptionsCard({
   weightSetChoices: WeightSetChoice[];
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
+  leadTimeChoices: LeadTimeChoice[];
   scenarioSetChoices: ScenarioSetChoice[];
   catalogue: ScenarioOptionCatalogue;
 }) {
@@ -549,6 +592,7 @@ function AssumptionsCard({
             weightSetChoices={weightSetChoices}
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
+            leadTimeChoices={leadTimeChoices}
             scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}

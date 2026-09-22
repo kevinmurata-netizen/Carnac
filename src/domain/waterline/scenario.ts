@@ -170,6 +170,24 @@ export type ScenarioProject = {
   criticality: number;
   scaleFactor: number;
   benefit: number;
+
+  /**
+   * When it is decided, when it is paid for, and when it is built.
+   *
+   * All three are the same year without delivery lead times, which is how
+   * every scenario ran before they existed — so they are filled in either way
+   * and nothing downstream has to ask which engine produced the run.
+   */
+  programmedYear: number;
+  /** The year most of the cost leaves the budget. The whole cost, in the usual
+   * case where it is not split. */
+  fundedYear: number;
+  buildYear: number;
+  /** What comes out of which year's budget. One instalment in the usual case. */
+  cash: Array<{ year: number; amount: number }>;
+  /** Work this replaced: decided in an earlier year, not yet built, and
+   * dropped in favour of this with its money returned. */
+  supersededTreatment: string | null;
 };
 
 export type ScenarioYearResult = {
@@ -851,6 +869,13 @@ export function runScenario(
         criticality: round1(candidate.asset.criticalityScore),
         scaleFactor: Math.round(candidate.asset.scaleFactor * 100) / 100,
         benefit: round1(candidate.benefit),
+        // Decided, paid for and built in the same year: this engine knows no
+        // other kind of work, and says so rather than leaving it to be assumed.
+        programmedYear: year,
+        fundedYear: year,
+        buildYear: year,
+        cash: [{ year, amount: Math.round(candidate.cost) }],
+        supersededTreatment: null,
       });
       recordTreatment(history, candidate.assetId, candidate.option, year);
       candidate.asset.condition = candidate.projectedCondition;

@@ -1115,6 +1115,7 @@ model LeadTimeSet {
   cashSplits Json @default("{}")
 
   overrides LeadTimeOverride[]
+  scenarios Scenario[]
 
   /// What is used when nobody chose. At most one per organization, enforced in
   /// `setDefaultLeadTimeSet` as elsewhere: "exactly one" is a transition, not a
@@ -1171,6 +1172,13 @@ model Scenario {
   /// organization's default set — same convention as the two fields above.
   categoryWeightSetId String?
   categoryWeightSet   CategoryWeightSet? @relation(fields: [categoryWeightSetId], references: [id], onDelete: SetNull)
+
+  /// How long this scenario's work takes to be paid for and built. Null means
+  /// the organization's default set, and no default means everything is
+  /// decided, paid for and built in the same year — how every scenario ran
+  /// before delivery lead times existed.
+  leadTimeSetId String?
+  leadTimeSet   LeadTimeSet? @relation(fields: [leadTimeSetId], references: [id], onDelete: SetNull)
 
   /// How this scenario's budget is divided between categories, and in what
   /// order they are funded. Null means no order at all: one pass down the
@@ -1367,7 +1375,18 @@ model WorkPlanItem {
   treatmentId String
   treatment   Treatment @relation(fields: [treatmentId], references: [id])
 
-  year              Int
+  /// The year the money comes out of the budget. It is also the year the work
+  /// is done wherever no delivery lead time applies, which is every row
+  /// written before they existed — hence this name staying as it was, and the
+  /// two years below being the ones that can differ from it.
+  year Int
+
+  /// The year the work was decided, and the year it is built. Null means the
+  /// same as `year`: a plan whose work is programmed, paid for and built in
+  /// one year, which is how every plan behaved until delivery lead times.
+  programmedYear Int?
+  buildYear      Int?
+
   estimatedCost     Float
   expectedBenefit   Json? // { riskReduction: 0.65, conditionImprovement: 33 }
   reasonExplanation String? // human-readable "why" — see explainability requirement
