@@ -233,6 +233,38 @@ export function drawBand(seed: string, totalLengthFt: number, diameterInches: nu
   return trunk ? trunkStrands(seed, totalLengthFt) : gridStrands(seed, totalLengthFt);
 }
 
+/** Sampled along a corridor so a long run bends with the valley instead of
+ * cutting across it as one straight line. */
+function traceCorridor(corridor: Corridor, fromFt: number, lengthFt: number, offsetFt: number): Strand {
+  // Sampled every 2,000 ft, and always including the end: a 254 ft band is
+  // shorter than one step, and sampling alone gave it a single point and no
+  // geometry at all.
+  const stepFt = 2_000;
+  const distances: number[] = [];
+  for (let at = 0; at < lengthFt; at += stepFt) distances.push(at);
+  distances.push(lengthFt);
+
+  const points: Point[] = [];
+  for (const at of distances) {
+    const { point, unit } = alongCorridor(corridor, fromFt + at);
+    // Perpendicular to the corridor here, so parallel mains stay parallel
+    // through a bend rather than crossing at it.
+    const perp = { lat: -unit.lng * FT_PER_DEG_LNG, lng: unit.lat * FT_PER_DEG_LAT };
+    const perpLen = Math.hypot(perp.lat, perp.lng) || 1;
+    points.push({
+      lat: point.lat + (perp.lat / perpLen) * (offsetFt / FT_PER_DEG_LAT),
+      lng: point.lng + (perp.lng / perpLen) * (offsetFt / FT_PER_DEG_LNG),
+    });
+  }
+  return points.length >= 2 ? points : [];
+}
+
+/** Guards against a band silently drawing nothing, which is how four of them
+ * disappeared from the map when the sampling step was longer than the band. */
+export function bandDrawsSomething(strands: Strand[]): boolean {
+  return strands.some((s) => s.length >= 2);
+}
+
 function trunkStrands(seed: string, totalLengthFt: number): Strand[] {
   const corridors = CORRIDORS.filter((c) => c.role === "trunk");
   const strands: Strand[] = [];
@@ -252,18 +284,8 @@ function trunkStrands(seed: string, totalLengthFt: number): Strand[] {
     // Offset perpendicular to the corridor, up to about 400 ft, so parallel
     // mains are distinguishable at zoom.
     const offsetFt = (hashUnit(`${seed}:o${n}`) - 0.5) * 800;
-    const perp = { lat: -unit.lng * FT_PER_DEG_LNG, lng: unit.lat * FT_PER_DEG_LAT };
-    const perpLen = Math.hypot(perp.lat, perp.lng) || 1;
-    const offset = {
-      lat: (perp.lat / perpLen) * (offsetFt / FT_PER_DEG_LAT),
-      lng: (perp.lng / perpLen) * (offsetFt / FT_PER_DEG_LNG),
-    };
-
-    const from = { lat: point.lat + offset.lat, lng: point.lng + offset.lng };
-    const end = alongCorridor(corridor, start + thisRun).point;
-    const to = { lat: end.lat + offset.lat, lng: end.lng + offset.lng };
-
-    strands.push([from, to]);
+    const strand = traceCorridor(corridor, start, thisRun, offsetFt);
+    if (strand.length >= 2) strands.push(strand);
     left -= thisRun;
     n++;
   }
@@ -271,32 +293,75 @@ function trunkStrands(seed: string, totalLengthFt: number): Strand[] {
   return strands;
 }
 
+/**
+ * Distribution pipe as mains that run along a street and turn at a junction.
+ *
+ * The first version of this drew each run as one straight dash, which meant a
+ * band of 300,000 ft arrived as 169 identical sticks scattered over the valley
+ * — debris rather than a network. A main is a path: a few blocks one way, a
+ * corner, a few blocks the other, which is what this walks.
+ *
+ * Every main stays inside its city's box by turning back when it reaches the
+ * edge, and the lengths still sum to the band's published total.
+ */
 function gridStrands(seed: string, totalLengthFt: number): Strand[] {
   const boxes = CORRIDORS.filter((c) => c.role === "distribution");
   const strands: Strand[] = [];
-  // Distribution runs: a few hundred feet to a third of a mile, which is what
-  // a block of main looks like.
-  const runFt = Math.min(Math.max(totalLengthFt / 40, 400), 1_800);
+  // About thirty mains for a large band, each a mile or two; a small band
+  // keeps its one short main rather than being stretched into a tour.
+  const mainFt = Math.min(Math.max(totalLengthFt / 30, 1_200), 14_000);
   let left = totalLengthFt;
-  let n = 0;
+  let main = 0;
 
-  while (left > 1 && n < 900) {
-    const box = boxes[Math.floor(hashUnit(`${seed}:b${n}`) * boxes.length) % boxes.length];
+  while (left > 1 && main < 200) {
+    const box = boxes[Math.floor(hashUnit(`${seed}:b${main}`) * boxes.length) % boxes.length];
     const [corner, opposite] = box.waypoints;
-    const lat = Math.min(corner.lat, opposite.lat) + hashUnit(`${seed}:y${n}`) * Math.abs(corner.lat - opposite.lat);
-    const lng = Math.min(corner.lng, opposite.lng) + hashUnit(`${seed}:x${n}`) * Math.abs(corner.lng - opposite.lng);
-    const thisRun = Math.min(left, runFt);
+    const minLat = Math.min(corner.lat, opposite.lat);
+    const maxLat = Math.max(corner.lat, opposite.lat);
+    const minLng = Math.min(corner.lng, opposite.lng);
+    const maxLng = Math.max(corner.lng, opposite.lng);
 
-    // Half the runs north-south, half east-west: the valley's grid.
-    const northSouth = hashUnit(`${seed}:d${n}`) < 0.5;
-    const from = { lat, lng };
-    const to = northSouth
-      ? { lat: lat + thisRun / FT_PER_DEG_LAT, lng }
-      : { lat, lng: lng + thisRun / FT_PER_DEG_LNG };
+    let at: Point = {
+      lat: minLat + hashUnit(`${seed}:y${main}`) * (maxLat - minLat),
+      lng: minLng + hashUnit(`${seed}:x${main}`) * (maxLng - minLng),
+    };
+    const path: Point[] = [at];
 
-    strands.push([from, to]);
-    left -= thisRun;
-    n++;
+    let northSouth = hashUnit(`${seed}:d${main}`) < 0.5;
+    let sign = hashUnit(`${seed}:s${main}`) < 0.5 ? 1 : -1;
+    let mainLeft = Math.min(left, mainFt);
+    let block = 0;
+
+    while (mainLeft > 1 && block < 60) {
+      // A block of main: a few hundred feet to a third of a mile.
+      const blockFt = Math.min(mainLeft, 600 + hashUnit(`${seed}:l${main}:${block}`) * 1_000);
+      const step = northSouth
+        ? { lat: (sign * blockFt) / FT_PER_DEG_LAT, lng: 0 }
+        : { lat: 0, lng: (sign * blockFt) / FT_PER_DEG_LNG };
+      let next = { lat: at.lat + step.lat, lng: at.lng + step.lng };
+
+      // At the edge of the city, turn back rather than run out into the desert.
+      if (next.lat < minLat || next.lat > maxLat || next.lng < minLng || next.lng > maxLng) {
+        sign = -sign;
+        next = { lat: at.lat - step.lat, lng: at.lng - step.lng };
+      }
+
+      path.push(next);
+      at = next;
+      mainLeft -= blockFt;
+      left -= blockFt;
+      block++;
+
+      // Corners: often enough to look like streets, not so often that the main
+      // becomes a spiral.
+      if (hashUnit(`${seed}:t${main}:${block}`) < 0.45) {
+        northSouth = !northSouth;
+        sign = hashUnit(`${seed}:u${main}:${block}`) < 0.5 ? 1 : -1;
+      }
+    }
+
+    if (path.length >= 2) strands.push(path);
+    main++;
   }
 
   return strands;

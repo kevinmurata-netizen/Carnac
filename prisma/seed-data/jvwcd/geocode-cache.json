@@ -21,7 +21,7 @@
   },
   "14408 S. 5600 W. (Rosecrest)": {
     "missed": true,
-    "triedAt": "2026-09-24T21:55:18.215Z"
+    "triedAt": "2026-09-24T22:12:53.837Z"
   },
   "3815 W. 5820 S. (Terminal)": {
     "lat": 40.645344995272,
@@ -35,11 +35,11 @@
   },
   "7986 W. New Bingham Hwy. (Zone D Basin N)": {
     "missed": true,
-    "triedAt": "2026-09-24T21:55:28.415Z"
+    "triedAt": "2026-09-24T22:13:02.871Z"
   },
   "7986 W. New Bingham Hwy. (Zone D Basin S)": {
     "missed": true,
-    "triedAt": "2026-09-24T21:55:37.115Z"
+    "triedAt": "2026-09-24T22:13:12.942Z"
   },
   "2718 E. Durban Rd.": {
     "lat": 40.581246506393,
@@ -83,7 +83,7 @@
   },
   "5211 W. 6200 S.": {
     "missed": true,
-    "triedAt": "2026-09-24T21:55:46.296Z"
+    "triedAt": "2026-09-24T22:13:21.542Z"
   },
   "6011 W. 4700 S.": {
     "lat": 40.667489513834,
@@ -117,11 +117,11 @@
   },
   "5705 W. Old Bingham Hwy.": {
     "missed": true,
-    "triedAt": "2026-09-24T21:55:55.847Z"
+    "triedAt": "2026-09-24T22:13:30.342Z"
   },
   "6898 W. Old Bingham Hwy.": {
     "missed": true,
-    "triedAt": "2026-09-24T21:56:05.157Z"
+    "triedAt": "2026-09-24T22:13:39.163Z"
   },
   "275 E. Carol Way": {
     "lat": 40.618389136961,
@@ -135,7 +135,7 @@
   },
   "1028 E. College Dr.": {
     "missed": true,
-    "triedAt": "2026-09-24T21:56:14.326Z"
+    "triedAt": "2026-09-24T22:13:47.721Z"
   },
   "1155 E. Webster Dr.": {
     "lat": 40.578914810714,
@@ -249,11 +249,11 @@
   },
   "1850 E. Newbury Dr.": {
     "missed": true,
-    "triedAt": "2026-09-24T21:56:23.519Z"
+    "triedAt": "2026-09-24T22:13:56.613Z"
   },
   "2090 E. 8600 S.": {
     "missed": true,
-    "triedAt": "2026-09-24T21:56:33.740Z"
+    "triedAt": "2026-09-24T22:14:06.196Z"
   },
   "2300 E. 9800 S": {
     "lat": 40.573315236524,
@@ -337,7 +337,7 @@
   },
   "8518 S. 960 E.": {
     "missed": true,
-    "triedAt": "2026-09-24T21:56:42.517Z"
+    "triedAt": "2026-09-24T22:14:15.389Z"
   },
   "8578 S. Monitor Dr.": {
     "lat": 40.595310126785,
@@ -501,6 +501,6 @@
   },
   "6924 Old Bing. Hwy": {
     "missed": true,
-    "triedAt": "2026-09-24T21:56:51.583Z"
+    "triedAt": "2026-09-24T22:14:24.502Z"
   }
 }
