@@ -1,3 +1,20 @@
+> ## This branch is seeded with real JVWCD data
+>
+> `jvwcd-demo` replaces the synthetic sample network with published data from the
+> **Jordan Valley Water Conservancy District** — 27 pipe diameter bands, 31 reservoirs,
+> 28 wells and 13 booster pump stations, from the JVWCD *FY2025 Summary of Operations*.
+> The schema is unchanged; only the data and the asset types differ. `main` still carries
+> the generic "Meridian Falls" demo.
+>
+> **Pipe geometry on the map is illustrative.** The District publishes pipe by diameter
+> band with no alignments, so every line is drawn to the right length in an arbitrary
+> place. No pipe on this map follows a real main. Facility points are geocoded from
+> public street addresses, not surveyed; 12 of 72 could not be matched and are scattered
+> and flagged. Treatment costs and rules are still CARNAC's invented sample library.
+>
+> **See [docs/JVWCD-DEMO.md](docs/JVWCD-DEMO.md)** for what is real, what is modelled,
+> how to run the seed, and what the application does not yet do with this data.
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

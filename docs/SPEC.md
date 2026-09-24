@@ -1,5 +1,13 @@
 # Build CARNAC — Universal Asset Management & Decision Support Platform
 
+> **On the `jvwcd-demo` branch**, the seeded data is not the synthetic sample network this
+> specification assumes. It is published data from the Jordan Valley Water Conservancy
+> District (FY2025 Summary of Operations), with reservoirs, wells and booster pump stations
+> added as asset types alongside waterlines — as configuration data, per §3, not as new
+> tables. Pipe geometry there is illustrative: the District publishes lengths by diameter
+> band and no alignments. See [JVWCD-DEMO.md](JVWCD-DEMO.md). This specification itself is
+> unchanged, and `main` still carries the sample network.
+
 Build a full-stack web application called **CARNAC**.
 
 CARNAC stands for a general-purpose **asset management system** designed to collect, store, analyze, model, forecast, and report on the condition and performance of infrastructure assets.

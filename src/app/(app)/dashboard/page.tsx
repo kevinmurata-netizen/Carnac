@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { getNetworkSummary } from "@/server/assets";
 import { getNetworkGeoJSON } from "@/server/geo";
 import { getPopupFieldsWithLabels } from "@/server/map-settings";
@@ -35,7 +36,11 @@ export default async function DashboardPage() {
   // the dashboard's map had a card with nothing in it.
   const popupFields = await getPopupFieldsWithLabels(organizationId);
 
-  const [summary, geojson, condition, risk, forecast, treatments, annualBudget] = await Promise.all([
+  const [organization, summary, geojson, condition, risk, forecast, treatments, annualBudget] = await Promise.all([
+    // The utility's own name, rather than a name written into this page. It
+    // was hard-coded to the sample seed's invented utility, which then greeted
+    // every other organization by the wrong name.
+    prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } }),
     getNetworkSummary(organizationId),
     getNetworkGeoJSON(organizationId, undefined, popupFields.map((f) => f.key)),
     getConditionSummary(organizationId),
@@ -56,7 +61,7 @@ export default async function DashboardPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description="Waterline network overview — Meridian Falls Water Utility"
+        description={`Waterline network overview${organization ? ` — ${organization.name}` : ""}`}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">

@@ -22,11 +22,21 @@ import { recomputeReservoirRisk } from "@/server/reservoir-risk";
  * reservoirs, wells and booster pumps — arrive in Phase 4 and are called from
  * here, one per asset class.
  */
+const ORGANIZATION_NAME = "Jordan Valley Water Conservancy District";
+
 async function main() {
   const organization = await prisma.organization.findFirst({ select: { id: true, name: true } });
   if (!organization) throw new Error("No organization — run the base seed first to create one.");
 
-  console.log(`organization: ${organization.name}`);
+  // The sample seed names the utility Meridian Falls, which is invented and
+  // shows in the app header and on every screen. A demo seeded with the
+  // District's own data should say whose data it is.
+  if (organization.name !== ORGANIZATION_NAME) {
+    await prisma.organization.update({ where: { id: organization.id }, data: { name: ORGANIZATION_NAME } });
+    console.log(`organization: renamed "${organization.name}" to "${ORGANIZATION_NAME}"`);
+  } else {
+    console.log(`organization: ${organization.name}`);
+  }
 
   const types = await ensureJvwcdAssetTypes(prisma, organization.id);
   console.log("\nasset types:");
