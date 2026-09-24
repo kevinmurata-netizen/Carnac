@@ -5,6 +5,7 @@ import { importReservoirs } from "./jvwcd/import-reservoirs";
 import { importWells } from "./jvwcd/import-wells";
 import { importBoosterPumps } from "./jvwcd/import-booster-pumps";
 import { clearImportedAssets } from "./jvwcd/clear-imported";
+import { importFacilityLocations, importPipeLocations } from "./jvwcd/import-locations";
 
 /**
  * Seed this instance with Jordan Valley Water Conservancy District's published
@@ -61,6 +62,28 @@ async function main() {
   console.log(
     `booster pumps: ${pumps.created} stations, ${pumps.totalHp.toLocaleString("en-US")} hp, ${pumps.totalVolumeAf.toLocaleString("en-US")} AF pumped`
   );
+
+  // Geometry. Pipes are always illustrative — the inventory has no alignments.
+  // Facilities are geocoded from their published addresses, which needs a key;
+  // without one they are left with no location at all rather than quietly
+  // scattered across the valley.
+  const lines = await importPipeLocations(prisma);
+  console.log(`\npipe geometry: ${lines.drawn} illustrative lines (not real alignments)`);
+
+  const apiKey = process.env.AGRC_API_KEY;
+  if (!apiKey) {
+    console.log(
+      "facility geometry: skipped — set AGRC_API_KEY in .env to geocode the published addresses (free key at developer.mapserv.utah.gov)"
+    );
+  } else {
+    const located = await importFacilityLocations(prisma, { apiKey });
+    console.log(
+      `facility geometry: ${located.geocoded} geocoded, ${located.scattered} scattered and flagged (${located.queried} addresses queried, ${located.total} distinct)`
+    );
+    if (located.misses.length > 0) {
+      console.log(`  did not match: ${located.misses.slice(0, 8).join(" · ")}${located.misses.length > 8 ? " …" : ""}`);
+    }
+  }
 
   const warnings = [
     ...pipes.warnings.map((w) => `pipes: ${w}`),

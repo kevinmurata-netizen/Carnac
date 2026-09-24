@@ -37,6 +37,19 @@ type TypeSpec = {
   attributes: AttributeSpec[];
 };
 
+/**
+ * Where an asset's point on the map came from: a geocoded address, a scattered
+ * point standing in for one, or an illustrative line. Held by everything this
+ * demo imports, because a map that cannot tell the three apart is a map that
+ * will eventually be believed.
+ */
+const LOCATION_BASIS: AttributeSpec = {
+  code: "LOCATION_BASIS",
+  label: "Location Basis",
+  dataType: AttributeDataType.TEXT,
+  help: "How this asset came by its position: geocoded from the published address, scattered inside the service area because the address did not match, or drawn illustratively. Scattered and illustrative positions are not real locations.",
+};
+
 /** Held by every facility, so a row can be traced back to the source table. */
 const FACILITY: AttributeSpec[] = [
   { code: "FACILITY_ID", label: "Facility ID", dataType: AttributeDataType.TEXT },
@@ -46,6 +59,7 @@ const FACILITY: AttributeSpec[] = [
     dataType: AttributeDataType.TEXT,
     help: "Ordinary Salt Lake County address as published. Facility coordinates themselves are GRAMA-protected and are not held here.",
   },
+  LOCATION_BASIS,
 ];
 
 export const JVWCD_ASSET_TYPES: TypeSpec[] = [
@@ -224,6 +238,7 @@ const WATERLINE_BAND_ATTRIBUTES: AttributeSpec[] = [
     dataType: AttributeDataType.TEXT,
     help: "Whether this row is a diameter band as the District published it, or a synthesized share of one. Synthesized segments are illustrative and are not real alignments.",
   },
+  LOCATION_BASIS,
 ];
 
 /**

@@ -136,7 +136,7 @@ export function NetworkMap({ geojson, className, colorProperty, popupFields }: N
 
       const popup = new Popup({ closeButton: false, offset: 10 });
 
-      map.on("mousemove", "network-lines", (e: MapLayerMouseEvent) => {
+      const showPopup = (e: MapLayerMouseEvent) => {
         map.getCanvas().style.cursor = "pointer";
         const feature = e.features?.[0];
         if (!feature) return;
@@ -159,16 +159,24 @@ export function NetworkMap({ geojson, className, colorProperty, popupFields }: N
               `</div>`
           )
           .addTo(map);
-      });
-      map.on("mouseleave", "network-lines", () => {
+      };
+      const hidePopup = () => {
         map.getCanvas().style.cursor = "";
         popup.remove();
-      });
-      map.on("click", "network-lines", (e: MapLayerMouseEvent) => {
+      };
+      const openAsset = (e: MapLayerMouseEvent) => {
         const feature = e.features?.[0];
         const id = feature?.properties?.id;
         if (id) router.push(`/assets/${id}`);
-      });
+      };
+
+      // Pipes and facilities behave the same way under the cursor; only what
+      // they are drawn as differs.
+      for (const layer of ["network-lines", "network-points"]) {
+        map.on("mousemove", layer, showPopup);
+        map.on("mouseleave", layer, hidePopup);
+        map.on("click", layer, openAsset);
+      }
     });
 
     return () => {
@@ -198,6 +206,11 @@ export function NetworkMap({ geojson, className, colorProperty, popupFields }: N
       const bounds = new LngLatBounds();
       let hasCoords = false;
       for (const feature of geojson.features) {
+        if (feature.geometry.type === "Point") {
+          bounds.extend(feature.geometry.coordinates as [number, number]);
+          hasCoords = true;
+          continue;
+        }
         if (feature.geometry.type !== "LineString") continue;
         for (const coord of feature.geometry.coordinates) {
           bounds.extend(coord as [number, number]);
