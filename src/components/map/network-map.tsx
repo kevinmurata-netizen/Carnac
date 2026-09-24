@@ -193,9 +193,8 @@ export function NetworkMap({ geojson, facilities, className, colorProperty, popu
         hasCoords = true;
       }
       for (const feature of geojson.features) {
-        if (feature.geometry.type !== "LineString") continue;
-        for (const coord of feature.geometry.coordinates) {
-          bounds.extend(coord as [number, number]);
+        for (const coord of lineCoordinates(feature.geometry)) {
+          bounds.extend(coord);
           hasCoords = true;
         }
       }
@@ -279,15 +278,9 @@ export function NetworkMap({ geojson, facilities, className, colorProperty, popu
 
       const bounds = new LngLatBounds();
       let hasCoords = false;
-      for (const feature of geojson.features) {
-        if (feature.geometry.type === "Point") {
-          bounds.extend(feature.geometry.coordinates as [number, number]);
-          hasCoords = true;
-          continue;
-        }
-        if (feature.geometry.type !== "LineString") continue;
-        for (const coord of feature.geometry.coordinates) {
-          bounds.extend(coord as [number, number]);
+      for (const feature of [...geojson.features, ...(facilities?.features ?? [])]) {
+        for (const coord of lineCoordinates(feature.geometry)) {
+          bounds.extend(coord);
           hasCoords = true;
         }
       }
@@ -303,6 +296,29 @@ export function NetworkMap({ geojson, facilities, className, colorProperty, popu
   }, [geojson, facilities]);
 
   return <div ref={containerRef} className={className} />;
+}
+
+/**
+ * Every coordinate in a geometry, for framing the view.
+ *
+ * A diameter band is drawn as a MultiLineString — hundreds of separate pipes
+ * cannot honestly be one line — and a facility is a point, so a bounds
+ * calculation that only understood LineString framed the map on part of what
+ * it was showing.
+ */
+function lineCoordinates(geometry: GeoJSON.Geometry): Array<[number, number]> {
+  switch (geometry.type) {
+    case "Point":
+      return [geometry.coordinates as [number, number]];
+    case "LineString":
+      return geometry.coordinates as Array<[number, number]>;
+    case "MultiLineString":
+      return geometry.coordinates.flat() as Array<[number, number]>;
+    case "Polygon":
+      return geometry.coordinates.flat() as Array<[number, number]>;
+    default:
+      return [];
+  }
 }
 
 /** Minimal escaping for values rendered into the popup's HTML. */

@@ -79,7 +79,9 @@ async function main() {
   // without one they are left with no location at all rather than quietly
   // scattered across the valley.
   const lines = await importPipeLocations(prisma);
-  console.log(`\npipe geometry: ${lines.drawn} illustrative lines (not real alignments)`);
+  console.log(
+    `\npipe geometry: ${lines.drawn} bands drawn as ${lines.strandCount.toLocaleString("en-US")} runs along the valley's corridors (illustrative — not real alignments)`
+  );
 
   // Utah's own geocoder where a usable key exists, since it is better at Salt
   // Lake grid addresses; otherwise the Census Bureau's, which needs no account.

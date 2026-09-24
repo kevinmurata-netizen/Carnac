@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { geocodeAll, loadCache, type GeocodeMatch } from "./geocode";
+import { drawBand, strandsToWkt, type Strand } from "./corridors";
 
 /**
  * Where everything sits on the map.
@@ -73,19 +74,26 @@ async function writePoint(
   `;
 }
 
-async function writeLine(
-  prisma: PrismaClient,
-  assetId: string,
-  from: { lat: number; lng: number },
-  to: { lat: number; lng: number }
-) {
+/**
+ * A band's runs as one geometry.
+ *
+ * A MULTILINESTRING, because a diameter band is hundreds of separate pipes and
+ * drawing it as a single line says something false about it. The column takes
+ * any geometry; the denormalised endpoints keep the first and last point, which
+ * is all anything reading those columns wants.
+ */
+async function writeStrands(prisma: PrismaClient, assetId: string, strands: Strand[]) {
+  const wkt = strandsToWkt(strands);
+  const first = strands[0][0];
+  const last = strands[strands.length - 1][strands[strands.length - 1].length - 1];
+
   await prisma.$executeRaw`
     INSERT INTO asset_locations (id, "assetId", geometry, "startLat", "startLng", "endLat", "endLng")
     VALUES (
       ${`loc_${assetId}`},
       ${assetId},
-      ST_SetSRID(ST_MakeLine(ST_MakePoint(${from.lng}, ${from.lat}), ST_MakePoint(${to.lng}, ${to.lat})), 4326),
-      ${from.lat}, ${from.lng}, ${to.lat}, ${to.lng}
+      ST_SetSRID(ST_GeomFromText(${wkt}), 4326),
+      ${first.lat}, ${first.lng}, ${last.lat}, ${last.lng}
     )
     ON CONFLICT ("assetId") DO UPDATE SET
       geometry = EXCLUDED.geometry,
@@ -211,34 +219,39 @@ export async function importPipeLocations(prisma: PrismaClient) {
       assetCode: true,
       assetTypeId: true,
       attributeValues: {
-        where: { definition: { code: "LENGTH" } },
-        select: { numberValue: true },
+        where: { definition: { code: { in: ["LENGTH", "DIAMETER", "DIAMETER_BAND"] } } },
+        select: { numberValue: true, textValue: true, definition: { select: { code: true } } },
       },
     },
   });
 
   let drawn = 0;
-  for (const pipe of pipes) {
-    const lengthFt = pipe.attributeValues[0]?.numberValue ?? 0;
-    const start = scatterPoint(pipe.assetCode);
-    // Roughly a degree of latitude per 364,000 ft; capped so a band that is
-    // tens of miles long stays inside the valley rather than leaving the state.
-    const spanDeg = Math.min(0.12, lengthFt / 364000);
-    const bearing = hashUnit(`${pipe.assetCode}:bearing`) * Math.PI * 2;
-    const end = {
-      lat: Math.min(SERVICE_AREA.maxLat, Math.max(SERVICE_AREA.minLat, start.lat + Math.sin(bearing) * spanDeg)),
-      lng: Math.min(SERVICE_AREA.maxLng, Math.max(SERVICE_AREA.minLng, start.lng + Math.cos(bearing) * spanDeg * 1.3)),
-    };
+  let strandCount = 0;
 
-    await writeLine(prisma, pipe.id, start, end);
+  for (const pipe of pipes) {
+    const value = (code: string) => pipe.attributeValues.find((v) => v.definition.code === code);
+    const lengthFt = value("LENGTH")?.numberValue ?? 0;
+    const diameter = value("DIAMETER")?.numberValue ?? null;
+    const band = value("DIAMETER_BAND")?.textValue ?? "";
+    if (lengthFt <= 0) continue;
+
+    // Drawn along the valley's corridors rather than at a random bearing, and
+    // as many strands rather than one line: a band is hundreds of pipes, and a
+    // single 57-mile diagonal across the Oquirrhs was wrong in a way anyone
+    // could see.
+    const strands = drawBand(pipe.assetCode, lengthFt, diameter);
+    if (strands.length === 0) continue;
+
+    await writeStrands(prisma, pipe.id, strands);
     await markBasis(
       prisma,
       pipe.id,
       pipe.assetTypeId,
-      "Illustrative only. The inventory gives lengths by diameter, not alignments, so this line shows that the band exists and is drawn to length — it does not follow any real main."
+      `Illustrative only. The inventory gives lengths by diameter, not alignments, so this is ${strands.length === 1 ? "one run" : `${strands.length} runs`} totalling the ${band || `${diameter ?? "?"}"`} band's ${Math.round(lengthFt).toLocaleString("en-US")} ft, drawn along ${(diameter ?? 0) >= 20 ? "the valley's trunk corridors" : "the street grid of the member cities"}. It does not follow any real main.`
     );
     drawn++;
+    strandCount += strands.length;
   }
 
-  return { drawn };
+  return { drawn, strandCount };
 }

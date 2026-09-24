@@ -30,7 +30,12 @@ This matters more than anything else in this document. The demo is only useful i
 
 JVWCD's pipe inventory is published **by diameter band**, not by segment: one row saying 8-inch, 303,335 LF, 1,246 valves. There are no alignments in it and no addresses.
 
-So every pipe line on the map is drawn by `prisma/jvwcd/import-locations.ts` at the correct *length* but in an arbitrary position and direction inside the service area. **No pipe on this map follows a real main.** Each one carries a `LOCATION_BASIS` attribute saying so.
+Each band is therefore drawn by `prisma/jvwcd/import-locations.ts` as a **MultiLineString of many runs** whose lengths sum to the band's published total — a band is hundreds of separate pipes, and one long line would say something false about it. The runs follow corridors defined in `prisma/jvwcd/corridors.ts`:
+
+- **20 inch and above** runs along the valley's trunk corridors — the north-south axis on the west side, mid-valley and east bench, the cross-valley connectors, and the Provo link over the Point of the Mountain.
+- **Below 20 inch** is drawn on the street grid inside the member cities, in runs of a few hundred feet, north-south and east-west.
+
+Those corridors are traced from public geography — the shape of the valley, where the cities are, where a canyon lets water through. **They are not the District's alignments, and no pipe on this map follows a real main.** The point of drawing them this way is that a map of diagonals across the Oquirrh mountains was wrong in a way anyone could see, while this is wrong only in a way the data cannot fix. Every band carries a `LOCATION_BASIS` attribute saying exactly what it is.
 
 ### Facility coordinates are geocoded, not surveyed
 
