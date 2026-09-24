@@ -279,7 +279,6 @@ function trunkStrands(seed: string, totalLengthFt: number): Strand[] {
     const corridorFt = corridorLengthFt(corridor);
     const thisRun = Math.min(left, runFt);
     const start = hashUnit(`${seed}:s${n}`) * Math.max(1, corridorFt - thisRun);
-    const { point, unit } = alongCorridor(corridor, start);
 
     // Offset perpendicular to the corridor, up to about 400 ft, so parallel
     // mains are distinguishable at zoom.
