@@ -1,0 +1,32 @@
+asset_class,site_address,capacity_mg,material,year_built,last_inspected,floor_elev_ft,overflow_elev_ft
+reservoir,"11574 S. Wyndcastle (SERWTP)",1,Concrete,1983,2024,4992,5012
+reservoir,"11574 S. Wyndcastle (SERWTP)",3,Concrete,2003,2024,4994,5016
+reservoir,"15305 S. 3200 W. (JVWTP)",1,Concrete,1974,2023,4967,4983
+reservoir,"15305 S. 3200 W. (JVWTP)",8,Concrete,1974,2024,4703,4725
+reservoir,"15305 S. 3200 W. (JVWTP)",1,Steel,1974,2019,4773,4805
+reservoir,"15305 S. 3200 W. (JVWTP)",12.5,Concrete,2016,2021,4703,4724
+reservoir,"14408 S. 5600 W. (Rosecrest)",3,Concrete,2000,2024,5120,5148
+reservoir,"3815 W. 5820 S. (Terminal)",16.5,Concrete,1984,2021,4580,4610
+reservoir,"3815 W. 5820 S. (Terminal)",16.5,Concrete,1984,2022,4580,4610
+reservoir,"3815 W. 5820 S. (Terminal)",33,Concrete,1997,2021,4580,4610
+reservoir,"3815 W. 5820 S. (Terminal)",33,Concrete,1997,2025,4580,4610
+reservoir,"7986 W. New Bingham Hwy. (Zone D Basin N)",3,Concrete,2008,2023,5355,5375
+reservoir,"7986 W. New Bingham Hwy. (Zone D Basin S)",3,Concrete,2008,2023,5355,5375
+reservoir,"2718 E. Durban Rd.",1,Steel,1956,2024,4936,4968
+reservoir,"2718 E. Durban Rd.",2,Steel,1964,2024,4936,4968
+reservoir,"9785 S. Eastdell Dr.",6,Concrete,1970,2023,4942,4968
+reservoir,"4772 S. Naniloa Dr. (Casto Reservoir)",2,Concrete,1962,2025,4588,4608
+reservoir,"6171 S. 3200 W.",8,Steel,1968,2025,4565,4605
+reservoir,"6171 S. 3200 W.",2,Steel,1961,2024,4565,4605
+reservoir,"6171 S. 3200 W.",2,Steel,1964,2024,4565,4605
+reservoir,"5211 W. 6200 S.",2,Concrete,1962,2025,4720,4740
+reservoir,"5211 W. 6200 S.",7,Concrete,2025,2025,4720,4740
+reservoir,"6011 W. 4700 S.",1,Steel,1956,2022,4708,4740
+reservoir,"6011 W. 4700 S.",2,Concrete,1962,2023,4720,4740
+reservoir,"6011 W. 4700 S.",6,Concrete,1966,2024,4714,4740
+reservoir,"4408 S. 4800 W.",1,Steel,1956,2023,4458,4498
+reservoir,"4408 S. 4800 W.",3,Steel,1956,2023,4458,4498
+reservoir,"4408 S. 4800 W.",5,Steel,1969,2014,4458,4498
+reservoir,"3582 W. 10200 S.",3,Concrete,1981,2025,4635,4663
+reservoir,"5705 W. Old Bingham Hwy.",3,Concrete,1981,2025,4931,4959
+reservoir,"6898 W. Old Bingham Hwy.",3,Concrete,1976,2025,5128,5148

@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "How the pipe importer turns diameter bands into assets. Copy this to pipe-segments.json to use it;",
+    "without that file the importer creates one asset per band, which is what the source table actually says.",
+    "",
+    "Whatever the rules, a band's segments always sum to its published length to the foot, and splitting the",
+    "same band twice gives the same segments. A synthesized segment is a share of a band, not a real pipe.",
+    "",
+    "defaultSegmentLengthFt  cut every band into segments of about this length",
+    "minSegmentLengthFt      never leave a stub shorter than this",
+    "bands                   rules for named diameters, keyed as the CSV prints them",
+    "  segmentLengthFt       about this long, for this band",
+    "  segmentCount          exactly this many, equal length",
+    "  segments              named by hand; lengths are treated as shares, scaled to the band's real total"
+  ],
+  "defaultSegmentLengthFt": 2000,
+  "minSegmentLengthFt": 200,
+  "bands": {
+    "8": { "segmentLengthFt": 1000 },
+    "12": { "segmentCount": 60 },
+    "36": {
+      "segments": [
+        { "lengthFt": 2500, "label": "Transmission A", "serviceArea": "Southwest Aqueduct", "pressureZone": "Zone 1" },
+        { "lengthFt": 1000, "label": "Transmission B", "serviceArea": "Southwest Aqueduct" },
+        { "lengthFt": 500, "label": "Transmission C" }
+      ]
+    }
+  }
+}
