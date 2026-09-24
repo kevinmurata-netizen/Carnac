@@ -11,6 +11,8 @@
     "db:down": "docker compose down",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
+    "db:reset": "tsx prisma/reset-assets.ts",
+    "db:seed:jvwcd": "tsx prisma/seed-jvwcd.ts",
     "db:reshape": "tsx scripts/reshape-network.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
@@ -63,7 +65,8 @@
     "tsx": "^4.23.12",
     "typescript": "^5"
   },
-  "prisma": {
+  "//prisma": {
+    "note": "The seed hook is deliberately disabled on the jvwcd-demo branch. With it in place, `prisma migrate reset` and `prisma db seed` refill the database with the Meridian Falls sample network without being asked, which on a branch seeded from real JVWCD data is the accident waiting to happen. prisma/seed.ts is kept as the reference for row shapes and still runs on purpose via `npm run db:seed`.",
     "seed": "tsx prisma/seed.ts"
   },
   "allowScripts": {
