@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { readCsv, num } from "../prisma/jvwcd/csv";
+import { loadCache } from "../prisma/jvwcd/geocode";
+
+/** Salt Lake County, roughly: a geocoded point outside it did not land where
+ * the District's service area is, whatever the geocoder thought. */
+const COUNTY = { minLat: 40.4, maxLat: 40.95, minLng: -112.3, maxLng: -111.55 };
 
 const attrs = async (assetCode: string) => {
   const asset = await prisma.asset.findFirstOrThrow({
@@ -101,6 +106,44 @@ async function main() {
   console.log(
     `  zone ${pump.map.get("ZONE")}, ${pump.map.get("CAPACITY_CFS")} cfs, ${pump.map.get("TOTAL_HP")} hp, lift ${pump.map.get("AVG_DYNAMIC_LIFT_FT")} ft, ${pump.map.get("VOLUME_PUMPED_AF")} AF`
   );
+
+  // Geometry: how each asset came by its position, and whether the geocoded
+  // ones are anywhere plausible.
+  const cache = loadCache();
+  const entries = Object.entries(cache);
+  const matched = entries.filter(([, v]) => v && !("missed" in v)) as Array<
+    [string, Extract<(typeof entries)[number][1], { lat: number }>]
+  >;
+  const outside = matched.filter(
+    ([, m]) => m.lat < COUNTY.minLat || m.lat > COUNTY.maxLat || m.lng < COUNTY.minLng || m.lng > COUNTY.maxLng
+  );
+  const moved = matched.filter(([, m]) => (m.spreadFt ?? 0) > 100);
+
+  console.log(`\ngeocoding: ${matched.length} of ${entries.length} distinct addresses matched`);
+  console.log(`  house number in range: ${matched.filter(([, m]) => m.score === 100).length}`);
+  console.log(`  outside Salt Lake County: ${outside.length}`);
+  console.log(`  matched in several cities more than 100 ft apart: ${moved.length}`);
+  for (const [address] of entries.filter(([, v]) => v && "missed" in v)) console.log(`  no match: ${address}`);
+
+  const basis = await prisma.assetAttributeValue.findMany({
+    where: { definition: { code: "LOCATION_BASIS" } },
+    select: { textValue: true, asset: { select: { assetType: { select: { code: true } } } } },
+  });
+  const placed = new Map<string, number>();
+  for (const b of basis) {
+    const kind = b.textValue?.startsWith("Geocoded")
+      ? "geocoded"
+      : b.textValue?.startsWith("Illustrative")
+        ? "illustrative"
+        : "scattered (not a real location)";
+    const key = `${b.asset.assetType.code} — ${kind}`;
+    placed.set(key, (placed.get(key) ?? 0) + 1);
+  }
+  console.log("\nhow assets were placed:");
+  for (const [k, n] of [...placed].sort()) console.log(`  ${String(n).padStart(3)}  ${k}`);
+
+  const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) FROM asset_locations`;
+  console.log(`  ${String(rows[0].count).padStart(3)}  asset_locations rows in total`);
 
   await prisma.$disconnect();
 }

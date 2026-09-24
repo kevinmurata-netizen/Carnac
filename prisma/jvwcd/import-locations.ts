@@ -115,7 +115,7 @@ async function markBasis(prisma: PrismaClient, assetId: string, assetTypeId: str
  */
 export async function importFacilityLocations(
   prisma: PrismaClient,
-  options: { apiKey: string; minScore?: number; delayMs?: number }
+  options: { provider: "agrc" | "census"; apiKey?: string; minScore?: number; delayMs?: number }
 ) {
   const facilities = await prisma.asset.findMany({
     where: { assetType: { code: { in: ["RESERVOIR", "WELL", "BOOSTER_PUMP_STATION"] } } },
@@ -137,6 +137,7 @@ export async function importFacilityLocations(
 
   const addresses = facilities.map(addressOf).filter((a): a is string => a != null);
   const report = await geocodeAll(addresses, {
+    provider: options.provider,
     apiKey: options.apiKey,
     minScore: options.minScore,
     delayMs: options.delayMs ?? 120,
@@ -157,11 +158,23 @@ export async function importFacilityLocations(
 
     if (match) {
       await writePoint(prisma, facility.id, match, { serviceArea: match.zone, pressureZone: zoneOf(facility) });
+      // What the point is worth, in the asset's own words: who matched it,
+      // to what, and whether the same address exists in other cities — which
+      // on a Salt Lake grid address it very often does.
+      const service = match.provider === "agrc" ? "Utah AGRC" : "the US Census geocoder";
+      const others = match.alsoMatchedIn ?? 0;
+      const spread = match.spreadFt ?? 0;
+      const ambiguity =
+        others === 0
+          ? ""
+          : spread <= 100
+            ? ` The same address matched in ${others} other candidate ${others === 1 ? "city" : "cities"} at the same point — Salt Lake's grid crosses city lines, so only the city name is uncertain.`
+            : ` The same address matched in ${others} other candidate ${others === 1 ? "city" : "cities"}, and those matches are up to ${spread.toLocaleString("en-US")} ft apart, so this point is the best of several and not a certainty.`;
       await markBasis(
         prisma,
         facility.id,
         facility.assetTypeId,
-        `Geocoded from the published address by Utah AGRC (${match.zone}, confidence ${Math.round(match.score)}): ${match.matchAddress}`
+        `Geocoded from the published address by ${service} (${match.zone}, confidence ${Math.round(match.score)}): ${match.matchAddress}.${ambiguity}`
       );
       geocoded++;
     } else {

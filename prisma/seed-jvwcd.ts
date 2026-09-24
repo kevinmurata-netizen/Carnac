@@ -70,19 +70,17 @@ async function main() {
   const lines = await importPipeLocations(prisma);
   console.log(`\npipe geometry: ${lines.drawn} illustrative lines (not real alignments)`);
 
+  // Utah's own geocoder where a usable key exists, since it is better at Salt
+  // Lake grid addresses; otherwise the Census Bureau's, which needs no account.
+  // GEOCODER=census forces the second even when a key is present.
   const apiKey = process.env.AGRC_API_KEY;
-  if (!apiKey) {
-    console.log(
-      "facility geometry: skipped — set AGRC_API_KEY in .env to geocode the published addresses (free key at developer.mapserv.utah.gov)"
-    );
-  } else {
-    const located = await importFacilityLocations(prisma, { apiKey });
-    console.log(
-      `facility geometry: ${located.geocoded} geocoded, ${located.scattered} scattered and flagged (${located.queried} addresses queried, ${located.total} distinct)`
-    );
-    if (located.misses.length > 0) {
-      console.log(`  did not match: ${located.misses.slice(0, 8).join(" · ")}${located.misses.length > 8 ? " …" : ""}`);
-    }
+  const provider = process.env.GEOCODER === "census" || !apiKey ? "census" : "agrc";
+  const located = await importFacilityLocations(prisma, { provider, apiKey });
+  console.log(
+    `facility geometry (${provider === "agrc" ? "Utah AGRC" : "US Census"}): ${located.geocoded} geocoded, ${located.scattered} scattered and flagged — ${located.total} distinct addresses, ${located.queried} newly queried`
+  );
+  if (located.misses.length > 0) {
+    console.log(`  did not match: ${located.misses.slice(0, 8).join(" · ")}${located.misses.length > 8 ? " …" : ""}`);
   }
 
   const warnings = [

@@ -1,0 +1,506 @@
+{
+  "11574 S. Wyndcastle (SERWTP)": {
+    "lat": 40.541820051958,
+    "lng": -111.818127896049,
+    "score": 100,
+    "matchAddress": "11574 WYNDCASTLE DR, SANDY, UT, 84092",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:12:17.105Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "15305 S. 3200 W. (JVWTP)": {
+    "lat": 40.472702163631,
+    "lng": -111.967258570107,
+    "score": 100,
+    "matchAddress": "15305 S 3200 W, RIVERTON, UT, 84065",
+    "zone": "RIVERTON",
+    "queriedAt": "2026-09-24T20:12:23.763Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "14408 S. 5600 W. (Rosecrest)": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:22:42.896Z"
+  },
+  "3815 W. 5820 S. (Terminal)": {
+    "lat": 40.645344995272,
+    "lng": -111.982352859647,
+    "score": 100,
+    "matchAddress": "3815 W 5820 S, WEST VALLEY CITY, UT, 84129",
+    "zone": "WEST VALLEY CITY",
+    "queriedAt": "2026-09-24T20:12:34.242Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "7986 W. New Bingham Hwy. (Zone D Basin N)": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:22:52.882Z"
+  },
+  "7986 W. New Bingham Hwy. (Zone D Basin S)": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:23:04.262Z"
+  },
+  "2718 E. Durban Rd.": {
+    "lat": 40.581246506393,
+    "lng": -111.814492815608,
+    "score": 100,
+    "matchAddress": "2718 E DURBAN RD, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:12:53.593Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "9785 S. Eastdell Dr.": {
+    "lat": 40.573446120305,
+    "lng": -111.8244546837,
+    "score": 100,
+    "matchAddress": "9785 EASTDELL DR, SANDY, UT, 84092",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:12:59.428Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "4772 S. Naniloa Dr. (Casto Reservoir)": {
+    "lat": 40.666139816664,
+    "lng": -111.810741894659,
+    "score": 100,
+    "matchAddress": "4772 S NANILOA DR, MURRAY, UT, 84117",
+    "zone": "MURRAY",
+    "queriedAt": "2026-09-24T20:13:08.525Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "6171 S. 3200 W.": {
+    "lat": 40.639127655313,
+    "lng": -111.967247572069,
+    "score": 100,
+    "matchAddress": "6171 S 3200 W, WEST VALLEY CITY, UT, 84129",
+    "zone": "WEST VALLEY CITY",
+    "queriedAt": "2026-09-24T20:13:09.839Z",
+    "provider": "census",
+    "alsoMatchedIn": 3
+  },
+  "5211 W. 6200 S.": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:23:16.357Z"
+  },
+  "6011 W. 4700 S.": {
+    "lat": 40.667489513834,
+    "lng": -112.034531974845,
+    "score": 100,
+    "matchAddress": "6011 W 4700 S, WEST VALLEY CITY, UT, 84118",
+    "zone": "WEST VALLEY CITY",
+    "queriedAt": "2026-09-24T20:13:22.056Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "4408 S. 4800 W.": {
+    "lat": 40.674254986302,
+    "lng": -112.005714540354,
+    "score": 100,
+    "matchAddress": "4408 S 4800 W, WEST VALLEY CITY, UT, 84120",
+    "zone": "WEST VALLEY CITY",
+    "queriedAt": "2026-09-24T20:13:28.337Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "3582 W. 10200 S.": {
+    "lat": 40.566047482615,
+    "lng": -111.97558502274,
+    "score": 100,
+    "matchAddress": "3582 W 10200 S, SOUTH JORDAN, UT, 84095",
+    "zone": "SOUTH JORDAN",
+    "queriedAt": "2026-09-24T20:13:35.745Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "5705 W. Old Bingham Hwy.": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:23:27.654Z"
+  },
+  "6898 W. Old Bingham Hwy.": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:23:40.349Z"
+  },
+  "275 E. Carol Way": {
+    "lat": 40.618389136961,
+    "lng": -111.882750574308,
+    "score": 100,
+    "matchAddress": "275 CAROL WAY, SANDY, UT, 84047",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:13:55.203Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "1028 E. College Dr.": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:23:53.026Z"
+  },
+  "1155 E. Webster Dr.": {
+    "lat": 40.578914810714,
+    "lng": -111.857691290998,
+    "score": 100,
+    "matchAddress": "1155 E WEBSTER DR, SANDY, UT, 84094",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:14:07.476Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "1159 E. 4500 S.": {
+    "lat": 40.67121923416,
+    "lng": -111.924918762703,
+    "score": 100,
+    "matchAddress": "1159 W 4500 S, TAYLORSVILLE, UT, 84123",
+    "zone": "TAYLORSVILLE",
+    "queriedAt": "2026-09-24T20:14:12.612Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "1200 E. 9400 S.": {
+    "lat": 40.580426396075,
+    "lng": -111.85598235388,
+    "score": 100,
+    "matchAddress": "1200 E 9400 S, SANDY, UT, 84094",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:14:19.401Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "1307 E. 6860 S.": {
+    "lat": 40.626647608155,
+    "lng": -111.851216627282,
+    "score": 100,
+    "matchAddress": "1307 E 6860 S, MURRAY, UT, 84121",
+    "zone": "MURRAY",
+    "queriedAt": "2026-09-24T20:14:28.536Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "1364 E. 6400 S.": {
+    "lat": 40.634658637849,
+    "lng": -111.852827420839,
+    "score": 100,
+    "matchAddress": "1364 E 6400 S, MURRAY, UT, 84121",
+    "zone": "MURRAY",
+    "queriedAt": "2026-09-24T20:14:34.225Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "1500 E. 9400 S.": {
+    "lat": 40.580385635483,
+    "lng": -111.847039331254,
+    "score": 100,
+    "matchAddress": "1500 E 9400 S, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:14:36.771Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "1526 E. 8600 S.": {
+    "lat": 40.595055338353,
+    "lng": -111.934576705638,
+    "score": 100,
+    "matchAddress": "1526 W 8600 S, WEST JORDAN, UT, 84088",
+    "zone": "WEST JORDAN",
+    "queriedAt": "2026-09-24T20:14:40.993Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "1530 W. 14600 S.": {
+    "lat": 40.486497408576,
+    "lng": -111.934846236865,
+    "score": 100,
+    "matchAddress": "1530 W 14600 S, RIVERTON, UT, 84065",
+    "zone": "RIVERTON",
+    "queriedAt": "2026-09-24T20:14:49.127Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "1600 E. Siesta Dr.": {
+    "lat": 40.613260258774,
+    "lng": -111.846391420419,
+    "score": 100,
+    "matchAddress": "1600 SIESTA DR, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:14:54.390Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "1784 E. Creek Rd.": {
+    "lat": 40.606236113632,
+    "lng": -111.841101770522,
+    "score": 100,
+    "matchAddress": "1784 E CREEK RD, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:15:00.559Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "1787 E. Creek Rd.": {
+    "lat": 40.606292287117,
+    "lng": -111.840789629929,
+    "score": 100,
+    "matchAddress": "1787 E CREEK RD, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:15:08.017Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "1850 E. Newbury Dr.": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:24:04.141Z"
+  },
+  "2090 E. 8600 S.": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:24:15.670Z"
+  },
+  "2300 E. 9800 S": {
+    "lat": 40.573315236524,
+    "lng": -111.950126158599,
+    "score": 100,
+    "matchAddress": "2300 W 9800 S, SOUTH JORDAN, UT, 84095",
+    "zone": "SOUTH JORDAN",
+    "queriedAt": "2026-09-24T20:15:25.738Z",
+    "provider": "census",
+    "alsoMatchedIn": 3
+  },
+  "2400 E. Creek Rd.": {
+    "lat": 40.602141239749,
+    "lng": -111.821991125436,
+    "score": 100,
+    "matchAddress": "2400 E CREEK RD, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:15:34.355Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "4670 S. 1590 E.": {
+    "lat": 40.668637241778,
+    "lng": -111.847757269069,
+    "score": 100,
+    "matchAddress": "4670 S 1590 E, MURRAY, UT, 84117",
+    "zone": "MURRAY",
+    "queriedAt": "2026-09-24T20:15:44.496Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "7700 S. 700 E.": {
+    "lat": 40.610485940957,
+    "lng": -111.872249745524,
+    "score": 100,
+    "matchAddress": "7700 S 700 E, SANDY, UT, 84047",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:15:47.194Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "7750 S. 1000 E.": {
+    "lat": 40.61040251413,
+    "lng": -111.862723521815,
+    "score": 100,
+    "matchAddress": "7750 S 1000 E, SANDY, UT, 84047",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:15:53.345Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "7751 S. 1300 E": {
+    "lat": 40.611758357038,
+    "lng": -111.929064644614,
+    "score": 100,
+    "matchAddress": "7751 S 1300 W, WEST JORDAN, UT, 84084",
+    "zone": "WEST JORDAN",
+    "queriedAt": "2026-09-24T20:15:57.698Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "8148 S. 1330 E.": {
+    "lat": 40.603082612158,
+    "lng": -111.852455333944,
+    "score": 100,
+    "matchAddress": "8148 S 1330 E, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:16:05.398Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "8201 S. 700 E.": {
+    "lat": 40.601738438628,
+    "lng": -111.87207624477,
+    "score": 100,
+    "matchAddress": "8201 S 700 E, SANDY, UT, 84070",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:16:11.361Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "8518 S. 960 E.": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:24:26.792Z"
+  },
+  "8578 S. Monitor Dr.": {
+    "lat": 40.595310126785,
+    "lng": -111.831115802256,
+    "score": 100,
+    "matchAddress": "8578 S MONITOR DR, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:16:23.362Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "8651 S. 1300 E.": {
+    "lat": 40.593921999223,
+    "lng": -111.929099400061,
+    "score": 100,
+    "matchAddress": "8651 S 1300 W, WEST JORDAN, UT, 84088",
+    "zone": "WEST JORDAN",
+    "queriedAt": "2026-09-24T20:16:27.655Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "9003 S. Quail Hollow": {
+    "lat": 40.586282259015,
+    "lng": -111.815465546099,
+    "score": 100,
+    "matchAddress": "9003 QUAIL HOLLOW DR, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:16:35.456Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "9390 S. Solena Way": {
+    "lat": 40.580880939188,
+    "lng": -111.827797974926,
+    "score": 100,
+    "matchAddress": "9390 S SOLENA WAY, SANDY, UT, 84093",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:16:41.823Z",
+    "provider": "census",
+    "alsoMatchedIn": 0
+  },
+  "4706 Naniloa Dr.": {
+    "lat": 40.667331906179,
+    "lng": -111.812266565998,
+    "score": 100,
+    "matchAddress": "4706 NANILOA DR, MURRAY, UT, 84117",
+    "zone": "MURRAY",
+    "queriedAt": "2026-09-24T20:16:51.760Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "110 E 11400 S.": {
+    "lat": 40.544374334664,
+    "lng": -111.892197696957,
+    "score": 100,
+    "matchAddress": "110 W 11400 S, SANDY, UT, 84070",
+    "zone": "SANDY",
+    "queriedAt": "2026-09-24T20:16:54.506Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "4500 S 4800 W.": {
+    "lat": 40.67257970324,
+    "lng": -112.005715544353,
+    "score": 100,
+    "matchAddress": "4500 S 4800 W, WEST VALLEY CITY, UT, 84120",
+    "zone": "WEST VALLEY CITY",
+    "queriedAt": "2026-09-24T20:16:59.476Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "5820 S 3800 W.": {
+    "lat": 40.645461896951,
+    "lng": -111.982207338851,
+    "score": 80,
+    "matchAddress": "3800 W 5820 S, WEST VALLEY CITY, UT, 84129",
+    "zone": "WEST VALLEY CITY",
+    "queriedAt": "2026-09-24T20:17:05.640Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "6200 S. 3200 W.": {
+    "lat": 40.638517013836,
+    "lng": -111.9673949613,
+    "score": 100,
+    "matchAddress": "6200 S 3200 W, WEST VALLEY CITY, UT, 84129",
+    "zone": "WEST VALLEY CITY",
+    "queriedAt": "2026-09-24T20:17:11.801Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "3600 W. 10200 S.": {
+    "lat": 40.566047824451,
+    "lng": -111.975627042267,
+    "score": 100,
+    "matchAddress": "3600 W 10200 S, SOUTH JORDAN, UT, 84095",
+    "zone": "SOUTH JORDAN",
+    "queriedAt": "2026-09-24T20:17:18.441Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "3145 W. 11400 S.": {
+    "lat": 40.54411170947,
+    "lng": -111.965989352109,
+    "score": 100,
+    "matchAddress": "3145 W 11400 S, SOUTH JORDAN, UT, 84095",
+    "zone": "SOUTH JORDAN",
+    "queriedAt": "2026-09-24T20:17:24.198Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "10730 S. 1300 E.": {
+    "lat": 40.556567663506,
+    "lng": -111.929183936148,
+    "score": 100,
+    "matchAddress": "10730 S 1300 W, SOUTH JORDAN, UT, 84095",
+    "zone": "SOUTH JORDAN",
+    "queriedAt": "2026-09-24T20:17:30.990Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "15305 S. 3200 W.": {
+    "lat": 40.472702163631,
+    "lng": -111.967258570107,
+    "score": 100,
+    "matchAddress": "15305 S 3200 W, RIVERTON, UT, 84065",
+    "zone": "RIVERTON",
+    "queriedAt": "2026-09-24T20:17:37.708Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "3200 W. 11800 S.": {
+    "lat": 40.536906301837,
+    "lng": -111.966301712529,
+    "score": 100,
+    "matchAddress": "3200 W 11800 S, RIVERTON, UT, 84065",
+    "zone": "RIVERTON",
+    "queriedAt": "2026-09-24T20:17:43.657Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "5700 W. 10200 S.": {
+    "lat": 40.566084277872,
+    "lng": -112.037448956728,
+    "score": 100,
+    "matchAddress": "5700 W 10200 S, WEST JORDAN, UT, 84081",
+    "zone": "WEST JORDAN",
+    "queriedAt": "2026-09-24T20:17:47.363Z",
+    "provider": "census",
+    "alsoMatchedIn": 1
+  },
+  "13400 S. 3300 W.": {
+    "lat": 40.507883295077,
+    "lng": -111.969921392146,
+    "score": 80,
+    "matchAddress": "3300 W 13400 S, RIVERTON, UT, 84065",
+    "zone": "RIVERTON",
+    "queriedAt": "2026-09-24T20:17:55.707Z",
+    "provider": "census",
+    "alsoMatchedIn": 2
+  },
+  "6924 Old Bing. Hwy": {
+    "missed": true,
+    "triedAt": "2026-09-24T20:24:37.313Z"
+  }
+}
