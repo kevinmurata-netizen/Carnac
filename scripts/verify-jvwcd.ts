@@ -145,6 +145,42 @@ async function main() {
   const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`SELECT count(*) FROM asset_locations`;
   console.log(`  ${String(rows[0].count).padStart(3)}  asset_locations rows in total`);
 
+  // Reservoir scoring: the one class with enough published data to rank, and
+  // the check is that it ranks rather than returning the same number 31 times.
+  const assessments = await prisma.riskAssessment.findMany({
+    where: { asset: { assetType: { code: "RESERVOIR" } } },
+    select: {
+      riskScore: true,
+      probabilityScore: true,
+      consequenceScore: true,
+      asset: { select: { assetCode: true, name: true } },
+      factors: { select: { factorName: true, factorValue: true, weight: true } },
+    },
+    orderBy: { riskScore: "desc" },
+  });
+
+  if (assessments.length > 0) {
+    const scores = assessments.map((a) => a.riskScore).sort((a, b) => a - b);
+    const distinct = new Set(scores).size;
+    console.log(`\nreservoir risk: ${assessments.length} scored`);
+    console.log(
+      `  range ${scores[0]} to ${scores.at(-1)}, median ${scores[Math.floor(scores.length / 2)]}, ${distinct} distinct scores`
+    );
+    const top = assessments[0];
+    console.log(`  highest: ${top.asset.assetCode} — ${top.asset.name}`);
+    console.log(`    risk ${top.riskScore} = pof ${top.probabilityScore} x cof ${top.consequenceScore}`);
+    for (const f of top.factors) console.log(`      ${f.factorValue}/5 (weight ${f.weight})  ${f.factorName}`);
+
+    const predictions = await prisma.deteriorationPrediction.findMany({
+      where: { asset: { assetType: { code: "RESERVOIR" } } },
+      select: { predictedCondition: true },
+    });
+    const conditions = predictions.map((p) => p.predictedCondition).sort((a, b) => a - b);
+    console.log(
+      `  modelled condition: ${conditions.length} predictions, ${conditions[0]} to ${conditions.at(-1)} (modelled from age, not measured)`
+    );
+  }
+
   await prisma.$disconnect();
 }
 main();

@@ -6,6 +6,7 @@ import { importWells } from "./jvwcd/import-wells";
 import { importBoosterPumps } from "./jvwcd/import-booster-pumps";
 import { clearImportedAssets } from "./jvwcd/clear-imported";
 import { importFacilityLocations, importPipeLocations } from "./jvwcd/import-locations";
+import { recomputeReservoirRisk } from "@/server/reservoir-risk";
 
 /**
  * Seed this instance with Jordan Valley Water Conservancy District's published
@@ -81,6 +82,20 @@ async function main() {
   );
   if (located.misses.length > 0) {
     console.log(`  did not match: ${located.misses.slice(0, 8).join(" · ")}${located.misses.length > 8 ? " …" : ""}`);
+  }
+
+  // Reservoirs are the one class here with enough published data to score:
+  // a build year spanning seventy years and an inspection year that is
+  // sometimes a decade old.
+  const scored = await recomputeReservoirRisk(organization.id);
+  if (scored.length > 0) {
+    const worst = [...scored].sort((a, b) => b.riskScore - a.riskScore).slice(0, 5);
+    console.log(`\nreservoir risk: ${scored.length} scored. Highest risk:`);
+    for (const r of worst) {
+      console.log(
+        `  ${r.assetCode}  risk ${r.riskScore.toFixed(1)} (pof ${r.pof} x cof ${r.cof})  ${r.material ?? "unknown"}, ${r.ageYears ?? "?"} yr, ${r.capacityMg ?? "?"} MG, inspected ${r.yearsSinceInspection == null ? "never" : `${r.yearsSinceInspection} yr ago`}`
+      );
+    }
   }
 
   const warnings = [

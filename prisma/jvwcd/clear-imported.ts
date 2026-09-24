@@ -30,6 +30,16 @@ export async function clearImportedAssets(prisma: PrismaClient, organizationId: 
   if (assets.length === 0) return 0;
 
   const ids = assets.map((a) => a.id);
+
+  // Anything scored from these assets goes with them. A risk assessment for a
+  // reservoir that no longer exists is not history, it is a dangling row —
+  // and its factors hold the foreign key, so they go first.
+  await prisma.riskFactor.deleteMany({ where: { riskAssessment: { assetId: { in: ids } } } });
+  await prisma.riskAssessment.deleteMany({ where: { assetId: { in: ids } } });
+  await prisma.deteriorationPrediction.deleteMany({ where: { assetId: { in: ids } } });
+  await prisma.criticalityScore.deleteMany({ where: { assetId: { in: ids } } });
+  await prisma.conditionMeasurement.deleteMany({ where: { assetId: { in: ids } } });
+
   await prisma.assetAttributeValue.deleteMany({ where: { assetId: { in: ids } } });
   await prisma.$executeRaw`DELETE FROM asset_locations WHERE "assetId" = ANY(${ids}::text[])`;
   await prisma.asset.deleteMany({ where: { id: { in: ids } } });
