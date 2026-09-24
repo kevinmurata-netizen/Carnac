@@ -66,7 +66,7 @@ export const JVWCD_ASSET_TYPES: TypeSpec[] = [
         code: "LAST_INSPECTED",
         label: "Last Inspected",
         dataType: AttributeDataType.DATE,
-        help: "Date of the last interior inspection. Gaps here are real and are what makes the inspection interval worth reporting on.",
+        help: "The District publishes a year, not a date, so this is 1 January of that year and is only accurate to the year. Gaps are real and are what makes the inspection interval worth reporting on.",
       },
       { code: "FLOOR_ELEV_FT", label: "Floor Elevation", dataType: AttributeDataType.NUMBER, unit: "ft" },
       { code: "OVERFLOW_ELEV_FT", label: "Overflow Elevation", dataType: AttributeDataType.NUMBER, unit: "ft" },
@@ -165,11 +165,6 @@ export async function ensureJvwcdAssetTypes(prisma: PrismaClient, organizationId
     for (const attribute of spec.attributes) {
       // Shaped the way the rest of the app reads it: `options` drives an ENUM
       // field's choices, `help` is shown beside the field.
-      const config = {
-        ...(attribute.options ? { options: attribute.options } : {}),
-        ...(attribute.help ? { help: attribute.help } : {}),
-      } satisfies Prisma.InputJsonObject;
-
       await prisma.assetAttributeDefinition.upsert({
         where: { assetTypeId_code: { assetTypeId: assetType.id, code: attribute.code } },
         update: {
@@ -177,7 +172,7 @@ export async function ensureJvwcdAssetTypes(prisma: PrismaClient, organizationId
           dataType: attribute.dataType,
           unit: attribute.unit ?? null,
           sortOrder,
-          config: Object.keys(config).length > 0 ? config : undefined,
+          config: configOf(attribute),
         },
         create: {
           assetTypeId: assetType.id,
@@ -187,7 +182,7 @@ export async function ensureJvwcdAssetTypes(prisma: PrismaClient, organizationId
           unit: attribute.unit ?? null,
           isRequired: false,
           sortOrder,
-          config: Object.keys(config).length > 0 ? config : undefined,
+          config: configOf(attribute),
         },
       });
       sortOrder++;
@@ -198,6 +193,38 @@ export async function ensureJvwcdAssetTypes(prisma: PrismaClient, organizationId
 
   return summary;
 }
+
+/**
+ * What the pipe inventory carries that the sample network never did: the band
+ * label it was published under, its valve count, its share of the system, and
+ * a sentence saying whether the row is a published band or a synthesized share
+ * of one.
+ *
+ * Added to WATERLINE rather than to a new type, because they describe the same
+ * pipes every other attribute on that type describes.
+ */
+const WATERLINE_BAND_ATTRIBUTES: AttributeSpec[] = [
+  {
+    code: "DIAMETER_BAND",
+    label: "Diameter Band",
+    dataType: AttributeDataType.TEXT,
+    help: 'As published — "<2", "3-4", "15-16". The numeric Diameter beside it is the largest in the band, which is what rules and cost rates compare.',
+  },
+  { code: "VALVE_COUNT", label: "Valves", dataType: AttributeDataType.NUMBER },
+  {
+    code: "PCT_OF_SYSTEM",
+    label: "Share of System",
+    dataType: AttributeDataType.NUMBER,
+    unit: "%",
+    help: "Only on a row that is a whole published band; a share of the system means nothing for one segment of one.",
+  },
+  {
+    code: "SEGMENT_BASIS",
+    label: "Basis",
+    dataType: AttributeDataType.TEXT,
+    help: "Whether this row is a diameter band as the District published it, or a synthesized share of one. Synthesized segments are illustrative and are not real alignments.",
+  },
+];
 
 /**
  * JVWCD's pipe inventory is summarised by diameter band, with no material and
@@ -211,11 +238,44 @@ export async function ensureJvwcdAssetTypes(prisma: PrismaClient, organizationId
  */
 export async function relaxWaterlineRequirements(prisma: PrismaClient) {
   const waterline = await prisma.assetType.findUnique({ where: { code: "WATERLINE" }, select: { id: true } });
-  if (!waterline) return [];
+  if (!waterline) return { relaxed: 0, added: 0 };
 
   const relaxed = await prisma.assetAttributeDefinition.updateMany({
     where: { assetTypeId: waterline.id, code: { in: ["MATERIAL"] }, isRequired: true },
     data: { isRequired: false },
   });
-  return relaxed.count;
+
+  const highest = await prisma.assetAttributeDefinition.aggregate({
+    where: { assetTypeId: waterline.id },
+    _max: { sortOrder: true },
+  });
+  let sortOrder = (highest._max.sortOrder ?? 0) + 1;
+  for (const attribute of WATERLINE_BAND_ATTRIBUTES) {
+    await prisma.assetAttributeDefinition.upsert({
+      where: { assetTypeId_code: { assetTypeId: waterline.id, code: attribute.code } },
+      update: { label: attribute.label, dataType: attribute.dataType, unit: attribute.unit ?? null, config: configOf(attribute) },
+      create: {
+        assetTypeId: waterline.id,
+        code: attribute.code,
+        label: attribute.label,
+        dataType: attribute.dataType,
+        unit: attribute.unit ?? null,
+        isRequired: false,
+        sortOrder: sortOrder++,
+        config: configOf(attribute),
+      },
+    });
+  }
+
+  return { relaxed: relaxed.count, added: WATERLINE_BAND_ATTRIBUTES.length };
+}
+
+/** The `config` blob as the rest of the app reads it: `options` for an ENUM's
+ * choices, `help` for the note beside the field. */
+function configOf(attribute: AttributeSpec) {
+  const config = {
+    ...(attribute.options ? { options: attribute.options } : {}),
+    ...(attribute.help ? { help: attribute.help } : {}),
+  } satisfies Prisma.InputJsonObject;
+  return Object.keys(config).length > 0 ? config : undefined;
 }

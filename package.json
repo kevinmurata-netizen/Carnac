@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "carnac",
   "version": "0.1.0",
   "private": true,
@@ -25,7 +25,8 @@
     "qa:options": "tsx scripts/check-option-arithmetic.ts",
     "qa:raw": "tsx scripts/check-raw-queries.ts",
     "qa:priority": "tsx scripts/priority-ranking.ts",
-    "qa:workplan": "tsx scripts/work-plan-allocation.ts"
+    "qa:workplan": "tsx scripts/work-plan-allocation.ts",
+    "qa:jvwcd": "tsx scripts/verify-jvwcd.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",
