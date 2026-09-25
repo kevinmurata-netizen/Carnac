@@ -19,6 +19,7 @@ import { ensureTreatments } from "../src/server/treatments";
 import { ensureBaselineScenarios } from "../src/server/scenarios";
 import { ensureBaselineWorkPlan } from "../src/server/workplans";
 import { WATERLINE_TREATMENTS } from "../src/domain/waterline/treatment";
+import { seedSampleFacilities } from "./facilities";
 
 // The shared client, so the seed uses the same driver adapter the app does.
 // Constructing one here would fail outright: with engineType "client" there is
@@ -365,6 +366,10 @@ async function main() {
     );
     console.log(`  seeded ${batchEnd}/${ASSET_COUNT} waterline segments`);
   }
+
+  console.log("Adding storage, supply and pumping facilities…");
+  const facilities = await seedSampleFacilities(prisma, org.id);
+  console.log(`  ${facilities.created} facilities across ${facilities.types} asset types`);
 
   console.log("Computing risk assessments…");
   const assessed = await recomputeRiskForOrganization(org.id);
