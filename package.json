@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed:facilities": "tsx prisma/seed-facilities.ts",
+    "db:seed:facilities:sql": "tsx scripts/facilities-sql.ts",
     "db:reshape": "tsx scripts/reshape-network.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
