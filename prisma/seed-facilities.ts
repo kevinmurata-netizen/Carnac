@@ -14,8 +14,30 @@ import { seedSampleFacilities } from "./facilities";
  *   npm run db:seed:facilities                 the only organization
  *   npm run db:seed:facilities -- <orgId>      one of several
  */
+/**
+ * Which database this is about to write to, credentials stripped.
+ *
+ * Every organization in every environment is called Meridian Falls Water
+ * Utility, so the name above says nothing about where the rows are landing.
+ * `.env` holds the local URL, which means the obvious command writes to Docker
+ * even when the intent was production — and the only thing that gave that away
+ * was a count of zero.
+ */
+function whereAmI(): string {
+  const url = process.env.DATABASE_URL;
+  if (!url) return "nowhere — DATABASE_URL is not set";
+  try {
+    const { hostname, port, pathname } = new URL(url);
+    const local = /^(localhost|127\.0\.0\.1|host\.docker\.internal)$/.test(hostname);
+    return `${hostname}${port ? `:${port}` : ""}${pathname} ${local ? "(local)" : "(remote — not your Docker database)"}`;
+  } catch {
+    return "an unreadable DATABASE_URL";
+  }
+}
+
 async function main() {
   const wanted = process.argv[2];
+  console.log(`Database: ${whereAmI()}`);
 
   const organizations = await prisma.organization.findMany({
     select: { id: true, name: true },
