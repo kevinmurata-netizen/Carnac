@@ -48,7 +48,66 @@ export type NetworkFeature = {
   assetCode: string;
   status: string;
   geometry: GeoJSON.Geometry;
+  /** What kind of asset this is. A network of pipes is one type and says
+   * nothing by carrying it; a map that also holds reservoirs, wells and pump
+   * stations has to be able to tell them apart. */
+  assetTypeCode: string;
+  assetTypeName: string;
+  assetName: string | null;
 };
+
+/**
+ * Facilities on the map alongside the pipes.
+ *
+ * A separate call rather than a flag on the one below, because the two ask
+ * different questions. The network GeoJSON is "these segments, filtered the way
+ * the page is filtered"; this is "everything that is not a pipe and has a
+ * position", which no pipe filter should narrow and no pipe filter should hide.
+ */
+export async function getFacilityGeoJSON(organizationId: string): Promise<GeoJSON.FeatureCollection> {
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      assetCode: string;
+      assetName: string | null;
+      status: string;
+      assetTypeCode: string;
+      assetTypeName: string;
+      basis: string | null;
+      geometry: GeoJSON.Geometry;
+    }>
+  >(Prisma.sql`
+    SELECT a.id, a."assetCode", a.name AS "assetName", a.status::text AS status,
+           t.code AS "assetTypeCode", t.name AS "assetTypeName",
+           ST_AsGeoJSON(l.geometry)::json AS geometry,
+           (SELECT av."textValue" FROM asset_attribute_values av
+              JOIN asset_attribute_definitions d ON d.id = av."definitionId"
+             WHERE av."assetId" = a.id AND d.code = 'LOCATION_BASIS') AS basis
+    FROM assets a
+    JOIN asset_types t ON t.id = a."assetTypeId"
+    JOIN asset_locations l ON l."assetId" = a.id
+    WHERE a."organizationId" = ${organizationId} AND a."deletedAt" IS NULL AND t.code <> 'WATERLINE'
+  `);
+
+  return {
+    type: "FeatureCollection",
+    features: rows.map((row) => ({
+      type: "Feature",
+      geometry: row.geometry,
+      properties: {
+        id: row.id,
+        assetCode: row.assetCode,
+        label: row.assetName,
+        status: row.status,
+        assetTypeCode: row.assetTypeCode,
+        assetTypeName: row.assetTypeName,
+        // Said on the feature itself, so a point that is not a real location
+        // can say so in its own hover card rather than only in a legend.
+        geolocated: row.basis?.startsWith("Geocoded") ? "Geocoded from the published address" : "Not geolocated",
+      },
+    })),
+  };
+}
 
 /**
  * The network as GeoJSON, carrying whatever the hover card is configured to

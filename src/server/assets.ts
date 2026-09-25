@@ -335,9 +335,13 @@ export async function listAssetOptions(organizationId: string): Promise<Array<{ 
   });
 }
 
+// These feed the waterline grid's filters, so they are scoped to waterlines.
+// Without that, a reservoir built of concrete puts "Concrete" in the pipe
+// material list and a geocoded well puts its city in the service areas —
+// filters offering values no pipe can have.
 export async function listServiceAreas(organizationId: string): Promise<string[]> {
   const rows = await prisma.assetLocation.findMany({
-    where: { asset: { organizationId, deletedAt: null } },
+    where: { asset: { organizationId, deletedAt: null, assetType: { code: "WATERLINE" } } },
     select: { serviceArea: true },
     distinct: ["serviceArea"],
   });
@@ -347,13 +351,90 @@ export async function listServiceAreas(organizationId: string): Promise<string[]
 export async function listMaterials(organizationId: string): Promise<string[]> {
   const rows = await prisma.assetAttributeValue.findMany({
     where: {
-      definition: { code: WATERLINE_ATTRIBUTES.MATERIAL },
+      definition: { code: WATERLINE_ATTRIBUTES.MATERIAL, assetType: { code: "WATERLINE" } },
       asset: { organizationId, deletedAt: null },
     },
     select: { textValue: true },
     distinct: ["textValue"],
   });
   return rows.map((r) => r.textValue).filter((v): v is string => !!v).sort();
+}
+
+/**
+ * Every asset type this organization holds, with how many assets each has.
+ *
+ * The inventory screen is built around waterlines and always will be — that is
+ * what the model plans and what most of the app is about. But an organization
+ * that also holds reservoirs, wells and pump stations should be able to look
+ * at them, and this is what lets the page offer the choice.
+ */
+export async function listAssetTypes(organizationId: string) {
+  const types = await prisma.assetType.findMany({
+    where: { organizationId },
+    select: { code: true, name: true, description: true, _count: { select: { assets: true } } },
+    orderBy: { name: "asc" },
+  });
+  return types.map((t) => ({ code: t.code, name: t.name, description: t.description, count: t._count.assets }));
+}
+
+export type TypedAssetList = {
+  type: { code: string; name: string; description: string | null };
+  /** The type's own attributes, in the order it defines them — the columns a
+   * reservoir or a well should be read in, rather than a pipe's. */
+  columns: Array<{ code: string; label: string; unit: string | null }>;
+  rows: Array<{
+    id: string;
+    assetCode: string;
+    name: string | null;
+    status: AssetStatus;
+    installationDate: Date | null;
+    attributes: Record<string, string | number | boolean | Date | null>;
+  }>;
+};
+
+/**
+ * Assets of one type, with that type's own attributes as the columns.
+ *
+ * Deliberately plain: no filters, no sorting, no saved views. The waterline
+ * grid has all of that because waterlines are what this app plans; a facility
+ * list is here so the data can be seen and checked, and pretending otherwise
+ * would mean building six grids nobody asked for.
+ */
+export async function listTypedAssets(organizationId: string, code: string): Promise<TypedAssetList | null> {
+  const type = await prisma.assetType.findFirst({
+    where: { code, organizationId },
+    select: {
+      code: true,
+      name: true,
+      description: true,
+      attributeDefinitions: { select: { code: true, label: true, unit: true }, orderBy: { sortOrder: "asc" } },
+    },
+  });
+  if (!type) return null;
+
+  const assets = await prisma.asset.findMany({
+    where: { organizationId, assetType: { code }, deletedAt: null },
+    include: attributeValueInclude,
+    orderBy: { assetCode: "asc" },
+  });
+
+  return {
+    type: { code: type.code, name: type.name, description: type.description },
+    // Three attributes are left out because the table already shows them:
+    // the facility id is the asset code, the address is the name, and the
+    // location basis is a sentence rather than a value.
+    columns: type.attributeDefinitions.filter(
+      (d) => !["LOCATION_BASIS", "FACILITY_ID", "ADDRESS"].includes(d.code)
+    ),
+    rows: assets.map((a) => ({
+      id: a.id,
+      assetCode: a.assetCode,
+      name: a.name,
+      status: a.status,
+      installationDate: a.installationDate,
+      attributes: flattenAttributes(a),
+    })),
+  };
 }
 
 export type NetworkSummary = {
