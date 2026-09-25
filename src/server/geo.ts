@@ -37,6 +37,31 @@ export async function insertAssetLineLocation(
   `;
 }
 
+/**
+ * A facility's position: the same table as the pipes, holding a Point rather
+ * than a line. Raw SQL for the same reason as above — geometry is NOT NULL and
+ * Prisma excludes the column — and the point is repeated into
+ * startLat/startLng so anything reading coordinates without PostGIS still
+ * finds them.
+ */
+export async function insertAssetPointLocation(
+  assetId: string,
+  point: { lat: number; lng: number },
+  extra: { serviceArea?: string | null; pressureZone?: string | null } = {}
+) {
+  await prisma.$executeRaw`
+    INSERT INTO asset_locations
+      (id, "assetId", geometry, "startLat", "startLng", "serviceArea", "pressureZone")
+    VALUES (
+      ${`loc_${assetId}`},
+      ${assetId},
+      ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326),
+      ${point.lat}, ${point.lng},
+      ${extra.serviceArea ?? null}, ${extra.pressureZone ?? null}
+    )
+  `;
+}
+
 export type NetworkFeature = {
   installationDate: Date | null;
   serviceArea: string | null;
@@ -64,7 +89,15 @@ export type NetworkFeature = {
  * the page is filtered"; this is "everything that is not a pipe and has a
  * position", which no pipe filter should narrow and no pipe filter should hide.
  */
-export async function getFacilityGeoJSON(organizationId: string): Promise<GeoJSON.FeatureCollection> {
+export async function getFacilityGeoJSON(
+  organizationId: string,
+  assetIds?: string[]
+): Promise<GeoJSON.FeatureCollection> {
+  if (assetIds && assetIds.length === 0) {
+    return { type: "FeatureCollection", features: [] };
+  }
+  const idFilter = assetIds ? Prisma.sql`AND a.id IN (${Prisma.join(assetIds)})` : Prisma.empty;
+
   const rows = await prisma.$queryRaw<
     Array<{
       id: string;
@@ -86,7 +119,7 @@ export async function getFacilityGeoJSON(organizationId: string): Promise<GeoJSO
     FROM assets a
     JOIN asset_types t ON t.id = a."assetTypeId"
     JOIN asset_locations l ON l."assetId" = a.id
-    WHERE a."organizationId" = ${organizationId} AND a."deletedAt" IS NULL AND t.code <> 'WATERLINE'
+    WHERE a."organizationId" = ${organizationId} AND a."deletedAt" IS NULL AND t.code <> 'WATERLINE' ${idFilter}
   `);
 
   return {
@@ -103,10 +136,27 @@ export async function getFacilityGeoJSON(organizationId: string): Promise<GeoJSO
         assetTypeName: row.assetTypeName,
         // Said on the feature itself, so a point that is not a real location
         // can say so in its own hover card rather than only in a legend.
-        geolocated: row.basis?.startsWith("Geocoded") ? "Geocoded from the published address" : "Not geolocated",
+        geolocated: positionClaim(row.basis),
       },
     })),
   };
+}
+
+/**
+ * What the point on the map claims to be.
+ *
+ * Only a basis that says the position was scattered or drawn illustratively is
+ * a position the asset does not really have; the map fades those and the page
+ * counts them. Anything else — a geocoded address, or seed data that places its
+ * own facilities the way it places its own pipes — is drawn plainly. Reading it
+ * the other way round, as "anything not geocoded is suspect", faded every
+ * facility in a demo network whose pipes beside it were drawn solid.
+ */
+function positionClaim(basis: string | null): string {
+  if (!basis) return "Mapped position";
+  if (/^(Scattered|Illustrative)/i.test(basis)) return "Not geolocated";
+  if (basis.startsWith("Geocoded")) return "Geocoded from the published address";
+  return "Mapped position";
 }
 
 /**

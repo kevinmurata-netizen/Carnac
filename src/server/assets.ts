@@ -195,7 +195,9 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
 export async function getAssetById(organizationId: string, id: string) {
   return prisma.asset.findFirst({
     where: { id, organizationId, deletedAt: null },
-    include: attributeValueInclude,
+    // The type comes with it so the page can say what it is looking at. The
+    // header called everything a waterline, which a reservoir is not.
+    include: { ...attributeValueInclude, assetType: { select: { code: true, name: true } } },
   });
 }
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getAssetById, flattenAttributes } from "@/server/assets";
-import { getNetworkGeoJSON } from "@/server/geo";
+import { getFacilityGeoJSON, getNetworkGeoJSON } from "@/server/geo";
 import { getConditionHistoryForAsset } from "@/server/condition";
 import { listInspections, summarizeInspectionScore } from "@/server/inspections";
 import { listFailuresForAsset } from "@/server/failures";
@@ -41,6 +41,8 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
   REMOVED: "outline",
 };
 
+const EMPTY_COLLECTION: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
+
 export default async function AssetDetailPage({
   params,
   searchParams,
@@ -62,8 +64,14 @@ export default async function AssetDetailPage({
   const diameter = attrs[WATERLINE_ATTRIBUTES.DIAMETER] as number | undefined;
   const age = ageInYears(asset.installationDate);
 
+  // A pipe runs between two points; a reservoir or a well stands at one. Both
+  // are rows in the same table, so an asset with no far end is a point rather
+  // than a segment whose other end went missing — and a point comes from the
+  // facility query, which is the one that knows how to describe it.
+  const isPoint = asset.location != null && (asset.location.endLat == null || asset.location.endLng == null);
+
   const [geojson, conditionHistory, inspections, failures, risk, forecast, recommendation, lcca] = await Promise.all([
-    getNetworkGeoJSON(organizationId, [asset.id]),
+    isPoint ? getFacilityGeoJSON(organizationId, [asset.id]) : getNetworkGeoJSON(organizationId, [asset.id]),
     getConditionHistoryForAsset(organizationId, asset.id),
     listInspections(organizationId, { assetId: asset.id }),
     listFailuresForAsset(organizationId, asset.id),
@@ -164,9 +172,12 @@ export default async function AssetDetailPage({
       }),
   };
 
-  const endpoints = asset.location
-    ? `${asset.location.startLat?.toFixed(4)}, ${asset.location.startLng?.toFixed(4)} → ${asset.location.endLat?.toFixed(4)}, ${asset.location.endLng?.toFixed(4)}`
-    : "—";
+  const start = asset.location ? `${asset.location.startLat?.toFixed(4)}, ${asset.location.startLng?.toFixed(4)}` : null;
+  const endpoints = !asset.location
+    ? "—"
+    : isPoint
+      ? start!
+      : `${start} → ${asset.location.endLat?.toFixed(4)}, ${asset.location.endLng?.toFixed(4)}`;
 
   const locationSection: EditableSection = {
     title: "Location",
@@ -184,7 +195,7 @@ export default async function AssetDetailPage({
       },
       // Geometry comes from the imported network, so the endpoints are shown
       // but not editable here — moving a segment is a map operation.
-      { name: "endpoints", label: "Endpoints", display: endpoints, value: endpoints, readOnly: true },
+      { name: "endpoints", label: isPoint ? "Position" : "Endpoints", display: endpoints, value: endpoints, readOnly: true },
     ],
   };
 
@@ -193,7 +204,7 @@ export default async function AssetDetailPage({
       <SetBreadcrumb segment={id} label={asset.assetCode} />
       <PageHeader
         title={asset.assetCode}
-        description={[diameter ? `${diameter}"` : null, material, "Waterline", asset.location?.serviceArea]
+        description={[diameter ? `${diameter}"` : null, material, asset.assetType.name, asset.location?.serviceArea]
           .filter(Boolean)
           .join(" · ")}
         actions={<Badge variant={STATUS_VARIANT[asset.status]}>{formatStatus(asset.status)}</Badge>}
@@ -249,7 +260,14 @@ export default async function AssetDetailPage({
           <Card>
             <CardContent className="p-0">
               <div className="h-[420px] overflow-hidden rounded-lg">
-                <NetworkMap geojson={geojson} className="h-full w-full" />
+                {/* A pipe is a line the network layer draws; a facility is a
+                    point, which only the facility layer draws. Passing a point
+                    as the network left the tab showing an empty map. */}
+                <NetworkMap
+                  geojson={isPoint ? EMPTY_COLLECTION : geojson}
+                  facilities={isPoint ? geojson : undefined}
+                  className="h-full w-full"
+                />
               </div>
             </CardContent>
           </Card>
