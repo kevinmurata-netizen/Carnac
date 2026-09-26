@@ -91,9 +91,12 @@ export default async function SettingsPage({
 
   /** One line per card, keyed the same way the registry is. */
   const summaries: Record<string, string> = {
-    configuration: `${config.assetTypes.length} ${ASSET_LABEL.lower} type(s) · ${formatNumber(
+    "asset-types": `${config.assetTypes.length} type${config.assetTypes.length === 1 ? "" : "s"} · ${formatNumber(
       config.attributeDefinitions.length
-    )} attributes · ${config.inspectionTemplates.length} template(s)`,
+    )} attributes`,
+    "inspection-templates": `${config.inspectionTemplates.length} form${
+      config.inspectionTemplates.length === 1 ? "" : "s"
+    } · ${config.inspectionTemplates.filter((t) => t.active).length} active`,
     navigation:
       renamedCount === 0
         ? "All pages use their default names"

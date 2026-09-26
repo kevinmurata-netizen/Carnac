@@ -1,7 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { AttributeDataType } from "@prisma/client";
 import { requireCardWrite, requireAnyCardWrite } from "@/server/guard";
+import {
+  createAttributeDefinition,
+  updateInventoryField,
+  deleteInventoryField,
+} from "@/server/field-config";
 import { recomputeRiskForOrganization } from "@/server/risk";
 import {
   updateConditionModel,
@@ -10,6 +16,7 @@ import {
   updateAssetType,
   createAssetType,
   updateInspectionTemplate,
+  createInspectionTemplate,
   createFailureType,
   updateFailureType,
   deleteFailureType,
@@ -151,17 +158,20 @@ export async function saveDeteriorationModelAction(
   }
 }
 
+const ASSET_TYPES_CARD = "/settings/asset-types";
+const TEMPLATES_CARD = "/settings/inspection-templates";
+
 export async function saveAssetTypeAction(
   _prev: SettingsActionState,
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireWriteAccess("/settings/configuration");
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
     await updateAssetType(session.user.organizationId, String(formData.get("id") ?? ""), {
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
     });
-    revalidateAll("/settings/configuration");
+    revalidateAll(ASSET_TYPES_CARD);
     return { status: "success", message: "Asset type updated." };
   } catch (e) {
     return fail(e);
@@ -173,34 +183,128 @@ export async function createAssetTypeAction(
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireWriteAccess("/settings/configuration");
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
     await createAssetType(session.user.organizationId, {
       code: String(formData.get("code") ?? ""),
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
     });
-    revalidateAll("/settings/configuration");
+    revalidateAll(ASSET_TYPES_CARD);
     return {
       status: "success",
-      message: "Asset type created. It has no attributes, inspection template or models yet — add those before recording assets against it.",
+      message:
+        "Asset type created. It holds no data until it has attributes — add those next, on the type itself.",
     };
   } catch (e) {
     return fail(e);
   }
 }
 
+// --- Attributes on an asset type -------------------------------------------
+
+function parseOptions(raw: unknown): string[] {
+  return String(raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function parseDataType(raw: unknown): AttributeDataType {
+  const value = String(raw ?? "");
+  if ((Object.values(AttributeDataType) as string[]).includes(value)) return value as AttributeDataType;
+  throw new Error(`"${value}" is not a valid data type`);
+}
+
+export async function createAttributeAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    await createAttributeDefinition(session.user.organizationId, String(formData.get("assetTypeId") ?? ""), {
+      code: String(formData.get("code") ?? ""),
+      label: String(formData.get("label") ?? ""),
+      dataType: parseDataType(formData.get("dataType")),
+      unit: String(formData.get("unit") ?? ""),
+      isRequired: formData.get("isRequired") === "on",
+      options: parseOptions(formData.get("options")),
+      help: String(formData.get("help") ?? ""),
+    });
+    revalidateAll(ASSET_TYPES_CARD, "/administration/fields");
+    return { status: "success", message: "Attribute added." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function saveAttributeAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    await updateInventoryField(session.user.organizationId, String(formData.get("id") ?? ""), {
+      label: String(formData.get("label") ?? ""),
+      unit: String(formData.get("unit") ?? "") || null,
+      isRequired: formData.get("isRequired") === "on",
+      sortOrder: Number(formData.get("sortOrder") ?? 0),
+      options: parseOptions(formData.get("options")),
+    });
+    revalidateAll(ASSET_TYPES_CARD, "/administration/fields");
+    return { status: "success", message: "Attribute updated." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteAttributeAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    await deleteInventoryField(session.user.organizationId, String(formData.get("id") ?? ""));
+    revalidateAll(ASSET_TYPES_CARD, "/administration/fields");
+    return { status: "success", message: "Attribute deleted." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// --- Inspection templates ---------------------------------------------------
+
 export async function saveTemplateAction(
   _prev: SettingsActionState,
   formData: FormData
 ): Promise<SettingsActionState> {
   try {
-    const session = await requireWriteAccess("/settings/configuration");
+    const session = await requireWriteAccess(TEMPLATES_CARD);
     await updateInspectionTemplate(session.user.organizationId, String(formData.get("id") ?? ""), {
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
     });
-    revalidateAll("/settings/configuration");
+    revalidateAll(TEMPLATES_CARD, ASSET_TYPES_CARD);
     return { status: "success", message: "Inspection template updated." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function createTemplateAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess(TEMPLATES_CARD);
+    await createInspectionTemplate(session.user.organizationId, String(formData.get("assetTypeId") ?? ""), {
+      name: String(formData.get("name") ?? ""),
+      description: String(formData.get("description") ?? "") || null,
+    });
+    revalidateAll(TEMPLATES_CARD, ASSET_TYPES_CARD, "/inspections");
+    return {
+      status: "success",
+      message: "Template created. It has no questions yet — add those under Administration → Fields.",
+    };
   } catch (e) {
     return fail(e);
   }
@@ -413,9 +517,9 @@ export async function toggleDeteriorationActiveAction(id: string, isActive: bool
 }
 
 export async function toggleTemplateActiveAction(id: string, isActive: boolean) {
-  const session = await requireWriteAccess("/settings/configuration");
+  const session = await requireWriteAccess(TEMPLATES_CARD);
   const name = await setInspectionTemplateActive(session.user.organizationId, id, isActive);
-  revalidateAll("/settings/configuration", "/inspections");
+  revalidateAll(TEMPLATES_CARD, ASSET_TYPES_CARD, "/inspections");
   return isActive ? `${name} is active.` : `${name} is inactive and will not be offered for new inspections.`;
 }
 

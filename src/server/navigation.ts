@@ -102,7 +102,8 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
   sections.push({
     group: "Settings Pages",
     items: [
-      ["/settings/configuration", "configuration"],
+      ["/settings/asset-types", "asset-types"],
+      ["/settings/inspection-templates", "inspection-templates"],
       ["/settings/navigation", "navigation"],
       ["/settings/build-log", "build-log"],
       ["/settings/theme", "theme"],

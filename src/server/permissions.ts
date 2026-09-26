@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { NAV_GROUPS } from "@/config/nav";
 import { groupKey } from "@/config/nav-groups";
-import { SETTINGS_CARDS, SETTINGS_TABS } from "@/config/settings-cards";
+import { PREVIOUS_CARD_HREF, SETTINGS_CARDS, SETTINGS_TABS } from "@/config/settings-cards";
 
 /**
  * What a role may do with each page and Settings card.
@@ -72,6 +72,25 @@ export function resourceKey(kind: ResourceKind, href: string): string {
   return `${kind}:${href}`;
 }
 
+/**
+ * What a card inherits when it has no stored row of its own.
+ *
+ * A card that replaced an older one — Asset Types and Inspection Templates
+ * both came out of Configuration — answers with the older card's stored
+ * permissions until someone sets its own. Without this, splitting a card would
+ * quietly reset it to the defaults: a role that had been granted write would
+ * lose it, and one that had been denied read would get it back. Setting
+ * anything on the new card stores a row and this stops applying.
+ */
+function inheritedOverride(
+  resource: string,
+  overrides: Map<string, ResourceAccess>
+): ResourceAccess | undefined {
+  if (!resource.startsWith("card:")) return undefined;
+  const previous = PREVIOUS_CARD_HREF.get(resource.slice("card:".length));
+  return previous ? overrides.get(resourceKey("card", previous)) : undefined;
+}
+
 /** The pages that can be governed: the sidebar's own entries. Settings
  * sub-pages are governed by their card instead — see config/settings-cards.ts. */
 export function governedPages(): Array<{ href: string; label: string; group: string }> {
@@ -139,7 +158,7 @@ export async function getPermissions(organizationId: string, roleId: string): Pr
 
   const access = (resource: string): ResourceAccess => {
     if (isAdministrator) return FULL;
-    const stored = overrides.get(resource);
+    const stored = overrides.get(resource) ?? inheritedOverride(resource, overrides);
     if (!stored) return defaultAccessFor(resource, roleCode);
     // Write without read would be a contradiction the UI cannot express and
     // the server should not honour; read is the gate everything else sits
@@ -217,7 +236,11 @@ export async function getRoleMatrix(
       href,
       kind,
       label: navLabel(href, fallback),
-      access: isAdministrator ? FULL : (overrides.get(resource) ?? defaultAccessFor(resource, roleCode)),
+      access: isAdministrator
+        ? FULL
+        : (overrides.get(resource) ??
+          inheritedOverride(resource, overrides) ??
+          defaultAccessFor(resource, roleCode)),
       locked: isAdministrator,
     };
   };
