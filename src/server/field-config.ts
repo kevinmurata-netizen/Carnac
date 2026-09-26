@@ -171,13 +171,22 @@ export async function listInventoryFields(organizationId: string): Promise<Inven
   }));
 }
 
+/**
+ * Scoped by organization rather than by asset type.
+ *
+ * The Fields screen only ever lists waterline attributes, so this is the same
+ * set of definitions it could always reach; what it adds is that the Asset
+ * Types screen can edit a reservoir's attributes through the same function
+ * instead of a near-copy of it. The id still has to belong to this
+ * organization, which is the check that matters.
+ */
 export async function updateInventoryField(
   organizationId: string,
   definitionId: string,
   input: { label: string; unit: string | null; isRequired: boolean; sortOrder: number; options: string[] }
 ) {
   const definition = await prisma.assetAttributeDefinition.findFirst({
-    where: { id: definitionId, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: definitionId, assetType: { organizationId } },
   });
   if (!definition) throw new Error("Inventory field not found");
   if (!input.label.trim()) throw new Error("Label is required");
@@ -195,12 +204,43 @@ export async function updateInventoryField(
   });
 }
 
-export async function createInventoryField(
-  organizationId: string,
-  input: { code: string; label: string; dataType: AttributeDataType; unit?: string; isRequired: boolean; options: string[] }
-) {
+export type NewAttribute = {
+  code: string;
+  label: string;
+  dataType: AttributeDataType;
+  unit?: string;
+  isRequired: boolean;
+  options: string[];
+  /** The note shown beside the field. */
+  help?: string;
+};
+
+/** The waterline inventory, which is what the Fields screen edits. */
+export async function createInventoryField(organizationId: string, input: NewAttribute) {
   const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
   if (!assetType) throw new Error("WATERLINE asset type not found");
+  return createAttributeDefinition(organizationId, assetType.id, input);
+}
+
+/**
+ * An attribute on any asset type.
+ *
+ * Every type needs its own: a reservoir is described by capacity and overflow
+ * elevation, not by diameter and material, and until a type has attributes
+ * there is nothing to record against it. The code is normalised the same way
+ * for every type, so an import written against one reads the same as a field
+ * added by hand.
+ */
+export async function createAttributeDefinition(
+  organizationId: string,
+  assetTypeId: string,
+  input: NewAttribute
+) {
+  const assetType = await prisma.assetType.findFirst({
+    where: { id: assetTypeId, organizationId },
+    select: { id: true, name: true },
+  });
+  if (!assetType) throw new Error("Asset type not found");
 
   const code = normalizeCode(input.code);
   if (!code) throw new Error("Field code is required");
@@ -212,7 +252,7 @@ export async function createInventoryField(
   const existing = await prisma.assetAttributeDefinition.findFirst({
     where: { assetTypeId: assetType.id, code },
   });
-  if (existing) throw new Error(`An inventory field with code "${code}" already exists`);
+  if (existing) throw new Error(`${assetType.name} already has an attribute with code "${code}"`);
 
   const all = await prisma.assetAttributeDefinition.findMany({
     where: { assetTypeId: assetType.id },
@@ -229,14 +269,24 @@ export async function createInventoryField(
       unit: input.unit?.trim() || null,
       isRequired: input.isRequired,
       sortOrder: maxSort + 10,
-      config: input.dataType === "ENUM" ? { options: input.options } : undefined,
+      config: configFor(input),
     },
   });
 }
 
+/** `options` drives an ENUM's choices and `help` is the note beside the field —
+ * the same shape the importers and the seed write. */
+function configFor(input: NewAttribute): Prisma.InputJsonObject | undefined {
+  const config: Prisma.InputJsonObject = {
+    ...(input.dataType === "ENUM" ? { options: input.options } : {}),
+    ...(input.help?.trim() ? { help: input.help.trim() } : {}),
+  };
+  return Object.keys(config).length > 0 ? config : undefined;
+}
+
 export async function deleteInventoryField(organizationId: string, definitionId: string) {
   const definition = await prisma.assetAttributeDefinition.findFirst({
-    where: { id: definitionId, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: definitionId, assetType: { organizationId } },
     include: { _count: { select: { values: true } } },
   });
   if (!definition) throw new Error("Inventory field not found");

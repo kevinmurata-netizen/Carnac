@@ -29,6 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-26",
+    title: "Asset types, with their attributes and forms in one place",
+    summary:
+      "Settings → Configuration is now two cards, Asset Types and Inspection Templates. An asset type shows what it records and what is inspected on it, and both can be added from the type itself.",
+    changes: [
+      "Two cards on Settings → General instead of one. Asset types and inspection forms are different jobs, and the single screen meant scrolling past every type to reach a form.",
+      "The section is called Asset Types rather than Water Types, and a type is a type rather than a class.",
+      "Adding a type happens in a pop-up from the button at the top, instead of a form sitting under the list. It says what is required, and saving closes it.",
+      "Each type lists the attributes recorded against it — label, code, data type, unit, whether it is required, and how many assets have a value — with Add, Edit and Delete beside them. Deleting is refused while values are recorded, and says how many.",
+      "Each type also lists its inspection forms, with a button to add one and the active toggle in place.",
+      "Attributes for anything other than a waterline could be seeded but never seen: the Fields screen lists the waterline's and nothing else, so a reservoir's capacity had no screen at all. It does now, on the type itself.",
+    ],
+    note: "No migration. A role's existing permission for Configuration carries over to both new cards until it is set on them directly.",
+  },
+  {
     date: "2026-09-22",
     title: "Say what is missing, close when saved, and spin when opening",
     summary:

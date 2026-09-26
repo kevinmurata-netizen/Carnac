@@ -1,3 +1,4 @@
+import type { AttributeDataType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { WCI_BANDS, type ConditionBand } from "@/domain/waterline/condition";
 import { POF_WEIGHTS, COF_WEIGHTS, type PofWeightMap, type CofWeightMap } from "@/domain/waterline/risk";
@@ -309,8 +310,43 @@ export async function updateDeteriorationModel(
 }
 
 // ---------------------------------------------------------------------------
-// Configuration — asset classes and inspection templates
+// Asset types, their attributes, and inspection templates
 // ---------------------------------------------------------------------------
+
+export type AttributeDetail = {
+  id: string;
+  code: string;
+  label: string;
+  dataType: AttributeDataType;
+  unit: string | null;
+  isRequired: boolean;
+  sortOrder: number;
+  /** An ENUM's allowed values; empty for every other data type. */
+  options: string[];
+  /** The note shown beside the field, where one was written. */
+  help: string | null;
+  /** How many assets have a value recorded. Deleting is refused above zero. */
+  valueCount: number;
+};
+
+export type TemplateDetail = {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  fieldCount: number;
+  inspectionCount: number;
+};
+
+export type AssetTypeDetail = {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  assetCount: number;
+  attributes: AttributeDetail[];
+  templates: TemplateDetail[];
+};
 
 export type ConfigurationSettings = {
   assetTypes: Array<{ id: string; code: string; name: string; description: string | null; assetCount: number }>;
@@ -324,6 +360,122 @@ export type ConfigurationSettings = {
   }>;
   attributeCount: number;
 };
+
+/**
+ * Everything the Asset Types screen shows: each type with the attributes
+ * recorded against it and the inspection forms written for it.
+ *
+ * Attributes and templates come back with their type rather than as separate
+ * lists, because that is the question being asked — "what does a reservoir
+ * carry?" — and because a type with no attributes cannot hold data at all,
+ * which is only visible when the two are shown together.
+ */
+export async function listAssetTypeDetails(organizationId: string): Promise<AssetTypeDetail[]> {
+  const types = await prisma.assetType.findMany({
+    where: { organizationId },
+    orderBy: { name: "asc" },
+    include: {
+      _count: { select: { assets: true } },
+      attributeDefinitions: {
+        orderBy: { sortOrder: "asc" },
+        include: { _count: { select: { values: true } } },
+      },
+      inspectionTemplates: {
+        orderBy: { name: "asc" },
+        include: { _count: { select: { fields: true, inspections: true } } },
+      },
+    },
+  });
+
+  return types.map((t) => ({
+    id: t.id,
+    code: t.code,
+    name: t.name,
+    description: t.description,
+    assetCount: t._count.assets,
+    attributes: t.attributeDefinitions.map((d) => ({
+      id: d.id,
+      code: d.code,
+      label: d.label,
+      dataType: d.dataType,
+      unit: d.unit,
+      isRequired: d.isRequired,
+      sortOrder: d.sortOrder,
+      options: ((d.config as { options?: string[] } | null)?.options ?? []) as string[],
+      help: ((d.config as { help?: string } | null)?.help ?? null) as string | null,
+      valueCount: d._count.values,
+    })),
+    templates: t.inspectionTemplates.map((i) => ({
+      id: i.id,
+      name: i.name,
+      description: i.description,
+      isActive: i.isActive,
+      fieldCount: i._count.fields,
+      inspectionCount: i._count.inspections,
+    })),
+  }));
+}
+
+/** The templates screen: every form, said in terms of the type it is for. */
+export async function listInspectionTemplateDetails(
+  organizationId: string
+): Promise<Array<TemplateDetail & { assetTypeId: string; assetTypeName: string; assetTypeCode: string }>> {
+  const templates = await prisma.inspectionTemplate.findMany({
+    where: { assetType: { organizationId } },
+    orderBy: [{ assetType: { name: "asc" } }, { name: "asc" }],
+    include: {
+      assetType: { select: { id: true, name: true, code: true } },
+      _count: { select: { fields: true, inspections: true } },
+    },
+  });
+
+  return templates.map((t) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    isActive: t.isActive,
+    fieldCount: t._count.fields,
+    inspectionCount: t._count.inspections,
+    assetTypeId: t.assetType.id,
+    assetTypeName: t.assetType.name,
+    assetTypeCode: t.assetType.code,
+  }));
+}
+
+/**
+ * A new inspection form for one asset type.
+ *
+ * It starts with no questions: the fields are edited under Administration →
+ * Fields, and a form with nothing on it is a normal intermediate state rather
+ * than an error.
+ */
+export async function createInspectionTemplate(
+  organizationId: string,
+  assetTypeId: string,
+  input: { name: string; description: string | null }
+) {
+  if (!input.name.trim()) throw new Error("Template name is required");
+
+  const assetType = await prisma.assetType.findFirst({
+    where: { id: assetTypeId, organizationId },
+    select: { id: true, name: true },
+  });
+  if (!assetType) throw new Error("Asset type not found");
+
+  const clash = await prisma.inspectionTemplate.findFirst({
+    where: { assetTypeId: assetType.id, name: input.name.trim() },
+    select: { id: true },
+  });
+  if (clash) throw new Error(`${assetType.name} already has a template called "${input.name.trim()}"`);
+
+  await prisma.inspectionTemplate.create({
+    data: {
+      assetTypeId: assetType.id,
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+    },
+  });
+}
 
 export async function getConfigurationSettings(organizationId: string): Promise<ConfigurationSettings> {
   const [assetTypes, templates, attributeCount] = await Promise.all([

@@ -1,6 +1,7 @@
 import {
   Activity,
   CalendarClock,
+  ClipboardList,
   Compass,
   Database,
   DollarSign,
@@ -62,18 +63,38 @@ export type SettingsCard = {
   title: string;
   icon: LucideIcon;
   detail: string;
+  /**
+   * An older card's href whose stored permissions still speak for this one.
+   *
+   * Permissions are keyed by href, so splitting or moving a card would drop
+   * every override an Administrator had set for it — silently granting read
+   * where it had been withheld, or withholding write where it had been given.
+   * Naming the predecessor here keeps the old answer until someone sets a new
+   * one for this card specifically.
+   */
+  replaces?: string;
 };
 
 export const SETTINGS_CARDS: SettingsCard[] = [
   // ---- General ----
   {
-    key: "configuration",
-    href: "/settings/configuration",
+    key: "asset-types",
+    href: "/settings/asset-types",
     tab: "general",
-    title: "Configuration",
+    title: "Asset Types",
     icon: Layers,
     detail:
-      "Asset classes, the inventory attributes recorded against them, and the inspection forms used in the field.",
+      "The kinds of asset this utility holds and the attributes recorded against each one — a type cannot carry data until it has attributes.",
+    replaces: "/settings/configuration",
+  },
+  {
+    key: "inspection-templates",
+    href: "/settings/inspection-templates",
+    tab: "general",
+    title: "Inspection Templates",
+    icon: ClipboardList,
+    detail: "The forms used in the field, and which asset type each one is for.",
+    replaces: "/settings/configuration",
   },
   {
     key: "navigation",
@@ -314,3 +335,9 @@ export const SETTINGS_CARDS: SettingsCard[] = [
 
 /** Lookup by the href a page knows about itself. */
 export const CARD_BY_HREF = new Map(SETTINGS_CARDS.map((c) => [c.href, c]));
+
+/** For each card that replaced an older one, the href whose stored permissions
+ * still answer for it. Read by server/permissions.ts. */
+export const PREVIOUS_CARD_HREF = new Map(
+  SETTINGS_CARDS.filter((c) => c.replaces).map((c) => [c.href, c.replaces!])
+);
