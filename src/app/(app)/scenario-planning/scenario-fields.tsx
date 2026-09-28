@@ -29,6 +29,7 @@ export type ScenarioValues = {
   categoryWeightSetId: string;
   categoryFundingPlanId: string;
   leadTimeSetId: string;
+  savedFilterId: string;
   scenarioSetId: string;
 };
 
@@ -47,6 +48,7 @@ export type ScenarioFieldDefaults = {
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
+  savedFilterId: string | null;
   scenarioSetId: string | null;
 };
 
@@ -66,6 +68,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     categoryWeightSetId: d.categoryWeightSetId ?? "",
     categoryFundingPlanId: d.categoryFundingPlanId ?? "",
     leadTimeSetId: d.leadTimeSetId ?? "",
+    savedFilterId: d.savedFilterId ?? "",
     scenarioSetId: d.scenarioSetId ?? "",
   };
 }
@@ -106,6 +109,11 @@ export type FundingPlanChoice = { id: string; name: string; isDefault: boolean; 
  * set from another. */
 export type LeadTimeChoice = { id: string; name: string; isDefault: boolean; summary: string };
 
+/** The saved filters a scenario can be limited to. `criteriaCount` is shown
+ * because a filter with no criteria matches everything, which is worth knowing
+ * before choosing it as a limit. */
+export type FilterChoice = { id: string; name: string; criteriaCount: number };
+
 /**
  * The scenario parameter inputs, shared by the create and edit forms so the two
  * cannot drift apart. `idPrefix` keeps label/input ids unique when both forms
@@ -130,6 +138,7 @@ export function ScenarioFields({
   categoryWeightSetChoices = [],
   fundingPlanChoices = [],
   leadTimeChoices = [],
+  filterChoices = [],
   scenarioSetChoices = [],
   lockSet = false,
 }: {
@@ -143,6 +152,7 @@ export function ScenarioFields({
   categoryWeightSetChoices?: CategoryWeightSetChoice[];
   fundingPlanChoices?: FundingPlanChoice[];
   leadTimeChoices?: LeadTimeChoice[];
+  filterChoices?: FilterChoice[];
   scenarioSetChoices?: ScenarioSetChoice[];
   /** Show the chosen set as fixed rather than as a choice. */
   lockSet?: boolean;
@@ -222,6 +232,35 @@ export function ScenarioFields({
           </div>
         )
       )}
+      {/* Above the numbers because it decides what they are about: every
+          average a run reports, and the condition target it is measured
+          against, covers the assets this names and no others. */}
+      {filterChoices.length > 0 && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("savedFilterId")}>Assets</Label>
+          <select
+            id={id("savedFilterId")}
+            name="savedFilterId"
+            value={values.savedFilterId}
+            onChange={(e) => onChange({ savedFilterId: e.target.value })}
+            className={mark("savedFilterId")}
+          >
+            <option value="">The whole network</option>
+            {filterChoices.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+                {f.criteriaCount === 0 ? " — no criteria, so still the whole network" : ""}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Run this scenario over the assets a saved filter matches, rather than the whole network. Its average
+            condition, its backlog and the condition target below are then that group&apos;s rather than the
+            network&apos;s. Filters are built under Settings &rsaquo; Filters.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <Label htmlFor={id("annualBudget")}>Annual Budget ($)</Label>
         <input

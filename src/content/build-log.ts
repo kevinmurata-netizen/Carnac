@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-28",
+    title: "A scenario can be run over part of the network",
+    summary:
+      "A scenario can now name a saved filter, and then covers only the assets that filter matches — with every condition, backlog and risk figure being that group's rather than the whole network's.",
+    changes: [
+      "An Assets choice at the top of a scenario's settings, offering the filters saved under Settings → Filters. Leaving it on “The whole network” is what every scenario did before, so nothing already saved changes.",
+      "The scenario page says which filter a run covered, above the numbers it produced, and the comparison grid marks a scenario that only covers part of the network — two such scenarios are not comparable on condition without knowing it.",
+      "A filter a scenario runs over cannot be deleted; the refusal names the scenarios using it. Deleting it would quietly widen them back to the whole network and change what their stored results mean.",
+      "A filter that matches nothing is refused at run time with that said plainly, rather than producing a run over no assets.",
+    ],
+    note: "One migration. Existing scenarios are unaffected — no filter means the whole network, exactly as before.",
+  },
+  {
+    date: "2026-09-28",
     title: "Reservoirs, wells and pump stations can be inspected",
     summary:
       "Each facility type now has its own inspection form, and the inspection screen asks the questions belonging to whatever is being inspected rather than always asking a pipe's.",

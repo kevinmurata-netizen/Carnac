@@ -203,6 +203,17 @@ export function ScenarioComparison({
                           {s.name}
                         </Link>
                         {s.description && <div className="text-xs text-muted-foreground">{s.description}</div>}
+                        {/* Two scenarios over different groups of assets are
+                            not comparable on condition, and the line chart
+                            above would not show it. */}
+                        {s.savedFilterName && (
+                          <div
+                            className="text-xs text-muted-foreground"
+                            title="Its results cover only the assets this filter matches, so its condition is that group's rather than the network's."
+                          >
+                            Only {s.savedFilterName}
+                          </div>
+                        )}
                         {!plottable && <div className="text-xs text-muted-foreground">Not run yet</div>}
                         {s.resultsOutOfWindow && (
                           <div
