@@ -100,6 +100,11 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
     description:
       "With delivery lead times, this work would be paid for in a year after the run ends — a year with no budget to check it against. A longer run is what would decide it, not a bigger one.",
   },
+  [NOT_SELECTED.targetReached]: {
+    stage: "not-funded",
+    description:
+      "A target-constrained year past the target year buys only what it takes to hold the network at the target. This work was affordable — there was no budget to exceed — but the target had already been met without it.",
+  },
 };
 
 export const STAGE_LABEL: Record<OutcomeStage, string> = {

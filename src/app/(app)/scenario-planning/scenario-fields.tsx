@@ -31,6 +31,9 @@ export type ScenarioValues = {
   leadTimeSetId: string;
   savedFilterId: string;
   scenarioSetId: string;
+  fundingMode: string;
+  targetValue: string;
+  targetInYears: string;
 };
 
 export type ScenarioFieldDefaults = {
@@ -50,6 +53,9 @@ export type ScenarioFieldDefaults = {
   leadTimeSetId: string | null;
   savedFilterId: string | null;
   scenarioSetId: string | null;
+  fundingMode: string;
+  targetValue: number;
+  targetInYears: number;
 };
 
 export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
@@ -70,6 +76,9 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     leadTimeSetId: d.leadTimeSetId ?? "",
     savedFilterId: d.savedFilterId ?? "",
     scenarioSetId: d.scenarioSetId ?? "",
+    fundingMode: d.fundingMode,
+    targetValue: String(d.targetValue),
+    targetInYears: String(d.targetInYears),
   };
 }
 
@@ -163,6 +172,7 @@ export function ScenarioFields({
   // Read from the selection rather than from what is stored, so choosing a set
   // shows its window straight away instead of after the save that commits it.
   const governingSet = scenarioSetChoices.find((s) => s.id === values.scenarioSetId) ?? null;
+  const targeting = values.fundingMode === "target";
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -261,31 +271,108 @@ export function ScenarioFields({
         </div>
       )}
 
-      <div className="space-y-1.5">
-        <Label htmlFor={id("annualBudget")}>Annual Budget ($)</Label>
-        <input
-          id={id("annualBudget")}
-          name="annualBudget"
-          type="number"
-          min={0}
-          step={100000}
-          value={values.annualBudget}
-          onChange={(e) => onChange({ annualBudget: e.target.value })}
-          className={mark("annualBudget")}
-        />
+      {/* What holds the scenario back. Above the budget because it decides
+          whether the budget is an input at all. */}
+      <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+        <Label htmlFor={id("fundingMode")}>Constrained by</Label>
+        <select
+          id={id("fundingMode")}
+          name="fundingMode"
+          value={values.fundingMode}
+          onChange={(e) => onChange({ fundingMode: e.target.value })}
+          className={mark("fundingMode")}
+        >
+          <option value="budget">A budget — spend this much a year, see where the network gets to</option>
+          <option value="target">A target — reach this condition by this year, see what it costs a year</option>
+        </select>
+        <p className="text-xs text-muted-foreground">
+          {targeting
+            ? "The run searches for the flat annual amount that reaches the target in the year given, then — with no delivery lead times — spends only what it takes to hold it for the rest of the period. It never breaks a treatment rule to get there, so a target the rules cannot reach is reported as unreachable rather than forced."
+            : "The ordinary run: the year's money buys the best work it can, and where the network ends up is the answer."}
+        </p>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={id("fundingGrowthPct")}>Funding Growth (%/yr)</Label>
-        <input
-          id={id("fundingGrowthPct")}
-          name="fundingGrowthPct"
-          type="number"
-          step={0.5}
-          value={values.fundingGrowthPct}
-          onChange={(e) => onChange({ fundingGrowthPct: e.target.value })}
-          className={mark("fundingGrowthPct")}
-        />
-      </div>
+
+      {targeting ? (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor={id("targetValue")}>Target Condition (WCI)</Label>
+            <input
+              id={id("targetValue")}
+              name="targetValue"
+              type="number"
+              min={0}
+              max={100}
+              value={values.targetValue}
+              onChange={(e) => onChange({ targetValue: e.target.value })}
+              className={mark("targetValue")}
+            />
+            <p className="text-xs text-muted-foreground">
+              The average across this scenario&apos;s assets — the group above, where one is chosen.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={id("targetInYears")}>Reach it within (yr)</Label>
+            <input
+              id={id("targetInYears")}
+              name="targetInYears"
+              type="number"
+              min={1}
+              max={Number(values.analysisPeriodYears) || 50}
+              value={values.targetInYears}
+              onChange={(e) => onChange({ targetInYears: e.target.value })}
+              className={mark("targetInYears")}
+            />
+            <p className="text-xs text-muted-foreground">
+              Counted from the first year of the run. 1 means by the end of year one.
+            </p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Annual Budget ($)</Label>
+            {/* Still posted, so switching back to a budget gives back the
+                number that was there rather than zero. */}
+            <input type="hidden" name="annualBudget" value={values.annualBudget} />
+            <input type="hidden" name="fundingGrowthPct" value={values.fundingGrowthPct} />
+            <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
+              Solved by the run
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The amount is the answer here rather than the question, so it is not typed. Funding growth does not
+              apply either: what is being solved for is one flat figure a year.
+            </p>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor={id("annualBudget")}>Annual Budget ($)</Label>
+            <input
+              id={id("annualBudget")}
+              name="annualBudget"
+              type="number"
+              min={0}
+              step={100000}
+              value={values.annualBudget}
+              onChange={(e) => onChange({ annualBudget: e.target.value })}
+              className={mark("annualBudget")}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={id("fundingGrowthPct")}>Funding Growth (%/yr)</Label>
+            <input
+              id={id("fundingGrowthPct")}
+              name="fundingGrowthPct"
+              type="number"
+              step={0.5}
+              value={values.fundingGrowthPct}
+              onChange={(e) => onChange({ fundingGrowthPct: e.target.value })}
+              className={mark("fundingGrowthPct")}
+            />
+          </div>
+          {/* Held so target mode keeps them across a switch. */}
+          <input type="hidden" name="targetValue" value={values.targetValue} />
+          <input type="hidden" name="targetInYears" value={values.targetInYears} />
+        </>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor={id("discountRatePct")}>Discount Rate (%)</Label>
         <input
@@ -476,7 +563,15 @@ export function ScenarioFields({
             onChange={(e) => onChange({ leadTimeSetId: e.target.value })}
             className={mark("leadTimeSetId")}
           >
-            <option value="">Everything in the year it is decided</option>
+            {/* Naming the default rather than describing what no set would
+                mean: leaving this empty follows the organization's default,
+                which is only "everything in the year it is decided" when
+                there is no default to follow. */}
+            <option value="">
+              {leadTimeChoices.find((l) => l.isDefault)
+                ? `The organization's default — ${leadTimeChoices.find((l) => l.isDefault)!.name}`
+                : "Everything in the year it is decided"}
+            </option>
             {leadTimeChoices.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
@@ -489,6 +584,14 @@ export function ScenarioFields({
             option is judged against the segment it will meet in the year it is built, so a renewal can be programmed
             before the pipe needs it. Edit the sets under Settings &rsaquo; Delivery Lead Times.
           </p>
+          {targeting && (
+            <p className="text-xs text-muted-foreground">
+              With lead times, the amount solved for is what has to be <em>committed</em> each year for the network to
+              be there in the target year — and the run keeps to that amount afterwards rather than easing off, since
+              holding a target through a delivery pipeline means committing money years before the shortfall it
+              answers is visible.
+            </p>
+          )}
         </div>
       )}
 

@@ -6,6 +6,9 @@ import {
   curveFor,
   DEFAULT_ASSUMPTIONS,
   STRATEGIES,
+  FUNDING_MODES,
+  solveForTarget,
+  type FundingMode,
   type ScenarioAssumptions,
   type SimAsset,
   type Strategy,
@@ -130,6 +133,14 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
     conditionTarget: Number(map.conditionTarget ?? DEFAULT_ASSUMPTIONS.conditionTarget),
     riskThreshold: Number(map.riskThreshold ?? DEFAULT_ASSUMPTIONS.riskThreshold),
     strategy: STRATEGIES.includes(strategy) ? strategy : DEFAULT_ASSUMPTIONS.strategy,
+    // Absent on every scenario stored before target mode existed, which is
+    // exactly what the default says: constrained by its budget.
+    fundingMode: FUNDING_MODES.includes(String(map.fundingMode) as FundingMode)
+      ? (String(map.fundingMode) as FundingMode)
+      : DEFAULT_ASSUMPTIONS.fundingMode,
+    targetMetric: DEFAULT_ASSUMPTIONS.targetMetric,
+    targetValue: Number(map.targetValue ?? DEFAULT_ASSUMPTIONS.targetValue),
+    targetInYears: Number(map.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears),
   };
 }
 
@@ -399,9 +410,35 @@ export function runForScenario(run: {
   options: ScenarioRunOptions;
   leadTimes: LeadTimes;
 }): ScenarioRunResult {
-  return isImmediate(run.leadTimes)
-    ? runScenario(run.simAssets, run.assumptions, run.options)
-    : runDeliveryScenario(run.simAssets, run.assumptions, { ...run.options, leadTimes: run.leadTimes });
+  const delivery = !isImmediate(run.leadTimes);
+
+  if (run.assumptions.fundingMode === "target") {
+    // The search is the same question of either engine — run it at this
+    // amount, see where the network is in the target year — so it is handed
+    // the engine rather than duplicated for it.
+    //
+    // What differs is what happens after the target year. Without lead times
+    // the run eases off to holding the target; with them it keeps to the
+    // solved amount, because "spend only what it takes to hold" would mean
+    // committing money years earlier for a shortfall not yet visible, and this
+    // model has no way to know that at the time of committing.
+    return solveForTarget(
+      run.simAssets,
+      run.assumptions,
+      run.options,
+      (assets, assumptions, options) =>
+        delivery
+          ? runDeliveryScenario(assets, assumptions, { ...options, leadTimes: run.leadTimes })
+          : runScenario(assets, assumptions, options),
+      // A delivery run cannot be shortened to the target year without becoming
+      // a different run — see solveForTarget.
+      { shortProbe: !delivery }
+    );
+  }
+
+  return delivery
+    ? runDeliveryScenario(run.simAssets, run.assumptions, { ...run.options, leadTimes: run.leadTimes })
+    : runScenario(run.simAssets, run.assumptions, run.options);
 }
 
 /** Run the simulation and replace this scenario's stored results. */
@@ -441,6 +478,22 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
         { scenarioId, year, metricKey: "inFlightCost", metricValue: delivery.inFlightCost },
         { scenarioId, year, metricKey: "passes", metricValue: delivery.passes },
         { scenarioId, year, metricKey: "addedInLastPass", metricValue: delivery.addedInLastPass },
+      ],
+    });
+  }
+  // What a target-constrained run answered: the amount a year it takes, and
+  // whether that got there. Against the first year for the same reason as the
+  // rows above — it describes the run, not one of its years.
+  if (result.target && result.years.length > 0) {
+    const year = result.years[0].year;
+    await prisma.scenarioResult.createMany({
+      data: [
+        { scenarioId, year, metricKey: "targetAnnualBudget", metricValue: result.target.annualBudget },
+        { scenarioId, year, metricKey: "targetValue", metricValue: result.target.value },
+        { scenarioId, year, metricKey: "targetInYears", metricValue: result.target.inYears },
+        { scenarioId, year, metricKey: "targetAchieved", metricValue: result.target.achieved },
+        { scenarioId, year, metricKey: "targetMetInYear", metricValue: result.target.metInYear ?? 0 },
+        { scenarioId, year, metricKey: "targetReachable", metricValue: result.target.reachable ? 1 : 0 },
       ],
     });
   }
@@ -704,6 +757,18 @@ export type ScenarioSummary = {
    * be attached. */
   savedFilterId: string | null;
   savedFilterName: string | null;
+  /** What a target-constrained run answered. Null on a budget-constrained one,
+   * and on a target run stored before these metrics were written. */
+  target: {
+    value: number;
+    inYears: number;
+    /** The flat annual amount the run solved for. On an unreachable target,
+     * what its heaviest year spent. */
+    annualBudget: number;
+    achieved: number;
+    metInYear: number | null;
+    reachable: boolean;
+  } | null;
   /** Work the run paid for but never saw built, because its lead time carries
    * construction past the end. Null for a run with no lead times. */
   inFlightCount: number | null;
@@ -770,6 +835,10 @@ export async function listScenarios(
     const addedInLastPass = byMetric("addedInLastPass")[0];
     const agedFrom = byMetric("conditionYearAvgCondition")[0];
     const agedTo = byMetric("startAvgCondition")[0];
+    // Written only by a target-constrained run, so its presence is what says
+    // these results answered a target rather than a budget.
+    const targetBudget = byMetric("targetAnnualBudget")[0];
+    const targetMetIn = byMetric("targetMetInYear")[0];
 
     return {
       id: s.id,
@@ -789,6 +858,17 @@ export async function listScenarios(
       leadTimeSetName: s.leadTimeSet?.name ?? null,
       savedFilterId: s.savedFilterId,
       savedFilterName: s.savedFilter?.name ?? null,
+      target: targetBudget
+        ? {
+            value: byMetric("targetValue")[0]?.metricValue ?? assumptions.targetValue,
+            inYears: byMetric("targetInYears")[0]?.metricValue ?? assumptions.targetInYears,
+            annualBudget: targetBudget.metricValue,
+            achieved: byMetric("targetAchieved")[0]?.metricValue ?? 0,
+            // Stored as 0 for "never", since the metric column holds numbers.
+            metInYear: targetMetIn && targetMetIn.metricValue > 0 ? targetMetIn.metricValue : null,
+            reachable: (byMetric("targetReachable")[0]?.metricValue ?? 0) === 1,
+          }
+        : null,
       /** Work the run paid for that it never sees built, because its lead time
        * carries construction past the end. Null for a run with no lead times,
        * where no work can be in flight. */

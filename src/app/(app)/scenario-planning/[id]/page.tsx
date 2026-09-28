@@ -146,6 +146,9 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
     leadTimeSetId: scenario.leadTimeSetId ?? null,
     savedFilterId: scenario.savedFilterId ?? null,
+    fundingMode: a.fundingMode,
+    targetValue: a.targetValue,
+    targetInYears: a.targetInYears,
     scenarioSetId: scenario.scenarioSet?.id ?? null,
     annualBudget: a.annualBudget,
     fundingGrowthPct: toPercent(a.fundingGrowth),
@@ -257,6 +260,43 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           {scenario.lastRunAt && <>Last run {formatDateTime(scenario.lastRunAt)}</>}
           {scenario.lastRunAt && scenario.lastRunMs != null && <> · took {formatDuration(scenario.lastRunMs)}</>}
         </p>
+      )}
+
+      {/* The answer a target-constrained run was asked for, before the numbers
+          it took to get there. */}
+      {scenario.target && (
+        <div
+          className={`mb-4 rounded-md border px-3 py-2 text-sm ${
+            scenario.target.reachable
+              ? "border-emerald-600/40 bg-emerald-50/50 dark:bg-emerald-950/20"
+              : "border-amber-500/40 bg-amber-500/5 text-amber-800 dark:text-amber-400"
+          }`}
+        >
+          {scenario.target.reachable ? (
+            <>
+              <span className="font-medium">
+                {formatCurrency(scenario.target.annualBudget, { compact: true })} a year
+              </span>{" "}
+              {scenario.inFlightCount != null ? " committed" : ""} reaches WCI {scenario.target.value} by{" "}
+              {years[scenario.target.inYears - 1]?.year ?? "the target year"} — year {scenario.target.inYears} of the
+              run.{" "}
+              {scenario.inFlightCount != null
+                ? "With delivery lead times the run keeps to that amount afterwards: what holds the target is decided years before the shortfall it answers would show."
+                : "After that it spends only what deterioration takes back, so the target is held rather than overshot."}
+            </>
+          ) : (
+            <>
+              WCI {scenario.target.value} cannot be reached by year {scenario.target.inYears}, whatever is spent. The
+              best this scenario&apos;s rules and delivery allow by then is {scenario.target.achieved}, and that takes{" "}
+              {formatCurrency(scenario.target.annualBudget, { compact: true })} in its heaviest year.{" "}
+              {scenario.target.metInYear
+                ? `It does get there in year ${scenario.target.metInYear} — ${
+                    years[scenario.target.metInYear - 1]?.year ?? ""
+                  } — so the target holds at a later date.`
+                : "It never gets there inside this run."}
+            </>
+          )}
+        </div>
       )}
 
       {/* Also about the numbers: an average over part of the network is not

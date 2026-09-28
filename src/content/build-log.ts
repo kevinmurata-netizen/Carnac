@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-28",
+    title: "Ask what a target costs, instead of what a budget buys",
+    summary:
+      "A scenario can now be constrained by a target rather than a budget: name the condition and the year it has to be reached, and the run works out what that takes a year.",
+    changes: [
+      "A Constrained by choice on every scenario. A budget is what it has always done. A target asks the question the other way round — reach WCI 70 by year five — and the annual amount becomes the answer instead of the input.",
+      "The amount is found by running the scenario repeatedly and halving in on it, because what a budget buys depends on what it bought last year. Dividing the cost of doing it in one year by five is wrong in both directions at once, and by a lot: on the sample network, hitting 60 in five years costs $5.0M a year, where that division would have said $3.3M.",
+      "Spending is flat up to the target year. Without delivery lead times, the years after it spend only what deterioration takes back — on the sample network, about a twentieth of the ramp — so the target is held rather than overshot.",
+      "A target the treatment rules cannot reach is reported as unreachable, with the best the network could do and what that would have cost. No rule is bypassed to make a target.",
+      "With delivery lead times, the amount solved for is what has to be committed each year, and the run keeps to it after the target year rather than easing off — holding a target through a delivery pipeline means committing money years before the shortfall it answers is visible.",
+      "The lead times choice now names the organization's default rather than claiming no delay, which is what it meant only when there was no default to follow.",
+    ],
+    note: "No migration. Existing scenarios are budget-constrained, which is what they have always been.",
+  },
+  {
+    date: "2026-09-28",
     title: "A scenario can be run over part of the network",
     summary:
       "A scenario can now name a saved filter, and then covers only the assets that filter matches — with every condition, backlog and risk figure being that group's rather than the whole network's.",

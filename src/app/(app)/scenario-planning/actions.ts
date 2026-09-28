@@ -7,7 +7,12 @@ import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { createScenario, updateScenario, runAndStoreScenario, deleteScenario } from "@/server/scenarios";
 import { setScenarioOptions } from "@/server/scenario-options";
-import { STRATEGIES, type Strategy, type ScenarioAssumptions } from "@/domain/waterline/scenario";
+import {
+  STRATEGIES,
+  DEFAULT_ASSUMPTIONS,
+  type Strategy,
+  type ScenarioAssumptions,
+} from "@/domain/waterline/scenario";
 
 const schema = z.object({
   name: z.string().min(1, "Scenario name is required"),
@@ -26,6 +31,9 @@ const schema = z.object({
   leadTimeSetId: z.string().optional(),
   savedFilterId: z.string().optional(),
   scenarioSetId: z.string().optional(),
+  fundingMode: z.string().optional(),
+  targetValue: z.coerce.number().min(0).max(100).optional(),
+  targetInYears: z.coerce.number().int().min(1).max(50).optional(),
 });
 
 /**
@@ -93,6 +101,12 @@ function parseForm(formData: FormData): {
       conditionTarget: d.conditionTarget,
       riskThreshold: d.riskThreshold,
       strategy,
+      fundingMode: d.fundingMode === "target" ? "target" : "budget",
+      targetMetric: "avgCondition",
+      targetValue: d.targetValue ?? DEFAULT_ASSUMPTIONS.targetValue,
+      // Held inside the run: a target in year 25 of a 20-year run could never
+      // be answered.
+      targetInYears: Math.max(1, Math.min(d.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears, d.analysisPeriodYears)),
     },
   };
 }
