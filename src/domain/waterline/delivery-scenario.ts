@@ -343,8 +343,13 @@ function walk(
   const startCondition = new Map(state.map((a) => [a.id, a.condition]));
   const startAvgCondition = average();
 
+  // Flat in target mode: what is being solved for there is one figure a year,
+  // and escalating it would mean the answer was a figure that is never
+  // actually the amount in any year but the first.
   const budgetFor = (year: number) =>
-    assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear);
+    assumptions.fundingMode === "target"
+      ? assumptions.annualBudget
+      : assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear);
   const money = ledger(budgetFor, options.fundingPlan ?? null, endYear);
 
   // Work an earlier pass decided: its money is out before this pass starts.
@@ -592,6 +597,9 @@ function walk(
     inFlight,
     inFlightCost: Math.round(inFlight.reduce((sum, w) => sum + w.cost, 0)),
     leadTimeName: leadTimes.name,
+    // Target mode is not built for this engine yet — a scenario carrying lead
+    // times stays budget-constrained, and the form says so.
+    target: null,
   };
   return { result, decided };
 }

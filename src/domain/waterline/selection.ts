@@ -70,6 +70,9 @@ export const NOT_SELECTED = {
   /** Only with delivery lead times: the money would fall in a year past the
    * end of the run, which has no budget to check it against. */
   beyondHorizon: "Would be paid for after the run ends",
+  /** Only in a target-constrained year: the target was already reached, so
+   * nothing further was bought however affordable it was. */
+  targetReached: "Target already met",
 } as const;
 
 export const SELECTED = "Selected";
@@ -256,6 +259,63 @@ export function selectForYear<T extends Rankable>(
   plan: FundingPlan
 ): SelectionResult<T> {
   return selectAgainst(candidates, yearPurse<T>(budget, plan));
+}
+
+/** What a target-constrained year needs to know about the network it is
+ * buying against: how many assets there are, what they are worth now, and
+ * what each option would leave its own asset at. */
+export type TargetProgress<T extends Rankable> = {
+  /** How many assets the average is over. The scenario's own set — filtered
+   * or whole — since that is what the target is measured against. */
+  count: number;
+  /** The sum of their conditions before this year's work. */
+  sumBefore: number;
+  /** The average this year is trying to reach. */
+  target: number;
+  /** Where an option would leave the asset it is on. */
+  projected: (option: T) => number;
+  /** Where that asset stands with no work this year. */
+  current: (assetId: string) => number;
+};
+
+/**
+ * A year with no budget and a condition to reach.
+ *
+ * Buys in exactly the order a budgeted year would — best step per dollar
+ * first, so the two modes cannot disagree about what is worth doing — and
+ * stops the moment the average reaches the target. What it spends is the
+ * answer rather than the constraint.
+ *
+ * Category limits are not applied: they are shares of a budget, and there is
+ * no budget here to take shares of.
+ */
+export function targetPurse<T extends Rankable>(progress: TargetProgress<T>): Purse<T> {
+  let sum = progress.sumBefore;
+  let spent = 0;
+  const reached = () => progress.count > 0 && sum / progress.count >= progress.target;
+
+  return {
+    unfunded: () => null,
+    check: () => (reached() ? NOT_SELECTED.targetReached : null),
+    commit(next, current) {
+      // The step up is measured against what the asset would otherwise have
+      // been left at: the option it already holds this year, or its untreated
+      // condition.
+      const from = current ? progress.projected(current) : progress.current(next.assetId);
+      sum += progress.projected(next) - from;
+      spent += next.cost - (current?.cost ?? 0);
+    },
+    byCategory: () => [{ category: "All" as const, spent, cap: spent }],
+    totalSpent: () => spent,
+  };
+}
+
+/** One year bought against a target rather than a budget. */
+export function selectForTarget<T extends Rankable>(
+  candidates: T[],
+  progress: TargetProgress<T>
+): SelectionResult<T> {
+  return selectAgainst(candidates, targetPurse<T>(progress));
 }
 
 /**

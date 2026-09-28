@@ -21,7 +21,7 @@ import { annualFailureProbability, failureEventCost, presentValue } from "./lcca
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
-import { selectForYear, NOT_SELECTED, SELECTED } from "./selection";
+import { selectForYear, selectForTarget, NOT_SELECTED, SELECTED } from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import { buildLccaEvaluator } from "./lcca-evaluator";
 import {
@@ -63,6 +63,24 @@ export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
   preventive: "Treat segments while still in Fair condition, before they fail.",
 };
 
+/**
+ * What holds a scenario back.
+ *
+ * `budget` is the question this model has always answered: here is the money,
+ * what does it buy and where does the network end up? `target` asks it the
+ * other way round — here is where the network has to be and when, what does
+ * that cost a year? Everything else about the run is identical, including the
+ * order work is chosen in, so the two can be read against each other.
+ */
+export const FUNDING_MODES = ["budget", "target"] as const;
+export type FundingMode = (typeof FUNDING_MODES)[number];
+
+/** The metric a target is measured in. Only the average condition of the
+ * scenario's own assets for now; the field exists so a custom index can be
+ * named here later without the shape changing. */
+export const TARGET_METRICS = ["avgCondition"] as const;
+export type TargetMetric = (typeof TARGET_METRICS)[number];
+
 export type ScenarioAssumptions = {
   annualBudget: number;
   /** Fractional annual growth in the budget, e.g. 0.03 for 3%/yr. */
@@ -72,6 +90,15 @@ export type ScenarioAssumptions = {
   conditionTarget: number;
   riskThreshold: number;
   strategy: Strategy;
+  /** Budget-constrained unless it says otherwise, which is how every scenario
+   * stored before this existed reads. */
+  fundingMode: FundingMode;
+  targetMetric: TargetMetric;
+  /** The average the scenario's assets must reach. */
+  targetValue: number;
+  /** By when, counted in years from the start of the run: 1 is "by the end of
+   * the first year". Held to the analysis period by the form. */
+  targetInYears: number;
 };
 
 export const DEFAULT_ASSUMPTIONS: ScenarioAssumptions = {
@@ -82,6 +109,10 @@ export const DEFAULT_ASSUMPTIONS: ScenarioAssumptions = {
   conditionTarget: 70,
   riskThreshold: 10,
   strategy: "risk-based",
+  fundingMode: "budget",
+  targetMetric: "avgCondition",
+  targetValue: 70,
+  targetInYears: 5,
 };
 
 /** Per-asset state carried through the simulation. */
@@ -239,6 +270,38 @@ export type ScenarioRunResult = {
   /** Average condition at the start of the first year, after ageing. Equal to
    * the figure above when nothing was aged. */
   startAvgCondition: number;
+  /** How the target was met, on a target-constrained run. Null on a
+   * budget-constrained one, which has no target to answer for. */
+  target: TargetOutcome | null;
+};
+
+/**
+ * What a target-constrained run has to say for itself.
+ *
+ * The answer being bought is `annualBudget`: the flat yearly amount that gets
+ * the scenario's assets to the target in the year asked for. Everything else
+ * here is how far to trust it.
+ */
+export type TargetOutcome = {
+  metric: TargetMetric;
+  value: number;
+  /** The year it was asked for, counted from the start of the run. */
+  inYears: number;
+  /** The solved flat annual amount for the years up to the target. */
+  annualBudget: number;
+  /** The first year the target was actually reached, or null if it never was.
+   * Equal to `inYears` on a run that lands where it was asked to. */
+  metInYear: number | null;
+  /** Where the network stood in the target year. */
+  achieved: number;
+  /**
+   * False when no amount of money reached the target in the years given —
+   * every option the rules allow was bought and it was still short. The run is
+   * then the best that could be done, and `annualBudget` is what that cost.
+   */
+  reachable: boolean;
+  /** What the search had to do to find the amount, for anyone checking it. */
+  search: { iterations: number; low: number; high: number };
 };
 
 /**
@@ -784,9 +847,20 @@ export function runScenario(
   let totalFailures = 0;
   let lifecycleCostNpv = 0;
 
+  // In target mode the years up to the target are bought against a flat
+  // annual amount — the one `solveForTarget` searched for — and every year
+  // after it buys only what it takes to hold the target. Growth is not applied
+  // to a solved amount: the answer being asked for is one number a year.
+  const targeted = assumptions.fundingMode === "target";
+  const holdFrom = targeted ? assumptions.targetInYears : Infinity;
+  /** The year the target was first reached, as an offset from the start. */
+  let metInYear: number | null = null;
+
   for (let i = 0; i < assumptions.analysisPeriodYears; i++) {
     const year = startYear + i;
-    const budget = assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, i);
+    const budget = targeted
+      ? assumptions.annualBudget
+      : assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, i);
 
     // 0. Criticality, from the network as it now stands. A formula may read
     //    condition, age or risk, and a segment replaced in year 3 must stop
@@ -819,7 +893,33 @@ export function runScenario(
     // 2. Choose what the year buys: one treatment per asset, each step up
     //    judged by what it adds for what it costs, across every category,
     //    with each category held to its share. §5.7.
-    const outcome = selectForYear(candidates, budget, fundingPlan);
+    //
+    //    Past the target year, the same ladder is climbed with no budget at
+    //    all and a condition to reach instead: the network is held at the
+    //    target and nothing beyond that is bought. Before it — and in every
+    //    budget-mode year — the year's money is the constraint.
+    const holding = targeted && i + 1 > holdFrom;
+    let outcome;
+    if (holding) {
+      // Measured where the year ends, not where the treatment leaves the
+      // asset: a year of deterioration falls on everything before the average
+      // is reported, so buying until the post-treatment average reached the
+      // target would report below it every single year.
+      const atYearEnd = (asset: SimAsset, condition: number) =>
+        evaluateCurve(asset.curve, effectiveAgeForCondition(asset.curve, condition) + 1);
+      const byId = new Map(state.map((a) => [a.id, a]));
+      const untreated = new Map(state.map((a) => [a.id, atYearEnd(a, a.condition)]));
+
+      outcome = selectForTarget(candidates, {
+        count: state.length,
+        sumBefore: [...untreated.values()].reduce((sum, c) => sum + c, 0),
+        target: assumptions.targetValue,
+        projected: (c) => atYearEnd(byId.get(c.assetId)!, c.projectedCondition),
+        current: (assetId) => untreated.get(assetId) ?? 0,
+      });
+    } else {
+      outcome = selectForYear(candidates, budget, fundingPlan);
+    }
 
     // Recorded here rather than inside the selection engine, which is written
     // against a shape that knows nothing about segments or conditions.
@@ -914,6 +1014,13 @@ export function runScenario(
     const avgRisk =
       state.reduce((s, a) => s + pofFromCondition(a.condition) * a.cof, 0) / (state.length || 1);
 
+    // Against the figure this year reports, not the raw average behind it. A
+    // year that shows 60.0 against a target of 60 has met it; saying otherwise
+    // because the sum came to 59.97 would be a distinction nobody could see.
+    if (metInYear == null && Math.round(avgCondition * 10) / 10 >= assumptions.targetValue) {
+      metInYear = i + 1;
+    }
+
     const spend = outcome.totalSpent;
     totalSpend += spend;
     totalFailureCost += failureCost;
@@ -922,7 +1029,10 @@ export function runScenario(
 
     years.push({
       year,
-      budget: Math.round(budget),
+      // A year held at the target had no budget to be measured against, so it
+      // reports what it spent. Anything else would read as over or under a
+      // limit that did not exist.
+      budget: Math.round(holding ? spend : budget),
       spend: Math.round(spend),
       treatedCount,
       avgCondition: Math.round(avgCondition * 10) / 10,
@@ -966,6 +1076,21 @@ export function runScenario(
     agedYears,
     conditionYearAvgCondition: Math.round(conditionYearAvgCondition * 10) / 10,
     startAvgCondition: Math.round(startAvgCondition * 10) / 10,
+    // A plain run knows the target it was given and whether it got there; what
+    // the amount cost to find is `solveForTarget`'s to fill in, since it is
+    // the one that searched.
+    target: targeted
+      ? {
+          metric: assumptions.targetMetric,
+          value: assumptions.targetValue,
+          inYears: assumptions.targetInYears,
+          annualBudget: Math.round(assumptions.annualBudget),
+          metInYear,
+          achieved: years[assumptions.targetInYears - 1]?.avgCondition ?? (last?.avgCondition ?? 0),
+          reachable: metInYear != null && metInYear <= assumptions.targetInYears,
+          search: { iterations: 0, low: 0, high: 0 },
+        }
+      : null,
   };
 }
 
@@ -973,6 +1098,140 @@ export function runScenario(
  * Why an option never reached the ranked list. The rest of the reasons a row
  * can carry come from the selection engine — see NOT_SELECTED there.
  */
+/**
+ * How much a year, to reach the target in the year asked for.
+ *
+ * The question has no closed form: what a budget buys depends on what it
+ * bought last year, so the only honest way to price a target is to run the
+ * scenario and look. This runs it repeatedly, halving in on the smallest flat
+ * annual amount whose run reaches the target on time.
+ *
+ * Bisection rather than an estimate. Dividing the cost of doing it in one year
+ * by five is wrong in both directions at once: it ignores five years of
+ * deterioration, which raises the bill, and it ignores that work bought in
+ * year one is still working in year five, which lowers it. Which dominates
+ * depends on the network, so the number has to be found rather than reasoned
+ * about.
+ *
+ * The search assumes more money is never worse, which is true of this engine
+ * in every case that matters but is not a theorem — a larger budget can buy a
+ * different mix. Bisection on a slightly bumpy function still lands on an
+ * amount whose run reaches the target, which is the promise being made.
+ *
+ * `shortProbe` simulates only the years up to the target while searching,
+ * which is sound exactly when a year depends on nothing after it. That is true
+ * of the same-year engine, where a year is a closed loop. It is not true with
+ * delivery lead times: work whose build year falls past the end of the run is
+ * refused outright, so a ten-year probe of a twenty-year run is a different
+ * run rather than its first half — it was measured saying the target was
+ * reached where the full run came up fifteen points short.
+ */
+export function solveForTarget(
+  assets: SimAsset[],
+  assumptions: ScenarioAssumptions,
+  options: ScenarioRunOptions = {},
+  run: (assets: SimAsset[], a: ScenarioAssumptions, o: ScenarioRunOptions) => ScenarioRunResult = runScenario,
+  { shortProbe = true }: { shortProbe?: boolean } = {}
+): ScenarioRunResult {
+  const inYears = Math.max(1, Math.min(assumptions.targetInYears, assumptions.analysisPeriodYears));
+  const probe = {
+    ...assumptions,
+    analysisPeriodYears: shortProbe ? inYears : assumptions.analysisPeriodYears,
+    targetInYears: inYears,
+  };
+  const reaches = (annualBudget: number) => {
+    const result = run(assets, { ...probe, annualBudget }, options);
+    const achieved = result.years[inYears - 1]?.avgCondition ?? 0;
+    return { ok: achieved >= assumptions.targetValue, achieved };
+  };
+
+  let iterations = 0;
+  const answer = (annualBudget: number, search: TargetOutcome["search"], reachable = true) => {
+    const result = run(assets, { ...assumptions, annualBudget, targetInYears: inYears }, options);
+    return { ...result, target: outcomeFor(result, assumptions, inYears, annualBudget, search, reachable) };
+  };
+
+  // Nothing at all may already be enough — a network above the target with a
+  // year of deterioration still to come is the ordinary case for a low target.
+  iterations++;
+  if (reaches(0).ok) return answer(0, { iterations, low: 0, high: 0 });
+
+  // An upper bound, by doubling. Starting from the whole network's worth of
+  // the cheapest thing that could be done to it would be a guess; doubling
+  // finds the scale of the answer in a handful of runs whatever it is.
+  let high = Math.max(assumptions.annualBudget, 1_000_000);
+  let found = false;
+  for (let i = 0; i < 12; i++) {
+    iterations++;
+    if (reaches(high).ok) {
+      found = true;
+      break;
+    }
+    high *= 2;
+  }
+
+  if (!found) {
+    // Every option the rules allow, bought every year, and still short. The
+    // run returned is that one: the best this network can do in these years.
+    //
+    // The amount reported is what that run actually spent in its heaviest
+    // year, not the ceiling the search gave up at — the ceiling is an artifact
+    // of doubling and would be read as a price.
+    const best = run(assets, { ...assumptions, annualBudget: high, targetInYears: inYears }, options);
+    const heaviest = best.years.reduce((most, y) => Math.max(most, y.spend), 0);
+    return {
+      ...best,
+      // Nothing bound this run, so each year reports what it spent. Leaving the
+      // ceiling in would put a number in the budget column that is an artifact
+      // of the search rather than a figure anyone chose.
+      years: best.years.map((y) => ({ ...y, budget: y.spend })),
+      target: outcomeFor(best, assumptions, inYears, heaviest, { iterations, low: high, high }, false),
+    };
+  }
+
+  let low = 0;
+  // To the nearest $1,000, or a tenth of a percent on a large amount —
+  // precision past that is noise against a model of a network.
+  const tolerance = () => Math.max(1000, high * 0.001);
+  while (high - low > tolerance()) {
+    const mid = (low + high) / 2;
+    iterations++;
+    if (reaches(mid).ok) high = mid;
+    else low = mid;
+  }
+
+  // `high` is the amount that reached it; `low` is the one that did not.
+  const annualBudget = Math.ceil(high / 1000) * 1000;
+  return answer(annualBudget, { iterations: iterations + 1, low: Math.round(low), high: Math.round(high) });
+}
+
+/**
+ * Read off the finished run rather than taken from the engine, so the answer
+ * is the same whatever engine produced it — and so it describes what the run
+ * actually did rather than what it was asked to do.
+ */
+function outcomeFor(
+  result: ScenarioRunResult,
+  assumptions: ScenarioAssumptions,
+  inYears: number,
+  annualBudget: number,
+  search: TargetOutcome["search"],
+  reachable: boolean
+): TargetOutcome {
+  const met = result.years.findIndex((y) => y.avgCondition >= assumptions.targetValue);
+  const metInYear = met >= 0 ? met + 1 : null;
+  return {
+    metric: assumptions.targetMetric,
+    value: assumptions.targetValue,
+    inYears,
+    annualBudget: Math.round(annualBudget),
+    metInYear,
+    achieved: result.years[inYears - 1]?.avgCondition ?? 0,
+    reachable: reachable && metInYear != null && metInYear <= inYears,
+    search,
+  };
+}
+
 export const NOT_RANKED = {
   ineligible: "Segment not eligible this year",
   notConsidered: "Not in this scenario's options",
