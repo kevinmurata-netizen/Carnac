@@ -1173,6 +1173,18 @@ model Scenario {
   categoryWeightSetId String?
   categoryWeightSet   CategoryWeightSet? @relation(fields: [categoryWeightSetId], references: [id], onDelete: SetNull)
 
+  /// Which assets this scenario runs over. Null is every active asset, which
+  /// is what every scenario did before this existed.
+  ///
+  /// A saved filter rather than criteria of its own: the filter is already
+  /// the app's way of saying "these assets", it is defined once and reused,
+  /// and a scenario limited to the east side should be limited by the same
+  /// definition the inventory and the map use. Every average the run reports
+  /// — including the condition target it is measured against — is then the
+  /// average of the assets in the filter rather than of the whole network.
+  savedFilterId String?
+  savedFilter   SavedFilter? @relation(fields: [savedFilterId], references: [id], onDelete: Restrict)
+
   /// How long this scenario's work takes to be paid for and built. Null means
   /// the organization's default set, and no default means everything is
   /// decided, paid for and built in the same year — how every scenario ran
@@ -1228,6 +1240,7 @@ model Scenario {
   updatedAt DateTime @updatedAt
 
   @@index([scenarioSetId])
+  @@index([savedFilterId])
   @@map("scenarios")
 }
 
@@ -1541,6 +1554,11 @@ model SavedFilter {
   /// true = every criterion must match, false = any one of them.
   matchAll       Boolean @default(true)
   createdByName  String?
+
+  /// Scenarios that run over the assets this filter matches. Deleting a
+  /// filter one of them uses is refused rather than silently widening that
+  /// scenario back to the whole network.
+  scenarios Scenario[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

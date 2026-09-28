@@ -24,6 +24,7 @@ const schema = z.object({
   categoryWeightSetId: z.string().optional(),
   categoryFundingPlanId: z.string().optional(),
   leadTimeSetId: z.string().optional(),
+  savedFilterId: z.string().optional(),
   scenarioSetId: z.string().optional(),
 });
 
@@ -52,6 +53,7 @@ function parseForm(formData: FormData): {
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
+  savedFilterId: string | null;
   scenarioSetId: string | null;
 } {
   const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
@@ -77,6 +79,9 @@ function parseForm(formData: FormData): {
     // Empty means the organization's default lead times, and no default means
     // everything is decided, paid for and built in the same year.
     leadTimeSetId: d.leadTimeSetId?.trim() || null,
+    // Empty means the whole network, which is what every scenario ran over
+    // before a filter could be attached.
+    savedFilterId: d.savedFilterId?.trim() || null,
     // Empty means "not in a set". The server checks the set belongs to this
     // organization before joining it.
     scenarioSetId: d.scenarioSetId?.trim() || null,

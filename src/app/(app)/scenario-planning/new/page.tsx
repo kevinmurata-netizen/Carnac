@@ -8,6 +8,7 @@ import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weig
 import { getScenarioOptionCatalogue } from "@/server/scenario-options";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { listLeadTimeSets } from "@/server/lead-times";
+import { listSavedFilters } from "@/server/saved-filters";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
@@ -46,6 +47,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     categoryWeightSets,
     fundingPlans,
     leadTimeSets,
+    savedFilters,
     catalogue,
     estimate,
   ] = await Promise.all([
@@ -55,6 +57,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     listCategoryWeightSets(organizationId),
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
+    listSavedFilters(organizationId),
     getScenarioOptionCatalogue(organizationId),
     // The set's period, since that is what the run will cover. The first run
     // then measures itself and every later estimate comes from that.
@@ -98,6 +101,12 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     summary: l.summary,
   }));
 
+  const filterChoices = savedFilters.map((f) => ({
+    id: f.id,
+    name: f.name,
+    criteriaCount: f.criteria.length,
+  }));
+
   return (
     <div>
       <PageHeader
@@ -117,6 +126,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
+            filterChoices={filterChoices}
             scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}
@@ -128,6 +138,8 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
               categoryWeightSetId: categoryWeightSets.find((c) => c.isDefault)?.id ?? null,
               categoryFundingPlanId: fundingPlans.find((p) => p.isDefault)?.id ?? null,
               leadTimeSetId: leadTimeSets.find((l) => l.isDefault)?.id ?? null,
+              // The whole network unless someone narrows it.
+              savedFilterId: null,
               scenarioSetId: set.id,
               annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
               fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),

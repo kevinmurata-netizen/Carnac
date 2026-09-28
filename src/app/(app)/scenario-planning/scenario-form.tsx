@@ -14,6 +14,7 @@ import {
   type CategoryWeightSetChoice,
   type FundingPlanChoice,
   type LeadTimeChoice,
+  type FilterChoice,
   type ScenarioSetChoice,
 } from "./scenario-fields";
 import { RunProgressButton } from "./run-progress";
@@ -53,6 +54,7 @@ export function ScenarioEditForm({
   categoryWeightSetChoices,
   fundingPlanChoices,
   leadTimeChoices,
+  filterChoices,
   scenarioSetChoices,
   treatmentChoices,
   combinationChoices,
@@ -64,6 +66,7 @@ export function ScenarioEditForm({
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
+  filterChoices: FilterChoice[];
   scenarioSetChoices: ScenarioSetChoice[];
   treatmentChoices: OptionChoice[];
   combinationChoices: OptionChoice[];
@@ -89,6 +92,7 @@ export function ScenarioEditForm({
         categoryWeightSetChoices={categoryWeightSetChoices}
         fundingPlanChoices={fundingPlanChoices}
         leadTimeChoices={leadTimeChoices}
+        filterChoices={filterChoices}
         scenarioSetChoices={scenarioSetChoices}
       />
 
@@ -140,6 +144,7 @@ export function ScenarioCreateForm({
   categoryWeightSetChoices,
   fundingPlanChoices,
   leadTimeChoices,
+  filterChoices,
   scenarioSetChoices,
   treatmentChoices,
   combinationChoices,
@@ -152,6 +157,7 @@ export function ScenarioCreateForm({
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
+  filterChoices: FilterChoice[];
   scenarioSetChoices: ScenarioSetChoice[];
   treatmentChoices: OptionChoice[];
   combinationChoices: OptionChoice[];
@@ -174,6 +180,7 @@ export function ScenarioCreateForm({
         categoryWeightSetChoices={categoryWeightSetChoices}
         fundingPlanChoices={fundingPlanChoices}
         leadTimeChoices={leadTimeChoices}
+        filterChoices={filterChoices}
         scenarioSetChoices={scenarioSetChoices}
         lockSet
       />

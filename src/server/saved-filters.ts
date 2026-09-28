@@ -145,6 +145,24 @@ export async function updateSavedFilter(organizationId: string, id: string, inpu
 export async function deleteSavedFilter(organizationId: string, id: string) {
   const existing = await prisma.savedFilter.findFirst({ where: { id, organizationId } });
   if (!existing) throw new Error("That filter no longer exists");
+
+  // A scenario using it runs over the assets it matches, so deleting it would
+  // quietly widen that scenario back to the whole network and change what its
+  // stored results mean. Refused, and the scenarios are named so the choice is
+  // an informed one.
+  const scenarios = await prisma.scenario.findMany({
+    where: { savedFilterId: id },
+    select: { name: true },
+    orderBy: { name: "asc" },
+  });
+  if (scenarios.length > 0) {
+    throw new Error(
+      `"${existing.name}" decides which assets ${scenarios.length === 1 ? "a scenario runs" : `${scenarios.length} scenarios run`} over — ${scenarios
+        .map((s) => s.name)
+        .join(", ")}. Point ${scenarios.length === 1 ? "it" : "them"} elsewhere first.`
+    );
+  }
+
   await prisma.savedFilter.delete({ where: { id } });
 }
 

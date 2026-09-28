@@ -8,6 +8,7 @@ import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { listLeadTimeSets } from "@/server/lead-times";
+import { listSavedFilters } from "@/server/saved-filters";
 import {
   describeSelection,
   getScenarioOptionCatalogue,
@@ -30,6 +31,7 @@ import type {
   CategoryWeightSetChoice,
   FundingPlanChoice,
   LeadTimeChoice,
+  FilterChoice,
   ScenarioSetChoice,
 } from "../scenario-fields";
 import { ScenarioEditForm } from "../scenario-form";
@@ -59,6 +61,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryWeightSets,
     fundingPlans,
     leadTimeSets,
+    savedFilters,
     catalogue,
     estimate,
     sets,
@@ -70,6 +73,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     listCategoryWeightSets(organizationId),
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
+    listSavedFilters(organizationId),
     getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
     listScenarioSets(organizationId),
@@ -115,6 +119,11 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     isDefault: l.isDefault,
     summary: l.summary,
   }));
+  const filterChoices: FilterChoice[] = savedFilters.map((f) => ({
+    id: f.id,
+    name: f.name,
+    criteriaCount: f.criteria.length,
+  }));
 
   const projectsByYear = new Map<number, typeof projects>();
   for (const p of projects) {
@@ -136,6 +145,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryWeightSetId: scenario.categoryWeightSetId ?? null,
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
     leadTimeSetId: scenario.leadTimeSetId ?? null,
+    savedFilterId: scenario.savedFilterId ?? null,
     scenarioSetId: scenario.scenarioSet?.id ?? null,
     annualBudget: a.annualBudget,
     fundingGrowthPct: toPercent(a.fundingGrowth),
@@ -249,6 +259,19 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
         </p>
       )}
 
+      {/* Also about the numbers: an average over part of the network is not
+          the network's average, and nothing below would otherwise say which
+          it is. */}
+      {scenario.savedFilterId && scenario.savedFilterName && (
+        <p className="mb-4 rounded-md border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          Runs over the assets matching{" "}
+          <Link href="/filters" className="text-primary hover:underline">
+            {scenario.savedFilterName}
+          </Link>
+          , not the whole network. Every condition, backlog and risk figure below is that group&apos;s.
+        </p>
+      )}
+
       {/* Before the numbers, because it is about the numbers: they were produced
           over different years from the ones this scenario now runs over. */}
       {scenario.resultsOutOfWindow && scenario.scenarioSet && (
@@ -263,7 +286,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -320,7 +343,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             </div>
           )}
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -588,6 +611,7 @@ function AssumptionsCard({
   categoryWeightSetChoices,
   fundingPlanChoices,
   leadTimeChoices,
+  filterChoices,
   scenarioSetChoices,
   catalogue,
 }: {
@@ -598,6 +622,7 @@ function AssumptionsCard({
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
+  filterChoices: FilterChoice[];
   scenarioSetChoices: ScenarioSetChoice[];
   catalogue: ScenarioOptionCatalogue;
 }) {
@@ -622,6 +647,7 @@ function AssumptionsCard({
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
+            filterChoices={filterChoices}
             scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}

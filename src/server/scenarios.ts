@@ -28,15 +28,30 @@ import { assetScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
 import { criticalityRescorer } from "@/server/criticality";
+import { matchingAssetIds } from "@/server/saved-filters";
 import { resultsOutOfWindow, type ScenarioSetStatusValue, type ScenarioWindow } from "@/lib/scenario-sets";
 import { assertSetInOrganization } from "@/server/scenario-sets";
 
 /** Snapshot the current network into simulation inputs. Condition comes from
  * the latest measurement; uninspected assets fall back to their curve position
  * by calendar age so they still participate in the forecast. */
-export async function buildSimAssets(organizationId: string): Promise<SimAsset[]> {
+/**
+ * The network a run works over.
+ *
+ * `only` narrows it to the assets a scenario's saved filter matched. An empty
+ * array is not the same as no array: it means the filter matched nothing, and
+ * is the caller's to refuse rather than this function's to widen back to
+ * everything.
+ */
+export async function buildSimAssets(organizationId: string, only?: string[]): Promise<SimAsset[]> {
   const assets = await prisma.asset.findMany({
-    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
+    where: {
+      organizationId,
+      assetType: { code: "WATERLINE" },
+      deletedAt: null,
+      status: "ACTIVE",
+      ...(only ? { id: { in: only } } : {}),
+    },
     include: {
       attributeValues: { include: { definition: true } },
       conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
@@ -133,6 +148,17 @@ export function effectiveAssumptions(
   return set ? { ...own, analysisPeriodYears: set.planningPeriodYears } : own;
 }
 
+/** Ids arrive from forms; a filter from another organization must not be
+ * attachable, or a scenario could be pointed at someone else's assets. */
+async function assertFilterInOrganization(organizationId: string, filterId: string | null) {
+  if (!filterId) return;
+  const filter = await prisma.savedFilter.findFirst({
+    where: { id: filterId, organizationId },
+    select: { id: true },
+  });
+  if (!filter) throw new Error("Saved filter not found");
+}
+
 export async function createScenario(
   organizationId: string,
   input: {
@@ -155,11 +181,14 @@ export async function createScenario(
      * organization's default set, and no default means everything happens in
      * the year it is decided. */
     leadTimeSetId?: string | null;
+    /** Which assets it runs over. Null is the whole network. */
+    savedFilterId?: string | null;
     /** The set it belongs to. Null leaves it on its own. */
     scenarioSetId?: string | null;
   }
 ) {
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
+  await assertFilterInOrganization(organizationId, input.savedFilterId ?? null);
   return prisma.scenario.create({
     data: {
       organizationId,
@@ -170,6 +199,7 @@ export async function createScenario(
       categoryWeightSetId: input.categoryWeightSetId || null,
       categoryFundingPlanId: input.categoryFundingPlanId || null,
       leadTimeSetId: input.leadTimeSetId || null,
+      savedFilterId: input.savedFilterId || null,
       scenarioSetId: input.scenarioSetId || null,
       assumptions: {
         create: Object.entries(input.assumptions).map(([key, value]) => ({ key, value })),
@@ -204,6 +234,8 @@ export async function updateScenario(
     /** How long its work takes to be paid for and built. Null uses the
      * organization's default set. */
     leadTimeSetId?: string | null;
+    /** Which assets it runs over. Null is the whole network. */
+    savedFilterId?: string | null;
     /** The set it belongs to. Null takes it out of any set. */
     scenarioSetId?: string | null;
   }
@@ -211,6 +243,7 @@ export async function updateScenario(
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
   if (!scenario) throw new Error("Scenario not found");
   if (!input.name.trim()) throw new Error("Scenario name is required");
+  await assertFilterInOrganization(organizationId, input.savedFilterId ?? null);
   // A scenario already in a set can move to another but not leave. Older
   // scenarios created before sets existed may still be saved outside one.
   if (scenario.scenarioSetId && !input.scenarioSetId) {
@@ -229,6 +262,7 @@ export async function updateScenario(
         categoryWeightSetId: input.categoryWeightSetId || null,
         categoryFundingPlanId: input.categoryFundingPlanId || null,
         leadTimeSetId: input.leadTimeSetId || null,
+        savedFilterId: input.savedFilterId || null,
         scenarioSetId: input.scenarioSetId || null,
       },
     }),
@@ -260,12 +294,31 @@ export async function loadScenarioRun(
   /** How long this scenario's work takes to be paid for and built. Everything
    * immediate — the default — is the engine this app has always had. */
   leadTimes: LeadTimes;
+  /** The saved filter deciding which assets this run covers, where it has
+   * one. Carried so a caller can say what the run is about. */
+  filter: { id: string; name: string; assetCount: number } | null;
 } | null> {
   const scenario = await prisma.scenario.findFirst({
     where: { id: scenarioId, organizationId },
-    include: { assumptions: true, scenarioSet: { select: { baseYear: true, planningPeriodYears: true } } },
+    include: {
+      assumptions: true,
+      scenarioSet: { select: { baseYear: true, planningPeriodYears: true } },
+      savedFilter: { select: { id: true, name: true } },
+    },
   });
   if (!scenario) return null;
+
+  // Which assets this scenario is about. A filter with no criteria matches
+  // everything, and `matchingAssetIds` says so by returning null — the same
+  // answer as having no filter at all, so the run covers the whole network.
+  const only = scenario.savedFilter
+    ? ((await matchingAssetIds(organizationId, scenario.savedFilter.id)) ?? undefined)
+    : undefined;
+  if (scenario.savedFilter && only && only.length === 0) {
+    throw new Error(
+      `${scenario.savedFilter.name} matches no assets, so this scenario has nothing to run over. Widen the filter, or take it off the scenario.`
+    );
+  }
 
   // A set decides the years: its base year starts the run and its planning
   // period replaces the scenario's own, so every member covers the same span.
@@ -276,7 +329,7 @@ export async function loadScenarioRun(
   });
   const [simAssets, library, combinations, weights, categories, funding, selection, curves, criticality, leadTimes] =
     await Promise.all([
-    buildSimAssets(organizationId),
+    buildSimAssets(organizationId, only),
     // Run against the configured library so edited treatments and decision
     // trees change what a scenario is allowed to fund.
     loadTreatmentDefs(organizationId),
@@ -306,6 +359,9 @@ export async function loadScenarioRun(
     assumptions,
     simAssets,
     leadTimes,
+    filter: scenario.savedFilter
+      ? { id: scenario.savedFilter.id, name: scenario.savedFilter.name, assetCount: simAssets.length }
+      : null,
     options: {
       library,
       combinations,
@@ -643,6 +699,11 @@ export type ScenarioSummary = {
    * decided, paid for and built in the same year. */
   leadTimeSetId: string | null;
   leadTimeSetName: string | null;
+  /** The saved filter deciding which assets this scenario runs over. Null is
+   * the whole network, which is what every scenario did before filters could
+   * be attached. */
+  savedFilterId: string | null;
+  savedFilterName: string | null;
   /** Work the run paid for but never saw built, because its lead time carries
    * construction past the end. Null for a run with no lead times. */
   inFlightCount: number | null;
@@ -690,6 +751,7 @@ export async function listScenarios(
       categoryWeightSet: { select: { name: true } },
       categoryFundingPlan: { select: { name: true } },
       leadTimeSet: { select: { name: true } },
+      savedFilter: { select: { name: true } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -725,6 +787,8 @@ export async function listScenarios(
       categoryFundingPlanName: s.categoryFundingPlan?.name ?? null,
       leadTimeSetId: s.leadTimeSetId,
       leadTimeSetName: s.leadTimeSet?.name ?? null,
+      savedFilterId: s.savedFilterId,
+      savedFilterName: s.savedFilter?.name ?? null,
       /** Work the run paid for that it never sees built, because its lead time
        * carries construction past the end. Null for a run with no lead times,
        * where no work can be in flight. */
