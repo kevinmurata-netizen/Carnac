@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
+import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { formatCurrency, formatDateTime, formatDuration, formatNumber, toPercent } from "@/lib/format";
 import type {
   CriticalityChoice,
@@ -383,6 +384,10 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             </div>
           )}
 
+          {/* Above the settings form, because on a target run this is the
+              answer: what each year costs. */}
+          {scenario.target && <TargetSpendCard scenario={scenario} />}
+
           <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -395,32 +400,38 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                   data={years.map((y) => ({ year: y.year, avgCondition: y.avgCondition }))}
                   xKey="year"
                   yDomain={[0, 100]}
-                  referenceY={a.conditionTarget}
-                  referenceLabel={`Target ${a.conditionTarget}`}
+                  // The line a target run was solving for, where it has one;
+                  // otherwise the per-segment target the rules judge by.
+                  referenceY={scenario.target?.value ?? a.conditionTarget}
+                  referenceLabel={`Target ${scenario.target?.value ?? a.conditionTarget}`}
                   series={[{ key: "avgCondition", label: "Network WCI", color: "var(--color-chart-1)" }]}
                 />
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Spending vs Budget</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SimpleLineChart
-                  data={years.map((y) => ({ year: y.year, budget: y.budget, spend: y.spend }))}
-                  xKey="year"
-                  series={[
-                    { key: "budget", label: "Available budget", color: "var(--color-chart-3)", dashed: true },
-                    { key: "spend", label: "Actual spend", color: "var(--color-chart-1)" },
-                  ]}
-                />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Spend tracks budget while there is qualifying work. Once the renewable backlog clears, spending
-                  falls below budget because the constraint becomes treatment applicability, not money.
-                </p>
-              </CardContent>
-            </Card>
+            {/* A target run has no budget to compare spend against — its
+                spend is shown in its own card above. */}
+            {!scenario.target && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Spending vs Budget</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <SimpleLineChart
+                    data={years.map((y) => ({ year: y.year, budget: y.budget, spend: y.spend }))}
+                    xKey="year"
+                    series={[
+                      { key: "budget", label: "Available budget", color: "var(--color-chart-3)", dashed: true },
+                      { key: "spend", label: "Actual spend", color: "var(--color-chart-1)" },
+                    ]}
+                  />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Spend tracks budget while there is qualifying work. Once the renewable backlog clears, spending
+                    falls below budget because the constraint becomes treatment applicability, not money.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>
@@ -713,6 +724,150 @@ function AssumptionsCard({
         </CardContent>
       )}
     </Card>
+  );
+}
+
+/**
+ * What a target-constrained run says each year will cost.
+ *
+ * The number a target run exists to produce, so it gets its own card near the
+ * top instead of being one column in a twenty-row table below the settings.
+ * The years split in two: the ramp, bought against the solved flat amount,
+ * and what comes after — holding the target on the same-year engine, or the
+ * same amount kept to with delivery lead times, which cannot ease off.
+ */
+function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
+  const target = scenario.target!;
+  const years = scenario.years;
+  const delivery = scenario.inFlightCount != null;
+  const targetYear = years[target.inYears - 1]?.year ?? null;
+
+  const ramp = years.slice(0, target.inYears);
+  const after = years.slice(target.inYears);
+  const toReach = ramp.reduce((sum, y) => sum + y.spend, 0);
+  const whole = years.reduce((sum, y) => sum + y.spend, 0);
+  const holdAverage = after.length > 0 ? after.reduce((sum, y) => sum + y.spend, 0) / after.length : null;
+  const holdLow = after.length > 0 ? Math.min(...after.map((y) => y.spend)) : null;
+  const holdHigh = after.length > 0 ? Math.max(...after.map((y) => y.spend)) : null;
+
+  const phaseOf = (index: number) =>
+    index < target.inYears - 1 ? "Ramp" : index === target.inYears - 1 ? "Target year" : delivery ? "Kept to" : "Hold";
+
+  const money = (n: number) => formatCurrency(n, { compact: true });
+
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle>Annual Spend to Reach WCI {target.value}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {!target.reachable ? (
+            <>
+              The target is not reachable by {targetYear ?? `year ${target.inYears}`}, so these are the most the
+              treatment rules allowed to be spent each year, not a price for the target.
+            </>
+          ) : delivery ? (
+            <>
+              <span className="font-medium text-foreground">{money(target.annualBudget)} committed a year</span>{" "}
+              reaches {target.value} by {targetYear}. With delivery lead times the run keeps to that amount after the
+              target year, and money actually leaves the budget as work is paid for — which is what each bar shows.
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-foreground">{money(target.annualBudget)} a year</span> from{" "}
+              {years[0]?.year} to {targetYear} reaches {target.value}
+              {holdLow != null && holdHigh != null && (
+                <>
+                  , then holding it takes {money(holdLow)}–{money(holdHigh)} a year as deterioration takes back what
+                  was gained
+                </>
+              )}
+              .
+            </>
+          )}
+        </p>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Figure
+            label={`To reach it (${years[0]?.year}–${targetYear ?? ""})`}
+            value={money(toReach)}
+            note={`${ramp.length} year${ramp.length === 1 ? "" : "s"}`}
+          />
+          <Figure
+            label={delivery ? "A year after, on average" : "A year to hold it, on average"}
+            value={holdAverage != null ? money(holdAverage) : "—"}
+            note={after.length > 0 ? `${after.length} years` : "The run ends at the target year"}
+          />
+          <Figure label="Whole run" value={money(whole)} note={`${years.length} years`} />
+        </div>
+
+        <div>
+          <SimpleBarChart
+            data={years.map((y, i) => ({
+              year: y.year,
+              spend: y.spend,
+              fill: i < target.inYears ? "var(--color-chart-1)" : "var(--color-chart-3)",
+            }))}
+            xKey="year"
+            yKey="spend"
+            colorKey="fill"
+            valueFormat="currency-compact"
+          />
+          <div className="mt-1 flex flex-wrap gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--color-chart-1)" }} />
+              Up to the target year
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--color-chart-3)" }} />
+              {delivery ? "After the target year" : "Holding the target"}
+            </span>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Year</TableHead>
+                <TableHead>Phase</TableHead>
+                <TableHead className="text-right">Spend</TableHead>
+                <TableHead className="text-right">Avg Condition</TableHead>
+                <TableHead className="text-right">Below {target.value}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {years.map((y, i) => (
+                <TableRow key={y.year} className={i === target.inYears - 1 ? "bg-muted/50" : undefined}>
+                  <TableCell className="font-medium tabular-nums">{y.year}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{phaseOf(i)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatCurrency(y.spend)}</TableCell>
+                  <TableCell
+                    className={`text-right tabular-nums ${
+                      y.avgCondition >= target.value ? "" : "text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {y.avgCondition}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{formatNumber(y.belowTargetCount)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Figure({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="rounded-md border px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold tabular-nums">{value}</div>
+      <div className="text-xs text-muted-foreground">{note}</div>
+    </div>
   );
 }
 

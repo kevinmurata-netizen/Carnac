@@ -1,6 +1,6 @@
 "use client";
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
 /** Format is named rather than passed as a function: this is a Client
@@ -26,12 +26,16 @@ export function SimpleBarChart({
   xKey,
   yKey,
   color = "var(--color-primary)",
+  colorKey,
   valueFormat,
 }: {
   data: Array<Record<string, string | number>>;
   xKey: string;
   yKey: string;
   color?: string;
+  /** A field on each row holding that bar's own color, for a chart whose bars
+   * belong to different phases. Rows without it fall back to `color`. */
+  colorKey?: string;
   valueFormat?: ValueFormat;
 }) {
   // The axis is as wide as its widest label needs, and never wider. Left at a
@@ -74,7 +78,10 @@ export function SimpleBarChart({
             backgroundColor: "var(--color-card)",
           }}
         />
-        <Bar dataKey={yKey} fill={color} radius={[4, 4, 0, 0]} />
+        <Bar dataKey={yKey} fill={color} radius={[4, 4, 0, 0]}>
+          {colorKey &&
+            data.map((row, i) => <Cell key={i} fill={String(row[colorKey] ?? color)} />)}
+        </Bar>
       </BarChart>
     </ResponsiveContainer>
   );

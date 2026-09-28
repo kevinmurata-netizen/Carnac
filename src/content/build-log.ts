@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-28",
+    title: "See what a target costs each year",
+    summary:
+      "A target-constrained scenario now shows its spend year by year in its own card near the top of the page, instead of leaving it to a column in a table below the settings.",
+    changes: [
+      "An Annual Spend to Reach card on every target run: what it takes to reach the target, what holding it costs a year afterwards, and the whole run's total.",
+      "A bar per year, coloured by phase — up to the target year, and after it — with a table beneath giving each year's exact spend, condition and how many segments are still below the target.",
+      "The condition chart's target line is the target the run solved for, rather than the per-segment Condition Target, where the two differ.",
+      "The Spending vs Budget chart is no longer shown on a target run, which had no budget to compare its spend against.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-28",
     title: "Ask what a target costs, instead of what a budget buys",
     summary:
       "A scenario can now be constrained by a target rather than a budget: name the condition and the year it has to be reached, and the run works out what that takes a year.",
