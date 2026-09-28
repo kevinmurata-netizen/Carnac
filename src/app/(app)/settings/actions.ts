@@ -303,7 +303,8 @@ export async function createTemplateAction(
     revalidateAll(TEMPLATES_CARD, ASSET_TYPES_CARD, "/inspections");
     return {
       status: "success",
-      message: "Template created. It has no questions yet — add those under Administration → Fields.",
+      message:
+        "Template created. It has no questions on it yet — adding them is only built for the waterline form so far.",
     };
   } catch (e) {
     return fail(e);

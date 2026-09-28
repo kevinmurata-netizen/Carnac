@@ -5,9 +5,10 @@
 --
 -- Paste the whole file into a SQL console (Neon's editor, psql, …). It is
 -- one transaction: it either all lands or none of it does. It adds three
--- asset types, their attribute definitions, and 18 facilities with their
--- attributes and map positions. It creates only what is missing and
--- changes nothing that is already there, so running it twice is safe.
+-- asset types with their attribute definitions and inspection forms, and
+-- 18 facilities with their attributes and map positions. It creates only
+-- what is missing and changes nothing that is already there, so it is safe
+-- to run again over a database that already took an earlier version.
 --
 -- It writes to the organization created first, which is the only one in
 -- every CARNAC instance so far. If yours holds more than one, put the id
@@ -18,6 +19,7 @@ DECLARE
   v_org  text;
   v_type text;
   v_asset text;
+  v_template text;
 BEGIN
   SELECT id INTO v_org FROM organizations ORDER BY "createdAt" ASC LIMIT 1;
   IF v_org IS NULL THEN
@@ -54,6 +56,47 @@ BEGIN
   INSERT INTO asset_attribute_definitions (id, "assetTypeId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
   VALUES (gen_random_uuid()::text, v_type, 'OVERFLOW_ELEV_FT', 'Overflow Elevation', 'NUMBER'::"AttributeDataType", 'ft', false, 7, NULL)
   ON CONFLICT ("assetTypeId", code) DO NOTHING;
+
+  -- Reservoir Condition Assessment
+  SELECT id INTO v_template FROM inspection_templates WHERE "assetTypeId" = v_type AND name = 'Reservoir Condition Assessment';
+  IF v_template IS NULL THEN
+    INSERT INTO inspection_templates (id, "assetTypeId", name, description, "isActive", "createdAt", "updatedAt")
+    VALUES (gen_random_uuid()::text, v_type, 'Reservoir Condition Assessment', 'Interior and structural inspection of a finished-water reservoir — drained, or by diver or ROV.', true, now(), now())
+    RETURNING id INTO v_template;
+  END IF;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'STRUCTURAL_CRACKING', 'Structural Cracking', 'NUMBER'::"AttributeDataType", NULL, true, 10, '{"helpText":"0 = through-cracking or active movement, 10 = no cracking observed","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'INTERIOR_COATING', 'Interior Coating / Lining', 'NUMBER'::"AttributeDataType", NULL, true, 20, '{"helpText":"0 = coating failed, substrate exposed, 10 = coating intact","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'CORROSION', 'Corrosion', 'NUMBER'::"AttributeDataType", NULL, true, 30, '{"helpText":"0 = severe section loss, 10 = no corrosion observed","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'ROOF_AND_HATCHES', 'Roof, Hatches & Access', 'NUMBER'::"AttributeDataType", NULL, true, 40, '{"helpText":"0 = roof unsound or hatches unsecured, 10 = sound and secure","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'VENTS_AND_SCREENS', 'Vents & Screens', 'NUMBER'::"AttributeDataType", NULL, true, 50, '{"helpText":"0 = screens missing or torn — contamination path open, 10 = intact and sealed","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'SEDIMENT_ACCUMULATION', 'Sediment Accumulation', 'NUMBER'::"AttributeDataType", NULL, true, 60, '{"helpText":"0 = heavy accumulation reducing usable volume, 10 = floor clean","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'INLET_OUTLET_VALVES', 'Inlet, Outlet & Valves', 'NUMBER'::"AttributeDataType", NULL, true, 70, '{"helpText":"0 = valves seized or leaking by, 10 = operate freely and seal","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'OVERFLOW_AND_DRAIN', 'Overflow & Drain', 'NUMBER'::"AttributeDataType", NULL, true, 80, '{"helpText":"0 = blocked or discharging incorrectly, 10 = clear and correctly screened","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'FOUNDATION_AND_SITE', 'Foundation & Site Drainage', 'NUMBER'::"AttributeDataType", NULL, true, 90, '{"helpText":"0 = settlement or water standing against the structure, 10 = stable and draining away","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'SITE_SECURITY', 'Site Security', 'NUMBER'::"AttributeDataType", NULL, true, 100, '{"helpText":"0 = unsecured, 10 = fencing, locks and intrusion alarms sound","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'OTHER_DEFICIENCIES', 'Other Observed Deficiencies', 'TEXT'::"AttributeDataType", NULL, false, 200, '{"helpText":"Free-text notes on anything not captured above"}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
 
   -- RSV-01  Riverside Reservoir
   INSERT INTO assets (id, "organizationId", "assetTypeId", "assetCode", name, status, "ownerDepartment", "installationDate", "expectedUsefulLife", "createdAt", "updatedAt")
@@ -376,6 +419,44 @@ BEGIN
   VALUES (gen_random_uuid()::text, v_type, 'AVG_COST_PER_AF', 'Average Cost per Acre-Foot', 'NUMBER'::"AttributeDataType", '$/AF', false, 8, NULL)
   ON CONFLICT ("assetTypeId", code) DO NOTHING;
 
+  -- Well Condition Assessment
+  SELECT id INTO v_template FROM inspection_templates WHERE "assetTypeId" = v_type AND name = 'Well Condition Assessment';
+  IF v_template IS NULL THEN
+    INSERT INTO inspection_templates (id, "assetTypeId", name, description, "isActive", "createdAt", "updatedAt")
+    VALUES (gen_random_uuid()::text, v_type, 'Well Condition Assessment', 'Mechanical, electrical and sanitary inspection of a groundwater production well.', true, now(), now())
+    RETURNING id INTO v_template;
+  END IF;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'PUMP_AND_MOTOR', 'Pump & Motor', 'NUMBER'::"AttributeDataType", NULL, true, 10, '{"helpText":"0 = failed or running outside its curve, 10 = performing to specification","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'COLUMN_AND_SHAFT', 'Column & Shaft', 'NUMBER'::"AttributeDataType", NULL, true, 20, '{"helpText":"0 = wear, vibration or misalignment, 10 = true and quiet","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'CASING_INTEGRITY', 'Casing Integrity', 'NUMBER'::"AttributeDataType", NULL, true, 30, '{"helpText":"0 = perforation or collapse suspected, 10 = casing sound on survey","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'SANITARY_SEAL', 'Wellhead Sanitary Seal', 'NUMBER'::"AttributeDataType", NULL, true, 40, '{"helpText":"0 = seal breached — contamination path open, 10 = sealed and vented correctly","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'DISCHARGE_PIPING', 'Discharge Piping & Valves', 'NUMBER'::"AttributeDataType", NULL, true, 50, '{"helpText":"0 = leaking or seized, 10 = tight and operating freely","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'ELECTRICAL_AND_CONTROLS', 'Electrical & Controls', 'NUMBER'::"AttributeDataType", NULL, true, 60, '{"helpText":"0 = faults, overheating or failed starts, 10 = clean, tight and testing correctly","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'INSTRUMENTATION', 'Instrumentation & Metering', 'NUMBER'::"AttributeDataType", NULL, true, 70, '{"helpText":"0 = not reading or uncalibrated, 10 = reading true against a check","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'SPECIFIC_CAPACITY', 'Specific Capacity Trend', 'NUMBER'::"AttributeDataType", NULL, true, 80, '{"helpText":"0 = yield well below the original test — screen fouling or drawdown, 10 = holding its original capacity","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'SITE_AND_ENCLOSURE', 'Site & Enclosure', 'NUMBER'::"AttributeDataType", NULL, true, 90, '{"helpText":"0 = building or enclosure unsound, site not draining, 10 = sound, secure and draining away","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'OTHER_DEFICIENCIES', 'Other Observed Deficiencies', 'TEXT'::"AttributeDataType", NULL, false, 200, '{"helpText":"Free-text notes on anything not captured above"}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+
   -- WEL-01  Riverside Well 1
   INSERT INTO assets (id, "organizationId", "assetTypeId", "assetCode", name, status, "ownerDepartment", "installationDate", "expectedUsefulLife", "createdAt", "updatedAt")
   VALUES (gen_random_uuid()::text, v_org, v_type, 'WEL-01', 'Riverside Well 1', 'ACTIVE'::"AssetStatus", 'Water Supply', TIMESTAMP '1968-06-15 00:00:00', 50, now(), now())
@@ -683,6 +764,44 @@ BEGIN
   VALUES (gen_random_uuid()::text, v_type, 'AVG_COST_PER_AF', 'Average Cost per Acre-Foot', 'NUMBER'::"AttributeDataType", '$/AF', false, 9, NULL)
   ON CONFLICT ("assetTypeId", code) DO NOTHING;
 
+  -- Booster Pump Station Condition Assessment
+  SELECT id INTO v_template FROM inspection_templates WHERE "assetTypeId" = v_type AND name = 'Booster Pump Station Condition Assessment';
+  IF v_template IS NULL THEN
+    INSERT INTO inspection_templates (id, "assetTypeId", name, description, "isActive", "createdAt", "updatedAt")
+    VALUES (gen_random_uuid()::text, v_type, 'Booster Pump Station Condition Assessment', 'Mechanical, electrical and structural inspection of a booster pump station.', true, now(), now())
+    RETURNING id INTO v_template;
+  END IF;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'PUMPS_AND_MOTORS', 'Pumps & Motors', 'NUMBER'::"AttributeDataType", NULL, true, 10, '{"helpText":"0 = failed or running outside its curve, 10 = performing to specification","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'PIPING_AND_VALVES', 'Piping & Valves', 'NUMBER'::"AttributeDataType", NULL, true, 20, '{"helpText":"0 = leaking, corroded or seized, 10 = tight and operating freely","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'ELECTRICAL_AND_CONTROLS', 'Electrical & Controls', 'NUMBER'::"AttributeDataType", NULL, true, 30, '{"helpText":"0 = faults, overheating or failed starts, 10 = clean, tight and testing correctly","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'SURGE_PROTECTION', 'Surge Protection', 'NUMBER'::"AttributeDataType", NULL, true, 40, '{"helpText":"0 = absent or not charged, 10 = present, charged and proven","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'INSTRUMENTATION_SCADA', 'Instrumentation & SCADA', 'NUMBER'::"AttributeDataType", NULL, true, 50, '{"helpText":"0 = not reporting or reading false, 10 = reporting true to the control room","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'STANDBY_POWER', 'Standby Power', 'NUMBER'::"AttributeDataType", NULL, true, 60, '{"helpText":"0 = none, or fails to start on test, 10 = starts and carries the load on test","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'BUILDING_STRUCTURE', 'Building & Structure', 'NUMBER'::"AttributeDataType", NULL, true, 70, '{"helpText":"0 = roof, walls or floor unsound, 10 = weathertight and sound","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'VENTILATION_AND_HEATING', 'Ventilation & Heating', 'NUMBER'::"AttributeDataType", NULL, true, 80, '{"helpText":"0 = not maintaining a safe temperature for the plant, 10 = working and adequate","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'SITE_SECURITY', 'Site Security', 'NUMBER'::"AttributeDataType", NULL, true, 90, '{"helpText":"0 = unsecured, 10 = fencing, locks and intrusion alarms sound","min":0,"max":10}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)
+  VALUES (gen_random_uuid()::text, v_template, 'OTHER_DEFICIENCIES', 'Other Observed Deficiencies', 'TEXT'::"AttributeDataType", NULL, false, 200, '{"helpText":"Free-text notes on anything not captured above"}'::jsonb)
+  ON CONFLICT ("templateId", code) DO NOTHING;
+
   -- BPS-01  Riverside Booster Station
   INSERT INTO assets (id, "organizationId", "assetTypeId", "assetCode", name, status, "ownerDepartment", "installationDate", "expectedUsefulLife", "createdAt", "updatedAt")
   VALUES (gen_random_uuid()::text, v_org, v_type, 'BPS-01', 'Riverside Booster Station', 'ACTIVE'::"AssetStatus", 'Pumping Operations', TIMESTAMP '1974-06-15 00:00:00', 40, now(), now())
@@ -929,13 +1048,17 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM asset_locations WHERE "assetId" = v_asset);
 END $$;
 
--- What landed. Expect Booster Pump Station 5, Reservoir 7, Well 6 —
--- and 18 of those 18 with a position on the map.
+-- What landed. Expect Booster Pump Station 5, Reservoir 7, Well 6 — all of
+-- them with a position on the map, and each type with one inspection form.
 SELECT t.name AS asset_type,
-       count(*) AS facilities,
-       count(l."assetId") AS with_a_position
-FROM assets a
-JOIN asset_types t ON t.id = a."assetTypeId"
+       count(a.id) AS facilities,
+       count(l."assetId") AS with_a_position,
+       (SELECT count(*) FROM inspection_templates i WHERE i."assetTypeId" = t.id) AS forms,
+       (SELECT count(*) FROM inspection_template_fields f
+          JOIN inspection_templates i ON i.id = f."templateId"
+         WHERE i."assetTypeId" = t.id) AS questions
+FROM asset_types t
+LEFT JOIN assets a ON a."assetTypeId" = t.id AND a."deletedAt" IS NULL
 LEFT JOIN asset_locations l ON l."assetId" = a.id
 WHERE t.code IN ('RESERVOIR', 'WELL', 'BOOSTER_PUMP_STATION')
-GROUP BY t.name ORDER BY t.name;
+GROUP BY t.id, t.name ORDER BY t.name;

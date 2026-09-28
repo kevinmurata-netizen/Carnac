@@ -369,7 +369,9 @@ async function main() {
 
   console.log("Adding storage, supply and pumping facilities…");
   const facilities = await seedSampleFacilities(prisma, org.id);
-  console.log(`  ${facilities.created} facilities across ${facilities.types} asset types`);
+  console.log(
+    `  ${facilities.created} facilities across ${facilities.types} asset types, ${facilities.templates.created} inspection forms`
+  );
 
   console.log("Computing risk assessments…");
   const assessed = await recomputeRiskForOrganization(org.id);

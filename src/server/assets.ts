@@ -329,12 +329,30 @@ function coerceAttribute(dataType: string, raw: string): AttributeWrite | null {
   }
 }
 
-export async function listAssetOptions(organizationId: string): Promise<Array<{ id: string; assetCode: string }>> {
-  return prisma.asset.findMany({
-    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null },
-    select: { id: true, assetCode: true },
-    orderBy: { assetCode: "asc" },
+/**
+ * Everything that can be inspected, grouped by kind.
+ *
+ * Every type, not only waterlines: a reservoir with an inspection form is as
+ * inspectable as a pipe, and the picker that could only offer pipes was the
+ * reason its form could not be reached. The name comes along because a
+ * facility is known by it — "RSV-01" alone is not how anyone refers to the
+ * Riverside Reservoir.
+ */
+export async function listAssetOptions(
+  organizationId: string
+): Promise<Array<{ id: string; assetCode: string; name: string | null; typeCode: string; typeName: string }>> {
+  const assets = await prisma.asset.findMany({
+    where: { organizationId, deletedAt: null },
+    select: { id: true, assetCode: true, name: true, assetType: { select: { code: true, name: true } } },
+    orderBy: [{ assetType: { name: "asc" } }, { assetCode: "asc" }],
   });
+  return assets.map((a) => ({
+    id: a.id,
+    assetCode: a.assetCode,
+    name: a.name,
+    typeCode: a.assetType.code,
+    typeName: a.assetType.name,
+  }));
 }
 
 // These feed the waterline grid's filters, so they are scoped to waterlines.

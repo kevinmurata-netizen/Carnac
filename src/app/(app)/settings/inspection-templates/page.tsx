@@ -55,7 +55,12 @@ export default async function InspectionTemplatesPage() {
 
         {templates.map((template) =>
           canEdit ? (
-            <TemplateEditor key={template.id} template={template} assetTypeName={template.assetTypeName} />
+            <TemplateEditor
+              key={template.id}
+              template={template}
+              assetTypeName={template.assetTypeName}
+              assetTypeCode={template.assetTypeCode}
+            />
           ) : (
             <Card key={template.id}>
               <CardContent className="flex flex-wrap items-center gap-3 py-4 text-sm">
@@ -82,11 +87,12 @@ export default async function InspectionTemplatesPage() {
         <Link href="/settings/asset-types" className="text-primary hover:underline">
           Asset Types
         </Link>
-        . The questions on a form are edited under{" "}
+        . The questions on the waterline form are edited under{" "}
         <Link href="/administration/fields" className="text-primary hover:underline">
           Administration → Fields
         </Link>
-        .
+        ; that screen does not yet reach the other types&rsquo; forms, which arrive with their questions already on
+        them.
       </p>
     </div>
   );

@@ -64,6 +64,10 @@ async function main() {
   console.log(`Adding sample facilities to ${organization.name}…`);
   const summary = await seedSampleFacilities(prisma, organization.id);
   console.log(`  ${summary.types} asset types configured`);
+  console.log(
+    `  ${summary.templates.created} inspection forms created` +
+      (summary.templates.skipped > 0 ? `, ${summary.templates.skipped} already there` : "")
+  );
   console.log(`  ${summary.created} facilities created`);
   console.log(
     summary.skipped > 0

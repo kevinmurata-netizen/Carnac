@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
-import { createInspection, getWaterlineTemplate } from "@/server/inspections";
+import { createInspection, getInspectionSubject } from "@/server/inspections";
 
 const baseSchema = z.object({
   assetId: z.string().min(1, "Select an asset"),
@@ -30,7 +30,18 @@ export async function createInspectionAction(formData: FormData) {
   }
   const data = parsed.data;
 
-  const template = await getWaterlineTemplate(organizationId);
+  // The form is looked up from the asset, not taken from the submission: the
+  // template id arrives in the form data, and a form posted against an asset
+  // of a different kind would otherwise file one type's questions against
+  // another's asset.
+  const subject = await getInspectionSubject(organizationId, data.assetId);
+  if (!subject) throw new Error("Asset not found");
+  const template = subject.template;
+  if (!template) throw new Error(`${subject.asset.assetType.name} has no active inspection form`);
+  if (template.id !== data.templateId) {
+    throw new Error("That form does not belong to this asset — reload the page and try again");
+  }
+
   const fieldValues = template.fields.flatMap((field) => {
     const raw = formData.get(`field_${field.id}`);
     if (raw == null || raw === "") return [];

@@ -33,7 +33,7 @@ export default async function InspectionDetailPage({ params }: { params: Promise
     fields: [
       {
         name: "assetCode",
-        label: "Segment",
+        label: inspection.asset.assetType.name,
         display: inspection.asset.assetCode,
         value: inspection.asset.assetCode,
         readOnly: true,
