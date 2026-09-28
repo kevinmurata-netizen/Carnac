@@ -385,7 +385,7 @@ export function AssetTypeList({
           open={editingTemplate != null}
           onClose={() => setEditingTemplate(null)}
           title={`New inspection template for ${editingTemplate?.assetTypeName ?? ""}`}
-          description="The form an inspector fills in for this kind of asset. It starts with no questions — those are added under Administration → Fields."
+          description="The form an inspector fills in for this kind of asset. It starts with no questions, and adding them is only built for the waterline form so far — the forms that came with the seeded types arrive complete."
         >
           {editingTemplate && (
             <TemplateForm

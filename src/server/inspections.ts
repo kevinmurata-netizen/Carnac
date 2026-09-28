@@ -13,6 +13,49 @@ export async function getWaterlineTemplate(organizationId: string) {
   return template;
 }
 
+/**
+ * The asset being inspected and the form for its kind.
+ *
+ * The form follows the asset rather than the other way round: a reservoir is
+ * asked about its roof and its sanitary vents, a pipe about its joints and its
+ * bore, and neither form means anything against the other's asset. Until this
+ * existed the inspection screen loaded the waterline form whatever it was
+ * handed, so recording an inspection on a reservoir would have filed pipe
+ * questions against it.
+ *
+ * A type with no active form returns `template: null` rather than throwing —
+ * the screen says so and offers to go and write one.
+ */
+export async function getInspectionSubject(organizationId: string, assetId: string) {
+  const asset = await prisma.asset.findFirst({
+    where: { id: assetId, organizationId, deletedAt: null },
+    select: {
+      id: true,
+      assetCode: true,
+      name: true,
+      assetTypeId: true,
+      assetType: { select: { code: true, name: true } },
+    },
+  });
+  if (!asset) return null;
+
+  const template = await prisma.inspectionTemplate.findFirst({
+    where: { assetTypeId: asset.assetTypeId, isActive: true },
+    include: { fields: { orderBy: { sortOrder: "asc" } } },
+    orderBy: { createdAt: "asc" },
+  });
+
+  // Whether a score can be derived from the answers, which is a property of
+  // the type rather than of the form: a type with a form but no condition
+  // model records observations without producing a condition index.
+  const conditionModel = await prisma.conditionModel.findFirst({
+    where: { assetTypeId: asset.assetTypeId },
+    select: { id: true, name: true },
+  });
+
+  return { asset, template, conditionModel };
+}
+
 export type InspectionFilters = {
   search?: string;
   inspectionType?: string;
@@ -44,7 +87,11 @@ const INSPECTION_SORTS: Record<string, (dir: "asc" | "desc") => Prisma.Inspectio
 };
 
 const inspectionInclude = {
-  asset: { select: { id: true, assetCode: true, organizationId: true } },
+  // The type comes along so a page can call the asset what it is: an
+  // inspection of a reservoir labelled "Segment" reads as the wrong record.
+  asset: {
+    select: { id: true, assetCode: true, organizationId: true, assetType: { select: { name: true } } },
+  },
   inspector: { select: { id: true, name: true } },
   results: { include: { field: true } },
   conditionMeasurements: true,
@@ -120,8 +167,12 @@ export async function createInspection(organizationId: string, input: CreateInsp
   const asset = await prisma.asset.findFirst({ where: { id: input.assetId, organizationId, deletedAt: null } });
   if (!asset) throw new Error("Asset not found");
 
+  // The model for the asset's own type. It used to be the waterline's
+  // whatever was being inspected, which would have scored a reservoir on pipe
+  // weights and filed the result under the waterline index. A type with no
+  // model records the answers and no score.
   const conditionModel = await prisma.conditionModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetTypeId: asset.assetTypeId },
   });
 
   const results = input.fieldValues.map((f) => {
@@ -136,8 +187,9 @@ export async function createInspection(organizationId: string, input: CreateInsp
     if (f.dataType === "NUMBER" && f.value !== "") numericScores[f.code] = Number(f.value);
   }
   // Score against the currently configured index, not the seed constant, so a
-  // reweighted index takes effect on the very next inspection.
-  const wci = computeWCI(numericScores, await getIndexWeights(organizationId));
+  // reweighted index takes effect on the very next inspection. Only asked for
+  // when there is a model to file the score against.
+  const wci = conditionModel ? computeWCI(numericScores, await getIndexWeights(organizationId)) : 0;
 
   const inspection = await prisma.inspection.create({
     data: {

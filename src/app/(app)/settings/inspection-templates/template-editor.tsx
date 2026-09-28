@@ -17,9 +17,13 @@ const input =
 export function TemplateEditor({
   template,
   assetTypeName,
+  assetTypeCode,
 }: {
   template: TemplateDetail;
   assetTypeName: string;
+  /** Editing the questions is still a waterline-only screen, so the note below
+   * only points there for the form it can actually open. */
+  assetTypeCode: string;
 }) {
   const [state, action] = useActionState(saveTemplateAction, EMPTY_SETTINGS_STATE);
 
@@ -60,7 +64,10 @@ export function TemplateEditor({
             {formatNumber(template.fieldCount)} question{template.fieldCount === 1 ? "" : "s"} ·{" "}
             {formatNumber(template.inspectionCount)} inspection{template.inspectionCount === 1 ? "" : "s"} recorded.
             Deactivating a template stops it being offered for new inspections; existing inspections keep their
-            answers. The questions themselves are edited under Administration → Fields.
+            answers.{" "}
+            {assetTypeCode === "WATERLINE"
+              ? "The questions themselves are edited under Administration → Fields."
+              : "Editing the questions on this form is not built yet — Administration → Fields covers the waterline form only."}
           </p>
           <SaveBar state={state} label="Save template" />
         </CardContent>

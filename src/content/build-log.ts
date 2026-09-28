@@ -29,6 +29,22 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-28",
+    title: "Reservoirs, wells and pump stations can be inspected",
+    summary:
+      "Each facility type now has its own inspection form, and the inspection screen asks the questions belonging to whatever is being inspected rather than always asking a pipe's.",
+    changes: [
+      "Three new forms, with the questions each kind of asset is actually walked through: a reservoir's roof, coating, vents and sediment; a well's column, casing, sanitary seal and specific capacity; a pump station's pumps, power, surge protection and standby generator.",
+      "Recording an inspection now starts by choosing what is being inspected — every kind of asset, grouped by type — and then asks that type's questions. The picker offered only waterline segments before, which is why the other forms could not be reached.",
+      "A type with no form says so and links to where one is added, rather than showing a form that does not belong to it.",
+      "An inspection of a reservoir is labelled a reservoir rather than a segment.",
+    ],
+    fixes: [
+      "An inspection recorded against anything other than a waterline would have been scored on waterline weights and filed under the waterline condition index. The score now comes from the model belonging to the asset's own type; a type with no model records the answers and says plainly that no condition score is derived from them.",
+    ],
+    note: "No migration. The facility forms are part of the sample facilities, so an instance that already loaded those can re-run the same script or SQL to pick them up.",
+  },
+  {
     date: "2026-09-26",
     title: "Asset types, with their attributes and forms in one place",
     summary:

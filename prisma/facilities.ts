@@ -1,5 +1,6 @@
 import { AssetStatus, Prisma, type PrismaClient } from "@prisma/client";
 import { FACILITY_ASSET_TYPES, type FacilityAttributeSpec } from "../src/domain/facility/attributes";
+import { FACILITY_INSPECTION_TEMPLATES } from "../src/domain/facility/inspection";
 import { insertAssetPointLocation } from "../src/server/geo";
 
 /**
@@ -476,11 +477,63 @@ export async function ensureFacilityTypes(prisma: PrismaClient, organizationId: 
   return byCode;
 }
 
+/**
+ * The inspection form for each facility type, and its questions.
+ *
+ * Matched on (type, name) and (template, code), so re-running adds what is
+ * missing and leaves an edited question alone. A form is written even for a
+ * type that holds no assets yet — it is what makes the type inspectable, not a
+ * description of what has been inspected.
+ */
+export async function ensureFacilityTemplates(
+  prisma: PrismaClient,
+  types: Map<string, { id: string; definitions: Map<string, string> }>
+): Promise<{ created: number; skipped: number }> {
+  let created = 0;
+  let skipped = 0;
+
+  for (const spec of FACILITY_INSPECTION_TEMPLATES) {
+    const type = types.get(spec.assetTypeCode);
+    if (!type) throw new Error(`No asset type ${spec.assetTypeCode} for the ${spec.name} form`);
+
+    const existing = await prisma.inspectionTemplate.findFirst({
+      where: { assetTypeId: type.id, name: spec.name },
+      select: { id: true },
+    });
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    await prisma.inspectionTemplate.create({
+      data: {
+        assetTypeId: type.id,
+        name: spec.name,
+        description: spec.description,
+        fields: {
+          create: spec.fields.map((field) => ({
+            code: field.code,
+            label: field.label,
+            dataType: field.dataType,
+            isRequired: field.isRequired,
+            sortOrder: field.sortOrder,
+            config: { helpText: field.helpText, ...(field.dataType === "NUMBER" ? { min: 0, max: 10 } : {}) },
+          })),
+        },
+      },
+    });
+    created++;
+  }
+
+  return { created, skipped };
+}
+
 export type FacilitySeedSummary = {
   types: number;
   created: number;
   /** Already present, and left exactly as they were. */
   skipped: number;
+  templates: { created: number; skipped: number };
 };
 
 /**
@@ -497,6 +550,7 @@ export async function seedSampleFacilities(
   organizationId: string
 ): Promise<FacilitySeedSummary> {
   const types = await ensureFacilityTypes(prisma, organizationId);
+  const templates = await ensureFacilityTemplates(prisma, types);
   let created = 0;
   let skipped = 0;
 
@@ -552,5 +606,5 @@ export async function seedSampleFacilities(
     created++;
   }
 
-  return { types: types.size, created, skipped };
+  return { types: types.size, created, skipped, templates };
 }

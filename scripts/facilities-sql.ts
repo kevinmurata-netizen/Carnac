@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FACILITY_ASSET_TYPES } from "../src/domain/facility/attributes";
+import { FACILITY_INSPECTION_TEMPLATES } from "../src/domain/facility/inspection";
 import { SAMPLE_FACILITIES } from "../prisma/facilities";
 
 /**
@@ -51,9 +52,10 @@ write("-- prisma/facilities.ts. Edit that and regenerate; edits here are lost.")
 write("--");
 write("-- Paste the whole file into a SQL console (Neon's editor, psql, …). It is");
 write("-- one transaction: it either all lands or none of it does. It adds three");
-write("-- asset types, their attribute definitions, and 18 facilities with their");
-write("-- attributes and map positions. It creates only what is missing and");
-write("-- changes nothing that is already there, so running it twice is safe.");
+write("-- asset types with their attribute definitions and inspection forms, and");
+write("-- 18 facilities with their attributes and map positions. It creates only");
+write("-- what is missing and changes nothing that is already there, so it is safe");
+write("-- to run again over a database that already took an earlier version.");
 write("--");
 write("-- It writes to the organization created first, which is the only one in");
 write("-- every CARNAC instance so far. If yours holds more than one, put the id");
@@ -64,6 +66,7 @@ write("DECLARE");
 write("  v_org  text;");
 write("  v_type text;");
 write("  v_asset text;");
+write("  v_template text;");
 write("BEGIN");
 write("  SELECT id INTO v_org FROM organizations ORDER BY \"createdAt\" ASC LIMIT 1;");
 write("  IF v_org IS NULL THEN");
@@ -98,6 +101,32 @@ for (const type of FACILITY_ASSET_TYPES) {
     );
     write(`  ON CONFLICT ("assetTypeId", code) DO NOTHING;`);
   });
+
+  for (const template of FACILITY_INSPECTION_TEMPLATES.filter((t) => t.assetTypeCode === type.code)) {
+    write("");
+    write(`  -- ${template.name}`);
+    write(`  SELECT id INTO v_template FROM inspection_templates WHERE "assetTypeId" = v_type AND name = ${str(template.name)};`);
+    write("  IF v_template IS NULL THEN");
+    write(`    INSERT INTO inspection_templates (id, "assetTypeId", name, description, "isActive", "createdAt", "updatedAt")`);
+    write(
+      `    VALUES (gen_random_uuid()::text, v_type, ${str(template.name)}, ${str(template.description)}, true, now(), now())`
+    );
+    write("    RETURNING id INTO v_template;");
+    write("  END IF;");
+
+    for (const field of template.fields) {
+      const config = jsonb({
+        helpText: field.helpText,
+        ...(field.dataType === "NUMBER" ? { min: 0, max: 10 } : {}),
+      });
+      write(`  INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)`);
+      write(
+        `  VALUES (gen_random_uuid()::text, v_template, ${str(field.code)}, ${str(field.label)}, ` +
+          `${str(field.dataType)}::"AttributeDataType", NULL, ${field.isRequired}, ${field.sortOrder}, ${config})`
+      );
+      write(`  ON CONFLICT ("templateId", code) DO NOTHING;`);
+    }
+  }
 
   for (const facility of SAMPLE_FACILITIES.filter((f) => f.typeCode === type.code)) {
     const installed = new Date(Date.UTC(facility.installYear, 5, 15));
@@ -154,16 +183,20 @@ for (const type of FACILITY_ASSET_TYPES) {
 
 write("END $$;");
 write("");
-write("-- What landed. Expect Booster Pump Station 5, Reservoir 7, Well 6 —");
-write("-- and 18 of those 18 with a position on the map.");
+write("-- What landed. Expect Booster Pump Station 5, Reservoir 7, Well 6 — all of");
+write("-- them with a position on the map, and each type with one inspection form.");
 write("SELECT t.name AS asset_type,");
-write("       count(*) AS facilities,");
-write("       count(l.\"assetId\") AS with_a_position");
-write("FROM assets a");
-write("JOIN asset_types t ON t.id = a.\"assetTypeId\"");
+write("       count(a.id) AS facilities,");
+write("       count(l.\"assetId\") AS with_a_position,");
+write("       (SELECT count(*) FROM inspection_templates i WHERE i.\"assetTypeId\" = t.id) AS forms,");
+write("       (SELECT count(*) FROM inspection_template_fields f");
+write("          JOIN inspection_templates i ON i.id = f.\"templateId\"");
+write("         WHERE i.\"assetTypeId\" = t.id) AS questions");
+write("FROM asset_types t");
+write("LEFT JOIN assets a ON a.\"assetTypeId\" = t.id AND a.\"deletedAt\" IS NULL");
 write("LEFT JOIN asset_locations l ON l.\"assetId\" = a.id");
 write("WHERE t.code IN (" + FACILITY_ASSET_TYPES.map((t) => str(t.code)).join(", ") + ")");
-write("GROUP BY t.name ORDER BY t.name;");
+write("GROUP BY t.id, t.name ORDER BY t.name;");
 write("");
 
 writeFileSync(OUT, lines.join("\n"), "utf8");
