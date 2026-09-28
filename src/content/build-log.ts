@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-28",
+    title: "Hold a target once it is reached, and say plainly what the ramp spends",
+    summary:
+      "A target-constrained run no longer slides away from its target after reaching it, and its spend card no longer implies the full solved amount is spent in years where the work ran out.",
+    changes: [
+      "In a target run, a treatment also counts if it lifts its segment by at least 5 condition points. Holding an average means working on segments just under it, and almost nothing lands one of those all the way on the target in a single visit — so the run reached its target and then slid, with money available and nothing it was allowed to buy. On the sample network, a target of 80 now holds at 80.0 for a decade where it used to fall to 78 within five years, and ends at 78.6 rather than 75.5.",
+      "Budget runs keep the old rule unchanged. It stops a fully committed budget re-patching the same pipes every year, which a target run cannot do: it stops buying as soon as the target is met.",
+      "The spend card says which years spend the solved amount in full, and that the rest run out of work the rules allow — “Reaching 80 by 2030 needs $37.2M a year in 2026–2027 … 2028–2030 spend only $3.0M–$10.1M” — rather than “$37.2M a year to 2030” over years that spent a tenth of it.",
+      "It also says when the target is reached earlier than asked.",
+    ],
+    note: "No migration. Target runs produce different results after this change — re-run them to see it. Budget runs are unaffected.",
+  },
+  {
+    date: "2026-09-28",
     title: "See what a target costs each year",
     summary:
       "A target-constrained scenario now shows its spend year by year in its own card near the top of the page, instead of leaving it to a column in a table below the settings.",

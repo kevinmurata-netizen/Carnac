@@ -35,8 +35,8 @@ import {
 } from "./benefit";
 import {
   WATERLINE_TREATMENTS,
-  MIN_RISK_REDUCTION_PCT,
   clearsEffectivenessFloor,
+  doesEnough,
   enumerateOptions,
   splitOptionCost,
   type AssetTreatmentContext,
@@ -619,11 +619,14 @@ function rankCandidates(
   // **It must clear the effectiveness floor** (§5.5), below that section's
   // condition line. Shared with the recommendation and the network-wide
   // ranking.
-  const doesEnough = (c: Candidate) =>
-    c.projectedCondition >= assumptions.conditionTarget || (riskPct(c) ?? 0) >= MIN_RISK_REDUCTION_PCT;
-
   const fundable = scored.filter((c) => {
-    const enough = doesEnough(c);
+    const enough = doesEnough({
+      conditionBefore: c.asset.condition,
+      conditionAfter: c.projectedCondition,
+      riskReductionPct: riskPct(c),
+      conditionTarget: assumptions.conditionTarget,
+      targetConstrained: assumptions.fundingMode === "target",
+    });
     const clears = clearsEffectivenessFloor(c.asset.condition, riskPct(c));
     if (enough && clears) return true;
     // Scored, so the trace can show what it would have been worth — which is

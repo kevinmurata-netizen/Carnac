@@ -755,6 +755,23 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
 
   const money = (n: number) => formatCurrency(n, { compact: true });
 
+  // The solved amount is what each ramp year is *allowed*, and a ramp year can
+  // spend much less when the work the treatment rules permit runs out — the
+  // ordinary case once the durable work has been bought early. Saying "$42.6M
+  // a year to 2030" over years that spent $5M read as a price nobody would pay.
+  const spentInFull = (y: { spend: number }) => y.spend >= target.annualBudget * 0.95;
+  const fullYears = ramp.filter(spentInFull).map((y) => y.year);
+  const partYears = ramp.filter((y) => !spentInFull(y));
+  const metYear = target.metInYear != null ? (years[target.metInYear - 1]?.year ?? null) : null;
+  const yearsLabel = (list: number[]) =>
+    list.length === 0
+      ? ""
+      : list.every((y, i) => i === 0 || y === list[i - 1] + 1)
+        ? list.length === 1
+          ? String(list[0])
+          : `${list[0]}–${list[list.length - 1]}`
+        : list.join(", ");
+
   return (
     <Card className="mt-4">
       <CardHeader>
@@ -773,7 +790,7 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
               reaches {target.value} by {targetYear}. With delivery lead times the run keeps to that amount after the
               target year, and money actually leaves the budget as work is paid for — which is what each bar shows.
             </>
-          ) : (
+          ) : partYears.length === 0 ? (
             <>
               <span className="font-medium text-foreground">{money(target.annualBudget)} a year</span> from{" "}
               {years[0]?.year} to {targetYear} reaches {target.value}
@@ -785,12 +802,39 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
               )}
               .
             </>
+          ) : (
+            <>
+              Reaching {target.value} by {targetYear} needs{" "}
+              <span className="font-medium text-foreground">{money(target.annualBudget)} a year</span>
+              {fullYears.length > 0 ? <> in {yearsLabel(fullYears)}</> : null}.{" "}
+              {metYear != null && metYear < (targetYear ?? Infinity) && (
+                <>The target is reached in {metYear}, earlier than asked. </>
+              )}
+              After that the work the treatment rules allow runs out, so{" "}
+              {yearsLabel(partYears.map((y) => y.year))} spend{partYears.length === 1 ? "s" : ""} only{" "}
+              {partYears.length === 1
+                ? money(partYears[0].spend)
+                : `${money(Math.min(...partYears.map((y) => y.spend)))}–${money(
+                    Math.max(...partYears.map((y) => y.spend))
+                  )}`}{" "}
+              — the rest of the amount is available but has nothing it is allowed to buy.
+              {holdLow != null && holdHigh != null && (
+                <>
+                  {" "}
+                  Holding the target afterwards takes {money(holdLow)}–{money(holdHigh)} a year.
+                </>
+              )}
+            </>
           )}
         </p>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Figure
-            label={`To reach it (${years[0]?.year}–${targetYear ?? ""})`}
+            label={
+              target.reachable
+                ? `To reach it (${years[0]?.year}–${targetYear ?? ""})`
+                : `Up to the target year (${years[0]?.year}–${targetYear ?? ""})`
+            }
             value={money(toReach)}
             note={`${ramp.length} year${ramp.length === 1 ? "" : "s"}`}
           />

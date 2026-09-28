@@ -47,8 +47,8 @@ import {
 } from "./benefit";
 import {
   WATERLINE_TREATMENTS,
-  MIN_RISK_REDUCTION_PCT,
   clearsEffectivenessFloor,
+  doesEnough,
   enumerateOptions,
   splitOptionCost,
   type AssetTreatmentContext,
@@ -790,8 +790,13 @@ function rankCandidates(args: {
     // Work already held is kept whatever it now scores: it is paid for, and
     // dropping it here would silently lose a commitment rather than replace it.
     if (c.held) return true;
-    const enough =
-      c.projectedCondition >= args.assumptions.conditionTarget || (riskPct(c) ?? 0) >= MIN_RISK_REDUCTION_PCT;
+    const enough = doesEnough({
+      conditionBefore: c.conditionBefore,
+      conditionAfter: c.projectedCondition,
+      riskReductionPct: riskPct(c),
+      conditionTarget: args.assumptions.conditionTarget,
+      targetConstrained: args.assumptions.fundingMode === "target",
+    });
     const clears = clearsEffectivenessFloor(c.conditionBefore, riskPct(c));
     if (enough && clears) return true;
     if (args.trace) {
