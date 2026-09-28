@@ -966,6 +966,47 @@ export const MATERIAL_INTERVENTION_CONDITION = 50;
 export const MIN_RISK_REDUCTION_PCT = 25;
 
 /**
+ * In a target-constrained run, the least a treatment may add to its asset's
+ * condition and still count, when it neither reaches the Condition Target nor
+ * cuts risk by MIN_RISK_REDUCTION_PCT.
+ *
+ * Holding a network average means working on assets sitting just under it — a
+ * segment at 74 against a target of 80 — and almost nothing lands one of those
+ * all the way on 80 in a single visit. Without this, a run reached its target
+ * and then slid: measured on the sample network, a target of 80 fell to 75.5
+ * over fifteen years with money available every year and nothing it was
+ * allowed to buy. With it, 80.0 held for a decade and ended at 78.6.
+ *
+ * Budget runs keep the old rule. It exists because a fully committed budget
+ * will otherwise re-patch the same pipes every year — removing it once cost 30
+ * WCI points at twice the spend. A target run cannot do that: it stops buying
+ * the moment the target is met, so there is no budget left over to churn.
+ * Ten points was tried first and changed nothing, because the treatments
+ * available to a segment in the 70s add less than that.
+ */
+export const MIN_TARGET_GAIN = 5;
+
+/**
+ * Whether a treatment does enough to count as addressing its asset: it lifts
+ * the asset to the Condition Target, or cuts its risk materially — or, in a
+ * target-constrained run only, it lifts the asset by MIN_TARGET_GAIN points.
+ *
+ * Shared by both scenario engines so the rule cannot differ between a run with
+ * delivery lead times and one without.
+ */
+export function doesEnough(option: {
+  conditionBefore: number;
+  conditionAfter: number;
+  riskReductionPct: number | null;
+  conditionTarget: number;
+  targetConstrained: boolean;
+}): boolean {
+  if (option.conditionAfter >= option.conditionTarget) return true;
+  if ((option.riskReductionPct ?? 0) >= MIN_RISK_REDUCTION_PCT) return true;
+  return option.targetConstrained && option.conditionAfter - option.conditionBefore >= MIN_TARGET_GAIN;
+}
+
+/**
  * Whether an option clears the effectiveness floor on this asset.
  *
  * Exported because two rankings need the same answer. `recommendTreatment`
