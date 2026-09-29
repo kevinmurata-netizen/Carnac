@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   BASE_YEAR_MAX,
@@ -189,7 +190,14 @@ export async function copyScenarioSet(
           categoryWeightSetId: scenario.categoryWeightSetId,
           categoryFundingPlanId: scenario.categoryFundingPlanId,
           limitsOptions: scenario.limitsOptions,
-          assumptions: { create: scenario.assumptions.map((a) => ({ key: a.key, value: a.value as object })) },
+          // A stored null — a budget scenario with no target line — is copied
+          // as null, not dropped, or the copy would gain the default target.
+          assumptions: {
+            create: scenario.assumptions.map((a) => ({
+              key: a.key,
+              value: a.value === null ? Prisma.JsonNull : (a.value as Prisma.InputJsonValue),
+            })),
+          },
           treatmentOptions: { create: scenario.treatmentOptions.map((t) => ({ treatmentId: t.treatmentId })) },
           combinationOptions: {
             create: scenario.combinationOptions.map((c) => ({ combinationId: c.combinationId })),

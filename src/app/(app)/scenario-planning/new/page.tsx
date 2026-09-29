@@ -141,7 +141,6 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
               // The whole network unless someone narrows it.
               savedFilterId: null,
               fundingMode: "budget",
-              targetValue: DEFAULT_ASSUMPTIONS.targetValue,
               targetInYears: Math.min(DEFAULT_ASSUMPTIONS.targetInYears, set.planningPeriodYears),
               scenarioSetId: set.id,
               annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,

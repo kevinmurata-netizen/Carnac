@@ -87,19 +87,62 @@ export type ScenarioAssumptions = {
   fundingGrowth: number;
   discountRate: number;
   analysisPeriodYears: number;
-  conditionTarget: number;
+  /**
+   * The scenario's one condition target: the average its assets are measured
+   * against.
+   *
+   * What it does depends on the mode. In a target run it is the goal — the
+   * average to reach — and the bar the treatment rules judge work by. In a
+   * budget run it is only a reference: the line on the chart and the Below
+   * Target count. The rules there use RULE_CONDITION_BAR, so moving the line
+   * never changes what the money buys. Null — no target — is allowed in a
+   * budget run only.
+   *
+   * This used to be two fields, a Condition Target that always drove the
+   * rules and a target run's separate goal, which read as the same thing
+   * twice and was not.
+   */
+  conditionTarget: number | null;
   riskThreshold: number;
   strategy: Strategy;
   /** Budget-constrained unless it says otherwise, which is how every scenario
    * stored before this existed reads. */
   fundingMode: FundingMode;
   targetMetric: TargetMetric;
-  /** The average the scenario's assets must reach. */
-  targetValue: number;
   /** By when, counted in years from the start of the run: 1 is "by the end of
    * the first year". Held to the analysis period by the form. */
   targetInYears: number;
 };
+
+/**
+ * What the treatment rules call good enough, in a budget run.
+ *
+ * The rules need a condition to judge by: which segments a strategy looks at
+ * (those below it, for most strategies), and whether a treatment does enough
+ * (lifts its segment to it). In a target run that is the target. In a budget
+ * run the target is only a line on a chart, so the rules take the start of
+ * the Good band instead — the figure every budget scenario used by default
+ * before the two fields were merged.
+ */
+export const RULE_CONDITION_BAR = 70;
+
+/** The condition the treatment rules judge by in this scenario. */
+export function ruleBar(a: ScenarioAssumptions): number {
+  return a.fundingMode === "target" && a.conditionTarget != null ? a.conditionTarget : RULE_CONDITION_BAR;
+}
+
+/** The target a target run is solving for. The form requires one in that
+ * mode; the fallback only covers a row stored without it. */
+export function goalOf(a: ScenarioAssumptions): number {
+  return a.conditionTarget ?? RULE_CONDITION_BAR;
+}
+
+/** What a year's Below Target count is measured against: the scenario's own
+ * target where it has one, otherwise the rules' bar, so the count still means
+ * "segments below Good" on a scenario with no target line. */
+export function belowTargetBar(a: ScenarioAssumptions): number {
+  return a.conditionTarget ?? RULE_CONDITION_BAR;
+}
 
 export const DEFAULT_ASSUMPTIONS: ScenarioAssumptions = {
   annualBudget: 4_000_000,
@@ -111,7 +154,6 @@ export const DEFAULT_ASSUMPTIONS: ScenarioAssumptions = {
   strategy: "risk-based",
   fundingMode: "budget",
   targetMetric: "avgCondition",
-  targetValue: 70,
   targetInYears: 5,
 };
 
@@ -624,7 +666,7 @@ function rankCandidates(
       conditionBefore: c.asset.condition,
       conditionAfter: c.projectedCondition,
       riskReductionPct: riskPct(c),
-      conditionTarget: assumptions.conditionTarget,
+      conditionTarget: ruleBar(assumptions),
       targetConstrained: assumptions.fundingMode === "target",
     });
     const clears = clearsEffectivenessFloor(c.asset.condition, riskPct(c));
@@ -701,15 +743,15 @@ function isEligible(asset: SimAsset, a: ScenarioAssumptions): boolean {
   switch (a.strategy) {
     case "preventive":
       // Act while still serviceable — between Poor and the condition target.
-      return asset.condition < a.conditionTarget && asset.condition >= 40;
+      return asset.condition < ruleBar(a) && asset.condition >= 40;
     case "replacement-only":
       return asset.condition < 45;
     case "risk-based":
-      return risk >= a.riskThreshold || asset.condition < a.conditionTarget;
+      return risk >= a.riskThreshold || asset.condition < ruleBar(a);
     case "condition-based":
-      return asset.condition < a.conditionTarget;
+      return asset.condition < ruleBar(a);
     case "lowest-lifecycle-cost":
-      return asset.condition < a.conditionTarget;
+      return asset.condition < ruleBar(a);
   }
 }
 
@@ -916,7 +958,7 @@ export function runScenario(
       outcome = selectForTarget(candidates, {
         count: state.length,
         sumBefore: [...untreated.values()].reduce((sum, c) => sum + c, 0),
-        target: assumptions.targetValue,
+        target: goalOf(assumptions),
         projected: (c) => atYearEnd(byId.get(c.assetId)!, c.projectedCondition),
         current: (assetId) => untreated.get(assetId) ?? 0,
       });
@@ -1020,7 +1062,7 @@ export function runScenario(
     // Against the figure this year reports, not the raw average behind it. A
     // year that shows 60.0 against a target of 60 has met it; saying otherwise
     // because the sum came to 59.97 would be a distinction nobody could see.
-    if (metInYear == null && Math.round(avgCondition * 10) / 10 >= assumptions.targetValue) {
+    if (metInYear == null && Math.round(avgCondition * 10) / 10 >= goalOf(assumptions)) {
       metInYear = i + 1;
     }
 
@@ -1044,7 +1086,7 @@ export function runScenario(
       backlogCount: backlogBest.size,
       expectedFailures: Math.round(expectedFailures * 10) / 10,
       failureCost: Math.round(failureCost),
-      belowTargetCount: state.filter((a) => a.condition < assumptions.conditionTarget).length,
+      belowTargetCount: state.filter((a) => a.condition < belowTargetBar(assumptions)).length,
       aboveRiskThresholdCount: state.filter(
         (a) => pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold
       ).length,
@@ -1085,7 +1127,7 @@ export function runScenario(
     target: targeted
       ? {
           metric: assumptions.targetMetric,
-          value: assumptions.targetValue,
+          value: goalOf(assumptions),
           inYears: assumptions.targetInYears,
           annualBudget: Math.round(assumptions.annualBudget),
           metInYear,
@@ -1145,7 +1187,7 @@ export function solveForTarget(
   const reaches = (annualBudget: number) => {
     const result = run(assets, { ...probe, annualBudget }, options);
     const achieved = result.years[inYears - 1]?.avgCondition ?? 0;
-    return { ok: achieved >= assumptions.targetValue, achieved };
+    return { ok: achieved >= goalOf(assumptions), achieved };
   };
 
   let iterations = 0;
@@ -1221,11 +1263,11 @@ function outcomeFor(
   search: TargetOutcome["search"],
   reachable: boolean
 ): TargetOutcome {
-  const met = result.years.findIndex((y) => y.avgCondition >= assumptions.targetValue);
+  const met = result.years.findIndex((y) => y.avgCondition >= goalOf(assumptions));
   const metInYear = met >= 0 ? met + 1 : null;
   return {
     metric: assumptions.targetMetric,
-    value: assumptions.targetValue,
+    value: goalOf(assumptions),
     inYears,
     annualBudget: Math.round(annualBudget),
     metInYear,
