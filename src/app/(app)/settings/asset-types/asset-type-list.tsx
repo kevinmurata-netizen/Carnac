@@ -14,6 +14,8 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components
 import { formatNumber } from "@/lib/format";
 import type { SettingsActionState } from "../state";
 import type { AssetTypeDetail, AttributeDetail } from "@/server/settings";
+import type { ComponentComposition } from "@/server/component-types";
+import { ComponentsSection } from "./components-section";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -89,6 +91,11 @@ export function AssetTypeList({
   onDeleteAttribute,
   onCreateTemplate,
   onToggleTemplate,
+  composition,
+  onAddComponent,
+  onSaveComponent,
+  onRemoveComponent,
+  onMoveComponent,
 }: {
   types: AssetTypeDetail[];
   canEdit: boolean;
@@ -102,13 +109,34 @@ export function AssetTypeList({
   onDeleteAttribute: Action;
   onCreateTemplate: Action;
   onToggleTemplate: (id: string, next: boolean) => Promise<string>;
+  composition: ComponentComposition;
+  onAddComponent: Action;
+  onSaveComponent: Action;
+  onRemoveComponent: Action;
+  onMoveComponent: (assetTypeId: string, componentTypeId: string, direction: -1 | 1) => Promise<State>;
 }) {
   const [state, setState] = useState<State>(EMPTY);
   const [pending, startTransition] = useTransition();
 
-  const [editingType, setEditingType] = useState<TypeDraft | null>(null);
-  const [editingAttribute, setEditingAttribute] = useState<AttributeDraft | null>(null);
-  const [editingTemplate, setEditingTemplate] = useState<TemplateDraft | null>(null);
+  const [editingType, setEditingTypeDraft] = useState<TypeDraft | null>(null);
+  const [editingAttribute, setEditingAttributeDraft] = useState<AttributeDraft | null>(null);
+  const [editingTemplate, setEditingTemplateDraft] = useState<TemplateDraft | null>(null);
+
+  // Opening a dialog clears the last message, so an old error can't greet a
+  // new dialog as if it were about it.
+  const opening =
+    <T,>(set: (draft: T | null) => void) =>
+    (draft: T | null) => {
+      if (draft) setState(EMPTY);
+      set(draft);
+    };
+  const setEditingType = opening(setEditingTypeDraft);
+  const setEditingAttribute = opening(setEditingAttributeDraft);
+  const setEditingTemplate = opening(setEditingTemplateDraft);
+
+  /** A refused save leaves its dialog open, over the page-level message, so
+   * the refusal is repeated inside the dialog where it can be read. */
+  const dialogError = state.status === "error" ? <Feedback state={state} /> : null;
 
   /** Saving is driven by hand rather than through useActionState so a save that
    * worked can close the dialog in the same breath — a dialog left open with
@@ -259,6 +287,27 @@ export function AssetTypeList({
               )}
             </section>
 
+            {/* Components ---------------------------------------------- */}
+            <ComponentsSection
+              assetType={{ id: type.id, name: type.name }}
+              links={composition.byAssetType[type.id] ?? []}
+              componentTypes={composition.componentTypes}
+              canEdit={canEdit}
+              pending={pending}
+              dialogError={dialogError}
+              onOpenDialog={() => setState(EMPTY)}
+              onAdd={(formData, close) => submit(onAddComponent, formData, close)}
+              onSave={(formData, close) => submit(onSaveComponent, formData, close)}
+              onRemove={(formData) => submit(onRemoveComponent, formData, () => {})}
+              onMove={(componentTypeId, direction) =>
+                startTransition(async () => {
+                  const result = await onMoveComponent(type.id, componentTypeId, direction);
+                  // A move that worked says nothing; the order on screen is the answer.
+                  if (result.status === "error") setState(result);
+                })
+              }
+            />
+
             {/* Inspection templates ------------------------------------ */}
             <section>
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -339,6 +388,7 @@ export function AssetTypeList({
               : "A kind of asset this utility holds — a reservoir, a well, a pump station. It records nothing until it has attributes, which are added on the type itself."
           }
         >
+          {dialogError}
           {editingType && (
             <TypeForm
               draft={editingType}
@@ -364,6 +414,7 @@ export function AssetTypeList({
           }
           description="What this kind of asset records. The code identifies it to imports and to the model; the label is what people read."
         >
+          {dialogError}
           {editingAttribute && (
             <AttributeForm
               draft={editingAttribute}
@@ -387,6 +438,7 @@ export function AssetTypeList({
           title={`New inspection template for ${editingTemplate?.assetTypeName ?? ""}`}
           description="The form an inspector fills in for this kind of asset. It starts with no questions, and adding them is only built for the waterline form so far — the forms that came with the seeded types arrive complete."
         >
+          {dialogError}
           {editingTemplate && (
             <TemplateForm
               draft={editingTemplate}

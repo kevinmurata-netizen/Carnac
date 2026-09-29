@@ -26,6 +26,13 @@ import {
 } from "@/server/settings";
 import { updateNavLabels, updateNavVisibility, resetNavLabels } from "@/server/navigation";
 import { createMetric, updateMetric, deleteMetric } from "@/server/metrics";
+import {
+  addComponentToAssetType,
+  updateComponentOnAssetType,
+  moveComponentOnAssetType,
+  removeComponentFromAssetType,
+} from "@/server/component-types";
+import { COMPONENT_ATTRIBUTE_KINDS, type NewComponentAttribute } from "@/domain/components/attributes";
 import type { ConditionBand } from "@/domain/waterline/condition";
 import type { SettingsActionState } from "./state";
 
@@ -266,6 +273,142 @@ export async function deleteAttributeAction(
     await deleteInventoryField(session.user.organizationId, String(formData.get("id") ?? ""));
     revalidateAll(ASSET_TYPES_CARD, "/administration/fields");
     return { status: "success", message: "Attribute deleted." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// --- Components of an asset type -------------------------------------------
+
+/** Blank means "no share set"; the server checks the range. */
+function parseShare(raw: unknown): number | null {
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  const value = Number(text);
+  if (!Number.isFinite(value)) throw new Error(`"${text}" is not a percentage`);
+  return value;
+}
+
+/** The attribute rows the dialog sends as JSON, checked field by field — this
+ * is the boundary a crafted request would cross. */
+function parseNewAttributes(raw: unknown): NewComponentAttribute[] {
+  const text = String(raw ?? "").trim();
+  if (!text) return [];
+  const rows: unknown = JSON.parse(text);
+  if (!Array.isArray(rows)) throw new Error("Attributes were not sent as a list");
+  const kinds = COMPONENT_ATTRIBUTE_KINDS.map((k) => k.value as string);
+  return rows.map((r) => {
+    const row = r as { label?: unknown; kind?: unknown; options?: unknown };
+    const kind = String(row.kind ?? "");
+    if (!kinds.includes(kind)) throw new Error(`"${kind}" is not a kind of attribute`);
+    return {
+      label: String(row.label ?? ""),
+      kind: kind as NewComponentAttribute["kind"],
+      options: Array.isArray(row.options) ? row.options.map(String).map((s) => s.trim()).filter(Boolean) : [],
+    };
+  });
+}
+
+function parseKeys(raw: unknown): string[] {
+  const text = String(raw ?? "").trim();
+  if (!text) return [];
+  const keys: unknown = JSON.parse(text);
+  return Array.isArray(keys) ? keys.map(String) : [];
+}
+
+export async function addComponentAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    const existing = formData.get("mode") === "existing";
+    await addComponentToAssetType(session.user.organizationId, String(formData.get("assetTypeId") ?? ""), {
+      sharePct: parseShare(formData.get("sharePct")),
+      ...(existing
+        ? { existing: { componentTypeId: String(formData.get("componentTypeId") ?? "") } }
+        : {
+            create: {
+              code: String(formData.get("code") ?? ""),
+              name: String(formData.get("name") ?? ""),
+              description: String(formData.get("description") ?? "") || null,
+              attributes: parseNewAttributes(formData.get("attributes")),
+            },
+          }),
+    });
+    revalidateAll(ASSET_TYPES_CARD, "/settings/rollup");
+    return {
+      status: "success",
+      message: "Component added. Assets of this type don't have one yet — that is recorded on each asset.",
+    };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function saveComponentAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    await updateComponentOnAssetType(
+      session.user.organizationId,
+      String(formData.get("assetTypeId") ?? ""),
+      String(formData.get("componentTypeId") ?? ""),
+      {
+        name: String(formData.get("name") ?? ""),
+        description: String(formData.get("description") ?? "") || null,
+        sharePct: parseShare(formData.get("sharePct")),
+        removeAttributes: parseKeys(formData.get("removeAttributes")),
+        addAttributes: parseNewAttributes(formData.get("addAttributes")),
+      }
+    );
+    revalidateAll(ASSET_TYPES_CARD, "/settings/rollup");
+    return { status: "success", message: "Component updated." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function moveComponentAction(
+  assetTypeId: string,
+  componentTypeId: string,
+  direction: -1 | 1
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    await moveComponentOnAssetType(
+      session.user.organizationId,
+      assetTypeId,
+      componentTypeId,
+      direction === -1 ? -1 : 1
+    );
+    revalidateAll(ASSET_TYPES_CARD, "/settings/rollup");
+    return { status: "idle", message: null };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function removeComponentAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    const { deletedType, name } = await removeComponentFromAssetType(
+      session.user.organizationId,
+      String(formData.get("assetTypeId") ?? ""),
+      String(formData.get("componentTypeId") ?? "")
+    );
+    revalidateAll(ASSET_TYPES_CARD, "/settings/rollup");
+    return {
+      status: "success",
+      message: deletedType
+        ? `${name} removed. Nothing else used it, so it was deleted too.`
+        : `${name} removed from this asset type.`,
+    };
   } catch (e) {
     return fail(e);
   }
