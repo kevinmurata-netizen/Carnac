@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { recordComponentScores } from "../src/server/components";
 import { ensureRollupStrategies } from "../src/server/rollup";
+import { editAttributes } from "../src/domain/components/attributes";
 
 /**
  * The components the sample facilities are made of, and what inspections have
@@ -30,8 +31,8 @@ const COMPONENT_TYPES: ComponentSpec[] = [
     attributeSchema: {
       type: "object",
       properties: {
-        material: { type: "string", enum: ["Steel", "Concrete", "Prestressed Concrete"] },
-        wallThicknessIn: { type: "number", minimum: 0 },
+        material: { type: "string", enum: ["Steel", "Concrete", "Prestressed Concrete"], title: "Material" },
+        wallThicknessIn: { type: "number", minimum: 0, title: "Wall thickness (in)" },
       },
     },
   },
@@ -39,13 +40,13 @@ const COMPONENT_TYPES: ComponentSpec[] = [
     code: "ROOF",
     name: "Roof",
     description: "The roof, its structure and its hatches.",
-    attributeSchema: { type: "object", properties: { roofType: { type: "string", enum: ["Dome", "Cone", "Flat slab"] } } },
+    attributeSchema: { type: "object", properties: { roofType: { type: "string", enum: ["Dome", "Cone", "Flat slab"], title: "Roof type" } } },
   },
   {
     code: "FLOOR",
     name: "Floor",
     description: "The floor slab or bottom plate.",
-    attributeSchema: { type: "object", properties: { material: { type: "string" } } },
+    attributeSchema: { type: "object", properties: { material: { type: "string", title: "Material" } } },
   },
   {
     code: "COATING_SYSTEM",
@@ -54,9 +55,9 @@ const COMPONENT_TYPES: ComponentSpec[] = [
     attributeSchema: {
       type: "object",
       properties: {
-        system: { type: "string" },
-        lastRecoatYear: { type: "integer" },
-        dryFilmThicknessMils: { type: "number", minimum: 0 },
+        system: { type: "string", title: "Coating system" },
+        lastRecoatYear: { type: "integer", title: "Last recoated (year)" },
+        dryFilmThicknessMils: { type: "number", minimum: 0, title: "Dry film thickness (mils)" },
       },
     },
   },
@@ -66,44 +67,44 @@ const COMPONENT_TYPES: ComponentSpec[] = [
     description: "Anodes or impressed-current system protecting steel from corrosion.",
     attributeSchema: {
       type: "object",
-      properties: { system: { type: "string", enum: ["Galvanic", "Impressed current"] }, lastSurveyYear: { type: "integer" } },
+      properties: { system: { type: "string", enum: ["Galvanic", "Impressed current"], title: "System" }, lastSurveyYear: { type: "integer", title: "Last surveyed (year)" } },
     },
   },
   {
     code: "WELL_CASING",
     name: "Casing",
     description: "The well casing and its grout seal.",
-    attributeSchema: { type: "object", properties: { diameterIn: { type: "number" }, depthFt: { type: "number" } } },
+    attributeSchema: { type: "object", properties: { diameterIn: { type: "number", title: "Diameter (in)" }, depthFt: { type: "number", title: "Depth (ft)" } } },
   },
   {
     code: "PUMP",
     name: "Pump",
     description: "The pump — submersible or vertical turbine in a well, centrifugal in a station.",
-    attributeSchema: { type: "object", properties: { make: { type: "string" }, ratedGpm: { type: "number" } } },
+    attributeSchema: { type: "object", properties: { make: { type: "string", title: "Make" }, ratedGpm: { type: "number", title: "Rated flow (gpm)" } } },
   },
   {
     code: "MOTOR",
     name: "Motor",
     description: "The electric motor driving the pump.",
-    attributeSchema: { type: "object", properties: { horsepower: { type: "number" }, vfd: { type: "boolean" } } },
+    attributeSchema: { type: "object", properties: { horsepower: { type: "number", title: "Horsepower" }, vfd: { type: "boolean", title: "Variable frequency drive" } } },
   },
   {
     code: "WELL_SCREEN",
     name: "Screen",
     description: "The screen admitting water from the aquifer — where fouling shows first.",
-    attributeSchema: { type: "object", properties: { slotSizeIn: { type: "number" }, material: { type: "string" } } },
+    attributeSchema: { type: "object", properties: { slotSizeIn: { type: "number", title: "Slot size (in)" }, material: { type: "string", title: "Material" } } },
   },
   {
     code: "PIPING",
     name: "Piping",
     description: "Station piping, headers and valves.",
-    attributeSchema: { type: "object", properties: { material: { type: "string" } } },
+    attributeSchema: { type: "object", properties: { material: { type: "string", title: "Material" } } },
   },
   {
     code: "CONTROLS",
     name: "Controls",
     description: "Electrical gear, instrumentation and SCADA.",
-    attributeSchema: { type: "object", properties: { plc: { type: "string" }, scada: { type: "boolean" } } },
+    attributeSchema: { type: "object", properties: { plc: { type: "string", title: "PLC" }, scada: { type: "boolean", title: "SCADA" } } },
   },
 ];
 
@@ -178,10 +179,12 @@ export async function seedSampleComponents(prisma: PrismaClient, organizationId:
 
   const typeIds = new Map<string, string>();
   for (const spec of COMPONENT_TYPES) {
+    // Numbered in the order written here: jsonb doesn't keep key order.
+    const attributeSchema = editAttributes(spec.attributeSchema, {}) as object;
     const row = await prisma.componentType.upsert({
       where: { organizationId_code: { organizationId, code: spec.code } },
-      update: { name: spec.name, description: spec.description, attributeSchema: spec.attributeSchema },
-      create: { organizationId, ...spec },
+      update: { name: spec.name, description: spec.description, attributeSchema },
+      create: { organizationId, ...spec, attributeSchema },
       select: { id: true },
     });
     typeIds.set(spec.code, row.id);

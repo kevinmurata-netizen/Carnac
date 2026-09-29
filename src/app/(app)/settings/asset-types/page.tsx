@@ -14,7 +14,12 @@ import {
   deleteAttributeAction,
   createTemplateAction,
   toggleTemplateActiveAction,
+  addComponentAction,
+  saveComponentAction,
+  removeComponentAction,
+  moveComponentAction,
 } from "../actions";
+import { listComponentComposition } from "@/server/component-types";
 
 /**
  * The kinds of asset this utility holds, each with what it records and what is
@@ -37,13 +42,16 @@ export default async function AssetTypesPage() {
   const permissions = await getSessionPermissions(session!);
   const canEditTemplates = permissions.canWrite(resourceKey("card", "/settings/inspection-templates"));
 
-  const types = await listAssetTypeDetails(organizationId);
+  const [types, composition] = await Promise.all([
+    listAssetTypeDetails(organizationId),
+    listComponentComposition(organizationId),
+  ]);
 
   return (
     <div>
       <PageHeader
         title={pageTitle}
-        description="Every kind of asset this utility holds, what each one records, and the forms used to inspect it"
+        description="Every kind of asset this utility holds, what each one records, the parts it is made of, and the forms used to inspect it"
       />
 
       {!canEdit && (
@@ -63,6 +71,11 @@ export default async function AssetTypesPage() {
         onDeleteAttribute={deleteAttributeAction}
         onCreateTemplate={createTemplateAction}
         onToggleTemplate={toggleTemplateActiveAction}
+        composition={composition}
+        onAddComponent={addComponentAction}
+        onSaveComponent={saveComponentAction}
+        onRemoveComponent={removeComponentAction}
+        onMoveComponent={moveComponentAction}
       />
 
       <p className="mt-4 text-xs text-muted-foreground">

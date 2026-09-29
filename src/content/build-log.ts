@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-29",
+    title: "Add components to an asset type",
+    summary:
+      "Each asset type on Settings › Asset Types now has a Components section: the parts that kind of asset is made of, with each part's share of its value, and a way to add, edit, reorder and remove them.",
+    changes: [
+      "Add a component to an asset type by picking one already defined (a Pump is part of a well and a pump station alike) or by describing a new one, with what it records — text, a number, a whole number, yes/no, or a choice from a list.",
+      "Each component's share of the asset's value is set per asset type. The section says what the shares add up to, and warns when one is missing, because the roll-up then counts that asset's components equally.",
+      "Removing a component is refused while any asset of the type has one. A component type nothing uses any more is deleted with it; one still used elsewhere is kept.",
+      "Removing an attribute is refused while any component has a value for it.",
+      "When a save on the Asset Types page is refused, the reason now shows inside the dialog rather than behind it.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-29",
     title: "Components, and how they roll up into an asset score",
     summary:
       "A reservoir, well or pump station can now be recorded as its parts — shell, roof, pump, motor and so on — each with its own condition and risk, and the asset's score is rolled up from them by a strategy you choose and can preview before changing.",
