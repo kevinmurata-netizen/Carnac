@@ -30,6 +30,22 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-29",
+    title: "Components, and how they roll up into an asset score",
+    summary:
+      "A reservoir, well or pump station can now be recorded as its parts — shell, roof, pump, motor and so on — each with its own condition and risk, and the asset's score is rolled up from them by a strategy you choose and can preview before changing.",
+    changes: [
+      "Component types (Tank Shell, Roof, Floor, Coating System, Cathodic Protection; Well Casing, Pump, Motor, Well Screen; Piping, Controls) are linked to Reservoir, Well and Booster Pump Station, each link with a default share of the asset's value.",
+      "Components keep their own history: condition measurements, risk assessments and inspections can belong to one component. Everything that reads an asset's own condition or risk — dashboards, scenarios, the work plan, reports, the map, filters — ignores component rows, so no existing number moves.",
+      "Settings › Component Roll-up picks how components become one asset score: weighted worst case (the default — the highest-risk component governs outright once it is 25% of the asset, a figure you can change), replacement-cost weighted average, or simple average. The organization has a default and an asset type can override it.",
+      "Every change there is previewed first: which assets would score differently, before and after, largest change first. Nothing is saved until you apply it.",
+      "The facility tables on Assets show the rolled-up condition and risk with the strategy that produced them, and each asset's page has a Components card showing each part's share and score and which one drove the result.",
+      "Sample components for the 18 facilities, with a failing cathodic protection system, a corroded shell and a tired roof so the three strategies visibly disagree.",
+    ],
+    note:
+      "Two migrations: 20260929120000_asset_components and 20260929130000_rollup_strategies. Both only add tables and nullable columns. Sample components are not loaded into production by the deploy.",
+  },
+  {
+    date: "2026-09-29",
     title: "One condition target on a scenario, and none if you don't want one",
     summary:
       "A scenario had a Condition Target and, in target mode, a separate Target Condition — the same idea twice, doing different things. It now has one, and a budget scenario can have none.",

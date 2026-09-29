@@ -58,8 +58,8 @@ export async function buildSimAssets(organizationId: string, only?: string[]): P
     },
     include: {
       attributeValues: { include: { definition: true } },
-      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
-      riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
+      riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
       criticalityScores: { orderBy: { calculatedAt: "desc" }, take: 1, select: { score: true } },
       location: { select: { serviceArea: true, pressureZone: true } },
     },

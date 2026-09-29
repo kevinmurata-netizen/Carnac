@@ -132,7 +132,7 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
         SELECT DISTINCT ON (cm."assetId") cm."assetId", cm.score
         FROM condition_measurements cm
         JOIN assets a ON a.id = cm."assetId"
-        WHERE a."organizationId" = ${organizationId} AND a."deletedAt" IS NULL
+        WHERE a."organizationId" = ${organizationId} AND a."deletedAt" IS NULL AND cm."assetComponentId" IS NULL
         ORDER BY cm."assetId", cm."measurementDate" DESC
       ) latest
       WHERE ${filters.minCondition != null ? Prisma.sql`latest.score >= ${filters.minCondition}` : Prisma.sql`TRUE`}

@@ -45,8 +45,8 @@ async function assetsWithContext(organizationId: string) {
     include: {
       attributeValues: { include: { definition: true } },
       location: true,
-      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
-      riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
+      riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
     },
     orderBy: { assetCode: "asc" },
   });
@@ -185,7 +185,7 @@ export const REPORTS: ReportDefinition[] = [
         include: {
           asset: { select: { assetCode: true } },
           inspector: { select: { name: true } },
-          conditionMeasurements: { select: { score: true } },
+          conditionMeasurements: { where: { assetComponentId: null }, select: { score: true } },
         },
         orderBy: { inspectionDate: "desc" },
       });
@@ -399,7 +399,7 @@ export const REPORTS: ReportDefinition[] = [
       // which are the ones a capital decision actually turns on.
       const assets = await prisma.asset.findMany({
         where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
-        include: { riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 } },
+        include: { riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 } },
       });
       const ranked = assets
         .filter((a) => a.riskAssessments.length > 0)

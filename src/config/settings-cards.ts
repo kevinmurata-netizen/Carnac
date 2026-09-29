@@ -1,5 +1,6 @@
 import {
   Activity,
+  Boxes,
   CalendarClock,
   ClipboardList,
   Compass,
@@ -297,6 +298,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     icon: CalendarClock,
     detail:
       "How long after work is decided its money leaves the budget, and how long before it is built. Per category, with exceptions per treatment. Named sets, so two delivery policies can be run over the same network.",
+  },
+  {
+    key: "rollup",
+    href: "/settings/rollup",
+    tab: "modeling",
+    title: "Component Roll-up",
+    icon: Boxes,
+    detail:
+      "How an asset's components — a reservoir's shell, roof and coating — become one asset score. A choice of strategy, with a preview of what changing it would do before it is applied.",
   },
   {
     key: "deterioration-models",

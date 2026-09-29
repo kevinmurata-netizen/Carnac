@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getConditionBand, computeWCI , type ConditionBand } from "@/domain/waterline/condition";
 import { getIndexWeights } from "@/server/condition-model";
 import { sameCalendarDay } from "@/lib/format";
+import { wholeAssetConditionModel } from "@/server/components";
 
 export async function getWaterlineTemplate(organizationId: string) {
   const template = await prisma.inspectionTemplate.findFirst({
@@ -48,10 +49,10 @@ export async function getInspectionSubject(organizationId: string, assetId: stri
   // Whether a score can be derived from the answers, which is a property of
   // the type rather than of the form: a type with a form but no condition
   // model records observations without producing a condition index.
-  const conditionModel = await prisma.conditionModel.findFirst({
-    where: { assetTypeId: asset.assetTypeId },
-    select: { id: true, name: true },
-  });
+  // Never a component-scoped model: that one holds component scores, and
+  // scoring a whole-asset form with it would file the result as a component's.
+  const wholeAsset = await wholeAssetConditionModel(asset.assetTypeId);
+  const conditionModel = wholeAsset ? { id: wholeAsset.id, name: wholeAsset.name } : null;
 
   return { asset, template, conditionModel };
 }
@@ -171,9 +172,7 @@ export async function createInspection(organizationId: string, input: CreateInsp
   // whatever was being inspected, which would have scored a reservoir on pipe
   // weights and filed the result under the waterline index. A type with no
   // model records the answers and no score.
-  const conditionModel = await prisma.conditionModel.findFirst({
-    where: { assetTypeId: asset.assetTypeId },
-  });
+  const conditionModel = await wholeAssetConditionModel(asset.assetTypeId);
 
   const results = input.fieldValues.map((f) => {
     if (f.dataType === "NUMBER") {

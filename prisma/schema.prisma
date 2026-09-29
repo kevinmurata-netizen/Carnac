@@ -30,9 +30,11 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users      User[]
-  assetTypes AssetType[]
-  assets     Asset[]
+  users            User[]
+  assetTypes       AssetType[]
+  assets           Asset[]
+  componentTypes   ComponentType[]
+  rollupStrategies RollupStrategy[]
 
   @@map("organizations")
 }
@@ -136,6 +138,13 @@ model AssetType {
   scaleFactorModels    ScaleFactorModel[]
   treatments           Treatment[]
   failureTypes         FailureType[]
+  /// The kinds of component this type of asset is made of.
+  componentTypes       AssetTypeComponentType[]
+  /// How this type's component scores roll up into an asset score, when it
+  /// differs from the organization's default strategy. Null follows the
+  /// default. A strategy in use here cannot be deleted.
+  rollupStrategyId     String?
+  rollupStrategy       RollupStrategy? @relation(fields: [rollupStrategyId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -205,6 +214,8 @@ model Asset {
   criticalityScores        CriticalityScore[]
   workPlanItems            WorkPlanItem[]
   documents                Document[]
+  /// The parts this asset is made of, each tracked and inspected on its own.
+  components               AssetComponent[]
 
   createdAt DateTime  @default(now())
   createdBy String?
@@ -277,6 +288,154 @@ model AssetLocation {
 }
 
 // ----------------------------------------------------------------------------
+// Components — element-level tracking (after AASHTO's National Bridge Elements)
+// ----------------------------------------------------------------------------
+//
+// An asset is not one thing: a reservoir is a shell, a roof, a floor, a coating
+// system and cathodic protection, and each ages, fails and is inspected on its
+// own. Components hang off an Asset and share its history tables: an
+// Inspection, ConditionMeasurement or RiskAssessment with assetComponentId set
+// is about that component, and one without it is about the whole asset, as
+// every row was before components existed. One history, not two.
+
+/// A kind of component — Tank Shell, Coating System, Pump. Applies to any
+/// number of asset types: a coating system is a component of reservoirs, pump
+/// stations and pipes alike.
+model ComponentType {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  /// Stable identifier, like AssetType.code — "TANK_SHELL".
+  code        String
+  name        String
+  description String?
+
+  /// JSON Schema for AssetComponent.attributes on components of this type —
+  /// the long tail of fields only this kind of component has. Validated by
+  /// the application, not the database.
+  attributeSchema Json @default("{}")
+
+  assetTypes          AssetTypeComponentType[]
+  components          AssetComponent[]
+  inspectionTemplates InspectionTemplate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, code])
+  @@map("component_types")
+}
+
+/// Which component types an asset type is made of — and what share of that
+/// asset's replacement cost each one usually is.
+///
+/// The share lives here rather than on ComponentType because it depends on
+/// both: a coating system is a small part of what a reservoir costs to
+/// replace and a larger part of a pump station.
+model AssetTypeComponentType {
+  assetTypeId     String
+  assetType       AssetType     @relation(fields: [assetTypeId], references: [id], onDelete: Cascade)
+  componentTypeId String
+  componentType   ComponentType @relation(fields: [componentTypeId], references: [id], onDelete: Cascade)
+
+  /// Relative weight, not a percentage: a roll-up divides each component's
+  /// weight by the total across the asset's components. Used only where a
+  /// component has no replacementCost of its own.
+  defaultCostWeight Float?
+  sortOrder         Int    @default(0)
+
+  @@id([assetTypeId, componentTypeId])
+  @@map("asset_type_component_types")
+}
+
+/// One component of one asset.
+model AssetComponent {
+  id              String        @id @default(cuid())
+  assetId         String
+  asset           Asset         @relation(fields: [assetId], references: [id])
+  componentTypeId String
+  componentType   ComponentType @relation(fields: [componentTypeId], references: [id])
+
+  /// Tells apart several of the same kind on one asset — "North Roof Panel".
+  label String?
+
+  /// Null means the same as the asset's own installationDate.
+  installationDate DateTime?
+  /// What it would cost to replace this component. What cost-weighted roll-ups
+  /// weight by; where it is null they fall back to the asset type's
+  /// defaultCostWeight for this component type.
+  replacementCost  Float?
+
+  /// Snapshots of the latest ConditionMeasurement (0-100, the condition index)
+  /// and RiskAssessment (1-25, probability x consequence) for this component.
+  /// Denormalised for reading lists quickly; those tables are the record.
+  conditionScore Float?
+  riskScore      Float?
+  /// When those snapshots were taken, so a stale one can be seen to be stale.
+  scoresAsOf     DateTime?
+
+  /// Fields only this kind of component has, shaped by
+  /// ComponentType.attributeSchema.
+  attributes Json @default("{}")
+
+  inspections           Inspection[]
+  conditionMeasurements ConditionMeasurement[]
+  riskAssessments       RiskAssessment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assetId])
+  @@index([componentTypeId])
+  @@index([attributes(ops: JsonbPathOps)], type: Gin)
+  @@map("asset_components")
+}
+
+/// How component scores become one asset score. A choice rather than a rule,
+/// because "how good is this reservoir" has more than one honest answer.
+enum RollupStrategyType {
+  /// The weighted average, pulled toward the highest-risk component by its
+  /// share of replacement cost — outright once it is worth fullWeightShare.
+  WEIGHTED_WORST_CASE
+  /// Every component counted by its share of replacement cost.
+  REPLACEMENT_COST_WEIGHTED_AVERAGE
+  /// Every component counted equally — a baseline to check the others against.
+  SIMPLE_AVERAGE
+}
+
+/// A named roll-up. One per organization is the default; an asset type may
+/// name another. Computed on read from the components' score snapshots, so
+/// changing the strategy changes every asset score it governs with no data
+/// re-entered.
+model RollupStrategy {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  name         String
+  description  String?
+  strategyType RollupStrategyType
+
+  /// Strategy-specific parameters. WEIGHTED_WORST_CASE reads fullWeightShare
+  /// (default 0.25). Any strategy may carry weights — { "TANK_SHELL": 3 } —
+  /// overriding the asset type's default cost weights.
+  config Json @default("{}")
+
+  /// The organization's default. Exactly one is, which the application
+  /// enforces, as it does for lead time sets.
+  isDefault Boolean @default(false)
+
+  assetTypes AssetType[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("rollup_strategies")
+}
+
+// ----------------------------------------------------------------------------
 // Inspections (configurable templates, not hardcoded fields)
 // ----------------------------------------------------------------------------
 
@@ -284,6 +443,12 @@ model InspectionTemplate {
   id          String    @id @default(cuid())
   assetTypeId String
   assetType   AssetType @relation(fields: [assetTypeId], references: [id])
+
+  /// Set for a form that inspects one kind of component — a coating survey
+  /// rather than a whole-reservoir walk-through. Null is a whole-asset form,
+  /// which is every template that existed before components.
+  componentTypeId String?
+  componentType   ComponentType? @relation(fields: [componentTypeId], references: [id], onDelete: Restrict)
 
   name        String
   description String?
@@ -321,6 +486,11 @@ model Inspection {
   id         String             @id @default(cuid())
   assetId    String
   asset      Asset              @relation(fields: [assetId], references: [id])
+  /// The component inspected, when it was one. Null is the whole asset.
+  /// A component with history cannot be deleted: setting this to null would
+  /// quietly turn a coating's findings into the whole asset's.
+  assetComponentId String?
+  assetComponent   AssetComponent? @relation(fields: [assetComponentId], references: [id], onDelete: Restrict)
   templateId String
   template   InspectionTemplate @relation(fields: [templateId], references: [id])
 
@@ -341,6 +511,7 @@ model Inspection {
   createdAt DateTime @default(now())
 
   @@index([assetId])
+  @@index([assetComponentId])
   @@map("inspections")
 }
 
@@ -397,6 +568,9 @@ model ConditionMeasurement {
   id               String         @id @default(cuid())
   assetId          String
   asset            Asset          @relation(fields: [assetId], references: [id])
+  /// The component measured, when it was one. Null is the whole asset.
+  assetComponentId String?
+  assetComponent   AssetComponent? @relation(fields: [assetComponentId], references: [id], onDelete: Restrict)
   conditionModelId String
   conditionModel   ConditionModel @relation(fields: [conditionModelId], references: [id])
   inspectionId     String?
@@ -408,6 +582,7 @@ model ConditionMeasurement {
   source          String // "Inspection", "Predicted", "Manual Override"
 
   @@index([assetId])
+  @@index([assetComponentId])
   @@map("condition_measurements")
 }
 
@@ -537,6 +712,9 @@ model RiskAssessment {
   id          String    @id @default(cuid())
   assetId     String
   asset       Asset     @relation(fields: [assetId], references: [id])
+  /// The component assessed, when it was one. Null is the whole asset.
+  assetComponentId String?
+  assetComponent   AssetComponent? @relation(fields: [assetComponentId], references: [id], onDelete: Restrict)
   riskModelId String
   riskModel   RiskModel @relation(fields: [riskModelId], references: [id])
 
@@ -547,6 +725,7 @@ model RiskAssessment {
   factors          RiskFactor[]
 
   @@index([assetId])
+  @@index([assetComponentId])
   @@map("risk_assessments")
 }
 

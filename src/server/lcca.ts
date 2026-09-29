@@ -45,8 +45,8 @@ export async function getAssetLcca(
     where: { id: assetId, organizationId, deletedAt: null },
     include: {
       attributeValues: { include: { definition: true } },
-      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
-      riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
+      riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
       failureEvents: { where: { failureDate: { gte: since } }, select: { id: true } },
       location: { select: { serviceArea: true, pressureZone: true } },
     },

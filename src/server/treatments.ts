@@ -206,8 +206,8 @@ export async function buildContexts(organizationId: string, assetId?: string) {
     },
     include: {
       attributeValues: { include: { definition: true } },
-      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
-      riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
+      riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
       failureEvents: { where: { failureDate: { gte: since } }, select: { id: true } },
       location: { select: { serviceArea: true, pressureZone: true } },
       // The multiplier in the ranking formula. Present only where a formula

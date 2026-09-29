@@ -17,14 +17,14 @@ export type RuleSample = { id: string; label: string; input: DecisionInput };
  */
 export async function loadRuleSamples(organizationId: string): Promise<RuleSample[]> {
   const measurements = await prisma.conditionMeasurement.findMany({
-    where: { asset: { organizationId, deletedAt: null, status: "ACTIVE" } },
+    where: { assetComponentId: null, asset: { organizationId, deletedAt: null, status: "ACTIVE" } },
     orderBy: { score: "asc" },
     distinct: ["assetId"],
     include: {
       asset: {
         include: {
           attributeValues: { include: { definition: true } },
-          riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+          riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
           failureEvents: { select: { id: true } },
           location: { select: { serviceArea: true, pressureZone: true } },
         },

@@ -286,7 +286,7 @@ export async function recalculateConditionScores(organizationId: string): Promis
     where: { asset: { organizationId, deletedAt: null } },
     include: {
       results: { include: { field: { select: { code: true, dataType: true } } } },
-      conditionMeasurements: { where: { conditionModelId: model.id, source: "Inspection" } },
+      conditionMeasurements: { where: { conditionModelId: model.id, source: "Inspection", assetComponentId: null } },
     },
   });
 
