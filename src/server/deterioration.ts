@@ -100,7 +100,7 @@ export async function generatePredictions(organizationId: string): Promise<numbe
     where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
     include: {
       attributeValues: { include: { definition: true } },
-      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
+      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
     },
   });
 
@@ -183,7 +183,7 @@ export async function getNetworkForecast(organizationId: string): Promise<Networ
   // Markov comparison: start every inspected asset in its current band and
   // evolve the aggregate distribution with the shared network matrix.
   const measurements = await prisma.conditionMeasurement.findMany({
-    where: { asset: { organizationId, deletedAt: null, status: "ACTIVE" } },
+    where: { assetComponentId: null, asset: { organizationId, deletedAt: null, status: "ACTIVE" } },
     orderBy: [{ assetId: "asc" }, { measurementDate: "desc" }],
     distinct: ["assetId"],
     select: { score: true },

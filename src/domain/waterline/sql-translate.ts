@@ -223,13 +223,13 @@ export async function translateToSql(
     } else if (source.cte === "condition") {
       need(
         "condition",
-        `latest_condition AS (\n  SELECT DISTINCT ON (cm."assetId") cm."assetId", cm.score, cm."measurementDate"\n  FROM condition_measurements cm\n  ORDER BY cm."assetId", cm."measurementDate" DESC\n)`,
+        `latest_condition AS (\n  SELECT DISTINCT ON (cm."assetId") cm."assetId", cm.score, cm."measurementDate"\n  FROM condition_measurements cm\n  WHERE cm."assetComponentId" IS NULL\n  ORDER BY cm."assetId", cm."measurementDate" DESC\n)`,
         'LEFT JOIN latest_condition lc ON lc."assetId" = a.id'
       );
     } else if (source.cte === "risk") {
       need(
         "risk",
-        `latest_risk AS (\n  SELECT DISTINCT ON (ra."assetId") ra."assetId", ra."riskScore", ra."probabilityScore", ra."consequenceScore"\n  FROM risk_assessments ra\n  ORDER BY ra."assetId", ra."assessmentDate" DESC\n)`,
+        `latest_risk AS (\n  SELECT DISTINCT ON (ra."assetId") ra."assetId", ra."riskScore", ra."probabilityScore", ra."consequenceScore"\n  FROM risk_assessments ra\n  WHERE ra."assetComponentId" IS NULL\n  ORDER BY ra."assetId", ra."assessmentDate" DESC\n)`,
         'LEFT JOIN latest_risk lr ON lr."assetId" = a.id'
       );
     } else if (source.cte === "failure") {

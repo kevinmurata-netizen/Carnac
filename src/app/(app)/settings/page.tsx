@@ -7,6 +7,7 @@ import { listRenameablePages, getPageName } from "@/server/navigation";
 import { getSessionPermissions, resourceKey } from "@/server/permissions";
 import { getWishlistSummary } from "@/server/wishlist";
 import { listSavedFilters } from "@/server/saved-filters";
+import { getRollupSettings } from "@/server/rollup";
 import { listRules } from "@/server/rules";
 import { listEffects } from "@/server/effects";
 import { listScaleFactors } from "@/server/scale-factors";
@@ -61,6 +62,7 @@ export default async function SettingsPage({
     weightSets,
     categoryWeightSets,
     permissions,
+    rollup,
   ] = await Promise.all([
     getConfigSummary(organizationId),
     getConditionModelConfig(organizationId),
@@ -78,6 +80,7 @@ export default async function SettingsPage({
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
     getSessionPermissions(session!),
+    getRollupSettings(organizationId),
   ]);
 
   const navItems = navSections.flatMap((s) => s.items);
@@ -149,6 +152,11 @@ export default async function SettingsPage({
     "risk-models": `${Object.keys(riskModel.pof).length} probability · ${
       Object.keys(riskModel.cof).length
     } consequence factors`,
+    rollup: (() => {
+      const byDefault = rollup.strategies.find((s) => s.isDefault)?.name ?? "No default";
+      const overrides = rollup.assetTypes.filter((t) => t.overrideId != null).length;
+      return `${byDefault} by default${overrides > 0 ? ` · ${overrides} asset type${overrides === 1 ? "" : "s"} overridden` : ""}`;
+    })(),
     "failure-types": `${config.failureTypes.length} types · ${formatNumber(
       config.failureTypes.reduce((s, f) => s + f.eventCount, 0)
     )} recorded events`,

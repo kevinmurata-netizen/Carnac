@@ -153,8 +153,8 @@ export async function loadFilterRows(organizationId: string): Promise<FilterRow[
       include: {
         location: true,
         attributeValues: { include: { definition: true } },
-        conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
-        riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1 },
+        conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
+        riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
         failureEvents: { orderBy: { failureDate: "desc" } },
         inspections: {
           orderBy: { inspectionDate: "desc" },

@@ -13,6 +13,7 @@ import {
   type TypedAssetList,
 } from "@/server/assets";
 import { listSavedFilters } from "@/server/saved-filters";
+import { rollUpAssets, type AssetRollup } from "@/server/rollup";
 import { assetFiltersFromParams } from "@/server/grid-params";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { PageHeader } from "@/components/layout/page-header";
@@ -52,7 +53,12 @@ export default async function AssetsPage({
   const selectedType = params.type && assetTypes.some((t) => t.code === params.type) ? params.type : "WATERLINE";
   if (selectedType !== "WATERLINE") {
     const typed = await listTypedAssets(organizationId, selectedType);
-    if (typed) return <TypedAssets typed={typed} assetTypes={assetTypes} />;
+    if (typed) {
+      // Each asset's score, rolled up from its components under the strategy
+      // that governs its type — and which strategy that was, beside it.
+      const rollups = await rollUpAssets(organizationId, typed.rows.map((r) => r.id));
+      return <TypedAssets typed={typed} assetTypes={assetTypes} rollups={rollups} />;
+    }
   }
 
   // Parsed by the same code the export route uses, so the spreadsheet can
@@ -197,6 +203,42 @@ function AssetTypeTabs({
 }
 
 /**
+ * An asset's rolled-up score, and exactly how it was arrived at — the
+ * strategy, where that strategy came from, and how much of the asset it
+ * covers — so a number in this column is never a mystery.
+ */
+function RollupCells({ rollup }: { rollup: AssetRollup | undefined }) {
+  const result = rollup?.result;
+  if (!rollup || !result || result.scored === 0) {
+    return (
+      <>
+        <TableCell className="text-muted-foreground">—</TableCell>
+        <TableCell className="text-muted-foreground">—</TableCell>
+        <TableCell className="text-xs text-muted-foreground">
+          {rollup && rollup.components.length > 0 ? "No component scored yet" : "No components"}
+        </TableCell>
+      </>
+    );
+  }
+  return (
+    <>
+      <TableCell className="tabular-nums font-medium">{result.condition.value ?? "—"}</TableCell>
+      <TableCell className="tabular-nums">{result.risk.value ?? "—"}</TableCell>
+      <TableCell className="min-w-56 text-xs">
+        <div>
+          {rollup.strategy?.name}{" "}
+          <span className="text-muted-foreground">({rollup.strategy?.source})</span>
+        </div>
+        <div className="text-muted-foreground">
+          {result.scored} of {result.total} components
+          {result.driver ? ` · driven by ${result.driver.label}` : ""}
+        </div>
+      </TableCell>
+    </>
+  );
+}
+
+/**
  * Assets of a type other than waterline, read in that type's own terms.
  *
  * A reservoir has a capacity and an overflow elevation; a well has a setting
@@ -207,10 +249,14 @@ function AssetTypeTabs({
 function TypedAssets({
   typed,
   assetTypes,
+  rollups,
 }: {
   typed: TypedAssetList;
   assetTypes: Array<{ code: string; name: string; count: number }>;
+  rollups: AssetRollup[];
 }) {
+  const rollupOf = new Map(rollups.map((r) => [r.assetId, r]));
+  const anyComponents = rollups.some((r) => r.components.length > 0);
   const format = (value: string | number | boolean | Date | null, unit: string | null) => {
     if (value == null || value === "") return "—";
     // The sources give a year, not a date, and the attribute's own note says so.
@@ -261,6 +307,13 @@ function TypedAssets({
                   <TableCell className="font-medium">ID</TableCell>
                   <TableCell className="font-medium">Name</TableCell>
                   <TableCell className="font-medium">Built</TableCell>
+                  {anyComponents && (
+                    <>
+                      <TableCell className="font-medium">Condition</TableCell>
+                      <TableCell className="font-medium">Risk</TableCell>
+                      <TableCell className="font-medium">Scored by</TableCell>
+                    </>
+                  )}
                   {typed.columns.map((column) => (
                     <TableCell key={column.code} className="font-medium">
                       {column.label}
@@ -273,7 +326,10 @@ function TypedAssets({
               <TableBody>
                 {typed.rows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={typed.columns.length + 4} className="py-10 text-center text-sm text-muted-foreground">
+                    <TableCell
+                      colSpan={typed.columns.length + 4 + (anyComponents ? 3 : 0)}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
                       Nothing of this kind has been imported yet.
                     </TableCell>
                   </TableRow>
@@ -289,6 +345,7 @@ function TypedAssets({
                     <TableCell className="tabular-nums">
                       {row.installationDate ? row.installationDate.getUTCFullYear() : "—"}
                     </TableCell>
+                    {anyComponents && <RollupCells rollup={rollupOf.get(row.id)} />}
                     {typed.columns.map((column) => (
                       <TableCell key={column.code} className="whitespace-nowrap text-sm">
                         {format(row.attributes[column.code] ?? null, column.unit)}
@@ -306,8 +363,9 @@ function TypedAssets({
       </Card>
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Read-only. Condition, risk and treatment planning are built around waterlines, so these assets carry their own
-        attributes but take no part in the model yet.
+        Condition and risk here are rolled up from each asset&apos;s components, under the strategy named beside them —
+        change it under Settings › Component Roll-up. Treatment planning and scenarios are still built around
+        waterlines, so these assets take no part in them yet.
       </p>
     </div>
   );

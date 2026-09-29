@@ -55,7 +55,7 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
     where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null },
     include: {
       attributeValues: { include: { definition: true } },
-      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1 },
+      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
       failureEvents: { where: { failureDate: { gte: tenYearsAgo } }, select: { id: true } },
     },
   });
@@ -179,7 +179,7 @@ export type AssetRisk = {
 export async function getLatestRiskByAsset(organizationId: string): Promise<Map<string, AssetRisk>> {
   const model = await getRiskModel(organizationId);
   const rows = await prisma.riskAssessment.findMany({
-    where: { riskModelId: model.id, asset: { organizationId, deletedAt: null } },
+    where: { riskModelId: model.id, assetComponentId: null, asset: { organizationId, deletedAt: null } },
     orderBy: [{ assetId: "asc" }, { assessmentDate: "desc" }],
     distinct: ["assetId"],
     select: { assetId: true, probabilityScore: true, consequenceScore: true, riskScore: true, assessmentDate: true },
@@ -202,7 +202,7 @@ export async function getLatestRiskByAsset(organizationId: string): Promise<Map<
 export async function getRiskForAsset(organizationId: string, assetId: string) {
   const model = await getRiskModel(organizationId);
   const assessment = await prisma.riskAssessment.findFirst({
-    where: { riskModelId: model.id, assetId, asset: { organizationId } },
+    where: { riskModelId: model.id, assetId, assetComponentId: null, asset: { organizationId } },
     orderBy: { assessmentDate: "desc" },
     include: { factors: true },
   });
@@ -284,7 +284,7 @@ export async function getTopRiskAssets(organizationId: string, limit = 10) {
   const model = await getRiskModel(organizationId);
   const bands = await getConditionBands(organizationId);
   const rows = await prisma.riskAssessment.findMany({
-    where: { riskModelId: model.id, asset: { organizationId, deletedAt: null } },
+    where: { riskModelId: model.id, assetComponentId: null, asset: { organizationId, deletedAt: null } },
     orderBy: [{ assetId: "asc" }, { assessmentDate: "desc" }],
     distinct: ["assetId"],
     include: {
@@ -292,7 +292,7 @@ export async function getTopRiskAssets(organizationId: string, limit = 10) {
         select: {
           id: true,
           assetCode: true,
-          conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
+          conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
         },
       },
     },
@@ -344,7 +344,7 @@ export async function getRiskMatrixAssets(organizationId: string): Promise<RiskM
       id: true,
       assetCode: true,
       location: { select: { serviceArea: true } },
-      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
+      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
     },
   });
 

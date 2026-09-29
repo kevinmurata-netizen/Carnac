@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getAssetById, flattenAttributes } from "@/server/assets";
+import { rollUpAssets, type AssetRollup } from "@/server/rollup";
 import { getFacilityGeoJSON, getNetworkGeoJSON } from "@/server/geo";
 import { getConditionHistoryForAsset } from "@/server/condition";
 import { listInspections, summarizeInspectionScore } from "@/server/inspections";
@@ -70,7 +71,8 @@ export default async function AssetDetailPage({
   // facility query, which is the one that knows how to describe it.
   const isPoint = asset.location != null && (asset.location.endLat == null || asset.location.endLng == null);
 
-  const [geojson, conditionHistory, inspections, failures, risk, forecast, recommendation, lcca] = await Promise.all([
+  const [[rollup], geojson, conditionHistory, inspections, failures, risk, forecast, recommendation, lcca] = await Promise.all([
+    rollUpAssets(organizationId, [asset.id]),
     isPoint ? getFacilityGeoJSON(organizationId, [asset.id]) : getNetworkGeoJSON(organizationId, [asset.id]),
     getConditionHistoryForAsset(organizationId, asset.id),
     listInspections(organizationId, { assetId: asset.id }),
@@ -228,6 +230,8 @@ export default async function AssetDetailPage({
           color={currentCondition?.band.color}
         />
       </div>
+
+      {rollup && rollup.components.length > 0 && <ComponentsCard rollup={rollup} />}
 
       <Tabs defaultValue={tab ?? "overview"}>
         {/* h-auto because the list wraps: the component's fixed height would
@@ -568,6 +572,74 @@ function FactorCard({ title, factors }: { title: string; factors: FactorRating[]
             ))}
           </TableBody>
         </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The components this asset is made of, and how their scores became the
+ * asset's — which strategy, why that one, how much of the asset it covers and,
+ * for a worst case, which component drove it. Laid out so the asset-level
+ * number can be checked by hand from the rows beneath it.
+ */
+function ComponentsCard({ rollup }: { rollup: AssetRollup }) {
+  const result = rollup.result;
+  const shareOf = new Map(result?.shares.map((s) => [s.componentId, s.share]) ?? []);
+  return (
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle>Components</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {result && result.scored > 0 ? (
+          <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            <span className="font-medium tabular-nums">
+              Condition {result.condition.value ?? "—"} · Risk {result.risk.value ?? "—"}
+            </span>{" "}
+            <span className="text-muted-foreground">
+              — {rollup.strategy?.name} ({rollup.strategy?.source}), from {result.scored} of {result.total} components,
+              weighted by {result.weightBasis}.
+              {result.driver &&
+                ` Driven by ${result.driver.label}: ${Math.round(result.driver.share * 100)}% of the asset, pulling ${Math.round(
+                  result.driver.pull * 100
+                )}% of the way from the weighted average to its own score.`}
+            </span>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No component has been scored yet, so there is no asset score to roll up.</p>
+        )}
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Component</TableHead>
+                <TableHead className="text-right">Share</TableHead>
+                <TableHead className="text-right">Condition</TableHead>
+                <TableHead className="text-right">Risk</TableHead>
+                <TableHead>As of</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rollup.components.map((c) => (
+                <TableRow key={c.id} className={result?.driver?.componentId === c.id ? "bg-amber-500/5" : undefined}>
+                  <TableCell>
+                    <span className="font-medium">{c.label}</span>
+                    {c.label !== c.componentTypeName && (
+                      <span className="text-xs text-muted-foreground"> · {c.componentTypeName}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {shareOf.has(c.id) ? `${Math.round(shareOf.get(c.id)! * 1000) / 10}%` : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{c.conditionScore ?? "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums">{c.riskScore ?? "—"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatDate(c.scoresAsOf)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );

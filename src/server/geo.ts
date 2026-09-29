@@ -205,14 +205,14 @@ export async function getNetworkGeoJSON(
            ${
              needsCondition
                ? Prisma.sql`(SELECT cm.score FROM condition_measurements cm
-                             WHERE cm."assetId" = a.id
+                             WHERE cm."assetId" = a.id AND cm."assetComponentId" IS NULL
                              ORDER BY cm."measurementDate" DESC LIMIT 1)`
                : Prisma.sql`NULL::double precision`
            } AS condition,
            ${
              needsRisk
                ? Prisma.sql`(SELECT ra."riskScore" FROM risk_assessments ra
-                             WHERE ra."assetId" = a.id
+                             WHERE ra."assetId" = a.id AND ra."assetComponentId" IS NULL
                              ORDER BY ra."assessmentDate" DESC LIMIT 1)`
                : Prisma.sql`NULL::double precision`
            } AS "riskScore",

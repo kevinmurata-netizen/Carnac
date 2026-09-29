@@ -168,8 +168,8 @@ export async function loadAssetValues(
       attributeValues: {
         select: { numberValue: true, textValue: true, definition: { select: { code: true, dataType: true } } },
       },
-      conditionMeasurements: { orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
-      riskAssessments: { orderBy: { assessmentDate: "desc" }, take: 1, select: { riskScore: true } },
+      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
+      riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1, select: { riskScore: true } },
       _count: { select: { failureEvents: true } },
     },
   });

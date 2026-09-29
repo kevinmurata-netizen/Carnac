@@ -23,7 +23,7 @@ export async function getLatestConditionByAsset(organizationId: string): Promise
   const bands = await getConditionBands(organizationId);
   const model = await getWciModel(organizationId);
   const rows = await prisma.conditionMeasurement.findMany({
-    where: { conditionModelId: model.id, asset: { organizationId, deletedAt: null } },
+    where: { conditionModelId: model.id, assetComponentId: null, asset: { organizationId, deletedAt: null } },
     orderBy: [{ assetId: "asc" }, { measurementDate: "desc" }],
     distinct: ["assetId"],
     select: { assetId: true, score: true, measurementDate: true },
@@ -40,7 +40,7 @@ export async function getConditionHistoryForAsset(organizationId: string, assetI
   const bands = await getConditionBands(organizationId);
   const model = await getWciModel(organizationId);
   const rows = await prisma.conditionMeasurement.findMany({
-    where: { conditionModelId: model.id, assetId, asset: { organizationId } },
+    where: { conditionModelId: model.id, assetId, assetComponentId: null, asset: { organizationId } },
     orderBy: { measurementDate: "asc" },
   });
   return rows.map((r) => ({ ...r, band: getConditionBand(r.score, bands) }));
@@ -104,7 +104,7 @@ export async function getWorstConditionAssets(organizationId: string, limit = 10
   const bands = await getConditionBands(organizationId);
   const model = await getWciModel(organizationId);
   const rows = await prisma.conditionMeasurement.findMany({
-    where: { conditionModelId: model.id, asset: { organizationId, deletedAt: null } },
+    where: { conditionModelId: model.id, assetComponentId: null, asset: { organizationId, deletedAt: null } },
     orderBy: [{ assetId: "asc" }, { measurementDate: "desc" }],
     distinct: ["assetId"],
     include: { asset: { select: { id: true, assetCode: true, status: true } } },
