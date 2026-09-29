@@ -1,5 +1,12 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { ComponentScore } from "@/domain/components/rollup";
+import {
+  COMPONENT_SCOPE,
+  componentConditionModelSpec,
+  componentRiskModelSpec,
+  isComponentScoped,
+} from "@/domain/components/scope";
 
 /**
  * Components: the parts an asset is made of, each tracked on its own.
@@ -11,18 +18,7 @@ import type { ComponentScore } from "@/domain/components/rollup";
  * and read.
  */
 
-/**
- * Condition and risk rows need a model to belong to, and a model found by
- * asset type alone would also be taken for the whole asset's — the inspection
- * screen would score a reservoir walk-through with it. So a model that exists
- * only to hold component scores says so in its JSON, and whole-asset lookups
- * skip it.
- */
-export const COMPONENT_SCOPE = "component";
-
-export function isComponentScoped(json: unknown): boolean {
-  return (json as { scope?: unknown } | null)?.scope === COMPONENT_SCOPE;
-}
+export { COMPONENT_SCOPE, isComponentScoped };
 
 /** The whole-asset condition model for a type, never a component-scoped one. */
 export async function wholeAssetConditionModel(assetTypeId: string) {
@@ -36,15 +32,9 @@ async function componentConditionModel(assetTypeId: string, typeName: string) {
   const models = await prisma.conditionModel.findMany({ where: { assetTypeId } });
   const existing = models.find((m) => isComponentScoped(m.formula));
   if (existing) return existing;
+  const spec = componentConditionModelSpec(typeName);
   return prisma.conditionModel.create({
-    data: {
-      assetTypeId,
-      name: `${typeName} Component Condition`,
-      scaleMin: 0,
-      scaleMax: 100,
-      bands: [],
-      formula: { scope: COMPONENT_SCOPE, note: "Holds component condition scores; the asset's own is rolled up from them." },
-    },
+    data: { assetTypeId, ...spec, bands: spec.bands as Prisma.InputJsonArray },
   });
 }
 
@@ -52,14 +42,7 @@ async function componentRiskModel(assetTypeId: string, typeName: string) {
   const models = await prisma.riskModel.findMany({ where: { assetTypeId } });
   const existing = models.find((m) => isComponentScoped(m.probabilityConfig));
   if (existing) return existing;
-  return prisma.riskModel.create({
-    data: {
-      assetTypeId,
-      name: `${typeName} Component Risk`,
-      probabilityConfig: { scope: COMPONENT_SCOPE },
-      consequenceConfig: { scope: COMPONENT_SCOPE },
-    },
-  });
+  return prisma.riskModel.create({ data: { assetTypeId, ...componentRiskModelSpec(typeName) } });
 }
 
 /**

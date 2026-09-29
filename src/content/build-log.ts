@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-29",
+    title: "Sample components as a SQL file",
+    summary:
+      "The sample facilities' components can now be loaded into a database this machine can't reach, by pasting one generated SQL file into its console.",
+    changes: [
+      "prisma/sql/components.sql adds the three roll-up strategies, the 11 component types, which parts each facility type is made of with their shares, and the 79 components of the sample facilities with their condition and risk history.",
+      "It is generated from the same plan the seeder uses, so the two produce identical components and scores. Regenerate with npm run db:seed:components:sql.",
+      "It only adds what is missing, and leaves any facility that already has components alone, so it is safe to run twice.",
+    ],
+    note: "No migration. Run facilities.sql first — components attach to those facilities.",
+  },
+  {
+    date: "2026-09-29",
     title: "Add components to an asset type",
     summary:
       "Each asset type on Settings › Asset Types now has a Components section: the parts that kind of asset is made of, with each part's share of its value, and a way to add, edit, reorder and remove them.",
