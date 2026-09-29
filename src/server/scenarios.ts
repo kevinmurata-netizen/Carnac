@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { WorkPlanItemStatus } from "@prisma/client";
+import { Prisma, WorkPlanItemStatus } from "@prisma/client";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import {
   runScenario,
@@ -8,6 +8,7 @@ import {
   STRATEGIES,
   FUNDING_MODES,
   solveForTarget,
+  goalOf,
   type FundingMode,
   type ScenarioAssumptions,
   type SimAsset,
@@ -125,23 +126,49 @@ export async function buildSimAssets(organizationId: string, only?: string[]): P
 export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>): ScenarioAssumptions {
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const strategy = String(map.strategy ?? DEFAULT_ASSUMPTIONS.strategy) as Strategy;
+  // Absent on every scenario stored before target mode existed, which is
+  // exactly what the default says: constrained by its budget.
+  const fundingMode = FUNDING_MODES.includes(String(map.fundingMode) as FundingMode)
+    ? (String(map.fundingMode) as FundingMode)
+    : DEFAULT_ASSUMPTIONS.fundingMode;
+
+  // One target now. A target run stored while there were two kept its goal
+  // in `targetValue`, and that is the number the person was aiming at, so it
+  // wins over the old Condition Target beside it. A stored null is a budget
+  // run with no target line; a missing row is a scenario from before either
+  // existed, which had the default.
+  const legacyGoal = fundingMode === "target" && map.targetValue != null ? Number(map.targetValue) : null;
+  const conditionTarget =
+    legacyGoal ??
+    (map.conditionTarget === null && fundingMode === "budget"
+      ? null
+      : Number(map.conditionTarget ?? DEFAULT_ASSUMPTIONS.conditionTarget));
+
   return {
     annualBudget: Number(map.annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget),
     fundingGrowth: Number(map.fundingGrowth ?? DEFAULT_ASSUMPTIONS.fundingGrowth),
     discountRate: Number(map.discountRate ?? DEFAULT_ASSUMPTIONS.discountRate),
     analysisPeriodYears: Number(map.analysisPeriodYears ?? DEFAULT_ASSUMPTIONS.analysisPeriodYears),
-    conditionTarget: Number(map.conditionTarget ?? DEFAULT_ASSUMPTIONS.conditionTarget),
+    conditionTarget,
     riskThreshold: Number(map.riskThreshold ?? DEFAULT_ASSUMPTIONS.riskThreshold),
     strategy: STRATEGIES.includes(strategy) ? strategy : DEFAULT_ASSUMPTIONS.strategy,
-    // Absent on every scenario stored before target mode existed, which is
-    // exactly what the default says: constrained by its budget.
-    fundingMode: FUNDING_MODES.includes(String(map.fundingMode) as FundingMode)
-      ? (String(map.fundingMode) as FundingMode)
-      : DEFAULT_ASSUMPTIONS.fundingMode,
+    fundingMode,
     targetMetric: DEFAULT_ASSUMPTIONS.targetMetric,
-    targetValue: Number(map.targetValue ?? DEFAULT_ASSUMPTIONS.targetValue),
     targetInYears: Number(map.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears),
   };
+}
+
+/**
+ * Assumptions as rows to store.
+ *
+ * A null value is written as JSON null rather than left out: "no target" is a
+ * choice, and a missing row reads as the default target instead.
+ */
+export function assumptionRows(assumptions: ScenarioAssumptions) {
+  return Object.entries(assumptions).map(([key, value]) => ({
+    key,
+    value: value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue),
+  }));
 }
 
 /**
@@ -213,7 +240,7 @@ export async function createScenario(
       savedFilterId: input.savedFilterId || null,
       scenarioSetId: input.scenarioSetId || null,
       assumptions: {
-        create: Object.entries(input.assumptions).map(([key, value]) => ({ key, value })),
+        create: assumptionRows(input.assumptions),
       },
     },
   });
@@ -279,7 +306,7 @@ export async function updateScenario(
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
     prisma.scenarioAssumption.createMany({
-      data: Object.entries(input.assumptions).map(([key, value]) => ({ scenarioId, key, value })),
+      data: assumptionRows(input.assumptions).map((row) => ({ scenarioId, ...row })),
     }),
   ]);
 }
@@ -860,7 +887,7 @@ export async function listScenarios(
       savedFilterName: s.savedFilter?.name ?? null,
       target: targetBudget
         ? {
-            value: byMetric("targetValue")[0]?.metricValue ?? assumptions.targetValue,
+            value: byMetric("targetValue")[0]?.metricValue ?? goalOf(assumptions),
             inYears: byMetric("targetInYears")[0]?.metricValue ?? assumptions.targetInYears,
             annualBudget: targetBudget.metricValue,
             achieved: byMetric("targetAchieved")[0]?.metricValue ?? 0,

@@ -21,7 +21,13 @@ const schema = z.object({
   fundingGrowthPct: z.coerce.number().min(-50).max(50),
   discountRatePct: z.coerce.number().min(0).max(25),
   analysisPeriodYears: z.coerce.number().int().min(1).max(50),
-  conditionTarget: z.coerce.number().min(0).max(100),
+  // Optional: a budget scenario may have no target at all. An emptied box
+  // arrives as "", which z.coerce would turn into a target of 0.
+  conditionTarget: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.coerce.number().min(0, "The condition target must be 0 or more").max(100, "The condition target is at most 100").optional()
+  ),
+  hasConditionTarget: z.string().optional(),
   riskThreshold: z.coerce.number().min(0).max(25),
   strategy: z.string(),
   criticalityModelId: z.string().optional(),
@@ -32,7 +38,6 @@ const schema = z.object({
   savedFilterId: z.string().optional(),
   scenarioSetId: z.string().optional(),
   fundingMode: z.string().optional(),
-  targetValue: z.coerce.number().min(0).max(100).optional(),
   targetInYears: z.coerce.number().int().min(1).max(50).optional(),
 });
 
@@ -73,6 +78,18 @@ function parseForm(formData: FormData): {
     ? (d.strategy as Strategy)
     : "risk-based";
 
+  // One target field. A target run cannot do without it — it is the goal. A
+  // budget run may leave it off, and then there is simply no line to draw.
+  const fundingMode = d.fundingMode === "target" ? "target" : "budget";
+  const wantsTarget = fundingMode === "target" || d.hasConditionTarget === "on";
+  if (wantsTarget && d.conditionTarget == null) {
+    throw new Error(
+      fundingMode === "target"
+        ? "A target-constrained scenario needs a condition target to reach"
+        : "Enter a condition target, or untick Show a condition target"
+    );
+  }
+
   return {
     name: d.name,
     description: d.description,
@@ -98,12 +115,11 @@ function parseForm(formData: FormData): {
       fundingGrowth: d.fundingGrowthPct / 100,
       discountRate: d.discountRatePct / 100,
       analysisPeriodYears: d.analysisPeriodYears,
-      conditionTarget: d.conditionTarget,
+      conditionTarget: wantsTarget ? (d.conditionTarget ?? null) : null,
       riskThreshold: d.riskThreshold,
       strategy,
-      fundingMode: d.fundingMode === "target" ? "target" : "budget",
+      fundingMode,
       targetMetric: "avgCondition",
-      targetValue: d.targetValue ?? DEFAULT_ASSUMPTIONS.targetValue,
       // Held inside the run: a target in year 25 of a 20-year run could never
       // be answered.
       targetInYears: Math.max(1, Math.min(d.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears, d.analysisPeriodYears)),

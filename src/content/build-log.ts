@@ -29,6 +29,20 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-29",
+    title: "One condition target on a scenario, and none if you don't want one",
+    summary:
+      "A scenario had a Condition Target and, in target mode, a separate Target Condition — the same idea twice, doing different things. It now has one, and a budget scenario can have none.",
+    changes: [
+      "One Condition Target field. On a target-constrained scenario it is the goal, with Reach it within beside it. On a budget-constrained one it is optional — tick Show a condition target to draw it on the chart and count the segments below it.",
+      "On a budget scenario the target is only a reference now: moving it moves the line and the Below Target count, never what the money buys. It used to also decide which segments the strategy looked at and what counted as enough work, so changing a line on a chart quietly changed the funding.",
+      "In its place, a budget run's treatment rules judge work against 70, the start of the Good band — what every budget scenario used by default already.",
+      "A target scenario saved while there were two fields keeps the goal it was aiming at.",
+    ],
+    note:
+      "No migration. Budget scenarios with the default Condition Target of 70 give identical results. A budget scenario whose Condition Target was set to something else will fund differently when next run, because its rules now use 70.",
+  },
+  {
     date: "2026-09-28",
     title: "Hold a target once it is reached, and say plainly what the ramp spends",
     summary:

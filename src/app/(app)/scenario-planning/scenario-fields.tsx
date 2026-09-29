@@ -32,7 +32,9 @@ export type ScenarioValues = {
   savedFilterId: string;
   scenarioSetId: string;
   fundingMode: string;
-  targetValue: string;
+  /** "on" when a budget scenario shows a condition target; a target run
+   * always has one. */
+  hasConditionTarget: string;
   targetInYears: string;
 };
 
@@ -43,7 +45,8 @@ export type ScenarioFieldDefaults = {
   fundingGrowthPct: number;
   discountRatePct: number;
   analysisPeriodYears: number;
-  conditionTarget: number;
+  /** Null is a budget scenario with no target. */
+  conditionTarget: number | null;
   riskThreshold: number;
   strategy: string;
   criticalityModelId: string | null;
@@ -54,7 +57,6 @@ export type ScenarioFieldDefaults = {
   savedFilterId: string | null;
   scenarioSetId: string | null;
   fundingMode: string;
-  targetValue: number;
   targetInYears: number;
 };
 
@@ -66,7 +68,9 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     fundingGrowthPct: String(d.fundingGrowthPct),
     discountRatePct: String(d.discountRatePct),
     analysisPeriodYears: String(d.analysisPeriodYears),
-    conditionTarget: String(d.conditionTarget),
+    // With no target the box keeps the default, so ticking it back on offers
+    // a sensible number rather than an empty field.
+    conditionTarget: String(d.conditionTarget ?? 70),
     riskThreshold: String(d.riskThreshold),
     strategy: d.strategy,
     criticalityModelId: d.criticalityModelId ?? "",
@@ -77,7 +81,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     savedFilterId: d.savedFilterId ?? "",
     scenarioSetId: d.scenarioSetId ?? "",
     fundingMode: d.fundingMode,
-    targetValue: String(d.targetValue),
+    hasConditionTarget: d.conditionTarget != null ? "on" : "",
     targetInYears: String(d.targetInYears),
   };
 }
@@ -295,19 +299,21 @@ export function ScenarioFields({
       {targeting ? (
         <>
           <div className="space-y-1.5">
-            <Label htmlFor={id("targetValue")}>Target Condition (WCI)</Label>
+            <Label htmlFor={id("conditionTarget")}>Condition Target (WCI)</Label>
             <input
-              id={id("targetValue")}
-              name="targetValue"
+              id={id("conditionTarget")}
+              name="conditionTarget"
               type="number"
               min={0}
               max={100}
-              value={values.targetValue}
-              onChange={(e) => onChange({ targetValue: e.target.value })}
-              className={mark("targetValue")}
+              required
+              value={values.conditionTarget}
+              onChange={(e) => onChange({ conditionTarget: e.target.value })}
+              className={mark("conditionTarget")}
             />
             <p className="text-xs text-muted-foreground">
-              The average across this scenario&apos;s assets — the group above, where one is chosen.
+              The average across this scenario&apos;s assets that the run has to reach — and the bar the treatment
+              rules judge work against.
             </p>
           </div>
           <div className="space-y-1.5">
@@ -368,8 +374,40 @@ export function ScenarioFields({
               className={mark("fundingGrowthPct")}
             />
           </div>
-          {/* Held so target mode keeps them across a switch. */}
-          <input type="hidden" name="targetValue" value={values.targetValue} />
+          {/* One target field in both modes. Here it is optional, and only a
+              reference: moving it moves a line, never the money. */}
+          <div className="space-y-1.5 sm:col-span-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor={id("conditionTarget")}>Condition Target (WCI)</Label>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  name="hasConditionTarget"
+                  checked={values.hasConditionTarget === "on"}
+                  onChange={(e) => onChange({ hasConditionTarget: e.target.checked ? "on" : "" })}
+                  className="h-3.5 w-3.5"
+                />
+                Show a condition target
+              </label>
+            </div>
+            <input
+              id={id("conditionTarget")}
+              name="conditionTarget"
+              type="number"
+              min={0}
+              max={100}
+              disabled={values.hasConditionTarget !== "on"}
+              value={values.hasConditionTarget === "on" ? values.conditionTarget : ""}
+              placeholder="No target"
+              onChange={(e) => onChange({ conditionTarget: e.target.value })}
+              className={`${mark("conditionTarget")} disabled:cursor-not-allowed disabled:bg-muted`}
+            />
+            <p className="text-xs text-muted-foreground">
+              A line on the condition chart and the Below Target count, if you want one. It does not change what the
+              budget buys — in a budget run the treatment rules judge work against 70, the start of the Good band.
+            </p>
+          </div>
+          {/* Held so target mode keeps it across a switch. */}
           <input type="hidden" name="targetInYears" value={values.targetInYears} />
         </>
       )}
@@ -418,19 +456,6 @@ export function ScenarioFields({
             className={mark("analysisPeriodYears")}
           />
         )}
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor={id("conditionTarget")}>Condition Target (WCI)</Label>
-        <input
-          id={id("conditionTarget")}
-          name="conditionTarget"
-          type="number"
-          min={0}
-          max={100}
-          value={values.conditionTarget}
-          onChange={(e) => onChange({ conditionTarget: e.target.value })}
-          className={mark("conditionTarget")}
-        />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor={id("riskThreshold")}>Risk Threshold (1–25)</Label>

@@ -1,7 +1,7 @@
 import { evaluateCurve, effectiveAgeForCondition } from "./deterioration";
 import { annualFailureProbability, failureEventCost, presentValue } from "./lcca";
 import { buildOption, type TreatmentDef } from "./treatment";
-import { pofFromCondition, simAssetContext, type ScenarioAssumptions, type SimAsset } from "./scenario";
+import { belowTargetBar, pofFromCondition, simAssetContext, type ScenarioAssumptions, type SimAsset } from "./scenario";
 
 /**
  * Running a work plan exactly as it is written.
@@ -203,7 +203,7 @@ export function runSchedule(
         10,
       expectedFailures: Math.round(expectedFailures * 10) / 10,
       failureCost: Math.round(failureCost),
-      belowTargetCount: state.filter((a) => a.condition < assumptions.conditionTarget).length,
+      belowTargetCount: state.filter((a) => a.condition < belowTargetBar(assumptions)).length,
     });
   }
 

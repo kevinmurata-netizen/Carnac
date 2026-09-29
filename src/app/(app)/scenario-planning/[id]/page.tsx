@@ -148,7 +148,6 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     leadTimeSetId: scenario.leadTimeSetId ?? null,
     savedFilterId: scenario.savedFilterId ?? null,
     fundingMode: a.fundingMode,
-    targetValue: a.targetValue,
     targetInYears: a.targetInYears,
     scenarioSetId: scenario.scenarioSet?.id ?? null,
     annualBudget: a.annualBudget,
@@ -402,8 +401,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                   yDomain={[0, 100]}
                   // The line a target run was solving for, where it has one;
                   // otherwise the per-segment target the rules judge by.
-                  referenceY={scenario.target?.value ?? a.conditionTarget}
-                  referenceLabel={`Target ${scenario.target?.value ?? a.conditionTarget}`}
+                  referenceY={scenario.target?.value ?? a.conditionTarget ?? undefined}
+                  referenceLabel={
+                    (scenario.target?.value ?? a.conditionTarget) != null
+                      ? `Target ${scenario.target?.value ?? a.conditionTarget}`
+                      : undefined
+                  }
                   series={[{ key: "avgCondition", label: "Network WCI", color: "var(--color-chart-1)" }]}
                 />
               </CardContent>
@@ -617,12 +620,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                 {scenario.ageing.years === 1 ? "" : "s"}, from {scenario.ageing.fromYear} to {first.year}, with nothing
                 funded in between — average condition {scenario.ageing.fromAvgCondition} falls to{" "}
                 {scenario.ageing.toAvgCondition} before the first year begins ({formatNumber(first.belowTargetCount)}{" "}
-                segments below the {a.conditionTarget} target by the end of {first.year}).
+                segments below {a.conditionTarget != null ? `the ${a.conditionTarget} target` : "70, the start of Good,"} by the end of {first.year}).
               </>
             ) : (
               <>
                 Simulation starts from the current measured network ({formatNumber(first.belowTargetCount)} segments
-                below the {a.conditionTarget} target in {first.year}).
+                below {a.conditionTarget != null ? `the ${a.conditionTarget} target` : "70, the start of Good,"} in {first.year}).
               </>
             )}{" "}
             Each year the strategy ranks candidate work, funds down the
@@ -715,7 +718,7 @@ function AssumptionsCard({
             value={scenario.scenarioSet ? describeWindow(scenario.scenarioSet) : `${a.analysisPeriodYears} yr`}
           />
           <Field label="Scenario Set" value={scenario.scenarioSet?.name ?? "—"} />
-          <Field label="Condition Target" value={String(a.conditionTarget)} />
+          <Field label="Condition Target" value={a.conditionTarget != null ? String(a.conditionTarget) : "None"} />
           <Field label="Risk Threshold" value={String(a.riskThreshold)} />
           {/* Read-only readers need this most: a scenario funding nothing but
               relining looks like a badly performing scenario until you know

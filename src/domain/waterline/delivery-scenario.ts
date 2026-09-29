@@ -57,7 +57,9 @@ import {
 import { cashPlan, leadTimeFor, type LeadTime, type LeadTimes } from "./lead-time";
 import {
   NOT_RANKED,
+  belowTargetBar,
   pofFromCondition,
+  ruleBar,
   simAssetContext,
   type ScenarioAssumptions,
   type ScenarioProject,
@@ -541,7 +543,7 @@ function walk(
       backlogCount: backlogBest.size,
       expectedFailures: round1(expectedFailures),
       failureCost: Math.round(failureCost),
-      belowTargetCount: state.filter((a) => a.condition < assumptions.conditionTarget).length,
+      belowTargetCount: state.filter((a) => a.condition < belowTargetBar(assumptions)).length,
       aboveRiskThresholdCount: state.filter(
         (a) => pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold
       ).length,
@@ -615,15 +617,15 @@ function isEligible(condition: number, cof: number, a: ScenarioAssumptions): boo
   const risk = pofFromCondition(condition) * cof;
   switch (a.strategy) {
     case "preventive":
-      return condition < a.conditionTarget && condition >= 40;
+      return condition < ruleBar(a) && condition >= 40;
     case "replacement-only":
       return condition < 45;
     case "risk-based":
-      return risk >= a.riskThreshold || condition < a.conditionTarget;
+      return risk >= a.riskThreshold || condition < ruleBar(a);
     case "condition-based":
-      return condition < a.conditionTarget;
+      return condition < ruleBar(a);
     case "lowest-lifecycle-cost":
-      return condition < a.conditionTarget;
+      return condition < ruleBar(a);
   }
 }
 
@@ -794,7 +796,7 @@ function rankCandidates(args: {
       conditionBefore: c.conditionBefore,
       conditionAfter: c.projectedCondition,
       riskReductionPct: riskPct(c),
-      conditionTarget: args.assumptions.conditionTarget,
+      conditionTarget: ruleBar(args.assumptions),
       targetConstrained: args.assumptions.fundingMode === "target",
     });
     const clears = clearsEffectivenessFloor(c.conditionBefore, riskPct(c));
