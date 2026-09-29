@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_FULL_WEIGHT_SHARE,
+  DEFAULT_ROLLUP_STRATEGIES,
   ROLLUP_STRATEGY_LABELS,
   ROLLUP_STRATEGY_TYPES,
   fullWeightShareOf,
@@ -74,31 +75,14 @@ export async function ensureRollupStrategies(organizationId: string) {
   const count = await prisma.rollupStrategy.count({ where: { organizationId } });
   if (count > 0) return;
   await prisma.rollupStrategy.createMany({
-    data: [
-      {
-        organizationId,
-        name: "Weighted worst case",
-        description:
-          "An asset is as bad as its worst part, to the extent that part matters: the highest-risk component pulls the score toward its own, all the way once it is a large enough share of the asset.",
-        strategyType: "WEIGHTED_WORST_CASE",
-        config: { fullWeightShare: DEFAULT_FULL_WEIGHT_SHARE },
-        isDefault: true,
-      },
-      {
-        organizationId,
-        name: "Replacement-cost weighted average",
-        description: "Every component counted by its share of what the asset costs to replace.",
-        strategyType: "REPLACEMENT_COST_WEIGHTED_AVERAGE",
-        config: {},
-      },
-      {
-        organizationId,
-        name: "Simple average",
-        description: "Every component counted equally — a baseline to check the others against.",
-        strategyType: "SIMPLE_AVERAGE",
-        config: {},
-      },
-    ],
+    data: DEFAULT_ROLLUP_STRATEGIES.map((s) => ({
+      organizationId,
+      name: s.name,
+      description: s.description,
+      strategyType: s.type,
+      config: s.config as Prisma.InputJsonObject,
+      isDefault: s.isDefault,
+    })),
   });
 }
 

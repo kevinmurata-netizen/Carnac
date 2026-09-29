@@ -49,6 +49,43 @@ export type RollupConfig = {
 
 export type RollupStrategyInput = { type: RollupStrategyType; config: RollupConfig };
 
+/**
+ * The strategies an organization starts with: one of each kind. Weighted worst
+ * case is the default because it is the cautious one — a failing part is not
+ * averaged away. Read by the server on first use and by the SQL generator for
+ * databases this machine can't reach, so the two start identically.
+ */
+export const DEFAULT_ROLLUP_STRATEGIES: Array<{
+  name: string;
+  description: string;
+  type: RollupStrategyType;
+  config: RollupConfig;
+  isDefault: boolean;
+}> = [
+  {
+    name: "Weighted worst case",
+    description:
+      "An asset is as bad as its worst part, to the extent that part matters: the highest-risk component pulls the score toward its own, all the way once it is a large enough share of the asset.",
+    type: "WEIGHTED_WORST_CASE",
+    config: { fullWeightShare: DEFAULT_FULL_WEIGHT_SHARE },
+    isDefault: true,
+  },
+  {
+    name: "Replacement-cost weighted average",
+    description: "Every component counted by its share of what the asset costs to replace.",
+    type: "REPLACEMENT_COST_WEIGHTED_AVERAGE",
+    config: {},
+    isDefault: false,
+  },
+  {
+    name: "Simple average",
+    description: "Every component counted equally — a baseline to check the others against.",
+    type: "SIMPLE_AVERAGE",
+    config: {},
+    isDefault: false,
+  },
+];
+
 export type ComponentScore = {
   id: string;
   /** "North Roof Panel", or the component type's name where there is no label. */
