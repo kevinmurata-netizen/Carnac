@@ -82,21 +82,26 @@ BEGIN
   IF v_type IS NULL THEN
     RAISE NOTICE 'No RESERVOIR asset type — run facilities.sql first. Skipped.';
   ELSE
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 45, 0 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'TANK_SHELL'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 15, 1 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'ROOF'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 15, 2 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'FLOOR'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 15, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'COATING_SYSTEM'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 10, 4 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'CATHODIC_PROTECTION'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 45, 0, 5 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'TANK_SHELL'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 15, 1, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'ROOF'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 15, 2, 4 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'FLOOR'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 15, 3, 2 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'COATING_SYSTEM'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 10, 4, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'CATHODIC_PROTECTION'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
 
     -- The models component scores belong to, marked so that whole-asset
     -- lookups never take them for the asset's own.
@@ -503,18 +508,22 @@ BEGIN
   IF v_type IS NULL THEN
     RAISE NOTICE 'No WELL asset type — run facilities.sql first. Skipped.';
   ELSE
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 35, 0 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'WELL_CASING'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 25, 1 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'PUMP'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 20, 2 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'MOTOR'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 20, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'WELL_SCREEN'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 35, 0, 5 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'WELL_CASING'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 25, 1, 4 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'PUMP'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 20, 2, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'MOTOR'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 20, 3, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'WELL_SCREEN'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
 
     -- The models component scores belong to, marked so that whole-asset
     -- lookups never take them for the asset's own.
@@ -767,18 +776,22 @@ BEGIN
   IF v_type IS NULL THEN
     RAISE NOTICE 'No BOOSTER_PUMP_STATION asset type — run facilities.sql first. Skipped.';
   ELSE
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 35, 0 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'PUMP'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 25, 1 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'MOTOR'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 20, 2 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'PIPING'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
-    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")
-    SELECT v_type, ct.id, 20, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'CONTROLS'
-    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 35, 0, 4 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'PUMP'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 25, 1, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'MOTOR'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 20, 2, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'PIPING'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
+    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)
+    SELECT v_type, ct.id, 20, 3, 3 FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = 'CONTROLS'
+    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence
+    WHERE asset_type_component_types.consequence IS NULL;
 
     -- The models component scores belong to, marked so that whole-asset
     -- lookups never take them for the asset's own.

@@ -20,7 +20,7 @@ import { ensureBaselineScenarios } from "../src/server/scenarios";
 import { ensureBaselineWorkPlan } from "../src/server/workplans";
 import { WATERLINE_TREATMENTS } from "../src/domain/waterline/treatment";
 import { seedSampleFacilities } from "./facilities";
-import { seedSampleComponents } from "./components";
+import { seedSampleComponents, seedSampleInspections } from "./components";
 
 // The shared client, so the seed uses the same driver adapter the app does.
 // Constructing one here would fail outright: with engineType "client" there is
@@ -377,6 +377,8 @@ async function main() {
   console.log("Adding their components…");
   const components = await seedSampleComponents(prisma, org.id);
   console.log(`  ${components.componentsCreated} components, ${components.observations} observations`);
+  const facilityVisits = await seedSampleInspections(prisma, org.id);
+  console.log(`  ${facilityVisits.visits} site visits, ${facilityVisits.findings} component findings`);
 
   console.log("Computing risk assessments…");
   const assessed = await recomputeRiskForOrganization(org.id);

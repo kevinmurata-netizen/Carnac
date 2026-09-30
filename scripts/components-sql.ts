@@ -119,11 +119,15 @@ for (const [assetTypeCode, parts] of Object.entries(COMPOSITION)) {
   write("  ELSE");
 
   parts.forEach((part, sortOrder) => {
-    write(`    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder")`);
     write(
-      `    SELECT v_type, ct.id, ${part.weight}, ${sortOrder} FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = ${str(part.code)}`
+      `    INSERT INTO asset_type_component_types ("assetTypeId", "componentTypeId", "defaultCostWeight", "sortOrder", consequence)`
     );
-    write(`    ON CONFLICT ("assetTypeId", "componentTypeId") DO NOTHING;`);
+    write(
+      `    SELECT v_type, ct.id, ${part.weight}, ${sortOrder}, ${part.consequence} FROM component_types ct WHERE ct."organizationId" = v_org AND ct.code = ${str(part.code)}`
+    );
+    // A link that predates consequences gets one; one already set is left be.
+    write(`    ON CONFLICT ("assetTypeId", "componentTypeId") DO UPDATE SET consequence = EXCLUDED.consequence`);
+    write(`    WHERE asset_type_component_types.consequence IS NULL;`);
   });
 
   write("");
