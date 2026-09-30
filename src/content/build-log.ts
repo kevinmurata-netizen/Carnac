@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-30",
+    title: "Filter inspections by asset type",
+    summary:
+      "Now that reservoirs, wells and pump stations are inspected too, the Inspections page can be narrowed to one kind of asset, and says which kind each inspection was of.",
+    changes: [
+      "An Asset type filter beside the ID search: all asset types, or Waterline, Reservoir, Well, Booster Pump Station and any type added since.",
+      "An Asset Type column on the grid, sortable, and in the Excel export; the export's note names the asset type it was filtered to.",
+      "The column that said Type now says Inspection Type, so the two can't be confused.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-09-30",
     title: "The sample inspections SQL no longer skips silently",
     summary:
       "inspections.sql quietly did nothing on a database whose facilities predate their inspection forms. It now creates the missing site forms itself, and stops with a clear error if the facilities aren't there at all.",

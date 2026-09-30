@@ -11,6 +11,7 @@ const control =
 
 export type InspectionFilterValues = {
   search?: string;
+  assetType?: string;
   inspectionType?: string;
   inspector?: string;
   requiresFollowUp?: string;
@@ -21,8 +22,8 @@ export type InspectionFilterValues = {
 
 type OptionalFilter = { key: string; label: string; params: Array<keyof InspectionFilterValues> };
 
-/** Filters added from the dropdown. Segment ID and Type are always shown
- * because they are what people reach for first. */
+/** Filters added from the dropdown. Asset ID, asset type and inspection type
+ * are always shown because they are what people reach for first. */
 const OPTIONAL_FILTERS: OptionalFilter[] = [
   { key: "inspector", label: "Inspector", params: ["inspector"] },
   { key: "date", label: "Inspected between", params: ["after", "before"] },
@@ -31,11 +32,13 @@ const OPTIONAL_FILTERS: OptionalFilter[] = [
 ];
 
 export function InspectionFilterBar({
+  assetTypes,
   inspectionTypes,
   inspectors,
   values,
   action,
 }: {
+  assetTypes: Array<{ code: string; name: string }>;
   inspectionTypes: readonly string[];
   inspectors: string[];
   values: InspectionFilterValues;
@@ -64,7 +67,18 @@ export function InspectionFilterBar({
           />
         </Field>
 
-        <Field label="Type" htmlFor="inspectionType">
+        <Field label="Asset type" htmlFor="assetType">
+          <select id="assetType" name="assetType" defaultValue={values.assetType ?? ""} className={`${control} w-48`}>
+            <option value="">All asset types</option>
+            {assetTypes.map((t) => (
+              <option key={t.code} value={t.code}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Inspection type" htmlFor="inspectionType">
           <select
             id="inspectionType"
             name="inspectionType"

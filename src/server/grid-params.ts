@@ -59,6 +59,7 @@ export async function inspectionFiltersFromParams(
 
   return {
     search: params.search || undefined,
+    assetType: params.assetType || undefined,
     inspectionType: params.inspectionType || undefined,
     inspector: params.inspector || undefined,
     requiresFollowUp: params.requiresFollowUp === "on",
@@ -78,9 +79,10 @@ export function paramsFromRequest(request: Request): GridParams {
 
 /** A one-line description of what was filtered, written onto the sheet so an
  * extract is never mistaken for the whole network. */
-export function describeFilters(params: GridParams, savedFilterName?: string): string {
+export function describeFilters(params: GridParams, savedFilterName?: string, assetTypeName?: string): string {
   const parts: string[] = [];
   if (savedFilterName) parts.push(`saved filter "${savedFilterName}"`);
+  if (params.assetType) parts.push(assetTypeName ?? params.assetType);
   if (params.search) parts.push(`search "${params.search}"`);
   if (params.material) parts.push(params.material);
   if (params.status) parts.push(params.status);
