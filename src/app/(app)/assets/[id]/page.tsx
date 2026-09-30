@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getAssetById, flattenAttributes } from "@/server/assets";
-import { rollUpAssets, type AssetRollup } from "@/server/rollup";
+import { rollUpAssets } from "@/server/rollup";
+import { componentHistory, componentTypesForAsset } from "@/server/components";
 import { getFacilityGeoJSON, getNetworkGeoJSON } from "@/server/geo";
 import { getConditionHistoryForAsset } from "@/server/condition";
 import { listInspections, summarizeInspectionScore } from "@/server/inspections";
@@ -25,7 +26,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AssetStatus } from "@prisma/client";
 import { RecordEditor, type EditableSection } from "@/components/records/record-editor";
-import { saveAssetAction } from "./actions";
+import { saveAssetAction, addComponentAction, saveComponentAction, removeComponentAction } from "./actions";
+import { ComponentsCard } from "./components-card";
 import { NetworkMap } from "@/components/map/network-map";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { NotBuiltYet } from "@/components/not-built-yet";
@@ -103,6 +105,13 @@ export default async function AssetDetailPage({
 
   const currentCondition = conditionHistory[conditionHistory.length - 1];
   const canEdit = canRecordFieldData(session);
+
+  // The parts this asset could have, and what each one it has carries with
+  // it — the second is what a removal would delete, said before it does.
+  const [addableComponents, history] = await Promise.all([
+    componentTypesForAsset(organizationId, asset.id),
+    componentHistory(rollup?.components.map((c) => c.id) ?? []),
+  ]);
 
   // The overview is built from the same values it saves, so what you see
   // locked is exactly what the inputs hold once unlocked.
@@ -231,7 +240,18 @@ export default async function AssetDetailPage({
         />
       </div>
 
-      {rollup && rollup.components.length > 0 && <ComponentsCard rollup={rollup} />}
+      {((rollup?.components.length ?? 0) > 0 || addableComponents.length > 0) && (
+        <ComponentsCard
+          assetId={asset.id}
+          rollup={rollup}
+          addable={addableComponents}
+          history={Object.fromEntries(history)}
+          canEdit={canEdit}
+          onAdd={addComponentAction}
+          onSave={saveComponentAction}
+          onRemove={removeComponentAction}
+        />
+      )}
 
       <Tabs defaultValue={tab ?? "overview"}>
         {/* h-auto because the list wraps: the component's fixed height would
@@ -572,74 +592,6 @@ function FactorCard({ title, factors }: { title: string; factors: FactorRating[]
             ))}
           </TableBody>
         </Table>
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * The components this asset is made of, and how their scores became the
- * asset's — which strategy, why that one, how much of the asset it covers and,
- * for a worst case, which component drove it. Laid out so the asset-level
- * number can be checked by hand from the rows beneath it.
- */
-function ComponentsCard({ rollup }: { rollup: AssetRollup }) {
-  const result = rollup.result;
-  const shareOf = new Map(result?.shares.map((s) => [s.componentId, s.share]) ?? []);
-  return (
-    <Card className="mb-4">
-      <CardHeader>
-        <CardTitle>Components</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {result && result.scored > 0 ? (
-          <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-            <span className="font-medium tabular-nums">
-              Condition {result.condition.value ?? "—"} · Risk {result.risk.value ?? "—"}
-            </span>{" "}
-            <span className="text-muted-foreground">
-              — {rollup.strategy?.name} ({rollup.strategy?.source}), from {result.scored} of {result.total} components,
-              weighted by {result.weightBasis}.
-              {result.driver &&
-                ` Driven by ${result.driver.label}: ${Math.round(result.driver.share * 100)}% of the asset, pulling ${Math.round(
-                  result.driver.pull * 100
-                )}% of the way from the weighted average to its own score.`}
-            </span>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No component has been scored yet, so there is no asset score to roll up.</p>
-        )}
-        <div className="overflow-x-auto rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Component</TableHead>
-                <TableHead className="text-right">Share</TableHead>
-                <TableHead className="text-right">Condition</TableHead>
-                <TableHead className="text-right">Risk</TableHead>
-                <TableHead>As of</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rollup.components.map((c) => (
-                <TableRow key={c.id} className={result?.driver?.componentId === c.id ? "bg-amber-500/5" : undefined}>
-                  <TableCell>
-                    <span className="font-medium">{c.label}</span>
-                    {c.label !== c.componentTypeName && (
-                      <span className="text-xs text-muted-foreground"> · {c.componentTypeName}</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {shareOf.has(c.id) ? `${Math.round(shareOf.get(c.id)! * 1000) / 10}%` : "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{c.conditionScore ?? "—"}</TableCell>
-                  <TableCell className="text-right tabular-nums">{c.riskScore ?? "—"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{formatDate(c.scoresAsOf)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
       </CardContent>
     </Card>
   );

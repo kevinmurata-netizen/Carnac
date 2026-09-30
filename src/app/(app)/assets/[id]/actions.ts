@@ -5,6 +5,12 @@ import { AssetStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { updateAsset } from "@/server/assets";
+import {
+  addAssetComponent,
+  removeAssetComponent,
+  updateAssetComponent,
+  type ComponentDetails,
+} from "@/server/components";
 import { parseDateInput } from "@/lib/format";
 
 export type EditState = { status: "idle" | "success" | "error"; message?: string };
@@ -74,6 +80,77 @@ export async function saveAssetAction(_prev: EditState, formData: FormData): Pro
     revalidatePath(`/assets/${id}`);
     revalidatePath("/assets");
     return { status: "success", message: "Changes saved." };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Something went wrong" };
+  }
+}
+
+// --- Components ------------------------------------------------------------
+
+async function requireFieldEditor() {
+  const session = await auth();
+  if (!session) throw new Error("Sign in first");
+  if (!canRecordFieldData(session)) throw new Error("Your role cannot change asset records");
+  return session;
+}
+
+/** Attributes arrive as attr:key, the same convention as the asset's own. */
+function componentDetails(formData: FormData): ComponentDetails {
+  const attributes: Record<string, string> = {};
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith("attr:")) attributes[key.slice(5)] = String(value ?? "");
+  }
+  return {
+    label: text(formData, "label") ?? null,
+    installationDate: date(formData, "installationDate") ?? null,
+    replacementCost: number(formData, "replacementCost") ?? null,
+    attributes,
+  };
+}
+
+function revalidateAsset(assetId: string) {
+  revalidatePath(`/assets/${assetId}`);
+  revalidatePath("/assets");
+}
+
+export async function addComponentAction(_prev: EditState, formData: FormData): Promise<EditState> {
+  try {
+    const session = await requireFieldEditor();
+    const assetId = String(formData.get("assetId") ?? "");
+    await addAssetComponent(
+      session.user.organizationId,
+      assetId,
+      String(formData.get("componentTypeId") ?? ""),
+      componentDetails(formData)
+    );
+    revalidateAsset(assetId);
+    return { status: "success", message: "Component added. It has no condition until it is inspected." };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Something went wrong" };
+  }
+}
+
+export async function saveComponentAction(_prev: EditState, formData: FormData): Promise<EditState> {
+  try {
+    const session = await requireFieldEditor();
+    const { assetId } = await updateAssetComponent(
+      session.user.organizationId,
+      String(formData.get("componentId") ?? ""),
+      componentDetails(formData)
+    );
+    revalidateAsset(assetId);
+    return { status: "success", message: "Component saved." };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Something went wrong" };
+  }
+}
+
+export async function removeComponentAction(componentId: string): Promise<EditState> {
+  try {
+    const session = await requireFieldEditor();
+    const { assetId, label } = await removeAssetComponent(session.user.organizationId, componentId);
+    revalidateAsset(assetId);
+    return { status: "success", message: `${label} removed.` };
   } catch (e) {
     return { status: "error", message: e instanceof Error ? e.message : "Something went wrong" };
   }

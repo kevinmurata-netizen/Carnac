@@ -305,6 +305,168 @@ export async function updateAsset(
   await prisma.$transaction(writes);
 }
 
+const WATERLINE_TYPE_CODE = "WATERLINE";
+
+/**
+ * What the New asset form needs for one type: the type, its attributes, the
+ * components it is made of, and the service areas and pressure zones already
+ * in use, offered so a new facility files under an existing name rather than a
+ * near-miss spelling of one.
+ */
+export async function getNewAssetForm(organizationId: string, typeCode: string) {
+  const type = await prisma.assetType.findFirst({
+    where: { organizationId, code: typeCode },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      attributeDefinitions: { orderBy: { sortOrder: "asc" } },
+      componentTypes: {
+        orderBy: { sortOrder: "asc" },
+        include: { componentType: { select: { id: true, name: true, description: true } } },
+      },
+    },
+  });
+  if (!type) return null;
+
+  const [areas, zones] = await Promise.all([
+    prisma.assetLocation.findMany({
+      where: { asset: { organizationId, deletedAt: null }, serviceArea: { not: null } },
+      select: { serviceArea: true },
+      distinct: ["serviceArea"],
+    }),
+    listPressureZones(organizationId),
+  ]);
+
+  return {
+    type: { id: type.id, code: type.code, name: type.name },
+    attributes: type.attributeDefinitions.map((d) => ({
+      code: d.code,
+      label: d.label,
+      dataType: d.dataType,
+      unit: d.unit,
+      isRequired: d.isRequired,
+      options: ((d.config as { options?: string[] } | null)?.options ?? []) as string[],
+      help: ((d.config as { help?: string } | null)?.help ?? null) as string | null,
+    })),
+    components: type.componentTypes.map((l) => ({
+      id: l.componentType.id,
+      name: l.componentType.name,
+      description: l.componentType.description,
+    })),
+    serviceAreas: areas.map((a) => a.serviceArea!).sort(),
+    pressureZones: zones,
+  };
+}
+
+export type NewAsset = {
+  typeCode: string;
+  assetCode: string;
+  name: string | null;
+  status: AssetStatus;
+  ownerDepartment: string | null;
+  installationDate: Date | null;
+  expectedUsefulLife: number | null;
+  /** Attribute code → raw string from the form. Blank means not recorded. */
+  attributes: Record<string, string>;
+  location: { lat: number; lng: number; serviceArea: string | null; pressureZone: string | null } | null;
+  /** The component types this asset actually has — not always all of its type's. */
+  componentTypeIds: string[];
+};
+
+/**
+ * A new asset of a type other than waterline, entered by hand.
+ *
+ * Waterlines are refused: a segment is a line with two ends, a length and a
+ * place in the network, which is what the GIS import supplies and a form
+ * cannot. A facility stands at one point, which a form can take.
+ */
+export async function createAsset(organizationId: string, input: NewAsset, createdBy?: string | null) {
+  const type = await prisma.assetType.findFirst({
+    where: { organizationId, code: input.typeCode },
+    include: { attributeDefinitions: true, componentTypes: { select: { componentTypeId: true } } },
+  });
+  if (!type) throw new Error("Asset type not found");
+  if (type.code === WATERLINE_TYPE_CODE) {
+    throw new Error("Waterline segments come in through Data Import, which brings their geometry with them");
+  }
+
+  const assetCode = input.assetCode.trim();
+  if (!assetCode) throw new Error("An asset ID is required");
+  const clash = await prisma.asset.findFirst({ where: { organizationId, assetCode }, select: { deletedAt: true } });
+  if (clash) {
+    throw new Error(
+      clash.deletedAt
+        ? `${assetCode} belonged to an asset that was removed — choose another ID`
+        : `There is already an asset ${assetCode}`
+    );
+  }
+
+  const values: Array<{ definitionId: string } & AttributeWrite> = [];
+  for (const definition of type.attributeDefinitions) {
+    const raw = (input.attributes[definition.code] ?? "").trim();
+    if (raw === "") {
+      if (definition.isRequired) throw new Error(`${definition.label} is required`);
+      continue;
+    }
+    const value = coerceAttribute(definition.dataType, raw);
+    if (value === null) throw new Error(`"${raw}" is not a valid ${definition.label}`);
+    if (definition.dataType === "ENUM") {
+      const options = (definition.config as { options?: string[] } | null)?.options;
+      if (options?.length && !options.includes(raw)) {
+        throw new Error(`"${raw}" is not one of the configured ${definition.label} values`);
+      }
+    }
+    values.push({ definitionId: definition.id, ...value });
+  }
+
+  if (input.location) {
+    const { lat, lng } = input.location;
+    if (!(lat >= -90 && lat <= 90) || !(lng >= -180 && lng <= 180)) {
+      throw new Error("That position is not a latitude and longitude");
+    }
+  }
+
+  const allowed = new Set(type.componentTypes.map((c) => c.componentTypeId));
+  const componentTypeIds = [...new Set(input.componentTypeIds)];
+  if (componentTypeIds.some((id) => !allowed.has(id))) {
+    throw new Error(`A chosen component is not one ${type.name} is made of`);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const asset = await tx.asset.create({
+      data: {
+        organizationId,
+        assetTypeId: type.id,
+        assetCode,
+        name: input.name?.trim() || null,
+        status: input.status,
+        ownerDepartment: input.ownerDepartment?.trim() || null,
+        installationDate: input.installationDate,
+        expectedUsefulLife: input.expectedUsefulLife,
+        createdBy: createdBy ?? null,
+        attributeValues: { create: values },
+        // Components start unscored and undated; what they are made of and
+        // when they went in is recorded on the asset's page, and their
+        // condition comes from inspection.
+        components: { create: componentTypeIds.map((componentTypeId) => ({ componentTypeId })) },
+      },
+      select: { id: true },
+    });
+
+    // The geometry column is PostGIS, which Prisma can't write, so the one
+    // row that needs it is written directly.
+    if (input.location) {
+      const { lat, lng, serviceArea, pressureZone } = input.location;
+      await tx.$executeRaw`
+        INSERT INTO asset_locations (id, "assetId", geometry, "startLat", "startLng", "serviceArea", "pressureZone")
+        VALUES (${`loc_${asset.id}`}, ${asset.id}, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326), ${lat}, ${lng},
+                ${serviceArea?.trim() || null}, ${pressureZone?.trim() || null})`;
+    }
+    return asset;
+  });
+}
+
 type AttributeWrite = Pick<
   Prisma.AssetAttributeValueCreateInput,
   "textValue" | "numberValue" | "dateValue" | "booleanValue"

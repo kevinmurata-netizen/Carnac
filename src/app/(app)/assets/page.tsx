@@ -27,6 +27,9 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components
 import { ageInYears, formatInches, formatNumber, formatStatus } from "@/lib/format";
 import { AssetStatus } from "@prisma/client";
 import { ASSET_LABEL } from "@/config/labels";
+import { canRecordFieldData } from "@/lib/permissions";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   ACTIVE: "default",
@@ -57,7 +60,9 @@ export default async function AssetsPage({
       // Each asset's score, rolled up from its components under the strategy
       // that governs its type — and which strategy that was, beside it.
       const rollups = await rollUpAssets(organizationId, typed.rows.map((r) => r.id));
-      return <TypedAssets typed={typed} assetTypes={assetTypes} rollups={rollups} />;
+      return (
+        <TypedAssets typed={typed} assetTypes={assetTypes} rollups={rollups} canAdd={canRecordFieldData(session)} />
+      );
     }
   }
 
@@ -250,10 +255,12 @@ function TypedAssets({
   typed,
   assetTypes,
   rollups,
+  canAdd,
 }: {
   typed: TypedAssetList;
   assetTypes: Array<{ code: string; name: string; count: number }>;
   rollups: AssetRollup[];
+  canAdd: boolean;
 }) {
   const rollupOf = new Map(rollups.map((r) => [r.assetId, r]));
   const anyComponents = rollups.some((r) => r.components.length > 0);
@@ -291,6 +298,19 @@ function TypedAssets({
         description={
           typed.type.description ??
           `${formatNumber(typed.rows.length)} ${typed.type.name.toLowerCase()}${typed.rows.length === 1 ? "" : "s"}`
+        }
+        actions={
+          canAdd && (
+            <Button
+              nativeButton={false}
+              render={
+                <Link href={`/assets/new?type=${typed.type.code}`}>
+                  <Plus className="mr-1 h-4 w-4" />
+                  New {typed.type.name}
+                </Link>
+              }
+            />
+          )
         }
       />
 
@@ -330,7 +350,7 @@ function TypedAssets({
                       colSpan={typed.columns.length + 4 + (anyComponents ? 3 : 0)}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
-                      Nothing of this kind has been imported yet.
+                      No {typed.type.name.toLowerCase()} recorded yet{canAdd ? ` — add one with New ${typed.type.name}` : ""}.
                     </TableCell>
                   </TableRow>
                 )}

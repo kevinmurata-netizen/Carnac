@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { ComponentScore } from "@/domain/components/rollup";
+import { attributesOf, coerceComponentAttributes, type ComponentAttribute } from "@/domain/components/attributes";
 import {
   COMPONENT_SCOPE,
   componentConditionModelSpec,
@@ -128,9 +129,15 @@ export async function refreshComponentSnapshot(componentId: string) {
 }
 
 export type AssetComponentRow = ComponentScore & {
+  componentTypeId: string;
   componentTypeName: string;
+  /** The label as entered, null when the component goes by its type's name. */
+  ownLabel: string | null;
   installationDate: Date | null;
   scoresAsOf: Date | null;
+  /** What its type records, and what has been recorded. */
+  attributeDefs: ComponentAttribute[];
+  attributes: Record<string, unknown>;
 };
 
 /**
@@ -146,7 +153,7 @@ export async function loadAssetComponents(
   const rows = await prisma.assetComponent.findMany({
     where: { assetId: { in: assetIds }, asset: { organizationId } },
     include: {
-      componentType: { select: { code: true, name: true } },
+      componentType: { select: { code: true, name: true, attributeSchema: true } },
       asset: { select: { assetTypeId: true } },
     },
     orderBy: [{ assetId: "asc" }, { createdAt: "asc" }],
@@ -164,8 +171,12 @@ export async function loadAssetComponents(
     list.push({
       id: r.id,
       label: r.label ?? r.componentType.name,
+      ownLabel: r.label,
+      componentTypeId: r.componentTypeId,
       componentTypeCode: r.componentType.code,
       componentTypeName: r.componentType.name,
+      attributeDefs: attributesOf(r.componentType.attributeSchema),
+      attributes: (r.attributes ?? {}) as Record<string, unknown>,
       conditionScore: r.conditionScore,
       riskScore: r.riskScore,
       replacementCost: r.replacementCost,
@@ -186,4 +197,166 @@ export async function loadAssetComponents(
     );
   }
   return byAsset;
+}
+
+// ---------------------------------------------------------------------------
+// One asset's components: what it actually has, which is not always every
+// part its type can have — a steel tank has cathodic protection, a concrete
+// one may not — and sometimes more than one of a part: a station's pumps.
+// ---------------------------------------------------------------------------
+
+export type AddableComponentType = {
+  id: string;
+  name: string;
+  description: string | null;
+  attributes: ComponentAttribute[];
+};
+
+/** The component types an asset's own type is made of. */
+export async function componentTypesForAsset(organizationId: string, assetId: string): Promise<AddableComponentType[]> {
+  const asset = await prisma.asset.findFirst({
+    where: { id: assetId, organizationId, deletedAt: null },
+    select: {
+      assetType: {
+        select: {
+          componentTypes: {
+            orderBy: { sortOrder: "asc" },
+            include: { componentType: { select: { id: true, name: true, description: true, attributeSchema: true } } },
+          },
+        },
+      },
+    },
+  });
+  return (asset?.assetType.componentTypes ?? []).map(({ componentType: t }) => ({
+    id: t.id,
+    name: t.name,
+    description: t.description,
+    attributes: attributesOf(t.attributeSchema),
+  }));
+}
+
+export type ComponentDetails = {
+  label: string | null;
+  installationDate: Date | null;
+  replacementCost: number | null;
+  /** Attribute key → raw form string. Blank means not recorded. */
+  attributes: Record<string, string>;
+};
+
+function checkCost(cost: number | null) {
+  if (cost != null && (!Number.isFinite(cost) || cost < 0)) throw new Error("A replacement cost can't be negative");
+  return cost;
+}
+
+/**
+ * Add a part to an asset. A second of the same kind is numbered — "Pump 2" —
+ * unless it is given a label of its own, so two rows never read the same.
+ */
+export async function addAssetComponent(
+  organizationId: string,
+  assetId: string,
+  componentTypeId: string,
+  details: ComponentDetails
+) {
+  const types = await componentTypesForAsset(organizationId, assetId);
+  const type = types.find((t) => t.id === componentTypeId);
+  if (!type) throw new Error("That component is not one this kind of asset is made of");
+
+  const siblings = await prisma.assetComponent.count({ where: { assetId, componentTypeId } });
+  const label = details.label?.trim() || (siblings > 0 ? `${type.name} ${siblings + 1}` : null);
+
+  return prisma.assetComponent.create({
+    data: {
+      assetId,
+      componentTypeId,
+      label,
+      installationDate: details.installationDate,
+      replacementCost: checkCost(details.replacementCost),
+      attributes: coerceComponentAttributes(type.attributes, details.attributes),
+    },
+    select: { id: true },
+  });
+}
+
+/** Change what is known about a component. Its scores come from inspection
+ * and are not edited here. */
+export async function updateAssetComponent(organizationId: string, componentId: string, details: ComponentDetails) {
+  const component = await prisma.assetComponent.findFirst({
+    where: { id: componentId, asset: { organizationId, deletedAt: null } },
+    include: { componentType: { select: { attributeSchema: true } } },
+  });
+  if (!component) throw new Error("Component not found");
+
+  await prisma.assetComponent.update({
+    where: { id: componentId },
+    data: {
+      label: details.label?.trim() || null,
+      installationDate: details.installationDate,
+      replacementCost: checkCost(details.replacementCost),
+      attributes: coerceComponentAttributes(attributesOf(component.componentType.attributeSchema), details.attributes),
+    },
+  });
+  return { assetId: component.assetId };
+}
+
+export type ComponentHistory = { observations: number; inspections: number };
+
+/** How much has been recorded against each component — what removing it
+ * would take with it. */
+export async function componentHistory(componentIds: string[]): Promise<Map<string, ComponentHistory>> {
+  if (componentIds.length === 0) return new Map();
+  const [conditions, risks, inspections] = await Promise.all([
+    prisma.conditionMeasurement.groupBy({
+      by: ["assetComponentId"],
+      where: { assetComponentId: { in: componentIds } },
+      _count: { _all: true },
+    }),
+    prisma.riskAssessment.groupBy({
+      by: ["assetComponentId"],
+      where: { assetComponentId: { in: componentIds } },
+      _count: { _all: true },
+    }),
+    prisma.inspection.groupBy({
+      by: ["assetComponentId"],
+      where: { assetComponentId: { in: componentIds } },
+      _count: { _all: true },
+    }),
+  ]);
+  const out = new Map<string, ComponentHistory>(componentIds.map((id) => [id, { observations: 0, inspections: 0 }]));
+  for (const c of [...conditions, ...risks]) out.get(c.assetComponentId!)!.observations += c._count._all;
+  for (const i of inspections) out.get(i.assetComponentId!)!.inspections = i._count._all;
+  return out;
+}
+
+/**
+ * Remove a component from an asset, with everything recorded against it.
+ *
+ * Its history goes too, deliberately: re-filed as the whole asset's, a
+ * coating's findings would say something false about the reservoir. The
+ * confirmation says how much is being removed before this runs.
+ */
+export async function removeAssetComponent(organizationId: string, componentId: string) {
+  const component = await prisma.assetComponent.findFirst({
+    where: { id: componentId, asset: { organizationId } },
+    include: { componentType: { select: { name: true } } },
+  });
+  if (!component) throw new Error("Component not found");
+
+  await prisma.$transaction(async (tx) => {
+    const inspections = await tx.inspection.findMany({ where: { assetComponentId: componentId }, select: { id: true } });
+    const inspectionIds = inspections.map((i) => i.id);
+    const risks = await tx.riskAssessment.findMany({ where: { assetComponentId: componentId }, select: { id: true } });
+
+    await tx.conditionMeasurement.deleteMany({
+      where: { OR: [{ assetComponentId: componentId }, { inspectionId: { in: inspectionIds } }] },
+    });
+    await tx.riskFactor.deleteMany({ where: { riskAssessmentId: { in: risks.map((r) => r.id) } } });
+    await tx.riskAssessment.deleteMany({ where: { assetComponentId: componentId } });
+    await tx.inspectionResult.deleteMany({ where: { inspectionId: { in: inspectionIds } } });
+    await tx.inspectionAttachment.deleteMany({ where: { inspectionId: { in: inspectionIds } } });
+    await tx.inspection.deleteMany({ where: { id: { in: inspectionIds } } });
+    await tx.assetComponent.delete({ where: { id: componentId } });
+  });
+
+  return { assetId: component.assetId, label: component.label ?? component.componentType.name };
 }

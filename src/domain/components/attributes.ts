@@ -89,6 +89,55 @@ export function attributeKey(label: string): string {
   return /^[0-9]/.test(key) ? `a${key}` : key;
 }
 
+export type ComponentAttributeValue = string | number | boolean;
+
+/**
+ * A component's attribute values from form strings, checked against what its
+ * type says it records. A blank leaves the attribute unrecorded; a key the
+ * type doesn't define is refused rather than stored with nothing to describe it.
+ */
+export function coerceComponentAttributes(
+  attributes: ComponentAttribute[],
+  raw: Record<string, string>
+): Record<string, ComponentAttributeValue> {
+  const byKey = new Map(attributes.map((a) => [a.key, a]));
+  const out: Record<string, ComponentAttributeValue> = {};
+  for (const [key, input] of Object.entries(raw)) {
+    const a = byKey.get(key);
+    if (!a) throw new Error(`"${key}" is not something this component records`);
+    const text = input.trim();
+    if (text === "") continue;
+    switch (a.kind) {
+      case "number":
+      case "integer": {
+        const n = Number(text);
+        if (!Number.isFinite(n) || (a.kind === "integer" && !Number.isInteger(n))) {
+          throw new Error(`${a.label} must be ${a.kind === "integer" ? "a whole number" : "a number"}`);
+        }
+        out[key] = n;
+        break;
+      }
+      case "boolean":
+        out[key] = text === "true" || text === "on" || text === "Yes";
+        break;
+      case "choice":
+        if (!a.options.includes(text)) throw new Error(`"${text}" is not one of the ${a.label} options`);
+        out[key] = text;
+        break;
+      default:
+        out[key] = text;
+    }
+  }
+  return out;
+}
+
+/** An attribute value as a person reads it. */
+export function formatComponentAttribute(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+}
+
 function propertyFor(a: NewComponentAttribute): Property {
   const title = a.label.trim();
   if (a.kind === "choice") return { type: "string", enum: a.options, title };
