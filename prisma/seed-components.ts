@@ -1,10 +1,11 @@
 import { prisma } from "../src/lib/prisma";
-import { seedSampleComponents } from "./components";
+import { seedSampleComponents, seedSampleInspections } from "./components";
 
 /**
- * Add the sample facilities' components, and what inspections found on them,
- * to an organization that already exists. Additive and idempotent: an asset
- * that already has components is left alone.
+ * Add the sample facilities' components, what inspections found on them, and
+ * the site visits those findings came from, to an organization that already
+ * exists. Additive and idempotent: an asset that already has components, or a
+ * facility that already has inspections, is left alone.
  *
  *   npm run db:seed:components
  */
@@ -24,6 +25,11 @@ async function main() {
   console.log(`  ${s.componentTypes} component types, ${s.links} asset-type links`);
   console.log(`  ${s.componentsCreated} components created with ${s.observations} observations`);
   console.log(s.assetsSkipped > 0 ? `  ${s.assetsSkipped} assets already had components, left alone` : "  nothing was already there");
+
+  console.log("Adding the site visits behind them…");
+  const v = await seedSampleInspections(prisma, org.id);
+  console.log(`  ${v.visits} visits, ${v.findings} component findings`);
+  if (v.facilitiesSkipped > 0) console.log(`  ${v.facilitiesSkipped} facilities already had inspections or no components, left alone`);
 }
 
 main()

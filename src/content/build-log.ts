@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-30",
+    title: "Sample inspection history for the facilities",
+    summary:
+      "The 18 sample reservoirs, wells and pump stations now have up to three site visits each — their latest and ones five and ten years before — with the site form answered and readings for every component, so their history can be read as it would be for real.",
+    changes: [
+      "51 visits and 224 component findings, each with readings that agree with the rating beside them: a coating rated poor has thin film, a large failed area and poor adhesion; a failing cathodic protection system sits well short of −850 mV.",
+      "The visits explain the scores rather than change them: a finding on a date a component's history already held is attached to that reading, so every current score and roll-up is exactly what it was. Older visits add earlier readings, showing each part getting worse.",
+      "Each component's consequence of failure is set for the sample facility types, so component inspections on them produce risk.",
+      "For production, prisma/sql/inspections.sql does the same in one transaction, after facilities.sql and components.sql. components.sql now also sets consequences on fresh installs.",
+    ],
+    note: "No migration. Run inspections.sql in Neon's SQL editor to load the history into production.",
+  },
+  {
+    date: "2026-09-30",
     title: "Inspect each component on a site visit",
     summary:
       "Inspecting a reservoir, well or pump station now covers its components too: one visit, with a section for each part the asset has, recording a condition rating and the readings behind it — film thickness, CP potential, pump flow, motor insulation and so on.",
