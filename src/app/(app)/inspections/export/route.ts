@@ -6,6 +6,7 @@ import { getConditionBands } from "@/server/settings";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { inspectionFiltersFromParams, paramsFromRequest, describeFilters } from "@/server/grid-params";
 import { ASSET_LABEL } from "@/config/labels";
+import { listAssetTypes } from "@/server/assets";
 
 /**
  * Inspections as a spreadsheet, matching the grid's filters and sort.
@@ -52,8 +53,9 @@ export async function GET(request: Request) {
 
   const columns: ExcelColumn[] = [
     { key: "assetCode", header: ASSET_LABEL.singular, type: "text" },
+    { key: "assetType", header: "Asset type", type: "text" },
     { key: "date", header: "Date", type: "date" },
-    { key: "type", header: "Type", type: "text" },
+    { key: "type", header: "Inspection type", type: "text" },
     { key: "inspector", header: "Inspector", type: "text" },
     { key: "wci", header: "WCI score", type: "number" },
     { key: "band", header: "Condition band", type: "text" },
@@ -73,6 +75,7 @@ export async function GET(request: Request) {
 
     return {
       assetCode: inspection.asset.assetCode,
+      assetType: inspection.asset.assetType.name,
       date: inspection.inspectionDate,
       type: inspection.inspectionType,
       inspector: inspection.inspector.name,
@@ -92,7 +95,13 @@ export async function GET(request: Request) {
   const buffer = await buildWorkbook({
     sheetName: "Inspections",
     title: `Inspections — ${rows.length.toLocaleString()} record${rows.length === 1 ? "" : "s"}`,
-    note: describeFilters(params, savedFilterName),
+    note: describeFilters(
+      params,
+      savedFilterName,
+      params.assetType
+        ? (await listAssetTypes(organizationId)).find((t) => t.code === params.assetType)?.name
+        : undefined
+    ),
     columns,
     rows,
   });

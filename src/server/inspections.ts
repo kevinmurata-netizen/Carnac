@@ -67,6 +67,8 @@ export async function getInspectionSubject(organizationId: string, assetId: stri
 
 export type InspectionFilters = {
   search?: string;
+  /** Asset type code: inspections of reservoirs only, say. */
+  assetType?: string;
   inspectionType?: string;
   requiresFollowUp?: boolean;
   assetId?: string;
@@ -93,6 +95,7 @@ const INSPECTION_SORTS: Record<string, (dir: "asc" | "desc") => Prisma.Inspectio
   inspector: (dir) => ({ inspector: { name: dir } }),
   qualityScore: (dir) => ({ qualityScore: dir }),
   requiresFollowUp: (dir) => ({ requiresFollowUp: dir }),
+  assetType: (dir) => ({ asset: { assetType: { name: dir } } }),
 };
 
 const inspectionInclude = {
@@ -110,6 +113,7 @@ export type InspectionWithDetails = Prisma.InspectionGetPayload<{ include: typeo
 
 export async function listInspections(organizationId: string, filters: InspectionFilters = {}) {
   const assetWhere: Prisma.AssetWhereInput = { organizationId, deletedAt: null };
+  if (filters.assetType) assetWhere.assetType = { code: filters.assetType };
   if (filters.search) {
     assetWhere.assetCode = { contains: filters.search, mode: "insensitive" };
   }

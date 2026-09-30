@@ -18,6 +18,7 @@ import { formatDate, formatNumber } from "@/lib/format";
 import { ASSET_LABEL } from "@/config/labels";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
+import { listAssetTypes } from "@/server/assets";
 
 export default async function InspectionsPage({
   searchParams,
@@ -34,10 +35,11 @@ export default async function InspectionsPage({
   // never disagree with the screen.
   const filters = await inspectionFiltersFromParams(organizationId, params);
 
-  const [inspections, inspectors, savedFilters] = await Promise.all([
+  const [inspections, inspectors, savedFilters, assetTypes] = await Promise.all([
     listInspections(organizationId, filters),
     listInspectors(organizationId),
     listSavedFilters(organizationId),
+    listAssetTypes(organizationId),
   ]);
 
   // WCI is derived from measurements and the organization's condition bands,
@@ -78,6 +80,7 @@ export default async function InspectionsPage({
       </div>
 
       <InspectionFilterBar
+        assetTypes={assetTypes}
         inspectionTypes={INSPECTION_TYPES}
         inspectors={inspectors}
         values={params}
@@ -90,9 +93,10 @@ export default async function InspectionsPage({
             <TableHeader>
               <TableRow>
                 <ColumnHeader label={ASSET_LABEL.singular} sortKey="assetCode" />
+                <ColumnHeader label="Asset Type" sortKey="assetType" />
                 <ColumnHeader label="Date" sortKey="inspectionDate" />
                 <ColumnHeader
-                  label="Type"
+                  label="Inspection Type"
                   sortKey="inspectionType"
                   filterParam="inspectionType"
                   options={[...INSPECTION_TYPES]}
@@ -106,7 +110,7 @@ export default async function InspectionsPage({
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">
                     No inspections match the current filters.
                   </TableCell>
                 </TableRow>
@@ -120,6 +124,7 @@ export default async function InspectionsPage({
                         {inspection.asset.assetCode}
                       </Link>
                     </TableCell>
+                    <TableCell className="text-sm">{inspection.asset.assetType.name}</TableCell>
                     <TableCell>{formatDate(inspection.inspectionDate)}</TableCell>
                     <TableCell>{inspection.inspectionType}</TableCell>
                     <TableCell>{inspection.inspector.name}</TableCell>
