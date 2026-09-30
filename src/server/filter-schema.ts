@@ -157,11 +157,12 @@ export async function loadFilterRows(organizationId: string): Promise<FilterRow[
         riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
         failureEvents: { orderBy: { failureDate: "desc" } },
         inspections: {
+          where: { assetComponentId: null },
           orderBy: { inspectionDate: "desc" },
           take: 1,
           include: { results: { include: { field: true } } },
         },
-        _count: { select: { inspections: true } },
+        _count: { select: { inspections: { where: { assetComponentId: null } } } },
       },
       orderBy: { assetCode: "asc" },
     }),

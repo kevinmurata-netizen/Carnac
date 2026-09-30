@@ -60,6 +60,25 @@ export async function createInspectionAction(formData: FormData) {
     }
   }
 
+  // Each component section arrives as comp:<id>:… fields. One marked not
+  // inspected sends nothing else — its inputs are disabled — and is left out.
+  const components = formData
+    .getAll("componentId")
+    .map(String)
+    .filter((id) => formData.get(`comp:${id}:skip`) !== "on")
+    .map((id) => {
+      const prefix = `comp:${id}:field:`;
+      const notes = String(formData.get(`comp:${id}:notes`) ?? "").trim();
+      return {
+        componentId: id,
+        templateId: String(formData.get(`comp:${id}:template`) ?? ""),
+        notes: notes || null,
+        values: [...formData.entries()]
+          .filter(([key]) => key.startsWith(prefix))
+          .map(([key, value]) => ({ fieldId: key.slice(prefix.length), value: String(value ?? "") })),
+      };
+    });
+
   const inspection = await createInspection(organizationId, {
     assetId: data.assetId,
     templateId: data.templateId,
@@ -71,6 +90,7 @@ export async function createInspectionAction(formData: FormData) {
     gpsLat: data.gpsLat ? Number(data.gpsLat) : undefined,
     gpsLng: data.gpsLng ? Number(data.gpsLng) : undefined,
     fieldValues,
+    components,
   });
 
   redirect(`/inspections/${inspection.id}`);

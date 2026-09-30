@@ -107,7 +107,7 @@ export async function getConditionIndex(organizationId: string): Promise<Conditi
   const weights = parseWeights(model.formula);
 
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true },
+    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
     include: {
       fields: {
         orderBy: { sortOrder: "asc" },
@@ -204,7 +204,7 @@ export async function addComponent(
   if (!input.label.trim()) throw new Error("Component label is required");
 
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true },
+    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
     include: { fields: true },
   });
   if (!template) throw new Error("No active inspection template to attach the component to");
@@ -283,7 +283,7 @@ export async function recalculateConditionScores(organizationId: string): Promis
   const weights = parseWeights(model.formula);
 
   const inspections = await prisma.inspection.findMany({
-    where: { asset: { organizationId, deletedAt: null } },
+    where: { asset: { organizationId, deletedAt: null }, assetComponentId: null },
     include: {
       results: { include: { field: { select: { code: true, dataType: true } } } },
       conditionMeasurements: { where: { conditionModelId: model.id, source: "Inspection", assetComponentId: null } },

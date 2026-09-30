@@ -24,6 +24,8 @@ export type ComponentLinkDetail = {
   description: string | null;
   /** The link's defaultCostWeight, read as a percentage share. */
   sharePct: number | null;
+  /** Consequence of failure on this asset type, 1-5; null when not set. */
+  consequence: number | null;
   sortOrder: number;
   attributes: ComponentAttribute[];
   /** Components of this kind on assets of this type. Removal is refused above zero. */
@@ -72,6 +74,7 @@ export async function listComponentComposition(organizationId: string): Promise<
         name: t.name,
         description: t.description,
         sharePct: link.defaultCostWeight,
+        consequence: link.consequence,
         sortOrder: link.sortOrder,
         attributes,
         componentCount: countOf.get(`${link.assetTypeId}:${t.id}`) ?? 0,
@@ -92,6 +95,14 @@ export async function listComponentComposition(organizationId: string): Promise<
       usedBy: t.assetTypes.map((l) => l.assetType.name),
     })),
   };
+}
+
+function checkConsequence(consequence: number | null): number | null {
+  if (consequence == null) return null;
+  if (!Number.isInteger(consequence) || consequence < 1 || consequence > 5) {
+    throw new Error("Consequence is a whole number from 1 to 5");
+  }
+  return consequence;
 }
 
 function checkShare(sharePct: number | null): number | null {
@@ -130,12 +141,14 @@ export async function addComponentToAssetType(
   assetTypeId: string,
   input: {
     sharePct: number | null;
+    consequence: number | null;
     existing?: { componentTypeId: string };
     create?: { code: string; name: string; description: string | null; attributes: NewComponentAttribute[] };
   }
 ) {
   const assetType = await requireAssetType(organizationId, assetTypeId);
   const sharePct = checkShare(input.sharePct);
+  const consequence = checkConsequence(input.consequence);
 
   let componentTypeId: string;
   if (input.existing) {
@@ -189,6 +202,7 @@ export async function addComponentToAssetType(
       assetTypeId,
       componentTypeId,
       defaultCostWeight: sharePct,
+      consequence,
       sortOrder: (last._max.sortOrder ?? -1) + 1,
     },
   });
@@ -207,6 +221,7 @@ export async function updateComponentOnAssetType(
     name: string;
     description: string | null;
     sharePct: number | null;
+    consequence: number | null;
     removeAttributes: string[];
     addAttributes: NewComponentAttribute[];
   }
@@ -215,6 +230,7 @@ export async function updateComponentOnAssetType(
   const name = input.name.trim();
   if (!name) throw new Error("A name is required");
   const sharePct = checkShare(input.sharePct);
+  const consequence = checkConsequence(input.consequence);
 
   const clash = await prisma.componentType.findFirst({
     where: { organizationId, id: { not: componentTypeId }, name: { equals: name, mode: "insensitive" } },
@@ -250,7 +266,7 @@ export async function updateComponentOnAssetType(
     }),
     prisma.assetTypeComponentType.update({
       where: { assetTypeId_componentTypeId: { assetTypeId, componentTypeId } },
-      data: { defaultCostWeight: sharePct },
+      data: { defaultCostWeight: sharePct, consequence },
     }),
   ]);
 }

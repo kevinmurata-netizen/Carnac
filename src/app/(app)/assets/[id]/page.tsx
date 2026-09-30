@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { getAssetById, flattenAttributes } from "@/server/assets";
 import { rollUpAssets } from "@/server/rollup";
 import { componentHistory, componentTypesForAsset } from "@/server/components";
+import { latestComponentReadings } from "@/server/component-inspections";
 import { getFacilityGeoJSON, getNetworkGeoJSON } from "@/server/geo";
 import { getConditionHistoryForAsset } from "@/server/condition";
 import { listInspections, summarizeInspectionScore } from "@/server/inspections";
@@ -108,9 +109,11 @@ export default async function AssetDetailPage({
 
   // The parts this asset could have, and what each one it has carries with
   // it — the second is what a removal would delete, said before it does.
-  const [addableComponents, history] = await Promise.all([
+  const componentIds = rollup?.components.map((c) => c.id) ?? [];
+  const [addableComponents, history, readings] = await Promise.all([
     componentTypesForAsset(organizationId, asset.id),
-    componentHistory(rollup?.components.map((c) => c.id) ?? []),
+    componentHistory(componentIds),
+    latestComponentReadings(componentIds),
   ]);
 
   // The overview is built from the same values it saves, so what you see
@@ -246,6 +249,7 @@ export default async function AssetDetailPage({
           rollup={rollup}
           addable={addableComponents}
           history={Object.fromEntries(history)}
+          readings={Object.fromEntries(readings)}
           canEdit={canEdit}
           onAdd={addComponentAction}
           onSave={saveComponentAction}

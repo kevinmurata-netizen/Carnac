@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { INSPECTION_TYPES } from "@/domain/waterline/inspection";
+import { getVisitComponents } from "@/server/component-inspections";
 import { createInspectionAction } from "./actions";
+import { ComponentSection } from "./component-section";
 
 const control =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -46,6 +48,9 @@ export default async function NewInspectionPage({
 
   const { asset, template, conditionModel } = subject;
   const today = new Date().toISOString().slice(0, 10);
+  // Only the parts this asset has — which is why a visit is recorded per
+  // asset, not per type.
+  const components = template ? await getVisitComponents(organizationId, asset.id) : [];
 
   if (!template) {
     return (
@@ -178,6 +183,21 @@ export default async function NewInspectionPage({
               ))}
           </CardContent>
         </Card>
+
+        {components.length > 0 && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-base font-semibold">Components</h2>
+              <p className="text-sm text-muted-foreground">
+                Each part this {asset.assetType.name.toLowerCase()} has. Rate its condition and record what was
+                measured; mark a part not inspected if this visit didn&apos;t reach it.
+              </p>
+            </div>
+            {components.map((component) => (
+              <ComponentSection key={component.id} component={component} />
+            ))}
+          </div>
+        )}
 
         <Card>
           <CardHeader>

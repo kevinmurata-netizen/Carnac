@@ -344,6 +344,10 @@ model AssetTypeComponentType {
   /// component has no replacementCost of its own.
   defaultCostWeight Float?
   sortOrder         Int    @default(0)
+  /// How much this part's failure matters on this kind of asset, 1-5. Risk
+  /// from a component inspection is probability (from condition) times this.
+  /// Null: not set, so an inspection records the part's condition but no risk.
+  consequence       Int?
 
   @@id([assetTypeId, componentTypeId])
   @@map("asset_type_component_types")
@@ -504,6 +508,13 @@ model Inspection {
   gpsLng           Float?
   notes            String?
 
+  /// A component's findings point at the site visit they were part of: the
+  /// whole-asset inspection. Null for that visit itself, and for everything
+  /// recorded before visits had parts.
+  parentInspectionId String?
+  parentInspection   Inspection?  @relation("InspectionVisit", fields: [parentInspectionId], references: [id], onDelete: Restrict)
+  componentInspections Inspection[] @relation("InspectionVisit")
+
   results               InspectionResult[]
   attachments           InspectionAttachment[]
   conditionMeasurements ConditionMeasurement[]
@@ -512,6 +523,7 @@ model Inspection {
 
   @@index([assetId])
   @@index([assetComponentId])
+  @@index([parentInspectionId])
   @@map("inspections")
 }
 

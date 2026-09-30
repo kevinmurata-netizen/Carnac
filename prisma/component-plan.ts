@@ -10,6 +10,8 @@
  * level tracking is an open question, not a default to seed.
  */
 
+import { probabilityFromCondition } from "../src/domain/components/inspection";
+
 export type ComponentSpec = {
   code: string;
   name: string;
@@ -145,15 +147,6 @@ export const HAND_SET: Record<string, Record<string, number>> = {
   "RSV-05": { TANK_SHELL: 91, ROOF: 62, FLOOR: 93, COATING_SYSTEM: 84, CATHODIC_PROTECTION: 88 },
 };
 
-/** Probability of failure, 1-5, from condition. */
-function probabilityFrom(condition: number) {
-  if (condition >= 85) return 1;
-  if (condition >= 70) return 2;
-  if (condition >= 50) return 3;
-  if (condition >= 30) return 4;
-  return 5;
-}
-
 /** A small deterministic spread, so re-seeding produces the same network. */
 function jitter(seed: string) {
   let h = 2166136261;
@@ -195,14 +188,14 @@ export function planComponentHistory(
   currentYear = new Date().getUTCFullYear()
 ): PlannedObservation[] {
   const condition = HAND_SET[assetCode]?.[part.code] ?? conditionFor(assetCode, part.code, currentYear - installYear, part.life);
-  const latest = { observedAt, conditionScore: condition, probability: probabilityFrom(condition), consequence: part.consequence };
+  const latest = { observedAt, conditionScore: condition, probability: probabilityFromCondition(condition), consequence: part.consequence };
   if (!HAND_SET[assetCode]) return [latest];
   const earlier = Math.min(99, condition + 12);
   return [
     {
       observedAt: new Date(Date.UTC(observedAt.getUTCFullYear() - 5, 5, 1)),
       conditionScore: earlier,
-      probability: probabilityFrom(earlier),
+      probability: probabilityFromCondition(earlier),
       consequence: part.consequence,
     },
     latest,
