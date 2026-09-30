@@ -57,7 +57,8 @@ write("--");
 write("-- GENERATED FILE. Produced by `npm run db:seed:inspections:sql` from");
 write("-- prisma/component-plan.ts. Edit that and regenerate; edits here are lost.");
 write("--");
-write("-- Run it after facilities.sql and components.sql. Paste the whole file into");
+write("-- Run it after facilities.sql and components.sql; a site form facilities.sql");
+write("-- didn't create (older copies of it had none) is created here. Paste the whole file into");
 write("-- a SQL console (Neon's editor, psql, …). It is one transaction: it either");
 write("-- all lands or none of it does. It:");
 write("--   * sets each component's consequence of failure where none is set yet;");
@@ -110,12 +111,43 @@ for (const [assetTypeCode, parts] of Object.entries(COMPOSITION)) {
   write(`  -- ${assetTypeCode} ${"=".repeat(Math.max(0, 66 - assetTypeCode.length))}`);
   write("  v_type := NULL;");
   write(`  SELECT id, name INTO v_type, v_type_name FROM asset_types WHERE "organizationId" = v_org AND code = ${str(assetTypeCode)};`);
+  // No asset type means no facilities of it either — facilities.sql never ran —
+  // and quietly skipping would report success over nothing, so it stops here.
+  write("  IF v_type IS NULL THEN");
+  write(`    RAISE EXCEPTION 'No ${assetTypeCode} asset type in this database — run facilities.sql first.';`);
+  write("  END IF;");
+  write("");
+  write("  -- The site form: the active one, else the sample one by name, else it is");
+  write("  -- created here exactly as facilities.sql creates it. Databases that took");
+  write("  -- facilities.sql before the forms were added to it have none.");
   write("  v_site := NULL;");
   write(
     `  SELECT id INTO v_site FROM inspection_templates WHERE "assetTypeId" = v_type AND "componentTypeId" IS NULL AND "isActive" ORDER BY "createdAt" LIMIT 1;`
   );
-  write("  IF v_type IS NULL OR v_site IS NULL THEN");
-  write(`    RAISE NOTICE '${assetTypeCode}: no asset type or no site form — run facilities.sql first. Skipped.';`);
+  if (siteForm) {
+    write("  IF v_site IS NULL THEN");
+    write(
+      `    SELECT id INTO v_site FROM inspection_templates WHERE "assetTypeId" = v_type AND "componentTypeId" IS NULL AND name = ${str(siteForm.name)} ORDER BY "createdAt" LIMIT 1;`
+    );
+    write("  END IF;");
+    write("  IF v_site IS NULL THEN");
+    write(`    INSERT INTO inspection_templates (id, "assetTypeId", name, description, "isActive", "createdAt", "updatedAt")`);
+    write(`    VALUES (gen_random_uuid()::text, v_type, ${str(siteForm.name)}, ${str(siteForm.description)}, true, now(), now())`);
+    write("    RETURNING id INTO v_site;");
+    write("    IF v_site IS NOT NULL THEN");
+    for (const field of siteForm.fields) {
+      const config = jsonb({ helpText: field.helpText, ...(field.dataType === "NUMBER" ? { min: 0, max: 10 } : {}) });
+      write(
+        `      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config)` +
+          ` VALUES (gen_random_uuid()::text, v_site, ${str(field.code)}, ${str(field.label)}, ${str(field.dataType)}::"AttributeDataType", NULL, ` +
+          `${field.isRequired}, ${field.sortOrder}, ${config}) ON CONFLICT ("templateId", code) DO NOTHING;`
+      );
+    }
+    write("    END IF;");
+    write("  END IF;");
+  }
+  write("  IF v_site IS NULL THEN");
+  write(`    RAISE EXCEPTION '${assetTypeCode} has no site inspection form, and none is defined to create.';`);
   write("  ELSE");
 
   write("");

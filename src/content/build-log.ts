@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-30",
+    title: "The sample inspections SQL no longer skips silently",
+    summary:
+      "inspections.sql quietly did nothing on a database whose facilities predate their inspection forms. It now creates the missing site forms itself, and stops with a clear error if the facilities aren't there at all.",
+    changes: [
+      "facilities.sql only gained the reservoir, well and pump station inspection forms on 28 September; a database that took it before then has the facilities but no forms. inspections.sql skipped every type in that case with a notice the SQL console doesn't show, so it reported success and added nothing.",
+      "It now creates any missing site form exactly as facilities.sql does, then records the visits.",
+      "A missing asset type — facilities.sql never run — stops the whole file with an error saying so, rather than skipping.",
+    ],
+    note: "No migration. Re-run prisma/sql/inspections.sql in Neon's SQL editor; on production it will now add the forms and the 51 visits.",
+  },
+  {
+    date: "2026-09-30",
     title: "Sample inspection history for the facilities",
     summary:
       "The 18 sample reservoirs, wells and pump stations now have up to three site visits each — their latest and ones five and ten years before — with the site form answered and readings for every component, so their history can be read as it would be for real.",
