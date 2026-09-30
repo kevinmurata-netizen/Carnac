@@ -29,6 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-09-30",
+    title: "Add assets, and choose which components each one has",
+    summary:
+      "A reservoir, well or pump station can now be added from its tab on the inventory, and each asset's components are recorded per asset — added, described and removed on its page — because not every asset of a type has every part.",
+    changes: [
+      "New Reservoir (or Well, or Booster Pump Station) on that type's inventory tab opens a form built from the type: its details, a position for the map, and a checklist of the components it is made of — tick only the ones this asset has.",
+      "Waterline segments are not added this way: a segment needs its geometry, which comes through Data Import.",
+      "On an asset's page the Components card can add a component, edit it and remove it. A second of the same part is numbered (Pump 2) unless given its own label.",
+      "Each component now records when it was installed, what it would cost to replace, and what its type describes — material, make, horsepower, coating system and so on — shown beneath its name.",
+      "Removing a component says first how many condition and risk readings go with it, and the asset's score is then rolled up from the rest.",
+      "The card lists the parts of the type this asset doesn't have, so a missing one is a visible choice rather than an oversight.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-09-29",
     title: "Sample components as a SQL file",
     summary:
