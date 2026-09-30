@@ -30,6 +30,22 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-09-30",
+    title: "Inspect each component on a site visit",
+    summary:
+      "Inspecting a reservoir, well or pump station now covers its components too: one visit, with a section for each part the asset has, recording a condition rating and the readings behind it — film thickness, CP potential, pump flow, motor insulation and so on.",
+    changes: [
+      "The inspection form for a facility adds a section per component after the site questions. Each has a condition rating (0–10) and that part's own readings; a part the visit didn't reach is marked not inspected and left alone.",
+      "Every component type has an inspection form: tank shell, roof, floor, coating, cathodic protection, well casing and screen, pump, motor, station piping and controls. A component type added under Settings gets the condition rating alone.",
+      "A part's rating becomes its condition score, and its risk is the probability that implies times the part's consequence of failure — a new setting beside its share on Settings › Asset Types (e.g. Reservoir shell 5, coating 2).",
+      "The visit's page lists what was found on each component: condition, risk, readings and notes.",
+      "On the asset's page each component shows its latest readings and the date, linked to the visit.",
+      "Lists of inspections, the activity feed, reports and filters count a visit once, not once per component.",
+    ],
+    note:
+      "One migration: 20260930120000_component_inspections — a nullable consequence on each asset type's components, and a link from a component's findings to their visit. Consequences reach production with the sample-data SQL in the next change; until then component inspections there record condition only.",
+  },
+  {
+    date: "2026-09-30",
     title: "Add assets, and choose which components each one has",
     summary:
       "A reservoir, well or pump station can now be added from its tab on the inventory, and each asset's components are recorded per asset — added, described and removed on its page — because not every asset of a type has every part.",

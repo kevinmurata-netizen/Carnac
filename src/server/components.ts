@@ -62,6 +62,8 @@ export async function recordComponentScores(
     probability?: number | null;
     consequence?: number | null;
     source?: string;
+    /** The inspection these came from, when they did. */
+    inspectionId?: string;
   }
 ) {
   const component = await prisma.assetComponent.findFirst({
@@ -81,6 +83,7 @@ export async function recordComponentScores(
         score: Math.max(0, Math.min(100, input.conditionScore)),
         measurementDate: input.observedAt,
         source: input.source ?? "Inspection",
+        inspectionId: input.inspectionId ?? null,
       },
     });
   }

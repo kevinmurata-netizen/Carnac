@@ -25,7 +25,7 @@ export async function getConfigSummary(organizationId: string): Promise<ConfigSu
         orderBy: { sortOrder: "asc" },
       }),
       prisma.inspectionTemplate.findMany({
-        where: { assetType: { organizationId } },
+        where: { assetType: { organizationId }, componentTypeId: null },
         include: { _count: { select: { fields: true, inspections: true } } },
       }),
       prisma.conditionModel.findMany({
@@ -247,7 +247,7 @@ export async function getRecentActivity(organizationId: string, limit = 40): Pro
       select: { assetCode: true, createdAt: true, updatedAt: true, createdBy: true, updatedBy: true },
     }),
     prisma.inspection.findMany({
-      where: { asset: { organizationId } },
+      where: { asset: { organizationId }, assetComponentId: null },
       orderBy: { createdAt: "desc" },
       take: limit,
       include: { asset: { select: { assetCode: true } }, inspector: { select: { name: true } } },

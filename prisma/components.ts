@@ -42,11 +42,12 @@ export async function seedSampleComponents(prisma: PrismaClient, organizationId:
     for (const [i, part] of parts.entries()) {
       await prisma.assetTypeComponentType.upsert({
         where: { assetTypeId_componentTypeId: { assetTypeId: assetType.id, componentTypeId: typeIds.get(part.code)! } },
-        update: { defaultCostWeight: part.weight, sortOrder: i },
+        update: { defaultCostWeight: part.weight, consequence: part.consequence, sortOrder: i },
         create: {
           assetTypeId: assetType.id,
           componentTypeId: typeIds.get(part.code)!,
           defaultCostWeight: part.weight,
+          consequence: part.consequence,
           sortOrder: i,
         },
       });

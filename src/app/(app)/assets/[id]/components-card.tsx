@@ -12,6 +12,8 @@ import { formatDate, formatNumber, toDateInputValue } from "@/lib/format";
 import { formatComponentAttribute, type ComponentAttribute } from "@/domain/components/attributes";
 import type { AssetRollup } from "@/server/rollup";
 import type { AddableComponentType, ComponentHistory } from "@/server/components";
+import type { LatestReadings } from "@/server/component-inspections";
+import Link from "next/link";
 import type { EditState } from "./actions";
 
 const input =
@@ -72,6 +74,7 @@ export function ComponentsCard({
   rollup,
   addable,
   history,
+  readings,
   canEdit,
   onAdd,
   onSave,
@@ -81,6 +84,8 @@ export function ComponentsCard({
   rollup: AssetRollup | undefined;
   addable: AddableComponentType[];
   history: Record<string, ComponentHistory>;
+  /** What the latest inspection of each component measured. */
+  readings: Record<string, LatestReadings>;
   canEdit: boolean;
   onAdd: FormAction;
   onSave: FormAction;
@@ -170,6 +175,17 @@ export function ComponentsCard({
                           <span className="text-xs text-muted-foreground"> · {c.componentTypeName}</span>
                         )}
                         {details && <span className="block text-xs text-muted-foreground">{details}</span>}
+                        {readings[c.id] && readings[c.id].readings.length > 0 && (
+                          <span className="block text-xs text-muted-foreground">
+                            <Link
+                              href={`/inspections/${readings[c.id].visitId ?? readings[c.id].inspectionId}`}
+                              className="text-primary hover:underline"
+                            >
+                              {formatDate(readings[c.id].date)}
+                            </Link>
+                            : {readings[c.id].readings.map((r) => `${r.label} ${r.value}`).join(" · ")}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {shareOf.has(c.id) ? `${Math.round(shareOf.get(c.id)! * 1000) / 10}%` : "—"}

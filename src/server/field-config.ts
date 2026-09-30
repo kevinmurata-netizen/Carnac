@@ -35,7 +35,7 @@ export type InspectionFieldRow = {
 
 export async function listInspectionFields(organizationId: string): Promise<InspectionFieldRow[]> {
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true },
+    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
     include: { fields: { orderBy: { sortOrder: "asc" }, include: { _count: { select: { results: true } } } } },
   });
   if (!template) return [];
@@ -84,7 +84,7 @@ export async function createInspectionField(
   input: { code: string; label: string; dataType: AttributeDataType; unit?: string; isRequired: boolean; helpText?: string }
 ) {
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true },
+    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
     include: { fields: true },
   });
   if (!template) throw new Error("No active inspection template");

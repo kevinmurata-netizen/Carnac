@@ -380,7 +380,10 @@ export async function listAssetTypeDetails(organizationId: string): Promise<Asse
         orderBy: { sortOrder: "asc" },
         include: { _count: { select: { values: true } } },
       },
+      // Whole-asset forms only: a component's form is part of that
+      // component, and is listed with it.
       inspectionTemplates: {
+        where: { componentTypeId: null },
         orderBy: { name: "asc" },
         include: { _count: { select: { fields: true, inspections: true } } },
       },
@@ -421,7 +424,7 @@ export async function listInspectionTemplateDetails(
   organizationId: string
 ): Promise<Array<TemplateDetail & { assetTypeId: string; assetTypeName: string; assetTypeCode: string }>> {
   const templates = await prisma.inspectionTemplate.findMany({
-    where: { assetType: { organizationId } },
+    where: { assetType: { organizationId }, componentTypeId: null },
     orderBy: [{ assetType: { name: "asc" } }, { name: "asc" }],
     include: {
       assetType: { select: { id: true, name: true, code: true } },
@@ -485,7 +488,7 @@ export async function getConfigurationSettings(organizationId: string): Promise<
       orderBy: { name: "asc" },
     }),
     prisma.inspectionTemplate.findMany({
-      where: { assetType: { organizationId } },
+      where: { assetType: { organizationId }, componentTypeId: null },
       include: { _count: { select: { fields: true, inspections: true } } },
       orderBy: { name: "asc" },
     }),

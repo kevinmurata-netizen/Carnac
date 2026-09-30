@@ -289,6 +289,12 @@ function parseShare(raw: unknown): number | null {
   return value;
 }
 
+/** Blank means "not set"; the server checks it is 1-5. */
+function parseConsequence(raw: unknown): number | null {
+  const text = String(raw ?? "").trim();
+  return text ? Number(text) : null;
+}
+
 /** The attribute rows the dialog sends as JSON, checked field by field — this
  * is the boundary a crafted request would cross. */
 function parseNewAttributes(raw: unknown): NewComponentAttribute[] {
@@ -325,6 +331,7 @@ export async function addComponentAction(
     const existing = formData.get("mode") === "existing";
     await addComponentToAssetType(session.user.organizationId, String(formData.get("assetTypeId") ?? ""), {
       sharePct: parseShare(formData.get("sharePct")),
+      consequence: parseConsequence(formData.get("consequence")),
       ...(existing
         ? { existing: { componentTypeId: String(formData.get("componentTypeId") ?? "") } }
         : {
@@ -360,6 +367,7 @@ export async function saveComponentAction(
         name: String(formData.get("name") ?? ""),
         description: String(formData.get("description") ?? "") || null,
         sharePct: parseShare(formData.get("sharePct")),
+        consequence: parseConsequence(formData.get("consequence")),
         removeAttributes: parseKeys(formData.get("removeAttributes")),
         addAttributes: parseNewAttributes(formData.get("addAttributes")),
       }

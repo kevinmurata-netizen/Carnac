@@ -109,6 +109,7 @@ export function ComponentsSection({
                 <TableRow>
                   <TableCell className="font-medium">Component</TableCell>
                   <TableCell className="text-right font-medium">Share of value</TableCell>
+                  <TableCell className="font-medium">Consequence</TableCell>
                   <TableCell className="font-medium">Records</TableCell>
                   <TableCell className="text-right font-medium">On assets</TableCell>
                   {canEdit && <TableCell className="w-36" />}
@@ -128,6 +129,13 @@ export function ComponentsSection({
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-sm">
                       {link.sharePct == null ? <span className="text-muted-foreground">—</span> : pct(link.sharePct)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-sm">
+                      {link.consequence == null ? (
+                        <span className="text-muted-foreground">Not set</span>
+                      ) : (
+                        `${link.consequence} · ${CONSEQUENCES[link.consequence - 1]}`
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{describeAttributes(link.attributes)}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{formatNumber(link.componentCount)}</TableCell>
@@ -195,6 +203,20 @@ export function ComponentsSection({
             </Table>
           </div>
           <ShareSummary assetTypeName={assetType.name} total={total} unshared={unshared.map((l) => l.name)} />
+          {links.some((l) => l.consequence == null) && (
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+              <span>
+                {links
+                  .filter((l) => l.consequence == null)
+                  .map((l) => l.name)
+                  .join(", ")}{" "}
+                {links.filter((l) => l.consequence == null).length === 1 ? "has" : "have"} no consequence of failure,
+                so inspecting {links.filter((l) => l.consequence == null).length === 1 ? "it" : "them"} records
+                condition but no risk.
+              </span>
+            </p>
+          )}
         </>
       )}
 
@@ -207,7 +229,7 @@ export function ComponentsSection({
           }
           description={
             editing?.mode === "edit"
-              ? "The share belongs to this asset type. The name, description and what it records belong to the component itself."
+              ? "The share and consequence belong to this asset type. The name, description and what it records belong to the component itself."
               : "One of the parts this kind of asset is made of. Adding it here says what every asset of the type consists of; each asset's own components are recorded on the asset."
           }
         >
@@ -387,6 +409,34 @@ function AttributeRows({
   );
 }
 
+/** The usual five-point scale, worded so a number is never chosen blind. */
+const CONSEQUENCES = ["Negligible", "Minor", "Moderate", "Major", "Severe"];
+
+function ConsequenceField({ defaultValue }: { defaultValue: number | null }) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="component-consequence">Consequence of failure</Label>
+      <select
+        id="component-consequence"
+        name="consequence"
+        defaultValue={defaultValue == null ? "" : String(defaultValue)}
+        className={input}
+      >
+        <option value="">Not set</option>
+        {CONSEQUENCES.map((label, i) => (
+          <option key={label} value={i + 1}>
+            {i + 1} · {label}
+          </option>
+        ))}
+      </select>
+      <p className="text-xs text-muted-foreground">
+        How much this part failing matters on this kind of asset. A component inspection&apos;s risk is the
+        probability its condition implies × this; without it, inspections record condition only.
+      </p>
+    </div>
+  );
+}
+
 function ShareField({ defaultValue, remaining }: { defaultValue: string; remaining?: number }) {
   return (
     <div className="space-y-1.5">
@@ -542,7 +592,10 @@ function AddComponentForm({
         </>
       )}
 
-      <ShareField defaultValue="" remaining={remaining} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <ShareField defaultValue="" remaining={remaining} />
+        <ConsequenceField defaultValue={null} />
+      </div>
 
       <Missing items={missing} />
       <div className="flex justify-end gap-2">
@@ -589,7 +642,7 @@ function EditComponentForm({
       {link.alsoOn.length > 0 && (
         <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {link.name} is also a component of {link.alsoOn.join(", ")}. A change to its name, description or what it
-          records applies there too; the share is {assetTypeName}&apos;s alone.
+          records applies there too; the share and consequence are {assetTypeName}&apos;s alone.
         </p>
       )}
 
@@ -626,7 +679,10 @@ function EditComponentForm({
         />
       </div>
 
-      <ShareField defaultValue={link.sharePct == null ? "" : String(link.sharePct)} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <ShareField defaultValue={link.sharePct == null ? "" : String(link.sharePct)} />
+        <ConsequenceField defaultValue={link.consequence} />
+      </div>
 
       <div className="space-y-1.5">
         <Label>What it records</Label>

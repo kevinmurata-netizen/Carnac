@@ -181,7 +181,7 @@ export const REPORTS: ReportDefinition[] = [
     ],
     run: async (organizationId) => {
       const inspections = await prisma.inspection.findMany({
-        where: { asset: { organizationId, deletedAt: null } },
+        where: { asset: { organizationId, deletedAt: null }, assetComponentId: null },
         include: {
           asset: { select: { assetCode: true } },
           inspector: { select: { name: true } },

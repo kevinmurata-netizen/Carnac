@@ -4,10 +4,16 @@ import { getConditionBand, computeWCI , type ConditionBand } from "@/domain/wate
 import { getIndexWeights } from "@/server/condition-model";
 import { sameCalendarDay } from "@/lib/format";
 import { wholeAssetConditionModel } from "@/server/components";
+import {
+  checkComponentFinding,
+  getVisitComponents,
+  recordComponentFinding,
+  type ComponentFinding,
+} from "@/server/component-inspections";
 
 export async function getWaterlineTemplate(organizationId: string) {
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true },
+    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
     include: { fields: { orderBy: { sortOrder: "asc" } } },
   });
   if (!template) throw new Error("No active inspection template configured for waterlines");
@@ -41,7 +47,9 @@ export async function getInspectionSubject(organizationId: string, assetId: stri
   if (!asset) return null;
 
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetTypeId: asset.assetTypeId, isActive: true },
+    // The whole-asset form. A component's form belongs to its part of the
+    // visit, not to the visit itself.
+    where: { assetTypeId: asset.assetTypeId, isActive: true, componentTypeId: null },
     include: { fields: { orderBy: { sortOrder: "asc" } } },
     orderBy: { createdAt: "asc" },
   });
@@ -106,7 +114,9 @@ export async function listInspections(organizationId: string, filters: Inspectio
     assetWhere.assetCode = { contains: filters.search, mode: "insensitive" };
   }
 
-  const where: Prisma.InspectionWhereInput = { asset: assetWhere };
+  // One row per visit: a component's findings are shown within the visit
+  // they were part of, not as visits of their own.
+  const where: Prisma.InspectionWhereInput = { asset: assetWhere, assetComponentId: null };
   if (filters.assetId) where.assetId = filters.assetId;
   // An empty list means a saved filter matched nothing, which must show no
   // rows rather than being ignored as "no constraint".
@@ -162,11 +172,24 @@ export type CreateInspectionInput = {
   gpsLat?: number;
   gpsLng?: number;
   fieldValues: Array<{ fieldId: string; code: string; dataType: string; value: string }>;
+  /** What was found on each component looked at on this visit. A component
+   * left out was not inspected this time. */
+  components?: ComponentFinding[];
 };
 
 export async function createInspection(organizationId: string, input: CreateInspectionInput) {
   const asset = await prisma.asset.findFirst({ where: { id: input.assetId, organizationId, deletedAt: null } });
   if (!asset) throw new Error("Asset not found");
+
+  // Every component's answers are checked before anything is written, so a
+  // bad reading on one part doesn't leave the rest of the visit half-saved.
+  const findings = input.components ?? [];
+  const visitComponents = findings.length > 0 ? await getVisitComponents(organizationId, asset.id) : [];
+  const checked = findings.map((finding) => {
+    const component = visitComponents.find((c) => c.id === finding.componentId);
+    if (!component) throw new Error("A component on the form is no longer part of this asset — reload and try again");
+    return { component, finding, results: checkComponentFinding(component, finding) };
+  });
 
   // The model for the asset's own type. It used to be the waterline's
   // whatever was being inspected, which would have scored a reservoir on pipe
@@ -216,6 +239,10 @@ export async function createInspection(organizationId: string, input: CreateInsp
         source: "Inspection",
       },
     });
+  }
+
+  for (const { component, finding, results } of checked) {
+    await recordComponentFinding(organizationId, inspection, component, finding, results);
   }
 
   return inspection;
