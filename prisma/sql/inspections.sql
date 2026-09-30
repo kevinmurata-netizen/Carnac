@@ -3,7 +3,8 @@
 -- GENERATED FILE. Produced by `npm run db:seed:inspections:sql` from
 -- prisma/component-plan.ts. Edit that and regenerate; edits here are lost.
 --
--- Run it after facilities.sql and components.sql. Paste the whole file into
+-- Run it after facilities.sql and components.sql; a site form facilities.sql
+-- didn't create (older copies of it had none) is created here. Paste the whole file into
 -- a SQL console (Neon's editor, psql, …). It is one transaction: it either
 -- all lands or none of it does. It:
 --   * sets each component's consequence of failure where none is set yet;
@@ -50,10 +51,38 @@ BEGIN
   -- RESERVOIR =========================================================
   v_type := NULL;
   SELECT id, name INTO v_type, v_type_name FROM asset_types WHERE "organizationId" = v_org AND code = 'RESERVOIR';
+  IF v_type IS NULL THEN
+    RAISE EXCEPTION 'No RESERVOIR asset type in this database — run facilities.sql first.';
+  END IF;
+
+  -- The site form: the active one, else the sample one by name, else it is
+  -- created here exactly as facilities.sql creates it. Databases that took
+  -- facilities.sql before the forms were added to it have none.
   v_site := NULL;
   SELECT id INTO v_site FROM inspection_templates WHERE "assetTypeId" = v_type AND "componentTypeId" IS NULL AND "isActive" ORDER BY "createdAt" LIMIT 1;
-  IF v_type IS NULL OR v_site IS NULL THEN
-    RAISE NOTICE 'RESERVOIR: no asset type or no site form — run facilities.sql first. Skipped.';
+  IF v_site IS NULL THEN
+    SELECT id INTO v_site FROM inspection_templates WHERE "assetTypeId" = v_type AND "componentTypeId" IS NULL AND name = 'Reservoir Condition Assessment' ORDER BY "createdAt" LIMIT 1;
+  END IF;
+  IF v_site IS NULL THEN
+    INSERT INTO inspection_templates (id, "assetTypeId", name, description, "isActive", "createdAt", "updatedAt")
+    VALUES (gen_random_uuid()::text, v_type, 'Reservoir Condition Assessment', 'Interior and structural inspection of a finished-water reservoir — drained, or by diver or ROV.', true, now(), now())
+    RETURNING id INTO v_site;
+    IF v_site IS NOT NULL THEN
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'STRUCTURAL_CRACKING', 'Structural Cracking', 'NUMBER'::"AttributeDataType", NULL, true, 10, '{"helpText":"0 = through-cracking or active movement, 10 = no cracking observed","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'INTERIOR_COATING', 'Interior Coating / Lining', 'NUMBER'::"AttributeDataType", NULL, true, 20, '{"helpText":"0 = coating failed, substrate exposed, 10 = coating intact","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'CORROSION', 'Corrosion', 'NUMBER'::"AttributeDataType", NULL, true, 30, '{"helpText":"0 = severe section loss, 10 = no corrosion observed","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'ROOF_AND_HATCHES', 'Roof, Hatches & Access', 'NUMBER'::"AttributeDataType", NULL, true, 40, '{"helpText":"0 = roof unsound or hatches unsecured, 10 = sound and secure","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'VENTS_AND_SCREENS', 'Vents & Screens', 'NUMBER'::"AttributeDataType", NULL, true, 50, '{"helpText":"0 = screens missing or torn — contamination path open, 10 = intact and sealed","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'SEDIMENT_ACCUMULATION', 'Sediment Accumulation', 'NUMBER'::"AttributeDataType", NULL, true, 60, '{"helpText":"0 = heavy accumulation reducing usable volume, 10 = floor clean","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'INLET_OUTLET_VALVES', 'Inlet, Outlet & Valves', 'NUMBER'::"AttributeDataType", NULL, true, 70, '{"helpText":"0 = valves seized or leaking by, 10 = operate freely and seal","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'OVERFLOW_AND_DRAIN', 'Overflow & Drain', 'NUMBER'::"AttributeDataType", NULL, true, 80, '{"helpText":"0 = blocked or discharging incorrectly, 10 = clear and correctly screened","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'FOUNDATION_AND_SITE', 'Foundation & Site Drainage', 'NUMBER'::"AttributeDataType", NULL, true, 90, '{"helpText":"0 = settlement or water standing against the structure, 10 = stable and draining away","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'SITE_SECURITY', 'Site Security', 'NUMBER'::"AttributeDataType", NULL, true, 100, '{"helpText":"0 = unsecured, 10 = fencing, locks and intrusion alarms sound","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'OTHER_DEFICIENCIES', 'Other Observed Deficiencies', 'TEXT'::"AttributeDataType", NULL, false, 200, '{"helpText":"Free-text notes on anything not captured above"}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+    END IF;
+  END IF;
+  IF v_site IS NULL THEN
+    RAISE EXCEPTION 'RESERVOIR has no site inspection form, and none is defined to create.';
   ELSE
 
     -- Consequence of failure, where none is set yet.
@@ -2191,10 +2220,37 @@ BEGIN
   -- WELL ==============================================================
   v_type := NULL;
   SELECT id, name INTO v_type, v_type_name FROM asset_types WHERE "organizationId" = v_org AND code = 'WELL';
+  IF v_type IS NULL THEN
+    RAISE EXCEPTION 'No WELL asset type in this database — run facilities.sql first.';
+  END IF;
+
+  -- The site form: the active one, else the sample one by name, else it is
+  -- created here exactly as facilities.sql creates it. Databases that took
+  -- facilities.sql before the forms were added to it have none.
   v_site := NULL;
   SELECT id INTO v_site FROM inspection_templates WHERE "assetTypeId" = v_type AND "componentTypeId" IS NULL AND "isActive" ORDER BY "createdAt" LIMIT 1;
-  IF v_type IS NULL OR v_site IS NULL THEN
-    RAISE NOTICE 'WELL: no asset type or no site form — run facilities.sql first. Skipped.';
+  IF v_site IS NULL THEN
+    SELECT id INTO v_site FROM inspection_templates WHERE "assetTypeId" = v_type AND "componentTypeId" IS NULL AND name = 'Well Condition Assessment' ORDER BY "createdAt" LIMIT 1;
+  END IF;
+  IF v_site IS NULL THEN
+    INSERT INTO inspection_templates (id, "assetTypeId", name, description, "isActive", "createdAt", "updatedAt")
+    VALUES (gen_random_uuid()::text, v_type, 'Well Condition Assessment', 'Mechanical, electrical and sanitary inspection of a groundwater production well.', true, now(), now())
+    RETURNING id INTO v_site;
+    IF v_site IS NOT NULL THEN
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'PUMP_AND_MOTOR', 'Pump & Motor', 'NUMBER'::"AttributeDataType", NULL, true, 10, '{"helpText":"0 = failed or running outside its curve, 10 = performing to specification","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'COLUMN_AND_SHAFT', 'Column & Shaft', 'NUMBER'::"AttributeDataType", NULL, true, 20, '{"helpText":"0 = wear, vibration or misalignment, 10 = true and quiet","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'CASING_INTEGRITY', 'Casing Integrity', 'NUMBER'::"AttributeDataType", NULL, true, 30, '{"helpText":"0 = perforation or collapse suspected, 10 = casing sound on survey","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'SANITARY_SEAL', 'Wellhead Sanitary Seal', 'NUMBER'::"AttributeDataType", NULL, true, 40, '{"helpText":"0 = seal breached — contamination path open, 10 = sealed and vented correctly","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'DISCHARGE_PIPING', 'Discharge Piping & Valves', 'NUMBER'::"AttributeDataType", NULL, true, 50, '{"helpText":"0 = leaking or seized, 10 = tight and operating freely","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'ELECTRICAL_AND_CONTROLS', 'Electrical & Controls', 'NUMBER'::"AttributeDataType", NULL, true, 60, '{"helpText":"0 = faults, overheating or failed starts, 10 = clean, tight and testing correctly","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'INSTRUMENTATION', 'Instrumentation & Metering', 'NUMBER'::"AttributeDataType", NULL, true, 70, '{"helpText":"0 = not reading or uncalibrated, 10 = reading true against a check","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'SPECIFIC_CAPACITY', 'Specific Capacity Trend', 'NUMBER'::"AttributeDataType", NULL, true, 80, '{"helpText":"0 = yield well below the original test — screen fouling or drawdown, 10 = holding its original capacity","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'SITE_AND_ENCLOSURE', 'Site & Enclosure', 'NUMBER'::"AttributeDataType", NULL, true, 90, '{"helpText":"0 = building or enclosure unsound, site not draining, 10 = sound, secure and draining away","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'OTHER_DEFICIENCIES', 'Other Observed Deficiencies', 'TEXT'::"AttributeDataType", NULL, false, 200, '{"helpText":"Free-text notes on anything not captured above"}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+    END IF;
+  END IF;
+  IF v_site IS NULL THEN
+    RAISE EXCEPTION 'WELL has no site inspection form, and none is defined to create.';
   ELSE
 
     -- Consequence of failure, where none is set yet.
@@ -3688,10 +3744,37 @@ BEGIN
   -- BOOSTER_PUMP_STATION ==============================================
   v_type := NULL;
   SELECT id, name INTO v_type, v_type_name FROM asset_types WHERE "organizationId" = v_org AND code = 'BOOSTER_PUMP_STATION';
+  IF v_type IS NULL THEN
+    RAISE EXCEPTION 'No BOOSTER_PUMP_STATION asset type in this database — run facilities.sql first.';
+  END IF;
+
+  -- The site form: the active one, else the sample one by name, else it is
+  -- created here exactly as facilities.sql creates it. Databases that took
+  -- facilities.sql before the forms were added to it have none.
   v_site := NULL;
   SELECT id INTO v_site FROM inspection_templates WHERE "assetTypeId" = v_type AND "componentTypeId" IS NULL AND "isActive" ORDER BY "createdAt" LIMIT 1;
-  IF v_type IS NULL OR v_site IS NULL THEN
-    RAISE NOTICE 'BOOSTER_PUMP_STATION: no asset type or no site form — run facilities.sql first. Skipped.';
+  IF v_site IS NULL THEN
+    SELECT id INTO v_site FROM inspection_templates WHERE "assetTypeId" = v_type AND "componentTypeId" IS NULL AND name = 'Booster Pump Station Condition Assessment' ORDER BY "createdAt" LIMIT 1;
+  END IF;
+  IF v_site IS NULL THEN
+    INSERT INTO inspection_templates (id, "assetTypeId", name, description, "isActive", "createdAt", "updatedAt")
+    VALUES (gen_random_uuid()::text, v_type, 'Booster Pump Station Condition Assessment', 'Mechanical, electrical and structural inspection of a booster pump station.', true, now(), now())
+    RETURNING id INTO v_site;
+    IF v_site IS NOT NULL THEN
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'PUMPS_AND_MOTORS', 'Pumps & Motors', 'NUMBER'::"AttributeDataType", NULL, true, 10, '{"helpText":"0 = failed or running outside its curve, 10 = performing to specification","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'PIPING_AND_VALVES', 'Piping & Valves', 'NUMBER'::"AttributeDataType", NULL, true, 20, '{"helpText":"0 = leaking, corroded or seized, 10 = tight and operating freely","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'ELECTRICAL_AND_CONTROLS', 'Electrical & Controls', 'NUMBER'::"AttributeDataType", NULL, true, 30, '{"helpText":"0 = faults, overheating or failed starts, 10 = clean, tight and testing correctly","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'SURGE_PROTECTION', 'Surge Protection', 'NUMBER'::"AttributeDataType", NULL, true, 40, '{"helpText":"0 = absent or not charged, 10 = present, charged and proven","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'INSTRUMENTATION_SCADA', 'Instrumentation & SCADA', 'NUMBER'::"AttributeDataType", NULL, true, 50, '{"helpText":"0 = not reporting or reading false, 10 = reporting true to the control room","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'STANDBY_POWER', 'Standby Power', 'NUMBER'::"AttributeDataType", NULL, true, 60, '{"helpText":"0 = none, or fails to start on test, 10 = starts and carries the load on test","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'BUILDING_STRUCTURE', 'Building & Structure', 'NUMBER'::"AttributeDataType", NULL, true, 70, '{"helpText":"0 = roof, walls or floor unsound, 10 = weathertight and sound","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'VENTILATION_AND_HEATING', 'Ventilation & Heating', 'NUMBER'::"AttributeDataType", NULL, true, 80, '{"helpText":"0 = not maintaining a safe temperature for the plant, 10 = working and adequate","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'SITE_SECURITY', 'Site Security', 'NUMBER'::"AttributeDataType", NULL, true, 90, '{"helpText":"0 = unsecured, 10 = fencing, locks and intrusion alarms sound","min":0,"max":10}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+      INSERT INTO inspection_template_fields (id, "templateId", code, label, "dataType", unit, "isRequired", "sortOrder", config) VALUES (gen_random_uuid()::text, v_site, 'OTHER_DEFICIENCIES', 'Other Observed Deficiencies', 'TEXT'::"AttributeDataType", NULL, false, 200, '{"helpText":"Free-text notes on anything not captured above"}'::jsonb) ON CONFLICT ("templateId", code) DO NOTHING;
+    END IF;
+  END IF;
+  IF v_site IS NULL THEN
+    RAISE EXCEPTION 'BOOSTER_PUMP_STATION has no site inspection form, and none is defined to create.';
   ELSE
 
     -- Consequence of failure, where none is set yet.
