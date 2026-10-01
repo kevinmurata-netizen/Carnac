@@ -3,52 +3,8 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import type { VisitComponent, VisitField } from "@/server/component-inspections";
-
-const control =
-  "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring ";
-
-function FieldInput({ field, name }: { field: VisitField; name: string }) {
-  const id = name.replace(/:/g, "-");
-  const label = `${field.label}${field.unit ? ` (${field.unit})` : ""}`;
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>
-        {label}
-        {field.isRequired && <span className="text-destructive"> *</span>}
-      </Label>
-      {field.dataType === "ENUM" || field.dataType === "BOOLEAN" ? (
-        <select id={id} name={name} defaultValue="" required={field.isRequired} className={control}>
-          <option value="">Not recorded</option>
-          {field.dataType === "BOOLEAN" ? (
-            <>
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </>
-          ) : (
-            field.options.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))
-          )}
-        </select>
-      ) : (
-        <input
-          id={id}
-          name={name}
-          type={field.dataType === "NUMBER" ? "number" : field.dataType === "DATE" ? "date" : "text"}
-          step={field.dataType === "NUMBER" ? (field.code === "CONDITION" ? 1 : "any") : undefined}
-          min={field.min ?? undefined}
-          max={field.max ?? undefined}
-          required={field.isRequired}
-          className={control}
-        />
-      )}
-      {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
-    </div>
-  );
-}
+import { ReadingInput } from "@/components/inspections/reading-input";
+import type { VisitComponent } from "@/server/component-inspections";
 
 /**
  * One component's part of a site visit. "Not inspected on this visit" takes
@@ -86,7 +42,7 @@ export function ComponentSection({ component }: { component: VisitComponent }) {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {component.fields.map((field) => (
-              <FieldInput key={field.id} field={field} name={`${prefix}:field:${field.id}`} />
+              <ReadingInput key={field.id} field={field} name={`${prefix}:field:${field.id}`} />
             ))}
           </div>
           <div className="space-y-1.5">

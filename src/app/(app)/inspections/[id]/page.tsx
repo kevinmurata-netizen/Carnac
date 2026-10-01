@@ -10,9 +10,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
-import { getVisitParts, type VisitPart } from "@/server/component-inspections";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { saveInspectionAction } from "./actions";
+import { getVisitComponents, getVisitParts } from "@/server/component-inspections";
+import { saveInspectionAction, saveComponentFindingAction, addComponentFindingAction } from "./actions";
+import { VisitParts } from "./visit-parts";
 
 export default async function InspectionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,7 +24,13 @@ export default async function InspectionDetailPage({ params }: { params: Promise
   if (!inspection) notFound();
   // A component's findings are read as part of the visit they belong to.
   if (inspection.parentInspectionId) redirect(`/inspections/${inspection.parentInspectionId}`);
-  const parts = await getVisitParts(organizationId, inspection.id);
+  const [parts, components] = await Promise.all([
+    getVisitParts(organizationId, inspection.id),
+    getVisitComponents(organizationId, inspection.asset.id),
+  ]);
+  // Parts of the asset this visit has nothing for: its form marked them not
+  // inspected, or they were added to the asset since.
+  const missing = components.filter((c) => !parts.some((p) => p.componentId === c.id));
 
   const condition = summarizeInspectionScore(inspection, conditionBands);
   const canEdit = canRecordFieldData(session);
@@ -150,7 +156,14 @@ export default async function InspectionDetailPage({ params }: { params: Promise
         lockedNote="Executives have read-only access"
       />
 
-      {parts.length > 0 && <PartsCard parts={parts} />}
+      <VisitParts
+        visitId={inspection.id}
+        parts={parts}
+        missing={missing}
+        canEdit={canEdit}
+        onSave={saveComponentFindingAction}
+        onAdd={addComponentFindingAction}
+      />
 
       {(inspection.gpsLat != null || inspection.gpsLng != null) && (
         <Card className="mt-4">
@@ -176,64 +189,5 @@ function SummaryStat({ label, value, color }: { label: string; value: string; co
         {value}
       </div>
     </div>
-  );
-}
-
-/**
- * What was found on each component on this visit: the rating that became its
- * condition, the risk that followed, and the readings behind them.
- */
-function PartsCard({ parts }: { parts: VisitPart[] }) {
-  return (
-    <Card className="mt-4">
-      <CardHeader>
-        <CardTitle>Components</CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Component</TableHead>
-                <TableHead className="text-right">Condition</TableHead>
-                <TableHead className="text-right">Risk</TableHead>
-                <TableHead>Readings</TableHead>
-                <TableHead>Notes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {parts.map((p) => {
-                const readings = p.readings.filter((r) => r.code !== "CONDITION");
-                return (
-                  <TableRow key={p.id} className="align-top">
-                    <TableCell className="min-w-40">
-                      <span className="font-medium">{p.label}</span>
-                      <span className="block text-xs text-muted-foreground">{p.templateName}</span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{p.condition ?? "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">{p.risk ?? "—"}</TableCell>
-                    <TableCell className="min-w-72 text-sm">
-                      {readings.length === 0 ? (
-                        <span className="text-muted-foreground">None recorded</span>
-                      ) : (
-                        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-                          {readings.map((r) => (
-                            <div key={r.code} className="contents">
-                              <dt className="text-muted-foreground">{r.label}</dt>
-                              <dd className="tabular-nums">{r.value}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-64 text-sm text-muted-foreground">{p.notes ?? "—"}</TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

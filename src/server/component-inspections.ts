@@ -6,7 +6,7 @@ import {
   conditionFromRating,
   probabilityFromCondition,
 } from "@/domain/components/inspection";
-import { recordComponentScores } from "@/server/components";
+import { recordComponentScores, refreshComponentSnapshot } from "@/server/components";
 
 /**
  * Component inspections: the part of a site visit that looks at each
@@ -316,7 +316,9 @@ export async function latestComponentReadings(componentIds: string[]): Promise<M
 }
 
 export type VisitPart = {
+  /** The component's own inspection record within the visit. */
   id: string;
+  componentId: string;
   label: string;
   componentTypeName: string;
   templateName: string;
@@ -324,14 +326,31 @@ export type VisitPart = {
   condition: number | null;
   risk: number | null;
   readings: Array<ComponentReading & { code: string }>;
+  /** Its form, and what was entered on it as form strings — what an edit
+   * starts from. */
+  fields: VisitField[];
+  values: Record<string, string>;
 };
+
+/** A stored answer as the string its form input holds. */
+function formValue(result: {
+  numberValue: number | null;
+  textValue: string | null;
+  booleanValue: boolean | null;
+  dateValue: Date | null;
+}): string {
+  if (result.booleanValue != null) return String(result.booleanValue);
+  if (result.numberValue != null) return String(result.numberValue);
+  if (result.dateValue != null) return result.dateValue.toISOString().slice(0, 10);
+  return result.textValue ?? "";
+}
 
 /** The components looked at on one visit, with what was found on each. */
 export async function getVisitParts(organizationId: string, visitId: string): Promise<VisitPart[]> {
   const parts = await prisma.inspection.findMany({
     where: { parentInspectionId: visitId, asset: { organizationId } },
     include: {
-      template: { select: { name: true } },
+      template: { select: { name: true, fields: { orderBy: { sortOrder: "asc" } } } },
       assetComponent: { include: { componentType: { select: { name: true } } } },
       results: { include: { field: true } },
       conditionMeasurements: { select: { score: true } },
@@ -349,6 +368,7 @@ export async function getVisitParts(organizationId: string, visitId: string): Pr
 
   return parts.map((p) => ({
     id: p.id,
+    componentId: p.assetComponentId!,
     label: p.assetComponent?.label ?? p.assetComponent?.componentType.name ?? "Component",
     componentTypeName: p.assetComponent?.componentType.name ?? "",
     templateName: p.template.name,
@@ -359,5 +379,99 @@ export async function getVisitParts(organizationId: string, visitId: string): Pr
       .sort((a, b) => a.field.sortOrder - b.field.sortOrder)
       .map((r) => ({ code: r.field.code, label: r.field.label, value: formatReading(r.field, r) }))
       .filter((r): r is ComponentReading & { code: string } => r.value != null),
+    fields: p.template.fields.map(toVisitField),
+    values: Object.fromEntries(p.results.map((r) => [r.fieldId, formValue(r)])),
   }));
+}
+
+/**
+ * Correct what was recorded for one component on a visit: its readings and
+ * notes, and — when the rating changed — the condition it filed and the risk
+ * that followed, so the component's score and the asset's roll-up follow.
+ * The consequence the risk was scored with is kept: this corrects what was
+ * found, not how much the part matters.
+ */
+export async function updateComponentFinding(
+  organizationId: string,
+  findingId: string,
+  input: { notes: string | null; values: Array<{ fieldId: string; value: string }> }
+) {
+  const finding = await prisma.inspection.findFirst({
+    where: { id: findingId, asset: { organizationId, deletedAt: null }, assetComponentId: { not: null } },
+    include: {
+      template: { include: { fields: { orderBy: { sortOrder: "asc" } } } },
+      assetComponent: { include: { componentType: { select: { name: true } } } },
+      conditionMeasurements: true,
+    },
+  });
+  if (!finding || !finding.assetComponent) throw new Error("That component finding no longer exists");
+  const componentId = finding.assetComponent.id;
+
+  const component: VisitComponent = {
+    id: componentId,
+    label: finding.assetComponent.label ?? finding.assetComponent.componentType.name,
+    componentTypeName: finding.assetComponent.componentType.name,
+    templateId: finding.templateId,
+    templateName: finding.template.name,
+    fields: finding.template.fields.map(toVisitField),
+    consequence: null,
+  };
+  const results = checkComponentFinding(component, { componentId, templateId: finding.templateId, notes: input.notes, values: input.values });
+
+  const conditionField = component.fields.find((f) => f.code === CONDITION_READING.code);
+  const rating = results.find((r) => r.fieldId === conditionField?.id)?.numberValue;
+  const condition = rating != null ? conditionFromRating(rating) : null;
+  const measurement = finding.conditionMeasurements[0];
+  const risk = await prisma.riskAssessment.findFirst({
+    where: { assetComponentId: componentId, assessmentDate: finding.inspectionDate },
+  });
+
+  await prisma.$transaction([
+    prisma.inspectionResult.deleteMany({ where: { inspectionId: findingId } }),
+    prisma.inspectionResult.createMany({ data: results.map((r) => ({ ...r, inspectionId: findingId })) }),
+    prisma.inspection.update({ where: { id: findingId }, data: { notes: input.notes } }),
+    ...(measurement && condition != null && measurement.score !== condition
+      ? [prisma.conditionMeasurement.update({ where: { id: measurement.id }, data: { score: condition } })]
+      : []),
+    ...(risk && condition != null
+      ? [
+          prisma.riskAssessment.update({
+            where: { id: risk.id },
+            data: {
+              probabilityScore: probabilityFromCondition(condition),
+              riskScore: probabilityFromCondition(condition) * risk.consequenceScore,
+            },
+          }),
+        ]
+      : []),
+  ]);
+  await refreshComponentSnapshot(componentId);
+  return { visitId: finding.parentInspectionId, assetId: finding.assetId };
+}
+
+/**
+ * Add a component's findings to a visit after the fact — a part the visit
+ * did reach but whose section was left as not inspected.
+ */
+export async function addComponentFinding(
+  organizationId: string,
+  visitId: string,
+  componentId: string,
+  input: { notes: string | null; values: Array<{ fieldId: string; value: string }> }
+) {
+  const visit = await prisma.inspection.findFirst({
+    where: { id: visitId, asset: { organizationId, deletedAt: null }, assetComponentId: null },
+    include: { componentInspections: { select: { assetComponentId: true } } },
+  });
+  if (!visit) throw new Error("That visit no longer exists");
+  if (visit.componentInspections.some((c) => c.assetComponentId === componentId)) {
+    throw new Error("That component already has findings on this visit — edit them instead");
+  }
+  const component = (await getVisitComponents(organizationId, visit.assetId)).find((c) => c.id === componentId);
+  if (!component) throw new Error("That component is no longer part of this asset");
+
+  const finding = { componentId, templateId: component.templateId, notes: input.notes, values: input.values };
+  const results = checkComponentFinding(component, finding);
+  await recordComponentFinding(organizationId, visit, component, finding, results);
+  return { assetId: visit.assetId };
 }
