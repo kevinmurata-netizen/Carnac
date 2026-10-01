@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getConditionBand, computeWCI , type ConditionBand } from "@/domain/waterline/condition";
 import { getIndexWeights } from "@/server/condition-model";
 import { sameCalendarDay } from "@/lib/format";
-import { wholeAssetConditionModel } from "@/server/components";
+import { refreshComponentSnapshot, wholeAssetConditionModel } from "@/server/components";
 import {
   checkComponentFinding,
   getVisitComponents,
@@ -346,7 +346,36 @@ export async function updateInspection(organizationId: string, id: string, edit:
     );
   }
 
+  // A visit's component findings happened on the visit's day, so they move
+  // with it: their records, the condition each filed, and the risk scored
+  // alongside — or the history would show the parts inspected on a day the
+  // site wasn't.
+  const parts = dateChanged
+    ? await prisma.inspection.findMany({
+        where: { parentInspectionId: id },
+        select: { id: true, assetComponentId: true },
+      })
+    : [];
+  if (parts.length > 0 && edit.inspectionDate) {
+    const componentIds = parts.map((p) => p.assetComponentId!).filter(Boolean);
+    writes.push(
+      prisma.inspection.updateMany({ where: { parentInspectionId: id }, data: { inspectionDate: edit.inspectionDate } }),
+      prisma.conditionMeasurement.updateMany({
+        where: { inspectionId: { in: parts.map((p) => p.id) } },
+        data: { measurementDate: edit.inspectionDate },
+      }),
+      prisma.riskAssessment.updateMany({
+        where: { assetComponentId: { in: componentIds }, assessmentDate: inspection.inspectionDate },
+        data: { assessmentDate: edit.inspectionDate },
+      })
+    );
+  }
+
   await prisma.$transaction(writes);
+
+  for (const part of parts) {
+    if (part.assetComponentId) await refreshComponentSnapshot(part.assetComponentId);
+  }
 }
 
 /** Stays synchronous so it can be used inside a .map() over rows; the caller

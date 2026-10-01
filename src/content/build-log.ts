@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-01",
+    title: "Correct a component's inspection findings",
+    summary:
+      "What was recorded for each component on a visit — its condition rating, its readings and notes — can now be corrected on the inspection's page, and a part the visit's form skipped can be recorded afterwards.",
+    changes: [
+      "Each component on an inspection's page has an edit button. It opens that part's form with what was entered, and saving it replaces the readings and notes.",
+      "A changed rating changes the component's condition and its risk (scored with the consequence it was recorded under), its current score if this is its latest visit, and the asset's rolled-up score.",
+      "Parts the visit has nothing for are listed under Not inspected on this visit, each with a button to record its findings, dated with the visit.",
+      "Changing a visit's date now moves its component records, their condition readings and their risk scores with it. Before, they stayed on the old date.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-09-30",
     title: "Filter inspections by asset type",
     summary:
