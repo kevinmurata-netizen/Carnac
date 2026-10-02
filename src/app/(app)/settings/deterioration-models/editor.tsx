@@ -25,8 +25,14 @@ export function DeteriorationModelEditor({
   model,
   showGraph,
   onShowGraphChange,
+  subtitle,
+  fallsBackTo = "this material falls back to the default curve in every forecast and scenario run",
 }: {
   model: DeteriorationModelConfig;
+  /** Replaces the material line, for a curve that isn't a material's. */
+  subtitle?: string;
+  /** What switching it off means, finishing "Click to deactivate — …". */
+  fallsBackTo?: string;
   /** Controlled by the list so one button can toggle every curve. */
   showGraph: boolean;
   onShowGraphChange: (next: boolean) => void;
@@ -81,8 +87,12 @@ export function DeteriorationModelEditor({
           <div className="min-w-0">
             <CardTitle className="text-base">{model.name}</CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">
-              {model.material ? `Applies to ${model.material}` : "No material filter"} · {model.modelType} ·{" "}
-              {formatNumber(model.predictionCount)} predictions
+              {subtitle ?? (
+                <>
+                  {model.material ? `Applies to ${model.material}` : "No material filter"} · {model.modelType} ·{" "}
+                  {formatNumber(model.predictionCount)} predictions
+                </>
+              )}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -91,7 +101,7 @@ export function DeteriorationModelEditor({
               id={model.id}
               isActive={model.isActive}
               action={toggleDeteriorationActiveAction}
-              activeHint="Click to deactivate — this material falls back to the default curve in every forecast and scenario run"
+              activeHint={`Click to deactivate — ${fallsBackTo}`}
               inactiveHint="Click to activate — this curve shapes forecasts again"
             />
             <Button type="button" size="sm" variant="outline" onClick={() => onShowGraphChange(!showGraph)}>

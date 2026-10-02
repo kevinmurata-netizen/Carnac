@@ -159,7 +159,7 @@ export async function saveDeteriorationModelAction(
     });
 
     revalidateAll("/settings/deterioration-models");
-    return { status: "success", message: "Saved — forecasts and scenario runs now use this curve." };
+    return { status: "success", message: "Saved — forecasts now use this curve." };
   } catch (e) {
     return fail(e);
   }
@@ -665,7 +665,7 @@ export async function toggleDeteriorationActiveAction(id: string, isActive: bool
   revalidateAll("/settings/deterioration-models");
   return isActive
     ? `${name} is active again and will shape the next forecast.`
-    : `${name} is inactive — its material now falls back to the default curve.`;
+    : `${name} is inactive — what it covered now falls back to the default curve.`;
 }
 
 export async function toggleTemplateActiveAction(id: string, isActive: boolean) {

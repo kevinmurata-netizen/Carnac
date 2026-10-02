@@ -29,6 +29,8 @@ import { AssetStatus } from "@prisma/client";
 import { RecordEditor, type EditableSection } from "@/components/records/record-editor";
 import { saveAssetAction, addComponentAction, saveComponentAction, removeComponentAction } from "./actions";
 import { ComponentsCard } from "./components-card";
+import { ComponentDeterioration } from "./component-deterioration";
+import { forecastAssetComponents } from "@/server/component-deterioration";
 import { NetworkMap } from "@/components/map/network-map";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { NotBuiltYet } from "@/components/not-built-yet";
@@ -110,10 +112,11 @@ export default async function AssetDetailPage({
   // The parts this asset could have, and what each one it has carries with
   // it — the second is what a removal would delete, said before it does.
   const componentIds = rollup?.components.map((c) => c.id) ?? [];
-  const [addableComponents, history, readings] = await Promise.all([
+  const [addableComponents, history, readings, componentForecast] = await Promise.all([
     componentTypesForAsset(organizationId, asset.id),
     componentHistory(componentIds),
     latestComponentReadings(componentIds),
+    componentIds.length > 0 ? forecastAssetComponents(organizationId, asset.id) : Promise.resolve(null),
   ]);
 
   // The overview is built from the same values it saves, so what you see
@@ -448,7 +451,9 @@ export default async function AssetDetailPage({
         </TabsContent>
 
         <TabsContent value="deterioration" className="mt-4 space-y-4">
-          {!forecast ? (
+          {componentForecast ? (
+            <ComponentDeterioration forecast={componentForecast} />
+          ) : !forecast ? (
             <div className="rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">
               No deterioration forecast for this {ASSET_LABEL.lower} — forecasts are generated for active segments with a
               matching material curve model.
