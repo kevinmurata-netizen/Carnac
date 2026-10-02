@@ -289,8 +289,9 @@ export async function updateDeteriorationModel(
     throw new Error("Minimum condition must be below the initial condition");
   }
 
+  // Any curve in the organization: a waterline material's or a component's.
   const model = await prisma.deteriorationModel.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId } },
+    where: { id, assetType: { organizationId }, modelType: { not: "MARKOV" } },
   });
   if (!model) throw new Error("Deterioration model not found");
 
@@ -638,7 +639,7 @@ export async function deleteFailureType(organizationId: string, id: string) {
  */
 export async function setDeteriorationModelActive(organizationId: string, id: string, isActive: boolean) {
   const model = await prisma.deteriorationModel.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId } },
+    where: { id, assetType: { organizationId } },
   });
   if (!model) throw new Error("Deterioration model not found");
   await prisma.deteriorationModel.update({ where: { id }, data: { isActive } });

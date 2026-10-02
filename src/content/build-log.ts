@@ -40,6 +40,22 @@ export const ENTRIES: BuildEntry[] = [
     note: "No migration.",
   },
   {
+    date: "2026-10-02",
+    title: "Deterioration curves for components",
+    summary:
+      "Each component of a reservoir, well or pump station now has its own deterioration curve, and a facility's Deterioration tab forecasts every part and the asset they make up — so it shows which part will fail first and when the asset crosses the intervention line.",
+    changes: [
+      "Settings › Deterioration Models has a Component curves section: one curve per component on each kind of asset (Coating System — Reservoir, Pump — Well…), edited, previewed and switched off like the material curves. They start from typical service lives — shell 80 years, floor 70, roof 45, coating and cathodic protection 20, pump 20, motor 25, well casing 60, screen 40, piping 50, controls 15.",
+      "A component's forecast starts from its last inspection and is aged by the years since, so a coating rated 48 in 2019 is forecast from 2019, not as if measured today.",
+      "A facility's Deterioration tab shows each component's line, the asset's condition rolled up from them year by year under its roll-up strategy, and when each part and the asset reach 25.",
+      "Weighted worst case now breaks a tie in risk toward the component in worse condition. Before, the first-listed won: as a reservoir shell aged into the same risk as a failed cathodic protection system, the asset read as healthy as its shell.",
+    ],
+    fixes: [
+      "The tie rule changes two current scores: BPS-03 28.3 → 27.5 and BPS-05 67.0 → 48.2, each now driven by its controls, which tied the piping or pump on risk but were in worse condition.",
+    ],
+    note: "No migration. Component curves are created the first time the Deterioration Models settings or a facility's page is opened.",
+  },
+  {
     date: "2026-10-01",
     title: "Correct a component's inspection findings",
     summary:

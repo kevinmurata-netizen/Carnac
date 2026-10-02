@@ -192,11 +192,19 @@ export function rollUp(components: ComponentScore[], strategy: RollupStrategyInp
   let riskValue = risk.value;
 
   if (strategy.type === "WEIGHTED_WORST_CASE" && counted.length > 0) {
-    // The highest-risk component drives; with no risk scores at all, the one
-    // in the worst condition does.
+    // The highest-risk component drives; on a tie in risk, or with no risk
+    // scores at all, the one in the worse condition does. Without the tie
+    // rule, a sound shell whose high consequence matched a failed cathodic
+    // protection system's risk would drive simply by being listed first, and
+    // the asset would read as healthy as its shell.
+    const worse = (a: ComponentScore, b: ComponentScore) =>
+      (a.conditionScore ?? Infinity) < (b.conditionScore ?? Infinity) ? a : b;
     const worst = counted.reduce((w, c) => {
-      if (c.riskScore != null || w.riskScore != null) return (c.riskScore ?? -Infinity) > (w.riskScore ?? -Infinity) ? c : w;
-      return (c.conditionScore ?? Infinity) < (w.conditionScore ?? Infinity) ? c : w;
+      if (c.riskScore == null && w.riskScore == null) return worse(c, w) === c ? c : w;
+      const cr = c.riskScore ?? -Infinity;
+      const wr = w.riskScore ?? -Infinity;
+      if (cr !== wr) return cr > wr ? c : w;
+      return worse(c, w) === c ? c : w;
     });
     const share = shareOf(worst);
     const pull = Math.min(1, share / fullWeightShareOf(strategy.config));
