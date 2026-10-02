@@ -4,6 +4,7 @@ import { canRecordFieldData } from "@/lib/permissions";
 import { getAssetById } from "@/server/assets";
 import { listFailureTypes } from "@/server/failures";
 import { PageHeader } from "@/components/layout/page-header";
+import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -30,6 +31,7 @@ export default async function NewFailurePage({ params }: { params: Promise<{ id:
 
   return (
     <div>
+      <SetBreadcrumb segment={id} label={asset.assetCode} />
       <PageHeader title="Record Failure" description={asset.assetCode} />
 
       <form action={createFailureAction} className="space-y-4">

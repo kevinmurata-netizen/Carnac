@@ -29,6 +29,17 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-02",
+    title: "Breadcrumbs name the sample facilities",
+    summary:
+      "The breadcrumb on a sample reservoir, well or pump station's page showed a long run of letters and numbers instead of the asset's code. It now reads RSV-02, and likewise on its inspections.",
+    changes: [
+      "Records loaded by the production SQL files have a different style of id from those the app creates, and the breadcrumb didn't recognise it as a record. It does now, so the name the page gives it is shown: the asset code, or \"Inspection — RSV-02\" on a visit.",
+      "The Record Failure page names its asset in the breadcrumb too, rather than showing an ellipsis.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-01",
     title: "Correct a component's inspection findings",
     summary:

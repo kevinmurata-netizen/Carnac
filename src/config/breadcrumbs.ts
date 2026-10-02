@@ -59,10 +59,14 @@ export const SEGMENT_LABELS: Record<string, string> = {
   new: "New",
 };
 
-/** Record ids are cuids; anything matching is a dynamic segment rather than a
- * route name, so it gets a page-supplied label instead of being shown raw. */
+/** Record ids are cuids, or UUIDs for rows the production SQL files create with
+ * gen_random_uuid(); anything matching is a dynamic segment rather than a route
+ * name, so it gets a page-supplied label instead of being shown raw. */
 export function isRecordId(segment: string): boolean {
-  return /^c[a-z0-9]{16,}$/.test(segment);
+  return (
+    /^c[a-z0-9]{16,}$/.test(segment) ||
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)
+  );
 }
 
 export function labelForSegment(segment: string): string {
