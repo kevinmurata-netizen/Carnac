@@ -616,6 +616,19 @@ const CATEGORY_RANK: Record<TreatmentCategory, number> = {
 };
 
 /**
+ * What a treatment, or several done together, leaves an asset at: a reset
+ * establishes a floor, gains are incremental on top, and nothing goes past
+ * 100. Separate from pricing, so work whose cost is already known — a
+ * project locked in from a work plan — has its effect worked out the same way.
+ */
+export function projectedConditionOf(members: TreatmentDef[], current: number): number {
+  const resets = members.map((m) => m.conditionResetTo).filter((v): v is number => v != null);
+  const floor = resets.length > 0 ? Math.max(...resets) : current;
+  const gains = members.reduce((sum, m) => sum + (m.conditionGain ?? 0), 0);
+  return Math.min(100, floor + gains);
+}
+
+/**
  * Null when any member cannot be priced for this asset — a bundle is only as
  * available as its least available part, and a missing rate must never be
  * silently costed at zero.
@@ -658,12 +671,8 @@ export function buildOption(
       : inferredMobilization;
   const cost = Math.round(unitTotal + mobilization);
 
-  // Condition: a reset establishes a floor, gains are incremental on top.
   const current = ctx.conditionScore ?? 0;
-  const resets = members.map((m) => m.conditionResetTo).filter((v): v is number => v != null);
-  const floor = resets.length > 0 ? Math.max(...resets) : current;
-  const gains = members.reduce((sum, m) => sum + (m.conditionGain ?? 0), 0);
-  const projectedCondition = Math.min(100, floor + gains);
+  const projectedCondition = projectedConditionOf(members, current);
 
   return {
     id,

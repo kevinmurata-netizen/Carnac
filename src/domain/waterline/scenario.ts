@@ -24,6 +24,7 @@ import { type FundingPlan } from "./category-funding";
 import { selectForYear, selectForTarget, NOT_SELECTED, SELECTED } from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import { buildLccaEvaluator } from "./lcca-evaluator";
+import { buildLocked, lockSchedule, lockedRecord, type LockedProject, type ProgrammedFunding } from "./locked-projects";
 import {
   benefitCof,
   optionTerms,
@@ -112,6 +113,10 @@ export type ScenarioAssumptions = {
   /** By when, counted in years from the start of the run: 1 is "by the end of
    * the first year". Held to the analysis period by the form. */
   targetInYears: number;
+  /** How projects locked in from a work plan count against the annual
+   * budget: paid first out of it, or funded on top of it. Read only when the
+   * scenario locks a plan. */
+  programmedFunding: ProgrammedFunding;
 };
 
 /**
@@ -155,6 +160,7 @@ export const DEFAULT_ASSUMPTIONS: ScenarioAssumptions = {
   fundingMode: "budget",
   targetMetric: "avgCondition",
   targetInYears: 5,
+  programmedFunding: "within",
 };
 
 /** Per-asset state carried through the simulation. */
@@ -261,12 +267,25 @@ export type ScenarioProject = {
   /** Work this replaced: decided in an earlier year, not yet built, and
    * dropped in favour of this with its money returned. */
   supersededTreatment: string | null;
+  /** Present on a project locked in from a work plan rather than chosen by
+   * the run, with its status in that plan. */
+  locked?: { status: string };
 };
 
 export type ScenarioYearResult = {
   year: number;
+  /** The annual allocation: what the scenario's budget sets for the year. */
   budget: number;
+  /** Everything spent this year: programmed work and the allocation's. */
   spend: number;
+  /** What locked projects from the work plan spent this year. */
+  programmedSpend: number;
+  /** What the run itself chose to spend out of the annual allocation. */
+  allocationSpend: number;
+  /** Locked projects whose money is spent this year. */
+  locked: ScenarioProject[];
+  /** Locked projects built this year. */
+  lockedBuiltCount: number;
   treatedCount: number;
   avgCondition: number;
   avgRisk: number;
@@ -303,6 +322,8 @@ export type ScenarioRunResult = {
   /** Every alternative the run considered, when `trace` was asked for.
    * Empty otherwise. */
   alternatives: YearAlternative[];
+  /** Programmed work locked in from a work plan, across the whole run. */
+  totalProgrammedSpend: number;
   /** Years the network was aged, with no work, between the condition year
    * and the start year. Zero when the run starts in the condition year or
    * earlier. */
@@ -811,6 +832,9 @@ export type ScenarioRunOptions = {
    * the stored score stands for the whole run.
    */
   criticality?: (assetId: string, state: CriticalityState) => number | null;
+  /** Projects locked in from a work plan: spent, built and kept clear of the
+   * model as they are. None means the run decides everything. */
+  locked?: LockedProject[];
   /**
    * Record every alternative the run considered, year by year, with what
    * happened to it.
@@ -887,6 +911,19 @@ export function runScenario(
   const startCondition = new Map(state.map((a) => [a.id, a.condition]));
   const startAvgCondition = average();
 
+  // Projects locked in from a work plan: their money, the years their assets
+  // are closed to the run, and a record of each to fill in when it is built.
+  const locks = lockSchedule(options.locked ?? []);
+  const byId = new Map(state.map((a) => [a.id, a]));
+  const lockedRecords = new Map<string, ScenarioProject>();
+  for (const project of locks.projects) {
+    const asset = byId.get(project.assetId);
+    if (!asset) continue;
+    const category = library.find((d) => d.name === project.members[0]?.treatment)?.category ?? "Renew";
+    lockedRecords.set(project.key, lockedRecord(project, asset, category));
+  }
+  let totalProgrammedSpend = 0;
+
   let totalSpend = 0;
   let totalFailureCost = 0;
   let totalFailures = 0;
@@ -922,10 +959,18 @@ export function runScenario(
       }
     }
 
+    // Programmed work's money this year, and what that leaves the run: all of
+    // the allocation when it is funded on top, the rest of it when it is paid
+    // first out of the same budget.
+    const programmed = locks.spendIn(year);
+    const allocation = assumptions.programmedFunding === "additional" ? budget : Math.max(0, budget - programmed);
+
     // 1. Every option on every eligible asset, priced and scored against this
     //    year's condition. Rebuilt each year on purpose — last year's work
-    //    and a year of deterioration both change what is worth doing.
-    const candidates = rankCandidates(state, assumptions, year, history, {
+    //    and a year of deterioration both change what is worth doing. An asset
+    //    a locked project holds this year is not the run's to work on.
+    const open = locks.any ? state.filter((a) => !locks.blocks(a.id, year, year)) : state;
+    const candidates = rankCandidates(open, assumptions, year, history, {
       library,
       combinations,
       selection,
@@ -963,7 +1008,7 @@ export function runScenario(
         current: (assetId) => untreated.get(assetId) ?? 0,
       });
     } else {
-      outcome = selectForYear(candidates, budget, fundingPlan);
+      outcome = selectForYear(candidates, allocation, fundingPlan);
     }
 
     // Recorded here rather than inside the selection engine, which is written
@@ -1027,6 +1072,19 @@ export function runScenario(
       candidate.asset.effectiveAge = effectiveAgeForCondition(candidate.asset.curve, candidate.projectedCondition);
     }
 
+    // Locked projects built this year take effect on their assets, which the
+    // run has left alone since they were programmed.
+    let lockedBuiltCount = 0;
+    for (const project of locks.builtIn(year)) {
+      const asset = byId.get(project.assetId);
+      const record = lockedRecords.get(project.key);
+      if (!asset || !record) continue;
+      const option = buildLocked(project, asset, library, record);
+      if (option) recordTreatment(history, asset.id, option, year);
+      treatmentCount.set(asset.id, (treatmentCount.get(asset.id) ?? 0) + 1);
+      lockedBuiltCount++;
+    }
+
     // 3. A year passes for the whole network — including assets treated this
     // year. Exempting them would let a cheap patch freeze deterioration for a
     // year, which compounds into a large artificial gain over the period.
@@ -1066,7 +1124,9 @@ export function runScenario(
       metInYear = i + 1;
     }
 
-    const spend = outcome.totalSpent;
+    const allocationSpend = outcome.totalSpent;
+    const spend = allocationSpend + programmed;
+    totalProgrammedSpend += programmed;
     totalSpend += spend;
     totalFailureCost += failureCost;
     totalFailures += expectedFailures;
@@ -1079,6 +1139,13 @@ export function runScenario(
       // limit that did not exist.
       budget: Math.round(holding ? spend : budget),
       spend: Math.round(spend),
+      programmedSpend: Math.round(programmed),
+      allocationSpend: Math.round(allocationSpend),
+      locked: locks
+        .fundedIn(year)
+        .map((p) => lockedRecords.get(p.key))
+        .filter((r): r is ScenarioProject => r != null),
+      lockedBuiltCount,
       treatedCount,
       avgCondition: Math.round(avgCondition * 10) / 10,
       avgRisk: Math.round(avgRisk * 10) / 10,
@@ -1118,6 +1185,7 @@ export function runScenario(
       treatments: treatmentCount.get(a.id) ?? 0,
     })),
     alternatives,
+    totalProgrammedSpend: Math.round(totalProgrammedSpend),
     agedYears,
     conditionYearAvgCondition: Math.round(conditionYearAvgCondition * 10) / 10,
     startAvgCondition: Math.round(startAvgCondition * 10) / 10,

@@ -1423,15 +1423,24 @@ model Scenario {
   scenarioSetId String?
   scenarioSet   ScenarioSet? @relation(fields: [scenarioSetId], references: [id], onDelete: SetNull)
 
+  /// A work plan whose projects this scenario runs with as they are: each
+  /// one's money spent in its year, its treatment applied in its build year,
+  /// and its asset left alone from the year it was programmed until it is
+  /// built. Null locks nothing. Restrict, like the saved filter: deleting
+  /// the plan would silently change what this scenario runs.
+  lockedWorkPlanId String?
+  lockedWorkPlan   WorkPlan? @relation("ScenarioLockedPlan", fields: [lockedWorkPlanId], references: [id], onDelete: Restrict)
+
   assumptions ScenarioAssumption[]
   results     ScenarioResult[]
-  workPlans   WorkPlan[]
+  workPlans   WorkPlan[] @relation("ScenarioWorkPlans")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([scenarioSetId])
   @@index([savedFilterId])
+  @@index([lockedWorkPlanId])
   @@map("scenarios")
 }
 
@@ -1524,7 +1533,7 @@ model ScenarioResult {
 model WorkPlan {
   id         String    @id @default(cuid())
   scenarioId String?
-  scenario   Scenario? @relation(fields: [scenarioId], references: [id])
+  scenario   Scenario? @relation("ScenarioWorkPlans", fields: [scenarioId], references: [id])
   name       String
   startYear  Int
   endYear    Int
@@ -1563,6 +1572,9 @@ model WorkPlan {
   categoryFundingPlan   CategoryFundingPlan? @relation(fields: [categoryFundingPlanId], references: [id], onDelete: SetNull)
 
   items WorkPlanItem[]
+
+  /// Scenarios that run with this plan's projects locked in place.
+  lockingScenarios Scenario[] @relation("ScenarioLockedPlan")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

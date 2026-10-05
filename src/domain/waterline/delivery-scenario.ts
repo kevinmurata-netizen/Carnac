@@ -55,6 +55,7 @@ import {
   type TreatmentOption,
 } from "./treatment";
 import { cashPlan, leadTimeFor, type LeadTime, type LeadTimes } from "./lead-time";
+import { buildLocked, lockSchedule, lockedRecord, type LockSchedule } from "./locked-projects";
 import {
   NOT_RANKED,
   belowTargetBar,
@@ -354,6 +355,26 @@ function walk(
       : assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear);
   const money = ledger(budgetFor, options.fundingPlan ?? null, endYear);
 
+  // Projects locked in from a work plan. Paid first out of the budget, their
+  // money is reserved before anything is decided, so the run is offered only
+  // what is left of each year; funded on top, the run keeps the whole budget
+  // and the programmed money is counted beside it.
+  const locks = lockSchedule(options.locked ?? []);
+  const lockedRecords = new Map<string, ScenarioProject>();
+  for (const project of locks.projects) {
+    const asset = byId.get(project.assetId);
+    if (!asset) continue;
+    const category = library.find((d) => d.name === project.members[0]?.treatment)?.category ?? "Renew";
+    lockedRecords.set(project.key, lockedRecord(project, asset, category));
+    if (assumptions.programmedFunding !== "additional" && project.fundedYear >= startYear && project.fundedYear <= endYear) {
+      money.reserve({
+        cash: [{ year: project.fundedYear, amount: project.cost }],
+        option: { category } as Candidate["option"],
+      });
+    }
+  }
+  let totalProgrammedSpend = 0;
+
   // Work an earlier pass decided: its money is out before this pass starts.
   //
   // Its segments are closed to this pass until the year that work is built.
@@ -408,6 +429,19 @@ function walk(
       builtCount++;
     }
 
+    // Locked projects built this year, on assets the run has left alone since
+    // they were programmed.
+    let lockedBuiltCount = 0;
+    for (const project of locks.builtIn(year)) {
+      const asset = byId.get(project.assetId);
+      const record = lockedRecords.get(project.key);
+      if (!asset || !record) continue;
+      const option = buildLocked(project, asset, library, record);
+      if (option) recordTreatment(history, asset.id, option, year);
+      treatmentCount.set(asset.id, (treatmentCount.get(asset.id) ?? 0) + 1);
+      lockedBuiltCount++;
+    }
+
     // 2. Criticality from the network as it now stands.
     if (options.criticality) {
       for (const asset of state) {
@@ -434,6 +468,7 @@ function walk(
     // 3. What could be decided this year, each option judged against the
     //    segment it will meet in the year it would be built.
     const { candidates, heldCandidates } = rankCandidates({
+      locks,
       fixedUntil,
       state,
       assumptions,
@@ -519,7 +554,15 @@ function walk(
     }
     const backlog = [...backlogBest.values()].reduce((sum, cost) => sum + cost, 0);
 
-    const spend = money.spentIn(year);
+    // What the year spent, split between programmed work and the run's own
+    // choices. Reserved programmed money is already in the ledger when it is
+    // paid from the budget; funded on top, it is added beside it.
+    const programmedMoney = locks.spendIn(year);
+    const ledgered = money.spentIn(year);
+    const additional = assumptions.programmedFunding === "additional";
+    const allocationSpend = additional ? ledgered : ledgered - programmedMoney;
+    const spend = additional ? ledgered + programmedMoney : ledgered;
+    totalProgrammedSpend += programmedMoney;
     const avgCondition = average();
     const avgRisk = state.reduce((s, a) => s + pofFromCondition(a.condition) * a.cof, 0) / (state.length || 1);
 
@@ -532,6 +575,13 @@ function walk(
       year,
       budget: Math.round(budgetFor(year)),
       spend: Math.round(spend),
+      programmedSpend: Math.round(programmedMoney),
+      allocationSpend: Math.round(allocationSpend),
+      locked: locks
+        .fundedIn(year)
+        .map((p) => lockedRecords.get(p.key))
+        .filter((r): r is ScenarioProject => r != null),
+      lockedBuiltCount,
       treatedCount: builtCount,
       programmedCount: programmed.length,
       builtCount,
@@ -593,6 +643,7 @@ function walk(
       treatments: treatmentCount.get(a.id) ?? 0,
     })),
     alternatives,
+    totalProgrammedSpend: Math.round(totalProgrammedSpend),
     agedYears,
     conditionYearAvgCondition: round1(conditionYearAvgCondition),
     startAvgCondition: round1(startAvgCondition),
@@ -639,6 +690,9 @@ function isEligible(condition: number, cof: number, a: ScenarioAssumptions): boo
  * longer" is a fact about the run's length, not about the network.
  */
 function rankCandidates(args: {
+  /** Locked projects: no work may be decided on a segment whose span from
+   * decision to build meets a locked project's programmed-to-built span. */
+  locks: LockSchedule;
   /** Segments an earlier pass decided, and the year its work is built. Closed
    * until then: anything done sooner would change the network that project was
    * judged against, and this pass is not re-judging anything. */
@@ -714,6 +768,9 @@ function rankCandidates(args: {
 
     for (const [buildOffset, future] of leadsSeen) {
       const buildYear = args.year + buildOffset;
+      // Work decided now and built then would be on the segment while a
+      // locked project holds it.
+      if (args.locks.blocks(asset.id, args.year, buildYear)) continue;
       if (!isEligible(future.condition, future.cof, args.assumptions)) continue;
 
       const ctx = simAssetContext(future);

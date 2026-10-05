@@ -17,6 +17,11 @@ import {
   type ScenarioRunOptions,
 } from "@/domain/waterline/scenario";
 import { runDeliveryScenario, type DeliveryRunResult } from "@/domain/waterline/delivery-scenario";
+import {
+  PROGRAMMED_FUNDING,
+  type LockedProject,
+  type ProgrammedFunding,
+} from "@/domain/waterline/locked-projects";
 import { isImmediate, type LeadTimes } from "@/domain/waterline/lead-time";
 import { resolveLeadTimes } from "@/server/lead-times";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
@@ -155,6 +160,11 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
     fundingMode,
     targetMetric: DEFAULT_ASSUMPTIONS.targetMetric,
     targetInYears: Number(map.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears),
+    // Absent on every scenario stored before locked projects existed, none of
+    // which locks anything; the default only matters once one does.
+    programmedFunding: PROGRAMMED_FUNDING.includes(map.programmedFunding as ProgrammedFunding)
+      ? (map.programmedFunding as ProgrammedFunding)
+      : DEFAULT_ASSUMPTIONS.programmedFunding,
   };
 }
 
@@ -184,6 +194,23 @@ export function effectiveAssumptions(
 ): ScenarioAssumptions {
   const own = assumptionsFromRows(rows);
   return set ? { ...own, analysisPeriodYears: set.planningPeriodYears } : own;
+}
+
+/**
+ * A plan a scenario may lock: one that exists, and not a scenario run's own
+ * programme — that is rewritten every time its scenario runs, so locking it
+ * would have a scenario run against whatever it last produced, and its own
+ * re-run would be refused by the very lock.
+ */
+async function assertLockablePlan(planId: string | null) {
+  if (!planId) return;
+  const plan = await prisma.workPlan.findUnique({ where: { id: planId }, select: { isScenarioMirror: true, name: true } });
+  if (!plan) throw new Error("That work plan no longer exists");
+  if (plan.isScenarioMirror) {
+    throw new Error(
+      `“${plan.name}” is a scenario run's own programme and changes every time that scenario runs. Make an editable plan from it, and lock that.`
+    );
+  }
 }
 
 /** Ids arrive from forms; a filter from another organization must not be
@@ -223,10 +250,13 @@ export async function createScenario(
     savedFilterId?: string | null;
     /** The set it belongs to. Null leaves it on its own. */
     scenarioSetId?: string | null;
+    /** A work plan whose projects it runs with as they are. Null locks none. */
+    lockedWorkPlanId?: string | null;
   }
 ) {
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   await assertFilterInOrganization(organizationId, input.savedFilterId ?? null);
+  await assertLockablePlan(input.lockedWorkPlanId ?? null);
   return prisma.scenario.create({
     data: {
       organizationId,
@@ -239,6 +269,7 @@ export async function createScenario(
       leadTimeSetId: input.leadTimeSetId || null,
       savedFilterId: input.savedFilterId || null,
       scenarioSetId: input.scenarioSetId || null,
+      lockedWorkPlanId: input.lockedWorkPlanId || null,
       assumptions: {
         create: assumptionRows(input.assumptions),
       },
@@ -276,6 +307,8 @@ export async function updateScenario(
     savedFilterId?: string | null;
     /** The set it belongs to. Null takes it out of any set. */
     scenarioSetId?: string | null;
+    /** A work plan whose projects it runs with as they are. Null locks none. */
+    lockedWorkPlanId?: string | null;
   }
 ) {
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
@@ -288,6 +321,7 @@ export async function updateScenario(
     throw new Error("A scenario in a set can be moved to another set, but not taken out of one");
   }
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
+  await assertLockablePlan(input.lockedWorkPlanId ?? null);
 
   await prisma.$transaction([
     prisma.scenario.update({
@@ -302,6 +336,7 @@ export async function updateScenario(
         leadTimeSetId: input.leadTimeSetId || null,
         savedFilterId: input.savedFilterId || null,
         scenarioSetId: input.scenarioSetId || null,
+        lockedWorkPlanId: input.lockedWorkPlanId || null,
       },
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
@@ -335,6 +370,9 @@ export async function loadScenarioRun(
   /** The saved filter deciding which assets this run covers, where it has
    * one. Carried so a caller can say what the run is about. */
   filter: { id: string; name: string; assetCount: number } | null;
+  /** The work plan whose projects this run locks, where it locks one, and
+   * how many of its projects fell outside the run's assets. */
+  locked: { planId: string; planName: string; count: number; outsideRun: number } | null;
 } | null> {
   const scenario = await prisma.scenario.findFirst({
     where: { id: scenarioId, organizationId },
@@ -342,6 +380,7 @@ export async function loadScenarioRun(
       assumptions: true,
       scenarioSet: { select: { baseYear: true, planningPeriodYears: true } },
       savedFilter: { select: { id: true, name: true } },
+      lockedWorkPlan: { select: { id: true, name: true } },
     },
   });
   if (!scenario) return null;
@@ -392,11 +431,23 @@ export async function loadScenarioRun(
     resolveLeadTimes(organizationId, scenario.leadTimeSetId),
   ]);
 
+  const locked = scenario.lockedWorkPlan
+    ? await lockedProjects(scenario.lockedWorkPlan.id, new Set(simAssets.map((a) => a.id)))
+    : null;
+
   return {
     name: scenario.name,
     assumptions,
     simAssets,
     leadTimes,
+    locked: scenario.lockedWorkPlan && locked
+      ? {
+          planId: scenario.lockedWorkPlan.id,
+          planName: scenario.lockedWorkPlan.name,
+          count: locked.projects.length,
+          outsideRun: locked.outsideRun,
+        }
+      : null,
     filter: scenario.savedFilter
       ? { id: scenario.savedFilter.id, name: scenario.savedFilter.name, assetCount: simAssets.length }
       : null,
@@ -418,8 +469,64 @@ export async function loadScenarioRun(
       // Absent when no formula is configured, in which case each asset keeps
       // its stored criticality for the whole run.
       criticality: criticality?.score,
+      locked: locked?.projects,
     },
   };
+}
+
+/** Statuses a locked plan's projects are left out on: work no longer going
+ * ahead, or not yet. */
+const UNLOCKED_STATUSES: WorkPlanItemStatus[] = [WorkPlanItemStatus.CANCELLED, WorkPlanItemStatus.DEFERRED];
+
+/**
+ * A work plan's projects, as a scenario locks them.
+ *
+ * A project is one row, or the rows of one combination done as a visit. Only
+ * projects on assets the run covers are locked: one on an asset outside the
+ * scenario's filter, or no longer active, has nothing in the run to act on, and
+ * is counted rather than silently dropped.
+ */
+async function lockedProjects(
+  planId: string,
+  inRun: Set<string>
+): Promise<{ projects: LockedProject[]; outsideRun: number }> {
+  const items = await prisma.workPlanItem.findMany({
+    where: { workPlanId: planId, status: { notIn: UNLOCKED_STATUSES } },
+    include: { asset: { select: { assetCode: true } }, treatment: { select: { name: true } } },
+    orderBy: [{ year: "asc" }, { id: "asc" }],
+  });
+
+  const groups = new Map<string, typeof items>();
+  for (const item of items) {
+    const key = item.bundleId ?? item.id;
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+
+  const projects: LockedProject[] = [];
+  let outsideRun = 0;
+  for (const [key, rows] of groups) {
+    const first = rows[0];
+    if (!inRun.has(first.assetId)) {
+      outsideRun++;
+      continue;
+    }
+    const fundedYear = first.year;
+    projects.push({
+      key,
+      assetId: first.assetId,
+      assetCode: first.asset.assetCode,
+      label: first.bundleName ?? first.treatment.name,
+      bundleName: first.bundleName,
+      members: rows.map((r) => ({ treatment: r.treatment.name, cost: r.estimatedCost })),
+      cost: rows.reduce((sum, r) => sum + r.estimatedCost, 0),
+      // Null means the same as the year the money is spent.
+      programmedYear: Math.min(first.programmedYear ?? fundedYear, fundedYear),
+      fundedYear,
+      buildYear: Math.max(first.buildYear ?? fundedYear, fundedYear),
+      status: first.status,
+    });
+  }
+  return { projects, outsideRun };
 }
 
 /**
@@ -481,6 +588,8 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
     data: result.years.flatMap((y) => [
       { scenarioId, year: y.year, metricKey: "budget", metricValue: y.budget },
       { scenarioId, year: y.year, metricKey: "spend", metricValue: y.spend },
+      { scenarioId, year: y.year, metricKey: "programmedSpend", metricValue: y.programmedSpend },
+      { scenarioId, year: y.year, metricKey: "allocationSpend", metricValue: y.allocationSpend },
       { scenarioId, year: y.year, metricKey: "treatedCount", metricValue: y.treatedCount },
       { scenarioId, year: y.year, metricKey: "avgCondition", metricValue: y.avgCondition },
       { scenarioId, year: y.year, metricKey: "avgRisk", metricValue: y.avgRisk },
@@ -505,6 +614,17 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
         { scenarioId, year, metricKey: "inFlightCost", metricValue: delivery.inFlightCost },
         { scenarioId, year, metricKey: "passes", metricValue: delivery.passes },
         { scenarioId, year, metricKey: "addedInLastPass", metricValue: delivery.addedInLastPass },
+      ],
+    });
+  }
+  // What was locked in, stored against the first year like the figures
+  // around it, since it describes the run rather than one of its years.
+  if (run.locked && result.years.length > 0) {
+    const year = result.years[0].year;
+    await prisma.scenarioResult.createMany({
+      data: [
+        { scenarioId, year, metricKey: "lockedCount", metricValue: run.locked.count },
+        { scenarioId, year, metricKey: "lockedOutsideRun", metricValue: run.locked.outsideRun },
       ],
     });
   }
@@ -534,7 +654,7 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       ],
     });
   }
-  await persistScenarioProgram(scenarioId, run.name, result, run.assumptions);
+  await persistScenarioProgram(scenarioId, run.name, result, run.assumptions, run.locked?.planName ?? null);
   // Measured across everything the run actually did — loading, simulating and
   // persisting — because that is what the person waiting experiences. Written
   // only on success, so a failed run cannot poison the next estimate.
@@ -581,7 +701,9 @@ async function persistScenarioProgram(
   scenarioId: string,
   scenarioName: string,
   result: ScenarioRunResult,
-  assumptions: ScenarioAssumptions
+  assumptions: ScenarioAssumptions,
+  /** The plan locked projects came from, to say so on their rows. */
+  lockedPlanName: string | null
 ) {
   // Only this run's own mirror. An editable plan someone made from the same
   // scenario is theirs — moved years, statuses and all — and a re-run must not
@@ -596,7 +718,11 @@ async function persistScenarioProgram(
     await prisma.workPlan.deleteMany({ where: { id: { in: ids } } });
   }
 
-  const years = result.years.filter((y) => y.selected.length > 0);
+  // Locked projects are part of the programme the run reports: their money
+  // is in its years, and their effects in its network.
+  const years = result.years
+    .map((y) => ({ ...y, selected: [...y.locked, ...y.selected] }))
+    .filter((y) => y.selected.length > 0);
   if (years.length === 0) return;
 
   const treatments = await prisma.treatment.findMany({ select: { id: true, name: true } });
@@ -662,16 +788,21 @@ async function persistScenarioProgram(
               // whole answer.
               ...(p.cash.length > 1 ? { cash: p.cash } : {}),
             },
-            reasonExplanation:
-              `Selected by the ${scenarioName} run in ${year.year}` +
+            reasonExplanation: p.locked
+              ? `Locked from ${lockedPlanName ?? "the locked work plan"}` +
+                (isBundle ? ` as part of ${p.treatment}` : "") +
+                `: programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}. ` +
+                `The run left the segment alone from ${p.programmedYear} to ${p.buildYear}. ` +
+                `Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`
+              : `Selected by the ${scenarioName} run in ${year.year}` +
               (isBundle ? ` as part of ${p.treatment}` : "") +
               (p.buildYear !== p.programmedYear
                 ? `. Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}`
                 : "") +
               (p.supersededTreatment ? `, replacing ${p.supersededTreatment} programmed earlier on this segment` : "") +
               `. Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
-            fundingSource: "Scenario Budget",
-            status: WorkPlanItemStatus.PLANNED,
+            fundingSource: p.locked ? "Programmed (locked)" : "Scenario Budget",
+            status: (p.locked?.status as WorkPlanItemStatus | undefined) ?? WorkPlanItemStatus.PLANNED,
           },
         ];
       });
@@ -684,6 +815,8 @@ async function persistScenarioProgram(
 export type ScenarioProjectRow = {
   /** The year the money comes out. */
   year: number;
+  /** Locked in from a work plan rather than chosen by the run. */
+  locked: boolean;
   /** The year it was decided and the year it is built — the same year unless
    * the scenario ran with delivery lead times. */
   programmedYear: number;
@@ -728,6 +861,7 @@ export async function getScenarioProjects(
     };
     return {
       year: i.year,
+      locked: i.fundingSource === "Programmed (locked)",
       programmedYear: i.programmedYear ?? i.year,
       buildYear: i.buildYear ?? i.year,
       assetId: i.asset.id,
@@ -784,6 +918,13 @@ export type ScenarioSummary = {
    * be attached. */
   savedFilterId: string | null;
   savedFilterName: string | null;
+  /** The work plan whose projects this scenario locks, if any. */
+  lockedWorkPlanId: string | null;
+  lockedWorkPlanName: string | null;
+  /** What the stored run locked: how many projects, how many of the plan's
+   * fell outside its assets, and what they spent across the run. Null when
+   * the stored run locked nothing. */
+  lockedRun: { count: number; outsideRun: number; programmedSpend: number } | null;
   /** What a target-constrained run answered. Null on a budget-constrained one,
    * and on a target run stored before these metrics were written. */
   target: {
@@ -844,6 +985,7 @@ export async function listScenarios(
       categoryFundingPlan: { select: { name: true } },
       leadTimeSet: { select: { name: true } },
       savedFilter: { select: { name: true } },
+      lockedWorkPlan: { select: { name: true } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -866,6 +1008,7 @@ export async function listScenarios(
     // these results answered a target rather than a budget.
     const targetBudget = byMetric("targetAnnualBudget")[0];
     const targetMetIn = byMetric("targetMetInYear")[0];
+    const lockedCount = byMetric("lockedCount")[0];
 
     return {
       id: s.id,
@@ -885,6 +1028,15 @@ export async function listScenarios(
       leadTimeSetName: s.leadTimeSet?.name ?? null,
       savedFilterId: s.savedFilterId,
       savedFilterName: s.savedFilter?.name ?? null,
+      lockedWorkPlanId: s.lockedWorkPlanId,
+      lockedWorkPlanName: s.lockedWorkPlan?.name ?? null,
+      lockedRun: lockedCount
+        ? {
+            count: lockedCount.metricValue,
+            outsideRun: byMetric("lockedOutsideRun")[0]?.metricValue ?? 0,
+            programmedSpend: Math.round(byMetric("programmedSpend").reduce((sum, r) => sum + r.metricValue, 0)),
+          }
+        : null,
       target: targetBudget
         ? {
             value: byMetric("targetValue")[0]?.metricValue ?? goalOf(assumptions),
@@ -937,6 +1089,10 @@ export type ScenarioDetail = ScenarioSummary & {
     year: number;
     budget: number;
     spend: number;
+    /** Locked projects' spending, and the run's own out of the allocation.
+     * Runs stored before locked projects read as all allocation. */
+    programmedSpend: number;
+    allocationSpend: number;
     treatedCount: number;
     avgCondition: number;
     avgRisk: number;
@@ -972,6 +1128,8 @@ export async function getScenario(organizationId: string, scenarioId: string): P
         year,
         budget: m.budget ?? 0,
         spend: m.spend ?? 0,
+        programmedSpend: m.programmedSpend ?? 0,
+        allocationSpend: m.allocationSpend ?? (m.spend ?? 0) - (m.programmedSpend ?? 0),
         treatedCount: m.treatedCount ?? 0,
         avgCondition: m.avgCondition ?? 0,
         avgRisk: m.avgRisk ?? 0,

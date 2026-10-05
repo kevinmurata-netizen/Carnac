@@ -36,6 +36,8 @@ export type ScenarioValues = {
    * always has one. */
   hasConditionTarget: string;
   targetInYears: string;
+  lockedWorkPlanId: string;
+  programmedFunding: string;
 };
 
 export type ScenarioFieldDefaults = {
@@ -58,6 +60,8 @@ export type ScenarioFieldDefaults = {
   scenarioSetId: string | null;
   fundingMode: string;
   targetInYears: number;
+  lockedWorkPlanId: string | null;
+  programmedFunding: string;
 };
 
 export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
@@ -83,6 +87,8 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     fundingMode: d.fundingMode,
     hasConditionTarget: d.conditionTarget != null ? "on" : "",
     targetInYears: String(d.targetInYears),
+    lockedWorkPlanId: d.lockedWorkPlanId ?? "",
+    programmedFunding: d.programmedFunding,
   };
 }
 
@@ -127,6 +133,10 @@ export type LeadTimeChoice = { id: string; name: string; isDefault: boolean; sum
  * before choosing it as a limit. */
 export type FilterChoice = { id: string; name: string; criteriaCount: number };
 
+/** The work plans whose projects a scenario can lock. Never a scenario run's
+ * own programme, which changes every time that scenario runs. */
+export type LockedPlanChoice = { id: string; name: string; startYear: number; endYear: number; projectCount: number };
+
 /**
  * The scenario parameter inputs, shared by the create and edit forms so the two
  * cannot drift apart. `idPrefix` keeps label/input ids unique when both forms
@@ -152,6 +162,7 @@ export function ScenarioFields({
   fundingPlanChoices = [],
   leadTimeChoices = [],
   filterChoices = [],
+  lockedPlanChoices = [],
   scenarioSetChoices = [],
   lockSet = false,
 }: {
@@ -166,6 +177,7 @@ export function ScenarioFields({
   fundingPlanChoices?: FundingPlanChoice[];
   leadTimeChoices?: LeadTimeChoice[];
   filterChoices?: FilterChoice[];
+  lockedPlanChoices?: LockedPlanChoice[];
   scenarioSetChoices?: ScenarioSetChoice[];
   /** Show the chosen set as fixed rather than as a choice. */
   lockSet?: boolean;
@@ -274,6 +286,55 @@ export function ScenarioFields({
           </p>
         </div>
       )}
+
+      {/* Work already committed, which the run takes as given rather than
+          deciding. Beside the assets because it, too, decides what the run is
+          about: those assets' futures through their build years are settled. */}
+      {lockedPlanChoices.length > 0 && (
+        <>
+          <div className={`space-y-1.5 ${values.lockedWorkPlanId ? "sm:col-span-2" : "sm:col-span-2 lg:col-span-4"}`}>
+            <Label htmlFor={id("lockedWorkPlanId")}>Lock projects from</Label>
+            <select
+              id={id("lockedWorkPlanId")}
+              name="lockedWorkPlanId"
+              value={values.lockedWorkPlanId}
+              onChange={(e) => onChange({ lockedWorkPlanId: e.target.value })}
+              className={mark("lockedWorkPlanId")}
+            >
+              <option value="">No work plan — the run decides every project</option>
+              {lockedPlanChoices.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — {p.startYear}–{p.endYear} · {p.projectCount} project{p.projectCount === 1 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Its projects run as programmed: each one&apos;s money is spent in its year and its treatment applied in its
+              build year, and the run does no work on that asset from the year it was programmed until it is built.
+              Cancelled and deferred projects are left out.
+            </p>
+          </div>
+          {values.lockedWorkPlanId && (
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor={id("programmedFunding")}>Programmed work is</Label>
+              <select
+                id={id("programmedFunding")}
+                name="programmedFunding"
+                value={values.programmedFunding}
+                onChange={(e) => onChange({ programmedFunding: e.target.value })}
+                className={mark("programmedFunding")}
+              >
+                <option value="within">Paid from the annual budget — the run spends what is left</option>
+                <option value="additional">Funded on top — the run keeps the whole annual budget</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Either way the results show programmed work apart from what the annual allocation bought.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+      {lockedPlanChoices.length === 0 && <input type="hidden" name="programmedFunding" value={values.programmedFunding} />}
 
       {/* What holds the scenario back. Above the budget because it decides
           whether the budget is an input at all. */}

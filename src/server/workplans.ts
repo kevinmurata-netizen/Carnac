@@ -618,6 +618,14 @@ const workPlanItemInclude = {
   treatment: { select: { id: true, name: true } },
 };
 
+/** The plans a scenario may lock: every editable plan, never a scenario
+ * run's own programme, which is rewritten each time its scenario runs. */
+export async function lockablePlanChoices() {
+  return (await listWorkPlans())
+    .filter((p) => !p.isScenarioMirror)
+    .map((p) => ({ id: p.id, name: p.name, startYear: p.startYear, endYear: p.endYear, projectCount: p.itemCount }));
+}
+
 export async function listWorkPlans() {
   const plans = await prisma.workPlan.findMany({
     include: {
@@ -1495,6 +1503,15 @@ export function countProjects(items: Array<{ id: string; bundleId: string | null
 }
 
 export async function deleteWorkPlan(id: string) {
+  // A scenario running with this plan's projects locked would change what it
+  // runs if the plan went, so the plan stays until it is unlocked there.
+  const locking = await prisma.scenario.findMany({ where: { lockedWorkPlanId: id }, select: { name: true } });
+  if (locking.length > 0) {
+    throw new Error(
+      `${locking.map((s) => s.name).join(", ")} ${locking.length === 1 ? "locks" : "lock"} this plan's projects. ` +
+        `Choose another plan to lock there, or none, before deleting it.`
+    );
+  }
   await prisma.workPlanItem.deleteMany({ where: { workPlanId: id } });
   await prisma.workPlan.delete({ where: { id } });
 }
