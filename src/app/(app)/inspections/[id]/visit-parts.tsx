@@ -212,7 +212,7 @@ export function VisitParts({
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
-              <div className="flex justify-end gap-2">
+              <div data-dialog-actions className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setEditingState(null)}>
                   Cancel
                 </Button>

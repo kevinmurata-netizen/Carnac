@@ -336,7 +336,7 @@ export function CostEditor({
       </div>
 
       {inDialog && canEdit && onSave && (
-        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+        <div data-dialog-actions className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
           <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={busy}>
             {dirty ? "Cancel" : "Close"}
           </Button>

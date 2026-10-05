@@ -223,7 +223,7 @@ export function AddWorkDialog({
             <p className={`text-sm ${message.ok ? "text-emerald-600" : "text-destructive"}`}>{message.text}</p>
           )}
 
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+          <div data-dialog-actions className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
             <Button
               type="button"
               size="sm"

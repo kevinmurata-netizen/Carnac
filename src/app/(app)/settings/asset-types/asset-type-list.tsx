@@ -570,7 +570,7 @@ function TypeForm({
         />
       </div>
       <Missing fields={missing} />
-      <div className="flex justify-end gap-2">
+      <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
@@ -711,7 +711,7 @@ function AttributeForm({
       )}
 
       <Missing fields={missing} />
-      <div className="flex justify-end gap-2">
+      <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
@@ -761,7 +761,7 @@ function TemplateForm({
         />
       </div>
       <Missing fields={name.trim() ? [] : ["A name"]} />
-      <div className="flex justify-end gap-2">
+      <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>

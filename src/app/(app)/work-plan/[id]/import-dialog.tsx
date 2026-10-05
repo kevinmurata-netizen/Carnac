@@ -351,7 +351,7 @@ export function ImportDialog(target: Target) {
             </>
           )}
 
-          <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+          <div data-dialog-actions className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
             <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)} disabled={busy}>
               Close
             </Button>
