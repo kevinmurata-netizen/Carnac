@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-05",
+    title: "Sample import spreadsheet fixed for production",
+    summary:
+      "The sample work plan import that is meant to have no errors showed five on production. It named a combination production doesn't have, and two segments that aren't active there. Both sample files now use only what production has.",
+    changes: [
+      "Rows 9, 15 and 21 are Spot Repair on the same segments, in place of the Dig-once repair combination, which existed only locally.",
+      "Row 20 uses WL-0067 instead of WL-0206 (inactive on production), and row 31 uses WL-0076 instead of WL-0253 (planned on production). Each replacement comes from the same condition band.",
+      "Every other row is unchanged, and the errors file still has just its five deliberate errors.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-05",
     title: "Start a work plan from a spreadsheet",
     summary:
       "The Work Plan page can create a plan straight from an import spreadsheet — empty apart from the file's projects — instead of first making a plan from a scenario and importing into it.",

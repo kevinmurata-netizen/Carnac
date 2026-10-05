@@ -2,10 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "../src/lib/prisma";
 import { buildOption, explainApplicability, type TreatmentDef } from "../src/domain/waterline/treatment";
-import { qualifiesUnderRules, ruleTreeFromFlat } from "../src/domain/waterline/decision-tree";
-import { toDecisionInput } from "../src/domain/waterline/treatment";
 import { loadTreatmentDefs } from "../src/server/treatment-config";
-import { loadCombinations } from "../src/server/combinations";
 import { assetTreatmentContext } from "../src/server/workplans";
 import { workPlanImportTemplate } from "../src/server/workplan-import";
 
@@ -23,9 +20,16 @@ import { workPlanImportTemplate } from "../src/server/workplan-import";
  *
  *   npm run db:sample:work-plan-import
  *
- * Written from the local database, whose segments and library are the same
- * seeded ones production started from.
+ * Written from the local database, so it uses only what production shares
+ * with it: the seeded segments and the seeded treatment library. No
+ * combinations — those are each organization's own setup, and the first
+ * version of this file named a "Dig-once repair" production never had. And
+ * not the segments below, which are active locally but not on production.
  */
+
+/** Active here, not on production (2026-10-05): a row on either is refused
+ * there. Swapped for another segment from the same condition band. */
+const NOT_ACTIVE_ON_PRODUCTION = new Set(["WL-0206", "WL-0253"]);
 
 const OUT_DIR = join(__dirname, "..", "prisma", "sample-data");
 const FIRST_YEAR = 2026;
@@ -44,7 +48,7 @@ const FUNDING = ["Capital Improvement Program", "Road reconstruction (dig once)"
 
 async function main() {
   const org = await prisma.organization.findFirstOrThrow({ orderBy: { createdAt: "asc" } });
-  const [library, combinations] = await Promise.all([loadTreatmentDefs(org.id), loadCombinations(org.id)]);
+  const library = await loadTreatmentDefs(org.id);
   const byName = new Map(library.map((d) => [d.name, d]));
 
   // The segments in the worst condition first, by their latest measurement.
@@ -77,14 +81,21 @@ async function main() {
   const PER_BAND = PER_YEAR / bands.length;
 
   const rows: Array<Record<string, string | number>> = [];
-  let combinationsUsed = 0;
 
   for (let y = 0; y < YEARS; y++) {
     const year = FIRST_YEAR + y;
     for (const band of bands) {
       let taken = 0;
       while (taken < PER_BAND && band.length > 0) {
-        const segment = band.shift()!;
+        // A segment production doesn't have active is swapped for one from the
+        // far end of the band rather than the next in line, so every other
+        // row keeps the segment it had — the rows production already accepted.
+        let segment = band.shift()!;
+        if (NOT_ACTIVE_ON_PRODUCTION.has(segment.assetCode)) {
+          while (band.length > 0 && NOT_ACTIVE_ON_PRODUCTION.has(band[band.length - 1].assetCode)) band.pop();
+          if (band.length === 0) break;
+          segment = band.pop()!;
+        }
         const row = await projectFor(segment, year, rows.length);
         if (!row) continue;
         rows.push({ ...row, notes: `CIP-${year}-${String(rows.filter((r) => r["year"] === year).length + 1).padStart(3, "0")} · condition ${Math.round(segment.conditionMeasurements[0].score)}` });
@@ -104,41 +115,19 @@ async function main() {
     const { ctx } = context;
     const condition = segment.conditionMeasurements[0].score;
 
-    // Now and then, a combination the library offers — a programme imports
-    // those too.
     let name: string | null = null;
     let members: TreatmentDef[] = [];
-    let mobilization: number | null = null;
-    if (combinationsUsed < 3 && condition >= 40 && index % 3 === 1) {
-      for (const combo of combinations.filter((c) => c.enabled)) {
-        const defs = combo.members.map((m) => byName.get(m.treatment)).filter((d): d is TreatmentDef => d != null);
-        if (defs.length !== combo.members.length) continue;
-        const passes =
-          defs.every((d) => explainApplicability(d, ctx).pass) &&
-          (!combo.rules?.length ||
-            qualifiesUnderRules(combo.rules, ruleTreeFromFlat(combo.rules, combo.qualifyMode ?? "all"), toDecisionInput(ctx)).pass);
-        if (passes && buildOption(`combo:${combo.id}`, combo.name, defs, ctx, combo.mobilizationCost ?? null)) {
-          name = combo.name;
-          members = defs;
-          mobilization = combo.mobilizationCost ?? null;
-          combinationsUsed++;
-          break;
-        }
-      }
-    }
-    if (!name) {
-      for (const candidate of preferences(condition)) {
-        const def = byName.get(candidate);
-        if (!def || !explainApplicability(def, ctx).pass) continue;
-        if (!buildOption(`t:${def.name}`, def.name, [def], ctx, null)) continue;
-        name = def.name;
-        members = [def];
-        break;
-      }
+    for (const candidate of preferences(condition)) {
+      const def = byName.get(candidate);
+      if (!def || !explainApplicability(def, ctx).pass) continue;
+      if (!buildOption(`t:${def.name}`, def.name, [def], ctx, null)) continue;
+      name = def.name;
+      members = [def];
+      break;
     }
     if (!name) return null;
 
-    const option = buildOption(`x:${name}`, name, members, ctx, mobilization)!;
+    const option = buildOption(`x:${name}`, name, members, ctx, null)!;
     const renewal = members.some((m) => m.name === "Replacement" || m.name === "Rehabilitation");
     // Renewals are decided a year ahead and built the year after they are
     // paid for — the multi-year projects a locked scenario must keep its hands
@@ -183,7 +172,7 @@ async function main() {
     rows.reduce<Record<string, number>>((acc, r) => ({ ...acc, [r.year]: (acc[r.year] ?? 0) + 1 }), {})
   );
   console.log(`Wrote ${clean}`);
-  console.log(`  ${rows.length} projects — ${byYear.map(([y, n]) => `${y}: ${n}`).join(", ")}; ${combinationsUsed} combinations`);
+  console.log(`  ${rows.length} projects — ${byYear.map(([y, n]) => `${y}: ${n}`).join(", ")}`);
   console.log(`Wrote ${broken}`);
   console.log(`  the same, plus ${mistakes.length} rows each wrong in one way`);
 }
