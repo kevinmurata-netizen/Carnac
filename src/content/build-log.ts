@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-05",
+    title: "The rule editor's buttons stay in view",
+    summary:
+      "In the rule pop-up, Save, Save & close and Cancel now sit pinned at the bottom like every other pop-up editor's, instead of at the top beside the rule's name.",
+    changes: [
+      "Delete, Unsaved changes, Cancel, Save and Save & close sit in a row along the bottom of the rule pop-up, and stay there while the rule scrolls.",
+      "A saved or refused message appears in that row too, next to the button that was pressed.",
+      "The rules page itself is unchanged.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-05",
     title: "Resizable pop-up editors, with Save always in view",
     summary:
       "Pop-up editors (importing a work plan, editing a component, an effect, a rule and the rest) can be made bigger or smaller by dragging any corner. Their Save or Import buttons stay pinned to the bottom while the rest scrolls.",
