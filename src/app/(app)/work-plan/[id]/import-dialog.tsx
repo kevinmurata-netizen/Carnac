@@ -2,7 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, Upload } from "lucide-react";
+import { Label } from "@/components/ui/label";
 import { ExportButton } from "@/components/layout/export-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,13 +13,24 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import { previewImportAction, commitImportAction } from "../actions";
 import type { WorkPlanImportPreview } from "@/server/workplan-import";
 
+const field =
+  "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/** Into a plan that exists, or into a new one the import creates. */
+type Target = { workPlanId: string; startYear: number; endYear: number } | { newPlan: true };
+
 /**
  * Import programmed work from a spreadsheet: choose a file, see exactly what
  * it would add, then import. The file is checked on the server both times, so
  * what is written is what the preview showed — or, if the library changed in
  * between, a fresh preview saying why not.
+ *
+ * Opened for a new plan, it also asks what to call the plan and, optionally,
+ * its period and budget. The plan is created only when the import is — with
+ * the spreadsheet's projects and nothing else — so cancelling leaves nothing
+ * behind.
  */
-export function ImportDialog({ workPlanId, startYear, endYear }: { workPlanId: string; startYear: number; endYear: number }) {
+export function ImportDialog(target: Target) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -27,10 +39,13 @@ export function ImportDialog({ workPlanId, startYear, endYear }: { workPlanId: s
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, startBusy] = useTransition();
   const [committing, setCommitting] = useState(false);
+  const isNew = "newPlan" in target;
+  const [plan, setPlan] = useState({ name: "", startYear: "", endYear: "", annualBudget: "" });
 
   const form = (f: File) => {
     const data = new FormData();
-    data.set("workPlanId", workPlanId);
+    if ("workPlanId" in target) data.set("workPlanId", target.workPlanId);
+    else for (const [key, value] of Object.entries(plan)) data.set(key, value);
     data.set("file", f);
     return data;
   };
@@ -60,6 +75,11 @@ export function ImportDialog({ workPlanId, startYear, endYear }: { workPlanId: s
         setMessage({ ok: false, text: "Nothing was imported — the file no longer checks out. See below." });
         return;
       }
+      if (isNew && outcome.workPlanId) {
+        // Straight to the plan it made.
+        router.push(`/work-plan/${outcome.workPlanId}`);
+        return;
+      }
       setPreview(null);
       setFile(null);
       if (input.current) input.current.value = "";
@@ -71,29 +91,109 @@ export function ImportDialog({ workPlanId, startYear, endYear }: { workPlanId: s
     });
 
   const blocked = preview != null && (preview.errors.length > 0 || preview.missingColumns.length > 0);
-  const ready = preview != null && !blocked && preview.toImport > 0;
+  const ready = preview != null && !blocked && preview.toImport > 0 && (!isNew || plan.name.trim() !== "");
+  // The plan's details decide what the file is checked against, so a change
+  // to them re-checks a file already chosen.
+  const recheck = () => {
+    if (file) check(file);
+  };
 
   return (
     <>
-      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
-        <Upload className="mr-1.5 h-4 w-4" />
-        Import
-      </Button>
+      {isNew ? (
+        <Button type="button" onClick={() => setOpen(true)}>
+          <FileSpreadsheet className="mr-1.5 h-4 w-4" />
+          New plan from a spreadsheet
+        </Button>
+      ) : (
+        <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+          <Upload className="mr-1.5 h-4 w-4" />
+          Import
+        </Button>
+      )}
 
       <EditorDialog
         open={open}
         onClose={() => setOpen(false)}
-        title="Import programmed work"
+        title={isNew ? "New plan from a spreadsheet" : "Import programmed work"}
         description={
-          <>
-            Bring in work that is already committed, from an Excel or CSV file: one row per project, with the
-            segment&apos;s <strong>Asset ID</strong>, the <strong>Treatment</strong> or combination by its library name,
-            and the <strong>Year</strong> the money is spent ({startYear}–{endYear}). Programmed Year, Build Year, Cost,
-            Status, Funding and Notes are optional. Work already in the plan stays; nothing is written until you import.
-          </>
+          isNew ? (
+            <>
+              A plan holding the spreadsheet&apos;s projects and nothing else: one row per project, with the
+              segment&apos;s <strong>Asset ID</strong>, the <strong>Treatment</strong> or combination by its library
+              name, and the <strong>Year</strong> the money is spent. Programmed Year, Build Year, Cost, Status, Funding
+              and Notes are optional. The plan is created when you import, and not before.
+            </>
+          ) : (
+            <>
+              Bring in work that is already committed, from an Excel or CSV file: one row per project, with the
+              segment&apos;s <strong>Asset ID</strong>, the <strong>Treatment</strong> or combination by its library
+              name, and the <strong>Year</strong> the money is spent ({target.startYear}–{target.endYear}). Programmed
+              Year, Build Year, Cost, Status, Funding and Notes are optional. Work already in the plan stays; nothing is
+              written until you import.
+            </>
+          )
         }
       >
         <div className="space-y-4">
+          {isNew && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+              <div className="space-y-1.5 sm:col-span-4">
+                <Label htmlFor="import-plan-name">Plan name</Label>
+                <input
+                  id="import-plan-name"
+                  value={plan.name}
+                  onChange={(e) => setPlan({ ...plan, name: e.target.value })}
+                  onBlur={recheck}
+                  placeholder="e.g. 2026–2030 Capital Improvement Program"
+                  className={field}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="import-plan-start">Start year</Label>
+                <input
+                  id="import-plan-start"
+                  type="number"
+                  value={plan.startYear}
+                  onChange={(e) => setPlan({ ...plan, startYear: e.target.value })}
+                  onBlur={recheck}
+                  placeholder="From the file"
+                  className={field}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="import-plan-end">End year</Label>
+                <input
+                  id="import-plan-end"
+                  type="number"
+                  value={plan.endYear}
+                  onChange={(e) => setPlan({ ...plan, endYear: e.target.value })}
+                  onBlur={recheck}
+                  placeholder="From the file"
+                  className={field}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="import-plan-budget">Annual budget ($, optional)</Label>
+                <input
+                  id="import-plan-budget"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={plan.annualBudget}
+                  onChange={(e) => setPlan({ ...plan, annualBudget: e.target.value })}
+                  onBlur={recheck}
+                  placeholder="None"
+                  className={field}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground sm:col-span-4">
+                Leave the years blank to take the plan&apos;s period from the spreadsheet&apos;s earliest and latest
+                Year. A budget lets the plan show each year as over or under it.
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             <input
               ref={input}
@@ -139,6 +239,12 @@ export function ImportDialog({ workPlanId, startYear, endYear }: { workPlanId: s
 
           {preview && preview.missingColumns.length === 0 && (
             <>
+              {preview.plan.isNew && (
+                <p className="text-sm">
+                  Creates <span className="font-medium">{preview.plan.name}</span>, {preview.plan.startYear}–
+                  {preview.plan.endYear}.
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 text-sm">
                 <Stat label="To import" value={formatNumber(preview.toImport)} tone={ready ? "good" : undefined} />
                 <Stat label="Cost" value={formatCurrency(preview.totalCost, { compact: true })} />
@@ -251,10 +357,16 @@ export function ImportDialog({ workPlanId, startYear, endYear }: { workPlanId: s
             </Button>
             <Button type="button" size="sm" onClick={commit} disabled={busy || !ready}>
               {committing
-                ? "Importing…"
+                ? isNew
+                  ? "Creating the plan…"
+                  : "Importing…"
                 : ready
-                  ? `Import ${formatNumber(preview!.toImport)} project${preview!.toImport === 1 ? "" : "s"}`
-                  : "Import"}
+                  ? isNew
+                    ? `Create plan with ${formatNumber(preview!.toImport)} project${preview!.toImport === 1 ? "" : "s"}`
+                    : `Import ${formatNumber(preview!.toImport)} project${preview!.toImport === 1 ? "" : "s"}`
+                  : isNew
+                    ? "Create plan"
+                    : "Import"}
             </Button>
           </div>
         </div>

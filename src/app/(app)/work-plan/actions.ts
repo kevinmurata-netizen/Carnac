@@ -21,7 +21,12 @@ import {
   combineWorkPlanItems,
   splitWorkPlanVisit,
 } from "@/server/workplans";
-import { previewWorkPlanImport, commitWorkPlanImport, type WorkPlanImportPreview } from "@/server/workplan-import";
+import {
+  previewWorkPlanImport,
+  commitWorkPlanImport,
+  type ImportTarget,
+  type WorkPlanImportPreview,
+} from "@/server/workplan-import";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
 
@@ -175,29 +180,68 @@ async function uploadedSheet(formData: FormData) {
 }
 
 type ImportOutcome =
-  | { ok: true; preview: WorkPlanImportPreview; imported: number | null }
+  | { ok: true; preview: WorkPlanImportPreview; imported: number | null; workPlanId: string | null }
   | { ok: false; message: string };
+
+/** A year box: blank means "take it from the spreadsheet". */
+function optionalYear(formData: FormData, key: string, label: string): number | null {
+  const text = String(formData.get(key) ?? "").trim();
+  if (!text) return null;
+  const year = Number(text);
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) throw new Error(`${label}: “${text}” is not a year.`);
+  return year;
+}
+
+/** The plan an upload is for: the one it was opened on, or a new one
+ * described by the form beside the file. */
+function importTarget(formData: FormData): ImportTarget {
+  const workPlanId = String(formData.get("workPlanId") ?? "").trim();
+  if (workPlanId) return { workPlanId };
+  const budgetText = String(formData.get("annualBudget") ?? "").replace(/[$,\s]/g, "");
+  const annualBudget = budgetText ? Number(budgetText) : null;
+  if (annualBudget != null && (!Number.isFinite(annualBudget) || annualBudget < 0)) {
+    throw new Error(`Annual budget: “${formData.get("annualBudget")}” is not an amount.`);
+  }
+  return {
+    newPlan: {
+      name: String(formData.get("name") ?? ""),
+      startYear: optionalYear(formData, "startYear", "Start year"),
+      endYear: optionalYear(formData, "endYear", "End year"),
+      annualBudget,
+    },
+  };
+}
 
 /** Check a spreadsheet against the plan and the library; writes nothing. */
 export async function previewImportAction(formData: FormData): Promise<ImportOutcome> {
   const session = await requireEditor();
   try {
-    const workPlanId = String(formData.get("workPlanId") ?? "");
-    const preview = await previewWorkPlanImport(session.user.organizationId, workPlanId, await uploadedSheet(formData));
-    return { ok: true, preview, imported: null };
+    const preview = await previewWorkPlanImport(
+      session.user.organizationId,
+      importTarget(formData),
+      await uploadedSheet(formData)
+    );
+    return { ok: true, preview, imported: null, workPlanId: null };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not read that file" };
   }
 }
 
-/** Import it — checked again first, and refused while any row has an error. */
+/** Import it — checked again first, and refused while any row has an error.
+ * For a new plan, the plan is created with its rows or not at all. */
 export async function commitImportAction(formData: FormData): Promise<ImportOutcome> {
   const session = await requireEditor();
   try {
-    const workPlanId = String(formData.get("workPlanId") ?? "");
-    const result = await commitWorkPlanImport(session.user.organizationId, workPlanId, await uploadedSheet(formData));
-    if (result.imported > 0) revalidatePath(`/work-plan/${workPlanId}`);
-    return { ok: true, preview: result.preview, imported: result.imported };
+    const result = await commitWorkPlanImport(
+      session.user.organizationId,
+      importTarget(formData),
+      await uploadedSheet(formData)
+    );
+    if (result.imported > 0 && result.workPlanId) {
+      revalidatePath(`/work-plan/${result.workPlanId}`);
+      revalidatePath("/work-plan");
+    }
+    return { ok: true, preview: result.preview, imported: result.imported, workPlanId: result.workPlanId };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not import that file" };
   }

@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-05",
+    title: "Start a work plan from a spreadsheet",
+    summary:
+      "The Work Plan page can create a plan straight from an import spreadsheet — empty apart from the file's projects — instead of first making a plan from a scenario and importing into it.",
+    changes: [
+      "Plan from a spreadsheet, on the Work Plan page: name the plan, optionally give its start and end years and an annual budget, choose the file. Left blank, the years come from the spreadsheet's earliest and latest Year.",
+      "The file is checked exactly as an import into an existing plan is, and the preview says the plan it will create. Nothing is created until you import, and then the plan and its projects are written together — a refused file leaves no empty plan behind.",
+      "After importing, the page opens the new plan.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-05",
     title: "Run a scenario with a work plan's projects locked in",
     summary:
       "A scenario can lock in the projects of a work plan — committed work it takes as given rather than deciding. Each is paid for in its year, built in its build year with its treatment's effect, and its asset is left alone by the model from the year it was programmed until it is built. Results show programmed work apart from what the annual allocation bought.",
