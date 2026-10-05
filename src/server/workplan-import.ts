@@ -46,7 +46,7 @@ import { buildWorkbookSheets } from "@/server/excel";
 // Reading the file
 // ---------------------------------------------------------------------------
 
-type Column = "asset" | "treatment" | "year" | "cost" | "status" | "funding" | "notes";
+type Column = "asset" | "treatment" | "year" | "programmed" | "build" | "cost" | "status" | "funding" | "notes";
 
 const COLUMNS: Array<{ key: Column; label: string; required: boolean; aliases: string[] }> = [
   { key: "asset", label: "Asset ID", required: true, aliases: ["assetid", "asset", "assetcode", "segment", "segmentid"] },
@@ -56,7 +56,19 @@ const COLUMNS: Array<{ key: Column; label: string; required: boolean; aliases: s
     required: true,
     aliases: ["treatment", "treatmentname", "combination", "treatmentorcombination"],
   },
-  { key: "year", label: "Year", required: true, aliases: ["year", "plannedyear", "fiscalyear"] },
+  { key: "year", label: "Year", required: true, aliases: ["year", "plannedyear", "fiscalyear", "fundedyear"] },
+  {
+    key: "programmed",
+    label: "Programmed Year",
+    required: false,
+    aliases: ["programmedyear", "programmed", "programyear", "decidedyear"],
+  },
+  {
+    key: "build",
+    label: "Build Year",
+    required: false,
+    aliases: ["buildyear", "build", "constructionyear", "builtyear"],
+  },
   { key: "cost", label: "Cost", required: false, aliases: ["cost", "estimatedcost", "estcost", "budget", "amount"] },
   { key: "status", label: "Status", required: false, aliases: ["status"] },
   { key: "funding", label: "Funding", required: false, aliases: ["funding", "fundingsource", "source"] },
@@ -158,7 +170,12 @@ export type ImportRow = {
   name: string;
   isCombination: boolean;
   members: string[];
+  /** The year the money is spent. */
   year: number;
+  /** When the work was decided and when it is built. Equal to `year` unless
+   * the file says otherwise. */
+  programmedYear: number;
+  buildYear: number;
   cost: number;
   costFrom: "file" | "library";
   status: WorkPlanItemStatus;
@@ -301,6 +318,28 @@ async function checkImport(organizationId: string, workPlanId: string, file: Imp
       fail("Year", `${year} is outside this plan, which runs ${plan.startYear}–${plan.endYear}.`);
     }
 
+    // When the work is decided and when it is built, around the year it is
+    // paid for. Blank is that same year — work decided, paid for and built at
+    // once, which is every plan written before lead times.
+    const optionalYear = (key: Column, label: string) => {
+      const text = cell(r, key);
+      if (!text) return null;
+      const value = Number(text);
+      if (!Number.isInteger(value) || value < 1900 || value > 2200) {
+        fail(label, `“${text}” is not a year.`);
+        return null;
+      }
+      return value;
+    };
+    const programmedYear = optionalYear("programmed", "Programmed Year") ?? year;
+    const buildYear = optionalYear("build", "Build Year") ?? year;
+    if (Number.isInteger(year) && programmedYear > year) {
+      fail("Programmed Year", `Programmed in ${programmedYear}, after the ${year} it is paid for — work is decided before its money is spent.`);
+    }
+    if (Number.isInteger(year) && buildYear < year) {
+      fail("Build Year", `Built in ${buildYear}, before the ${year} it is paid for — the money is spent by the time it is built.`);
+    }
+
     const costText = cell(r, "cost").replace(/[$,\s]/g, "");
     const fileCost = costText ? Number(costText) : null;
     if (fileCost != null && (!Number.isFinite(fileCost) || fileCost < 0)) {
@@ -393,6 +432,9 @@ async function checkImport(organizationId: string, workPlanId: string, file: Imp
     if (!option) warnings.push(`No rate prices this on ${asset!.assetCode}, so the file's cost is used and its effect is unknown.`);
 
     const keys = defs.map((d) => `${asset!.id}|${year}|${treatmentId.get(d.name)}`);
+    if (buildYear > plan.endYear) {
+      warnings.push(`Built in ${buildYear}, after this plan ends in ${plan.endYear}.`);
+    }
     const skipped = keys.every((k) => held.has(k))
       ? `Already in this plan for ${year}${defs.length > 1 ? " — every treatment in it" : ""}.`
       : null;
@@ -408,6 +450,8 @@ async function checkImport(organizationId: string, workPlanId: string, file: Imp
       members: defs.map((d) => d.name),
       memberRows: defs.map((d, i) => ({ treatmentId: treatmentId.get(d.name)!, name: d.name, cost: shares[i] ?? 0 })),
       year,
+      programmedYear,
+      buildYear,
       cost: total,
       costFrom: fileCost != null ? "file" : "library",
       status: status!,
@@ -498,6 +542,9 @@ export async function commitWorkPlanImport(organizationId: string, workPlanId: s
         assetId: row.assetId,
         treatmentId: m.treatmentId,
         year: row.year,
+        // Null means "the same as year", the convention every plan reads.
+        programmedYear: row.programmedYear === row.year ? null : row.programmedYear,
+        buildYear: row.buildYear === row.year ? null : row.buildYear,
         estimatedCost: m.cost,
         bundleId,
         bundleName: row.isCombination ? row.name : null,
@@ -524,7 +571,12 @@ export async function commitWorkPlanImport(organizationId: string, workPlanId: s
  * the second, and every name the Treatment column accepts on the third — so
  * nobody has to guess the library's spelling.
  */
-export async function workPlanImportTemplate(organizationId: string) {
+export async function workPlanImportTemplate(
+  organizationId: string,
+  /** Rows to fill the first sheet with — a sample file, say. None for the
+   * template itself. */
+  rows: Array<Partial<Record<Column, string | number>>> = []
+) {
   const [library, combinations] = await Promise.all([
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
@@ -538,10 +590,10 @@ export async function workPlanImportTemplate(organizationId: string) {
       columns: COLUMNS.map((c) => ({
         key: c.key,
         header: c.label,
-        type: c.key === "year" ? "text" : c.key === "cost" ? "money" : "text",
-        width: c.key === "treatment" ? 30 : c.key === "notes" ? 36 : 14,
+        type: c.key === "cost" ? "money" : "text",
+        width: c.key === "treatment" ? 30 : c.key === "notes" ? 36 : c.key === "programmed" || c.key === "build" ? 16 : 14,
       })),
-      rows: [],
+      rows,
     },
     {
       sheetName: "How to fill it in",
@@ -566,7 +618,24 @@ export async function workPlanImportTemplate(organizationId: string) {
           how: "A treatment or a treatment combination, spelled as in the library (see the Treatments sheet). A combination imports as one project. Anything not in the library must be created in Settings first.",
           example: "Dig-once repair",
         },
-        { column: "Year", required: "Yes", how: "The year the work is done. It must fall inside the plan.", example: "2027" },
+        {
+          column: "Year",
+          required: "Yes",
+          how: "The year the money is spent. It must fall inside the plan. Without the two columns below, it is also the year the work is decided and built.",
+          example: "2027",
+        },
+        {
+          column: "Programmed Year",
+          required: "No",
+          how: "The year the work was decided or committed — no later than Year. Blank means the same as Year. A scenario that locks this plan's work leaves the segment alone from this year until the Build Year.",
+          example: "2026",
+        },
+        {
+          column: "Build Year",
+          required: "No",
+          how: "The year the work is built and the segment's condition changes — no earlier than Year. Blank means the same as Year.",
+          example: "2028",
+        },
         {
           column: "Cost",
           required: "No",

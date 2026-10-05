@@ -88,8 +88,8 @@ export function ImportDialog({ workPlanId, startYear, endYear }: { workPlanId: s
           <>
             Bring in work that is already committed, from an Excel or CSV file: one row per project, with the
             segment&apos;s <strong>Asset ID</strong>, the <strong>Treatment</strong> or combination by its library name,
-            and the <strong>Year</strong> ({startYear}–{endYear}). Cost, Status, Funding and Notes are optional. Work
-            already in the plan stays; nothing is written until you import.
+            and the <strong>Year</strong> the money is spent ({startYear}–{endYear}). Programmed Year, Build Year, Cost,
+            Status, Funding and Notes are optional. Work already in the plan stays; nothing is written until you import.
           </>
         }
       >
@@ -220,7 +220,14 @@ export function ImportDialog({ workPlanId, startYear, endYear }: { workPlanId: s
                               </div>
                             ))}
                           </TableCell>
-                          <TableCell className="align-top tabular-nums">{r.year}</TableCell>
+                          <TableCell className="align-top tabular-nums">
+                            {r.year}
+                            {(r.programmedYear !== r.year || r.buildYear !== r.year) && (
+                              <div className="text-[11px] text-muted-foreground">
+                                programmed {r.programmedYear} · built {r.buildYear}
+                              </div>
+                            )}
+                          </TableCell>
                           <TableCell className="align-top text-right tabular-nums">
                             {formatCurrency(r.cost)}
                             <div className="text-[11px] text-muted-foreground">
