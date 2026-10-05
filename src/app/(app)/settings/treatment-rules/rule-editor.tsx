@@ -154,6 +154,28 @@ export function RuleEditor({
 
   const conditions = countConditions(draft.root);
 
+  const unsaved = dirty && (
+    <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
+      <CircleDot className="h-3 w-3" />
+      Unsaved changes
+    </span>
+  );
+  const resultMessage = result && (
+    <p className={`text-sm ${result.ok ? "text-emerald-600" : "text-destructive"}`}>{result.message}</p>
+  );
+  const deleteButton = draft.id && onDelete && (
+    <ConfirmDelete
+      variant="ghost"
+      onConfirm={remove}
+      disabled={busy}
+      ariaLabel="Delete rule"
+      title={`Delete the rule “${saved.name || "Untitled"}”?`}
+      description="If a treatment, combination or price still uses it, deletion will be refused, since removing it would quietly change what those apply to. Otherwise it is deleted. This cannot be undone."
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+    </ConfirmDelete>
+  );
+
   return (
     <div className="space-y-4">
       <Card>
@@ -177,46 +199,18 @@ export function RuleEditor({
               className={`${control} w-full max-w-lg ${changed("description")}`}
             />
           </div>
-          <div className="flex items-center gap-2">
-            {dirty && (
-              <span className="flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-600">
-                <CircleDot className="h-3 w-3" />
-                Unsaved changes
-              </span>
-            )}
-            {draft.id && onDelete && (
-              <ConfirmDelete
-                variant="ghost"
-                onConfirm={remove}
-                disabled={busy}
-                ariaLabel="Delete rule"
-                title={`Delete the rule “${saved.name || "Untitled"}”?`}
-                description="If a treatment, combination or price still uses it, deletion will be refused, since removing it would quietly change what those apply to. Otherwise it is deleted. This cannot be undone."
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </ConfirmDelete>
-            )}
-            {inDialog ? (
-              <>
-                <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={busy}>
-                  {dirty ? "Cancel" : "Close"}
-                </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => save(false)} disabled={busy || !dirty}>
-                  {busy ? "Saving…" : "Save"}
-                </Button>
-                <Button type="button" size="sm" onClick={() => save(true)} disabled={busy || !dirty}>
-                  {busy ? "Saving…" : draft.id ? "Save & close" : addsOnCreate ? "Create & add" : "Create & close"}
-                </Button>
-              </>
-            ) : (
-              <>
-                <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(saved)} disabled={busy} />
-                <Button type="button" size="sm" onClick={() => save()} disabled={busy || !dirty}>
-                  {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
-                </Button>
-              </>
-            )}
-          </div>
+          {/* In a pop-up the buttons are pinned below everything instead, so
+              Save stays in view however long the rule grows. */}
+          {!inDialog && (
+            <div className="flex items-center gap-2">
+              {unsaved}
+              {deleteButton}
+              <CancelOrDiscard dirty={dirty} onDiscard={() => setDraft(saved)} disabled={busy} />
+              <Button type="button" size="sm" onClick={() => save()} disabled={busy || !dirty}>
+                {busy ? "Saving…" : dirty ? "Save changes" : "Saved"}
+              </Button>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="space-y-3 border-t pt-4">
@@ -274,9 +268,7 @@ export function RuleEditor({
             </p>
           )}
 
-          {result && (
-            <p className={`text-sm ${result.ok ? "text-emerald-600" : "text-destructive"}`}>{result.message}</p>
-          )}
+          {result && !inDialog && resultMessage}
         </CardContent>
       </Card>
 
@@ -354,6 +346,24 @@ export function RuleEditor({
             )}
           </CardContent>
         </Card>
+      )}
+
+      {inDialog && (
+        <div data-dialog-actions className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+          {deleteButton}
+          {/* Beside the buttons, so a refused save is seen where Save was pressed. */}
+          <div className="mr-auto min-w-0 flex-1">{result && resultMessage}</div>
+          {unsaved}
+          <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={busy}>
+            {dirty ? "Cancel" : "Close"}
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => save(false)} disabled={busy || !dirty}>
+            {busy ? "Saving…" : "Save"}
+          </Button>
+          <Button type="button" size="sm" onClick={() => save(true)} disabled={busy || !dirty}>
+            {busy ? "Saving…" : draft.id ? "Save & close" : addsOnCreate ? "Create & add" : "Create & close"}
+          </Button>
+        </div>
       )}
     </div>
   );
