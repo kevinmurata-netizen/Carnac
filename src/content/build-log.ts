@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-05",
+    title: "Programmed and build years in the work plan import, and a sample file",
+    summary:
+      "The work plan import takes the year a project was decided and the year it is built, not only the year it is paid for, so multi-year work arrives as it is programmed. Two sample files test the import on the sample network.",
+    changes: [
+      "The template has two optional columns, Programmed Year and Build Year, either side of Year (the year the money is spent). Blank means the same as Year. A project programmed after it is paid for, or built before, is an error.",
+      "Work built after the plan ends imports with a note saying so.",
+      "The import preview shows the programmed and build years where they differ from Year.",
+      "prisma/sample-data/work-plan-import-2026-2030.xlsx: 30 projects over 2026–2030 on the sample network — replacements and rehabilitations decided a year ahead and built the year after they are paid for, dig-once repairs, lining and spot repairs — that import into any 2026–2030 plan. The …-with-errors copy adds five rows each wrong in one way, so nothing imports.",
+    ],
+    note: "No migration. Regenerate the samples with npm run db:sample:work-plan-import.",
+  },
+  {
     date: "2026-10-02",
     title: "Breadcrumbs name the sample facilities",
     summary:
