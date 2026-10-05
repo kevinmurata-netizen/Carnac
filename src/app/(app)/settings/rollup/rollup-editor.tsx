@@ -309,7 +309,7 @@ export function RollupEditor({ settings, canWrite }: { settings: RollupSettings;
                 </Table>
               </div>
             )}
-            <div className="flex justify-end gap-2">
+            <div data-dialog-actions className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={cancel}>
                 Cancel — keep it as it is
               </Button>
@@ -485,7 +485,7 @@ function StrategyForm({
           {missing.length === 1 ? `${missing[0]} is required.` : `${missing.join(" and ")} are required.`}
         </p>
       )}
-      <div className="flex justify-end gap-2">
+      <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>

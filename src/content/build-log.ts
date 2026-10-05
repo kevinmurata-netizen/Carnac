@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-05",
+    title: "Resizable pop-up editors, with Save always in view",
+    summary:
+      "Pop-up editors (importing a work plan, editing a component, an effect, a rule and the rest) can be made bigger or smaller by dragging any corner. Their Save or Import buttons stay pinned to the bottom while the rest scrolls.",
+    changes: [
+      "Drag any corner of a pop-up editor to resize it. It stays centred, can grow up to the size of the window, and opens at its usual size each time.",
+      "The content scrolls inside the pop-up. The row of buttons stays at the bottom, so a long import preview no longer hides the Import button.",
+      "Small confirmation pop-ups, like Delete, are unchanged.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-05",
     title: "Sample import spreadsheet fixed for production",
     summary:
       "The sample work plan import that is meant to have no errors showed five on production. It named a combination production doesn't have, and two segments that aren't active there. Both sample files now use only what production has.",

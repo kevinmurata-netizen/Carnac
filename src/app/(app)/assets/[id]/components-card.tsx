@@ -414,7 +414,7 @@ function ComponentForm({
       )}
 
       {!row && !type && <p className="text-xs text-muted-foreground">Still needed: a component to add.</p>}
-      <div className="flex justify-end gap-2">
+      <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>

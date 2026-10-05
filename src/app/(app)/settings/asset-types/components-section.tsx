@@ -598,7 +598,7 @@ function AddComponentForm({
       </div>
 
       <Missing items={missing} />
-      <div className="flex justify-end gap-2">
+      <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
@@ -724,7 +724,7 @@ function EditComponentForm({
       </div>
 
       <Missing items={missing} />
-      <div className="flex justify-end gap-2">
+      <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>

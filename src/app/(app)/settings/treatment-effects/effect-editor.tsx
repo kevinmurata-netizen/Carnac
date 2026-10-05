@@ -242,7 +242,7 @@ export function EffectEditor({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+      <div data-dialog-actions className="flex flex-wrap items-center justify-end gap-2 border-t pt-4">
         {draft.id && onDelete && (
           <div className="mr-auto">
             <ConfirmDelete

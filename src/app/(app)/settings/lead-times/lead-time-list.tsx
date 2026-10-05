@@ -484,7 +484,7 @@ function LeadTimeEditor({
           {/* What is stopping the save, where the save is — a disabled button
               with the reason elsewhere, or nowhere, is how someone ends up
               hunting for a missing name. */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+          <div data-dialog-actions className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
             <div className="min-w-0 flex-1 text-sm">
               {problems.length > 0 ? (
                 <ul className="space-y-0.5 text-destructive">

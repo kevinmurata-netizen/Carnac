@@ -140,7 +140,7 @@ export function CopyScenarioSetDialog({
               : "Choose a set to copy."}
           </p>
 
-          <div className="flex items-center justify-end gap-2 border-t pt-4">
+          <div data-dialog-actions className="flex items-center justify-end gap-2 border-t pt-4">
             <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
