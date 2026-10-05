@@ -9,6 +9,7 @@ import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weig
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { listLeadTimeSets } from "@/server/lead-times";
 import { listSavedFilters } from "@/server/saved-filters";
+import { lockablePlanChoices } from "@/server/workplans";
 import {
   describeSelection,
   getScenarioOptionCatalogue,
@@ -23,6 +24,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ProgrammedSpendChart } from "@/components/charts/programmed-spend-chart";
+import { Badge } from "@/components/ui/badge";
+import { PROGRAMMED_FUNDING_LABELS } from "@/domain/waterline/locked-projects";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { formatCurrency, formatDateTime, formatDuration, formatNumber, toPercent } from "@/lib/format";
@@ -33,6 +37,7 @@ import type {
   FundingPlanChoice,
   LeadTimeChoice,
   FilterChoice,
+  LockedPlanChoice,
   ScenarioSetChoice,
 } from "../scenario-fields";
 import { ScenarioEditForm } from "../scenario-form";
@@ -63,6 +68,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     fundingPlans,
     leadTimeSets,
     savedFilters,
+    lockedPlanChoices,
     catalogue,
     estimate,
     sets,
@@ -75,6 +81,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
     listSavedFilters(organizationId),
+    lockablePlanChoices(),
     getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
     listScenarioSets(organizationId),
@@ -147,6 +154,8 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
     leadTimeSetId: scenario.leadTimeSetId ?? null,
     savedFilterId: scenario.savedFilterId ?? null,
+    lockedWorkPlanId: scenario.lockedWorkPlanId ?? null,
+    programmedFunding: a.programmedFunding,
     fundingMode: a.fundingMode,
     targetInYears: a.targetInYears,
     scenarioSetId: scenario.scenarioSet?.id ?? null,
@@ -166,6 +175,10 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     combinations: catalogue.selectedCombinations,
   };
   const years = scenario.years;
+  // Whether the stored run spent anything on locked projects — what decides
+  // whether spending is shown in two parts.
+  const programmedTotal = years.reduce((sum, y) => sum + y.programmedSpend, 0);
+  const hasProgrammed = programmedTotal > 0;
   const first = years[0];
   const last = years[years.length - 1];
   const band = last ? getConditionBand(last.avgCondition, conditionBands) : null;
@@ -326,7 +339,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -357,10 +370,46 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                 years.reduce((s, y) => s + y.spend, 0),
                 { compact: true }
               )}
-              sublabel={`Over ${a.analysisPeriodYears} years`}
+              sublabel={
+                hasProgrammed
+                  ? `${formatCurrency(programmedTotal, { compact: true })} programmed · ${formatCurrency(
+                      years.reduce((s, y) => s + y.allocationSpend, 0),
+                      { compact: true }
+                    )} from the allocation`
+                  : `Over ${a.analysisPeriodYears} years`
+              }
               icon={Wallet}
             />
           </div>
+
+          {/* What the run took as given rather than decided, and whether that
+              is still what the scenario says — a plan locked since the last
+              run is not in these results until it runs again. */}
+          {(scenario.lockedRun || scenario.lockedWorkPlanId) && (
+            <div className="mt-4 rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground">
+              {scenario.lockedRun ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {formatNumber(scenario.lockedRun.count)} project{scenario.lockedRun.count === 1 ? "" : "s"} locked
+                    from {scenario.lockedWorkPlanName ?? "a work plan"}
+                  </span>{" "}
+                  — {formatCurrency(scenario.lockedRun.programmedSpend, { compact: true })} of programmed work inside the
+                  run, {PROGRAMMED_FUNDING_LABELS[a.programmedFunding].toLowerCase()}. Each was built as programmed, and
+                  the run did no other work on its asset from the year it was programmed until it was built.
+                  {scenario.lockedRun.outsideRun > 0 &&
+                    ` ${formatNumber(scenario.lockedRun.outsideRun)} of the plan's projects are on assets this scenario does not cover, and were left out.`}
+                  {!scenario.lockedWorkPlanId && " The scenario no longer locks a plan; run it again to see it without them."}
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-foreground">
+                    Locks {scenario.lockedWorkPlanName ?? "a work plan"}
+                  </span>{" "}
+                  — these results are from before it did. Run the scenario again to see them with its projects locked.
+                </>
+              )}
+            </div>
+          )}
 
           {/* Only a run with delivery lead times can have work in flight, and
               only such a run should have to explain itself: money spent whose
@@ -387,7 +436,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               answer: what each year costs. */}
           {scenario.target && <TargetSpendCard scenario={scenario} />}
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -420,18 +469,38 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                   <CardTitle>Spending vs Budget</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <SimpleLineChart
-                    data={years.map((y) => ({ year: y.year, budget: y.budget, spend: y.spend }))}
-                    xKey="year"
-                    series={[
-                      { key: "budget", label: "Available budget", color: "var(--color-chart-3)", dashed: true },
-                      { key: "spend", label: "Actual spend", color: "var(--color-chart-1)" },
-                    ]}
-                  />
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    Spend tracks budget while there is qualifying work. Once the renewable backlog clears, spending
-                    falls below budget because the constraint becomes treatment applicability, not money.
-                  </p>
+                  {hasProgrammed ? (
+                    <>
+                      <ProgrammedSpendChart
+                        data={years.map((y) => ({
+                          year: y.year,
+                          programmed: y.programmedSpend,
+                          allocation: y.allocationSpend,
+                          budget: y.budget,
+                        }))}
+                      />
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {a.programmedFunding === "additional"
+                          ? "Programmed work is funded on top of the annual budget, so a year's spending can rise above the budget line by the programmed amount; the run spends its allocation as usual."
+                          : "Programmed work is paid first out of each year's budget, and the run spends what is left — so the two parts together stay under the budget line unless a year's programme alone exceeds it."}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <SimpleLineChart
+                        data={years.map((y) => ({ year: y.year, budget: y.budget, spend: y.spend }))}
+                        xKey="year"
+                        series={[
+                          { key: "budget", label: "Available budget", color: "var(--color-chart-3)", dashed: true },
+                          { key: "spend", label: "Actual spend", color: "var(--color-chart-1)" },
+                        ]}
+                      />
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Spend tracks budget while there is qualifying work. Once the renewable backlog clears, spending
+                        falls below budget because the constraint becomes treatment applicability, not money.
+                      </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -519,6 +588,15 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                               <TableCell className="text-xs">{p.serviceArea ?? "—"}</TableCell>
                               <TableCell>
                                 {p.treatment}
+                                {p.locked && (
+                                  <Badge
+                                    variant="outline"
+                                    className="ml-1.5 align-middle text-[10px]"
+                                    title="Locked in from a work plan: built as programmed, not chosen by the run"
+                                  >
+                                    Programmed
+                                  </Badge>
+                                )}
                                 {p.bundleName && (
                                   <div
                                     className="text-xs text-muted-foreground"
@@ -584,7 +662,9 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                     <TableRow>
                       <TableHead>Year</TableHead>
                       <TableHead>Budget</TableHead>
-                      <TableHead>Spend</TableHead>
+                      {hasProgrammed && <TableHead>Programmed</TableHead>}
+                      {hasProgrammed && <TableHead>Allocation Spend</TableHead>}
+                      <TableHead>{hasProgrammed ? "Total Spend" : "Spend"}</TableHead>
                       <TableHead>Segments Treated</TableHead>
                       <TableHead>Avg Condition</TableHead>
                       <TableHead>Avg Risk</TableHead>
@@ -598,6 +678,8 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                       <TableRow key={y.year}>
                         <TableCell className="font-medium">{y.year}</TableCell>
                         <TableCell>{formatCurrency(y.budget, { compact: true })}</TableCell>
+                        {hasProgrammed && <TableCell>{formatCurrency(y.programmedSpend, { compact: true })}</TableCell>}
+                        {hasProgrammed && <TableCell>{formatCurrency(y.allocationSpend, { compact: true })}</TableCell>}
                         <TableCell>{formatCurrency(y.spend, { compact: true })}</TableCell>
                         <TableCell>{formatNumber(y.treatedCount)}</TableCell>
                         <TableCell style={{ color: getConditionBand(y.avgCondition, conditionBands).color }}>{y.avgCondition}</TableCell>
@@ -666,6 +748,7 @@ function AssumptionsCard({
   fundingPlanChoices,
   leadTimeChoices,
   filterChoices,
+  lockedPlanChoices,
   scenarioSetChoices,
   catalogue,
 }: {
@@ -677,6 +760,7 @@ function AssumptionsCard({
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
   filterChoices: FilterChoice[];
+  lockedPlanChoices: LockedPlanChoice[];
   scenarioSetChoices: ScenarioSetChoice[];
   catalogue: ScenarioOptionCatalogue;
 }) {
@@ -702,6 +786,7 @@ function AssumptionsCard({
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
             filterChoices={filterChoices}
+            lockedPlanChoices={lockedPlanChoices}
             scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}

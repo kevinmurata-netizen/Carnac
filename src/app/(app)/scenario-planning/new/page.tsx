@@ -9,6 +9,7 @@ import { getScenarioOptionCatalogue } from "@/server/scenario-options";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { listLeadTimeSets } from "@/server/lead-times";
 import { listSavedFilters } from "@/server/saved-filters";
+import { lockablePlanChoices } from "@/server/workplans";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
@@ -48,6 +49,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     fundingPlans,
     leadTimeSets,
     savedFilters,
+    lockedPlanChoices,
     catalogue,
     estimate,
   ] = await Promise.all([
@@ -58,6 +60,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
     listSavedFilters(organizationId),
+    lockablePlanChoices(),
     getScenarioOptionCatalogue(organizationId),
     // The set's period, since that is what the run will cover. The first run
     // then measures itself and every later estimate comes from that.
@@ -127,6 +130,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
             filterChoices={filterChoices}
+            lockedPlanChoices={lockedPlanChoices}
             scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
             combinationChoices={catalogue.combinations}
@@ -140,6 +144,9 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
               leadTimeSetId: leadTimeSets.find((l) => l.isDefault)?.id ?? null,
               // The whole network unless someone narrows it.
               savedFilterId: null,
+              // Nothing locked unless someone names a plan.
+              lockedWorkPlanId: null,
+              programmedFunding: DEFAULT_ASSUMPTIONS.programmedFunding,
               fundingMode: "budget",
               targetInYears: Math.min(DEFAULT_ASSUMPTIONS.targetInYears, set.planningPeriodYears),
               scenarioSetId: set.id,

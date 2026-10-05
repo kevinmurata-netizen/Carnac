@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-05",
+    title: "Run a scenario with a work plan's projects locked in",
+    summary:
+      "A scenario can lock in the projects of a work plan — committed work it takes as given rather than deciding. Each is paid for in its year, built in its build year with its treatment's effect, and its asset is left alone by the model from the year it was programmed until it is built. Results show programmed work apart from what the annual allocation bought.",
+    changes: [
+      "The scenario form has Lock projects from, choosing any editable work plan (not a scenario run's own programme), and Programmed work is: paid from the annual budget, so the run spends what is left, or funded on top, so the run keeps the whole budget.",
+      "Every project in the plan is locked except Cancelled and Deferred ones. A combination locks as one project. Projects on assets outside the scenario's filter are left out and counted.",
+      "Both engines honour the lock — the usual one and the one with delivery lead times — and so does a target-constrained run, which then solves for the allocation with the programme fixed.",
+      "The Spending vs Budget chart stacks Programmed work under Annual allocation spending against the budget line; the yearly table and Total Spend split the two; a note says what was locked and how it was funded.",
+      "Locked projects appear in the run's funded projects marked Programmed, with their status from the plan.",
+      "A work plan a scenario locks cannot be deleted until the scenario stops locking it.",
+    ],
+    note: "One migration: 20261005120000_scenario_locked_work_plan — a nullable lockedWorkPlanId on scenarios. A scenario that locks nothing runs exactly as before.",
+  },
+  {
+    date: "2026-10-05",
     title: "Programmed and build years in the work plan import, and a sample file",
     summary:
       "The work plan import takes the year a project was decided and the year it is built, not only the year it is paid for, so multi-year work arrives as it is programmed. Two sample files test the import on the sample network.",

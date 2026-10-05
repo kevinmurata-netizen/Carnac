@@ -39,6 +39,8 @@ const schema = z.object({
   scenarioSetId: z.string().optional(),
   fundingMode: z.string().optional(),
   targetInYears: z.coerce.number().int().min(1).max(50).optional(),
+  lockedWorkPlanId: z.string().optional(),
+  programmedFunding: z.string().optional(),
 });
 
 /**
@@ -68,6 +70,7 @@ function parseForm(formData: FormData): {
   leadTimeSetId: string | null;
   savedFilterId: string | null;
   scenarioSetId: string | null;
+  lockedWorkPlanId: string | null;
 } {
   const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
@@ -110,6 +113,8 @@ function parseForm(formData: FormData): {
     // Empty means "not in a set". The server checks the set belongs to this
     // organization before joining it.
     scenarioSetId: d.scenarioSetId?.trim() || null,
+    // Empty means nothing locked: the run decides every project.
+    lockedWorkPlanId: d.lockedWorkPlanId?.trim() || null,
     assumptions: {
       annualBudget: d.annualBudget,
       fundingGrowth: d.fundingGrowthPct / 100,
@@ -123,6 +128,7 @@ function parseForm(formData: FormData): {
       // Held inside the run: a target in year 25 of a 20-year run could never
       // be answered.
       targetInYears: Math.max(1, Math.min(d.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears, d.analysisPeriodYears)),
+      programmedFunding: d.programmedFunding === "additional" ? "additional" : "within",
     },
   };
 }
