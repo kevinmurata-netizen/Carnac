@@ -189,6 +189,8 @@ export type ImportRow = {
 
 export type WorkPlanImportPreview = {
   fileName: string;
+  /** The plan the rows go into — for a new one, the period it will have. */
+  plan: { name: string; startYear: number; endYear: number; isNew: boolean };
   rows: ImportRow[];
   errors: ImportProblem[];
   missingColumns: string[];
@@ -212,24 +214,65 @@ type CheckedRow = ImportRow & {
   refusedBy: string | null;
 };
 
-async function planForImport(workPlanId: string) {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id: workPlanId },
-    select: { id: true, name: true, startYear: true, endYear: true, isScenarioMirror: true },
-  });
-  if (!plan) throw new Error("That work plan no longer exists");
-  if (plan.isScenarioMirror) {
-    throw new Error(
-      `“${plan.name}” is a scenario run's own record and is rebuilt every time that scenario runs. Make a plan from the scenario first, then import into that.`
-    );
+/**
+ * Where the work goes: a plan that exists, or a new, empty one the import
+ * creates — a programme that starts from the spreadsheet, with nothing the
+ * model chose beside it.
+ */
+export type ImportTarget =
+  | { workPlanId: string }
+  | {
+      newPlan: {
+        name: string;
+        /** Null takes the period from the spreadsheet's own years. */
+        startYear: number | null;
+        endYear: number | null;
+        /** What the plan is measured against, year by year. Optional. */
+        annualBudget: number | null;
+      };
+    };
+
+type TargetPlan = { id: string | null; name: string; startYear: number; endYear: number };
+
+async function planForImport(target: ImportTarget, yearsInFile: number[]): Promise<TargetPlan> {
+  if ("workPlanId" in target) {
+    const plan = await prisma.workPlan.findUnique({
+      where: { id: target.workPlanId },
+      select: { id: true, name: true, startYear: true, endYear: true, isScenarioMirror: true },
+    });
+    if (!plan) throw new Error("That work plan no longer exists");
+    if (plan.isScenarioMirror) {
+      throw new Error(
+        `“${plan.name}” is a scenario run's own record and is rebuilt every time that scenario runs. Make a plan from the scenario first, then import into that.`
+      );
+    }
+    return plan;
   }
-  return plan;
+
+  const { name, startYear, endYear } = target.newPlan;
+  if (!name.trim()) throw new Error("Give the new plan a name.");
+  // A year left blank comes from the spreadsheet: its earliest and latest
+  // years, so every row fits the plan it creates.
+  const start = startYear ?? (yearsInFile.length > 0 ? Math.min(...yearsInFile) : null);
+  const end = endYear ?? (yearsInFile.length > 0 ? Math.max(...yearsInFile) : null);
+  if (start == null || end == null) {
+    throw new Error("The spreadsheet has no years to take the plan's period from. Enter a start and end year.");
+  }
+  if (start > end) throw new Error(`The plan would start in ${start} and end in ${end}. Check the period.`);
+  if (end - start > 49) throw new Error(`${start}–${end} is over 50 years. Check the period.`);
+  return { id: null, name: name.trim(), startYear: start, endYear: end };
 }
 
-async function checkImport(organizationId: string, workPlanId: string, file: ImportFile) {
-  const plan = await planForImport(workPlanId);
+async function checkImport(organizationId: string, target: ImportTarget, file: ImportFile) {
   const sheet = await readSheet(file);
   const header = findHeader(sheet.rows);
+  const dataRows = header
+    ? sheet.rows.filter((r) => r.row > header.headerRow && r.cells.some((c) => c.trim() !== ""))
+    : [];
+  const cell = (r: { cells: string[] }, key: Column) =>
+    header && header.at[key] >= 0 ? (r.cells[header.at[key]] ?? "").trim() : "";
+  const yearsInFile = dataRows.map((r) => Number(cell(r, "year"))).filter((y) => Number.isInteger(y) && y >= 1900 && y <= 2200);
+  const plan = await planForImport(target, yearsInFile);
 
   const empty = { plan, rows: [] as CheckedRow[], errors: [] as ImportProblem[], unknownColumns: [] as string[] };
   if (!header) {
@@ -248,16 +291,16 @@ async function checkImport(organizationId: string, workPlanId: string, file: Imp
       where: { assetType: { code: "WATERLINE", organizationId } },
       select: { id: true, name: true },
     }),
-    prisma.workPlanItem.findMany({ where: { workPlanId }, select: { assetId: true, year: true, treatmentId: true } }),
+    // A new plan holds nothing yet, so nothing in it can be repeated.
+    plan.id
+      ? prisma.workPlanItem.findMany({ where: { workPlanId: plan.id }, select: { assetId: true, year: true, treatmentId: true } })
+      : Promise.resolve([] as Array<{ assetId: string; year: number; treatmentId: string }>),
   ]);
   const treatmentId = new Map(treatments.map((t) => [t.name, t.id]));
   const byName = new Map<string, { def: TreatmentDef } | { combo: CombinationDef }>();
   // Combinations first, so a treatment of the same name wins.
   for (const combo of combinations) byName.set(normalize(combo.name), { combo });
   for (const def of library) byName.set(normalize(def.name), { def });
-
-  const dataRows = sheet.rows.filter((r) => r.row > header.headerRow && r.cells.some((c) => c.trim() !== ""));
-  const cell = (r: { cells: string[] }, key: Column) => (header.at[key] >= 0 ? (r.cells[header.at[key]] ?? "").trim() : "");
 
   // Every segment the file names, looked up once.
   const codes = [...new Set(dataRows.map((r) => cell(r, "asset").toUpperCase()).filter(Boolean))];
@@ -487,6 +530,12 @@ function toPreview(fileName: string, checked: Awaited<ReturnType<typeof checkImp
   const importing = rows.filter((r) => !r.skipped);
   return {
     fileName,
+    plan: {
+      name: checked.plan.name,
+      startYear: checked.plan.startYear,
+      endYear: checked.plan.endYear,
+      isNew: checked.plan.id == null,
+    },
     rows,
     errors: checked.errors,
     missingColumns: checked.missingColumns,
@@ -498,8 +547,8 @@ function toPreview(fileName: string, checked: Awaited<ReturnType<typeof checkImp
 }
 
 /** What importing this file would do, with nothing written. */
-export async function previewWorkPlanImport(organizationId: string, workPlanId: string, file: ImportFile) {
-  return toPreview(file.name, await checkImport(organizationId, workPlanId, file));
+export async function previewWorkPlanImport(organizationId: string, target: ImportTarget, file: ImportFile) {
+  return toPreview(file.name, await checkImport(organizationId, target, file));
 }
 
 /**
@@ -507,14 +556,18 @@ export async function previewWorkPlanImport(organizationId: string, workPlanId: 
  * preview, since the library or the plan may have changed in between; and
  * refused outright while any row has an error.
  */
-export async function commitWorkPlanImport(organizationId: string, workPlanId: string, file: ImportFile) {
-  const checked = await checkImport(organizationId, workPlanId, file);
+export async function commitWorkPlanImport(
+  organizationId: string,
+  target: ImportTarget,
+  file: ImportFile
+): Promise<{ imported: number; preview: WorkPlanImportPreview; workPlanId: string | null }> {
+  const checked = await checkImport(organizationId, target, file);
   const preview = toPreview(file.name, checked);
-  if (preview.missingColumns.length > 0 || preview.errors.length > 0) {
-    return { imported: 0, preview };
+  if (preview.missingColumns.length > 0 || preview.errors.length > 0 || preview.toImport === 0) {
+    return { imported: 0, preview, workPlanId: checked.plan.id };
   }
 
-  const data = checked.rows
+  const rowsFor = (workPlanId: string) => checked.rows
     .filter((row) => !row.skipped)
     .flatMap((row) => {
       const { effect } = row;
@@ -562,8 +615,29 @@ export async function commitWorkPlanImport(organizationId: string, workPlanId: s
       }));
     });
 
-  await prisma.workPlanItem.createMany({ data });
-  return { imported: preview.toImport, preview };
+  if (checked.plan.id) {
+    await prisma.workPlanItem.createMany({ data: rowsFor(checked.plan.id) });
+    return { imported: preview.toImport, preview, workPlanId: checked.plan.id };
+  }
+
+  // A new plan and its rows together, so a failure leaves neither — never an
+  // empty plan standing in for an import that did not happen.
+  const newPlan = "newPlan" in target ? target.newPlan : null;
+  const workPlanId = await prisma.$transaction(async (tx) => {
+    const plan = await tx.workPlan.create({
+      data: {
+        name: checked.plan.name,
+        startYear: checked.plan.startYear,
+        endYear: checked.plan.endYear,
+        isScenarioMirror: false,
+        annualBudget: newPlan?.annualBudget ?? null,
+      },
+      select: { id: true },
+    });
+    await tx.workPlanItem.createMany({ data: rowsFor(plan.id) });
+    return plan.id;
+  });
+  return { imported: preview.toImport, preview, workPlanId };
 }
 
 /**

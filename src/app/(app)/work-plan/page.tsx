@@ -15,6 +15,8 @@ import { generateWorkPlanAction, createFromScenarioAction } from "./actions";
 import { SubmitButton } from "@/components/ui/pending-button";
 import { listScenarios } from "@/server/scenarios";
 import { getPageName } from "@/server/navigation";
+import { ImportDialog } from "./[id]/import-dialog";
+import { ExportButton } from "@/components/layout/export-button";
 
 const inputClass =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -63,7 +65,7 @@ export default async function WorkPlanPage() {
               {plans.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                    No work plans yet — generate one below.
+                    No work plans yet — start one below.
                   </TableCell>
                 </TableRow>
               )}
@@ -96,6 +98,27 @@ export default async function WorkPlanPage() {
           </Table>
         </CardContent>
       </Card>
+
+      {canEdit && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>Plan from a spreadsheet</CardTitle>
+            <p className="text-sm font-normal text-muted-foreground">
+              A plan that starts empty and holds only the projects in your file — a capital programme as it was
+              decided, with nothing the model chose beside it. Every row is checked first, and the plan is created
+              only when you import.
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <ImportDialog newPlan />
+            <ExportButton
+              href="/work-plan/import-template"
+              label="Download the template"
+              title="An empty sheet with the columns, how to fill them in, and every treatment and combination name"
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {canEdit && (
         <Card className="mt-4">
