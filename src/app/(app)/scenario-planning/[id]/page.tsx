@@ -316,9 +316,24 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               {scenario.inFlightCount != null ? " committed" : ""} reaches WCI {scenario.target.value} by{" "}
               {years[scenario.target.inYears - 1]?.year ?? "the target year"} — year {scenario.target.inYears} of the
               run.{" "}
-              {scenario.inFlightCount != null
-                ? "With delivery lead times the run keeps to that amount afterwards: what holds the target is decided years before the shortfall it answers would show."
-                : "After that it spends only what deterioration takes back, so the target is held rather than overshot."}
+              {scenario.assumptions.afterTarget === "none"
+                ? "Nothing new is decided after that, and the network deteriorates from there."
+                : scenario.inFlightCount != null
+                  ? "After that it buys only what keeps the network at the target in the years that work is built, paying for it as the lead times say — held, not overshot."
+                  : "After that it spends only what deterioration takes back, so the target is held rather than overshot."}
+            </>
+          ) : scenario.target.aimedFor != null ? (
+            <>
+              WCI {scenario.target.value} cannot be reached by year {scenario.target.inYears}: with these lead times,
+              work decided in time would not be built in time. The earliest it can be reached is year{" "}
+              {scenario.target.aimedFor} — {years[scenario.target.aimedFor - 1]?.year ?? ""} — so the run aims for that,
+              with{" "}
+              <span className="font-medium">
+                {formatCurrency(scenario.target.annualBudget, { compact: true })} a year committed
+              </span>
+              {scenario.assumptions.afterTarget === "none"
+                ? ", and decides nothing new after it."
+                : ", and holds the target from then on."}
             </>
           ) : (
             <>
@@ -850,17 +865,25 @@ function AssumptionsCard({
  * The number a target run exists to produce, so it gets its own card near the
  * top instead of being one column in a twenty-row table below the settings.
  * The years split in two: the ramp, bought against the solved flat amount,
- * and what comes after — holding the target on the same-year engine, or the
- * same amount kept to with delivery lead times, which cannot ease off.
+ * and what comes after — holding the target, or nothing at all where the
+ * scenario stops there.
+ *
+ * With delivery lead times a target year that cannot be reached is usually
+ * one the work cannot be built by, and the run aims for the earliest year it
+ * can be reached instead; the split is then at that year.
  */
 function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
   const target = scenario.target!;
   const years = scenario.years;
   const delivery = scenario.inFlightCount != null;
+  const stops = scenario.assumptions.afterTarget === "none";
   const targetYear = years[target.inYears - 1]?.year ?? null;
+  /** Where the ramp ends: the year asked for, or the one aimed for instead. */
+  const aim = target.aimedFor ?? target.inYears;
+  const aimYear = years[aim - 1]?.year ?? null;
 
-  const ramp = years.slice(0, target.inYears);
-  const after = years.slice(target.inYears);
+  const ramp = years.slice(0, aim);
+  const after = years.slice(aim);
   const toReach = ramp.reduce((sum, y) => sum + y.spend, 0);
   const whole = years.reduce((sum, y) => sum + y.spend, 0);
   const holdAverage = after.length > 0 ? after.reduce((sum, y) => sum + y.spend, 0) / after.length : null;
@@ -868,7 +891,7 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
   const holdHigh = after.length > 0 ? Math.max(...after.map((y) => y.spend)) : null;
 
   const phaseOf = (index: number) =>
-    index < target.inYears - 1 ? "Ramp" : index === target.inYears - 1 ? "Target year" : delivery ? "Kept to" : "Hold";
+    index < aim - 1 ? "Ramp" : index === aim - 1 ? "Target year" : stops ? "No new work" : "Hold";
 
   const money = (n: number) => formatCurrency(n, { compact: true });
 
@@ -896,7 +919,17 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          {!target.reachable ? (
+          {target.aimedFor != null ? (
+            <>
+              WCI {target.value} cannot be reached by {targetYear ?? `year ${target.inYears}`}: work decided in time would
+              not be built in time. The earliest it can be reached is {aimYear}, so the run aims for that —{" "}
+              <span className="font-medium text-foreground">{money(target.annualBudget)} committed a year</span> gets
+              there
+              {stops
+                ? ", and nothing new is decided after it."
+                : ", then the run holds it, buying only what keeps the network at the target in the years that work is built, and paying for it in the years the lead times say."}
+            </>
+          ) : !target.reachable ? (
             <>
               The target is not reachable by {targetYear ?? `year ${target.inYears}`}, so these are the most the
               treatment rules allowed to be spent each year, not a price for the target.
@@ -904,8 +937,11 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
           ) : delivery ? (
             <>
               <span className="font-medium text-foreground">{money(target.annualBudget)} committed a year</span>{" "}
-              reaches {target.value} by {targetYear}. With delivery lead times the run keeps to that amount after the
-              target year, and money actually leaves the budget as work is paid for — which is what each bar shows.
+              reaches {target.value} by {targetYear}.{" "}
+              {stops
+                ? "Nothing new is decided after it."
+                : "After that the run holds it, buying only what keeps the network at the target in the years that work is built."}{" "}
+              Money leaves the budget as work is paid for, which is what each bar shows.
             </>
           ) : partYears.length === 0 ? (
             <>
@@ -948,15 +984,15 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Figure
             label={
-              target.reachable
-                ? `To reach it (${years[0]?.year}–${targetYear ?? ""})`
+              target.reachable || target.aimedFor != null
+                ? `To reach it (${years[0]?.year}–${aimYear ?? ""})`
                 : `Up to the target year (${years[0]?.year}–${targetYear ?? ""})`
             }
             value={money(toReach)}
             note={`${ramp.length} year${ramp.length === 1 ? "" : "s"}`}
           />
           <Figure
-            label={delivery ? "A year after, on average" : "A year to hold it, on average"}
+            label={stops ? "A year after, on average" : "A year to hold it, on average"}
             value={holdAverage != null ? money(holdAverage) : "—"}
             note={after.length > 0 ? `${after.length} years` : "The run ends at the target year"}
           />
@@ -968,7 +1004,7 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
             data={years.map((y, i) => ({
               year: y.year,
               spend: y.spend,
-              fill: i < target.inYears ? "var(--color-chart-1)" : "var(--color-chart-3)",
+              fill: i < aim ? "var(--color-chart-1)" : "var(--color-chart-3)",
             }))}
             xKey="year"
             yKey="spend"
@@ -982,7 +1018,7 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "var(--color-chart-3)" }} />
-              {delivery ? "After the target year" : "Holding the target"}
+              {stops ? "After the target year" : "Holding the target"}
             </span>
           </div>
         </div>
@@ -1000,7 +1036,7 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
             </TableHeader>
             <TableBody>
               {years.map((y, i) => (
-                <TableRow key={y.year} className={i === target.inYears - 1 ? "bg-muted/50" : undefined}>
+                <TableRow key={y.year} className={i === aim - 1 ? "bg-muted/50" : undefined}>
                   <TableCell className="font-medium tabular-nums">{y.year}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{phaseOf(i)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatCurrency(y.spend)}</TableCell>

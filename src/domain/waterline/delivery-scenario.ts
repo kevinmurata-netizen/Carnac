@@ -50,15 +50,18 @@ import {
   clearsEffectivenessFloor,
   doesEnough,
   enumerateOptions,
+  projectedConditionOf,
   splitOptionCost,
   type AssetTreatmentContext,
+  type TreatmentDef,
   type TreatmentOption,
 } from "./treatment";
 import { cashPlan, leadTimeFor, type LeadTime, type LeadTimes } from "./lead-time";
-import { buildLocked, lockSchedule, lockedRecord, type LockSchedule } from "./locked-projects";
+import { buildLocked, lockSchedule, lockedRecord, type LockedProject, type LockSchedule } from "./locked-projects";
 import {
   NOT_RANKED,
   belowTargetBar,
+  goalOf,
   pofFromCondition,
   ruleBar,
   simAssetContext,
@@ -227,8 +230,23 @@ function ledger(
     totalSpent: () => [...spent.values()].reduce((sum, v) => sum + v, 0),
   };
 
+  /**
+   * For a year that holds a target rather than spending a budget: money is
+   * recorded in the years it falls, but no year's budget or category share
+   * limits it — the target does. Money past the end of the run is still
+   * refused, since nothing there can be checked.
+   */
+  const unlimited: Purse<Candidate> = {
+    unfunded: () => null,
+    check: (next) => (next.cash.some((i) => i.year > endYear) ? NOT_SELECTED.beyondHorizon : null),
+    commit: purse.commit,
+    byCategory: purse.byCategory,
+    totalSpent: purse.totalSpent,
+  };
+
   return {
     purse,
+    unlimited,
     /** Money already spoken for before the pass starts. */
     reserve: (c: Candidate | { cash: Candidate["cash"]; option: Candidate["option"] }) =>
       move(c as Candidate, 1),
@@ -359,6 +377,16 @@ function walk(
     assumptions.fundingMode === "target" &&
     assumptions.afterTarget === "none" &&
     year - startYear + 1 > assumptions.targetInYears;
+
+  // In a target run the target is held where work lands, not where it is
+  // decided: each year looks as far ahead as its slowest work takes to build,
+  // and buys only what keeps those years at the target.
+  const targeted = assumptions.fundingMode === "target";
+  const targetYear = startYear + assumptions.targetInYears - 1;
+  const lookAhead = Math.max(
+    0,
+    ...[...Object.values(leadTimes.byCategory), ...Object.values(leadTimes.byTreatment)].map((l) => l.buildOffset)
+  );
 
   // Projects locked in from a work plan. Paid first out of the budget, their
   // money is reserved before anything is decided, so the run is offered only
@@ -496,8 +524,31 @@ function walk(
     //    money would come out of — unless this is past the target year of a
     //    target run set to stop there. Then nothing new is decided, and work
     //    already decided stays on its way to being built.
+    //
+    //    In a target run, every year from the target year on is held at the
+    //    target: work is bought, best first, only while some year it would
+    //    improve is still projected below it. Before the target year that
+    //    sits on top of the flat amount being solved for, so a target out of
+    //    reach on time is not overshot once the work lands; after it, the
+    //    target alone decides, and the money falls where the lead times put it.
     const resting = afterTargetIn(year);
-    const outcome = selectAgainst(candidates, resting ? restingPurse<Candidate>() : money.purse, heldCandidates);
+    let purse: Purse<Candidate> = money.purse;
+    if (resting) {
+      purse = restingPurse<Candidate>();
+    } else if (targeted) {
+      const hold = holdPurse({
+        state,
+        year,
+        first: Math.max(year, targetYear),
+        last: Math.min(endYear, year + lookAhead),
+        goal: goalOf(assumptions),
+        commitments,
+        locked: locks.projects,
+        library,
+      });
+      if (hold) purse = both(hold, year > targetYear ? money.unlimited : money.purse);
+    }
+    const outcome = selectAgainst(candidates, purse, heldCandidates);
 
     if (trace) {
       for (const candidate of candidates) {
@@ -581,10 +632,10 @@ function walk(
 
     years.push({
       year,
-      // A year that buys nothing new has no budget of its own; what it shows is
-      // what earlier decisions paid in it, as the same-year engine reports a
-      // year past the target.
-      budget: Math.round(resting ? spend : budgetFor(year)),
+      // Past the target year there is no budget of its own: the target decides
+      // what is bought, so the year shows what it paid, as the same-year
+      // engine reports a year past the target.
+      budget: Math.round(targeted && year > targetYear ? spend : budgetFor(year)),
       spend: Math.round(spend),
       programmedSpend: Math.round(programmedMoney),
       allocationSpend: Math.round(allocationSpend),
@@ -887,6 +938,130 @@ function rankCandidates(args: {
   return {
     candidates: fundable.sort((a, b) => (b.priority ?? -1) - (a.priority ?? -1)),
     heldCandidates,
+  };
+}
+
+/**
+ * What holds a target where work lands.
+ *
+ * Every year from `first` to `last` — the target year or this one, whichever
+ * is later, to the year this year's slowest work would be built — is projected
+ * as it will end: each segment carrying whatever it already has on the way
+ * (decided earlier, or locked in from a work plan), and deteriorating
+ * otherwise. A step up is then allowed only while some year it improves is
+ * still projected below the target, and only if it carries no year it lands
+ * in more than HOLD_MARGIN above it. So work is bought, best first, just until
+ * the network is held at the target in the years it can still reach — just
+ * above it, not well over.
+ *
+ * Measured at year end, like the condition the run reports: a year of
+ * deterioration falls on everything, work built that year included.
+ *
+ * Null when there is no year to hold — a year before the target whose work
+ * all lands before it, which only the flat amount governs.
+ */
+/** How far above the target a held year may be carried, in condition points:
+ * enough room for one more project to land, not enough to drift. */
+const HOLD_MARGIN = 1;
+
+function holdPurse(args: {
+  state: SimAsset[];
+  year: number;
+  first: number;
+  last: number;
+  goal: number;
+  commitments: Map<string, Commitment>;
+  locked: LockedProject[];
+  library: TreatmentDef[];
+}): Purse<Candidate> | null {
+  if (args.first > args.last) return null;
+  const years: number[] = [];
+  for (let t = args.first; t <= args.last; t++) years.push(t);
+  const count = args.state.length || 1;
+
+  /** A segment's condition at the end of each year held, if it gets `work`. */
+  const pathOf = (asset: SimAsset, work: { buildYear: number; conditionAfter: number } | null) => {
+    const builtAge = work ? effectiveAgeForCondition(asset.curve, work.conditionAfter) : 0;
+    return years.map((t) =>
+      work && t >= work.buildYear
+        ? evaluateCurve(asset.curve, builtAge + (t - work.buildYear + 1))
+        : evaluateCurve(asset.curve, asset.effectiveAge + (t - args.year + 1))
+    );
+  };
+
+  // Locked projects still to be built, by segment: their effect is part of the
+  // network being held, though the run never decides them.
+  const lockedNext = new Map<string, LockedProject>();
+  for (const project of args.locked) {
+    if (project.buildYear <= args.year || project.buildYear > args.last) continue;
+    const seen = lockedNext.get(project.assetId);
+    if (!seen || project.buildYear < seen.buildYear) lockedNext.set(project.assetId, project);
+  }
+
+  const baseline = new Map<string, number[]>();
+  const sums = years.map(() => 0);
+  for (const asset of args.state) {
+    const held = args.commitments.get(asset.id);
+    const locked = lockedNext.get(asset.id);
+    let work: { buildYear: number; conditionAfter: number } | null = null;
+    if (held) {
+      work = { buildYear: held.buildYear, conditionAfter: held.conditionAfter };
+    } else if (locked) {
+      const defs = locked.members.map((m) => args.library.find((d) => d.name === m.treatment));
+      if (defs.every((d): d is TreatmentDef => d != null)) {
+        const before = evaluateCurve(asset.curve, asset.effectiveAge + (locked.buildYear - args.year));
+        work = { buildYear: locked.buildYear, conditionAfter: projectedConditionOf(defs, before) };
+      }
+    }
+    const path = pathOf(asset, work);
+    baseline.set(asset.id, path);
+    path.forEach((c, i) => (sums[i] += c));
+  }
+
+  const candidatePath = (c: Candidate) =>
+    pathOf(c.asset, { buildYear: c.buildYear, conditionAfter: c.projectedCondition });
+  /** What stepping up to `next` changes in each year held: measured from the
+   * rung below it, or from what the segment would otherwise do. */
+  const change = (next: Candidate, current: Candidate | null) => {
+    const to = candidatePath(next);
+    const from = current ? candidatePath(current) : baseline.get(next.assetId)!;
+    return to.map((v, i) => v - from[i]);
+  };
+
+  return {
+    unfunded: () => null,
+    check(next, current) {
+      const d = change(next, current);
+      // It has to lift a year that is still short…
+      const helps = years.some((_, i) => sums[i] / count < args.goal && d[i] > 0);
+      if (!helps) return NOT_SELECTED.targetReached;
+      // …without carrying any year it lands in past the ceiling. Otherwise a
+      // shortfall six years out is answered by work built now, which holds
+      // that year by lifting every year before it well past the target. Work
+      // that lands later answers it instead.
+      const overshoots = years.some((_, i) => d[i] > 0 && (sums[i] + d[i]) / count > args.goal + HOLD_MARGIN);
+      return overshoots ? NOT_SELECTED.targetReached : null;
+    },
+    commit(next, current) {
+      change(next, current).forEach((v, i) => (sums[i] += v));
+    },
+    byCategory: () => [],
+    totalSpent: () => 0,
+  };
+}
+
+/** Two purses at once: a step is taken only when both allow it. The second's
+ * money is what the run reports. */
+function both<T extends Rankable>(first: Purse<T>, second: Purse<T>): Purse<T> {
+  return {
+    unfunded: (c) => first.unfunded(c) ?? second.unfunded(c),
+    check: (next, current) => first.check(next, current) ?? second.check(next, current),
+    commit(next, current) {
+      first.commit(next, current);
+      second.commit(next, current);
+    },
+    byCategory: () => second.byCategory(),
+    totalSpent: () => second.totalSpent(),
   };
 }
 
