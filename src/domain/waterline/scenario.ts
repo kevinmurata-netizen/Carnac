@@ -21,7 +21,7 @@ import { annualFailureProbability, failureEventCost, presentValue } from "./lcca
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
-import { selectForYear, selectForTarget, NOT_SELECTED, SELECTED } from "./selection";
+import { selectAgainst, selectForYear, selectForTarget, restingPurse, NOT_SELECTED, SELECTED } from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import { buildLccaEvaluator } from "./lcca-evaluator";
 import { buildLocked, lockSchedule, lockedRecord, type LockedProject, type ProgrammedFunding } from "./locked-projects";
@@ -82,6 +82,23 @@ export type FundingMode = (typeof FUNDING_MODES)[number];
 export const TARGET_METRICS = ["avgCondition"] as const;
 export type TargetMetric = (typeof TARGET_METRICS)[number];
 
+/**
+ * What a target run does once its target year has passed.
+ *
+ * `hold` keeps the network at the target: the same-year engine buys only what
+ * it takes, and with lead times the solved amount keeps being committed.
+ * `none` stops there and lets the network deteriorate — for finding the
+ * programme that reaches a target, and seeing what happens if nothing follows
+ * it. With lead times, work decided by the target year is still built.
+ */
+export const AFTER_TARGET = ["hold", "none"] as const;
+export type AfterTarget = (typeof AFTER_TARGET)[number];
+
+export const AFTER_TARGET_LABELS: Record<AfterTarget, string> = {
+  hold: "Hold the target",
+  none: "Do nothing — let it deteriorate",
+};
+
 export type ScenarioAssumptions = {
   annualBudget: number;
   /** Fractional annual growth in the budget, e.g. 0.03 for 3%/yr. */
@@ -113,6 +130,8 @@ export type ScenarioAssumptions = {
   /** By when, counted in years from the start of the run: 1 is "by the end of
    * the first year". Held to the analysis period by the form. */
   targetInYears: number;
+  /** Read only in a target run. */
+  afterTarget: AfterTarget;
   /** How projects locked in from a work plan count against the annual
    * budget: paid first out of it, or funded on top of it. Read only when the
    * scenario locks a plan. */
@@ -160,6 +179,7 @@ export const DEFAULT_ASSUMPTIONS: ScenarioAssumptions = {
   fundingMode: "budget",
   targetMetric: "avgCondition",
   targetInYears: 5,
+  afterTarget: "hold",
   programmedFunding: "within",
 };
 
@@ -990,7 +1010,11 @@ export function runScenario(
     //    budget-mode year — the year's money is the constraint.
     const holding = targeted && i + 1 > holdFrom;
     let outcome;
-    if (holding) {
+    if (holding && assumptions.afterTarget === "none") {
+      // Set to stop at the target: nothing new is bought, and the network
+      // deteriorates from here.
+      outcome = selectAgainst(candidates, restingPurse());
+    } else if (holding) {
       // Measured where the year ends, not where the treatment leaves the
       // asset: a year of deterioration falls on everything before the average
       // is reported, so buying until the post-treatment average reached the

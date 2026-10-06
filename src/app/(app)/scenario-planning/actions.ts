@@ -39,6 +39,7 @@ const schema = z.object({
   scenarioSetId: z.string().optional(),
   fundingMode: z.string().optional(),
   targetInYears: z.coerce.number().int().min(1).max(50).optional(),
+  afterTarget: z.string().optional(),
   lockedWorkPlanId: z.string().optional(),
   programmedFunding: z.string().optional(),
 });
@@ -128,6 +129,7 @@ function parseForm(formData: FormData): {
       // Held inside the run: a target in year 25 of a 20-year run could never
       // be answered.
       targetInYears: Math.max(1, Math.min(d.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears, d.analysisPeriodYears)),
+      afterTarget: d.afterTarget === "none" ? "none" : "hold",
       programmedFunding: d.programmedFunding === "additional" ? "additional" : "within",
     },
   };

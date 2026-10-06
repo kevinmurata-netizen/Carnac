@@ -73,6 +73,9 @@ export const NOT_SELECTED = {
   /** Only in a target-constrained year: the target was already reached, so
    * nothing further was bought however affordable it was. */
   targetReached: "Target already met",
+  /** Only in a target run set to do nothing after the target year: the
+   * network is left to deteriorate from then on, so nothing new is bought. */
+  afterTarget: "No new work after the target year",
 } as const;
 
 export const SELECTED = "Selected";
@@ -307,6 +310,21 @@ export function targetPurse<T extends Rankable>(progress: TargetProgress<T>): Pu
     },
     byCategory: () => [{ category: "All" as const, spent, cap: spent }],
     totalSpent: () => spent,
+  };
+}
+
+/**
+ * Buys nothing: a year after the target, in a target run set to do nothing
+ * from then on. Work a segment already holds stays where it is — with lead
+ * times, that is work decided by the target year and still on its way.
+ */
+export function restingPurse<T extends Rankable>(): Purse<T> {
+  return {
+    unfunded: () => null,
+    check: () => NOT_SELECTED.afterTarget,
+    commit() {},
+    byCategory: () => [],
+    totalSpent: () => 0,
   };
 }
 

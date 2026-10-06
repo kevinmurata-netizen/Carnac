@@ -105,6 +105,11 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
     description:
       "A target-constrained year past the target year buys only what it takes to hold the network at the target. This work was affordable — there was no budget to exceed — but the target had already been met without it.",
   },
+  [NOT_SELECTED.afterTarget]: {
+    stage: "not-funded",
+    description:
+      "The scenario is set to do nothing after its target year, so the network is left to deteriorate from then on and no new work is bought. Work decided by the target year is still built.",
+  },
 };
 
 export const STAGE_LABEL: Record<OutcomeStage, string> = {

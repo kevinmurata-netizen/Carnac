@@ -149,6 +149,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
               programmedFunding: DEFAULT_ASSUMPTIONS.programmedFunding,
               fundingMode: "budget",
               targetInYears: Math.min(DEFAULT_ASSUMPTIONS.targetInYears, set.planningPeriodYears),
+              afterTarget: DEFAULT_ASSUMPTIONS.afterTarget,
               scenarioSetId: set.id,
               annualBudget: annualBudget ?? DEFAULT_ASSUMPTIONS.annualBudget,
               fundingGrowthPct: toPercent(DEFAULT_ASSUMPTIONS.fundingGrowth),

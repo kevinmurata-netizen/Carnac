@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-06",
+    title: "Reach a target, then let the network deteriorate",
+    summary:
+      "A target scenario can stop after its target year instead of holding the target: it finds the programme that reaches the target, then shows the rest of the period with no further work. A work plan made from it holds just that programme, ready to lock into the next scenario.",
+    changes: [
+      "After the target year, on a target scenario: Hold the target (as before) or Do nothing — let it deteriorate. With delivery lead times, work decided by the target year is still paid for and built.",
+      "Plan from a scenario takes an optional Only the first (yr), to keep just the work decided in the run's first years.",
+      "A plan made from a target scenario records the annual amount the scenario solved for, not the unused budget figure stored on it.",
+    ],
+    note: "No migration. Every existing target scenario holds its target, as before.",
+  },
+  {
+    date: "2026-10-06",
     title: "Copy a scenario within its set",
     summary:
       "A scenario can be copied into the set it is in, to try a variant beside the original: same settings, then change one thing and run it.",

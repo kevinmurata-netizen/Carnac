@@ -35,7 +35,7 @@ import { buildLccaEvaluator } from "./lcca-evaluator";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS } from "./category-weight";
 import { CONSIDER_ALL, filterOptions } from "./option-selection";
 import { categoryLimits } from "./category-funding";
-import { NOT_SELECTED, SELECTED, selectAgainst, type Purse, type Rankable } from "./selection";
+import { NOT_SELECTED, SELECTED, restingPurse, selectAgainst, type Purse, type Rankable } from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import {
   benefitCof,
@@ -354,6 +354,11 @@ function walk(
       ? assumptions.annualBudget
       : assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear);
   const money = ledger(budgetFor, options.fundingPlan ?? null, endYear);
+  /** Past the target year of a target run set to do nothing after it. */
+  const afterTargetIn = (year: number) =>
+    assumptions.fundingMode === "target" &&
+    assumptions.afterTarget === "none" &&
+    year - startYear + 1 > assumptions.targetInYears;
 
   // Projects locked in from a work plan. Paid first out of the budget, their
   // money is reserved before anything is decided, so the run is offered only
@@ -488,8 +493,11 @@ function walk(
     });
 
     // 4. Buy the best next step anywhere on the network, against every year the
-    //    money would come out of.
-    const outcome = selectAgainst(candidates, money.purse, heldCandidates);
+    //    money would come out of — unless this is past the target year of a
+    //    target run set to stop there. Then nothing new is decided, and work
+    //    already decided stays on its way to being built.
+    const resting = afterTargetIn(year);
+    const outcome = selectAgainst(candidates, resting ? restingPurse<Candidate>() : money.purse, heldCandidates);
 
     if (trace) {
       for (const candidate of candidates) {
@@ -573,7 +581,10 @@ function walk(
 
     years.push({
       year,
-      budget: Math.round(budgetFor(year)),
+      // A year that buys nothing new has no budget of its own; what it shows is
+      // what earlier decisions paid in it, as the same-year engine reports a
+      // year past the target.
+      budget: Math.round(resting ? spend : budgetFor(year)),
       spend: Math.round(spend),
       programmedSpend: Math.round(programmedMoney),
       allocationSpend: Math.round(allocationSpend),

@@ -94,10 +94,17 @@ export async function createFromScenarioAction(formData: FormData) {
   const scenarioId = String(formData.get("scenarioId") ?? "").trim();
   if (!scenarioId) throw new Error("Choose a scenario to plan from");
 
+  // Blank takes every year the run funds work in.
+  const firstYearsText = String(formData.get("firstYears") ?? "").trim();
+  const firstYears = firstYearsText === "" ? null : Number(firstYearsText);
+  if (firstYears != null && (!Number.isInteger(firstYears) || firstYears < 1)) {
+    throw new Error("The number of years to take must be a whole number of 1 or more, or left blank for all of them");
+  }
   const { workPlanId } = await createWorkPlanFromScenario(
     session.user.organizationId,
     scenarioId,
-    String(formData.get("name") ?? "")
+    String(formData.get("name") ?? ""),
+    firstYears
   );
   revalidatePath("/work-plan");
   redirect(`/work-plan/${workPlanId}`);

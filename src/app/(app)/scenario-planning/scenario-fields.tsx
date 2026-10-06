@@ -1,7 +1,7 @@
 "use client";
 
 import { Label } from "@/components/ui/label";
-import { STRATEGIES } from "@/domain/waterline/scenario";
+import { AFTER_TARGET, AFTER_TARGET_LABELS, STRATEGIES } from "@/domain/waterline/scenario";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -36,6 +36,7 @@ export type ScenarioValues = {
    * always has one. */
   hasConditionTarget: string;
   targetInYears: string;
+  afterTarget: string;
   lockedWorkPlanId: string;
   programmedFunding: string;
 };
@@ -60,6 +61,7 @@ export type ScenarioFieldDefaults = {
   scenarioSetId: string | null;
   fundingMode: string;
   targetInYears: number;
+  afterTarget: string;
   lockedWorkPlanId: string | null;
   programmedFunding: string;
 };
@@ -87,6 +89,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     fundingMode: d.fundingMode,
     hasConditionTarget: d.conditionTarget != null ? "on" : "",
     targetInYears: String(d.targetInYears),
+    afterTarget: d.afterTarget,
     lockedWorkPlanId: d.lockedWorkPlanId ?? "",
     programmedFunding: d.programmedFunding,
   };
@@ -352,7 +355,7 @@ export function ScenarioFields({
         </select>
         <p className="text-xs text-muted-foreground">
           {targeting
-            ? "The run searches for the flat annual amount that reaches the target in the year given, then — with no delivery lead times — spends only what it takes to hold it for the rest of the period. It never breaks a treatment rule to get there, so a target the rules cannot reach is reported as unreachable rather than forced."
+            ? "The run searches for the flat annual amount that reaches the target in the year given, then does what After the target year says for the rest of the period. It never breaks a treatment rule to get there, so a target the rules cannot reach is reported as unreachable rather than forced."
             : "The ordinary run: the year's money buys the best work it can, and where the network ends up is the answer."}
         </p>
       </div>
@@ -405,6 +408,31 @@ export function ScenarioFields({
             <p className="text-xs text-muted-foreground">
               The amount is the answer here rather than the question, so it is not typed. Funding growth does not
               apply either: what is being solved for is one flat figure a year.
+            </p>
+          </div>
+          {/* Doing nothing afterwards is how a run finds just the programme
+              that reaches the target — a work plan made from it holds those
+              years' projects and nothing else — while the years after still
+              show what happens if nothing follows it. */}
+          <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+            <Label htmlFor={id("afterTarget")}>After the target year</Label>
+            <select
+              id={id("afterTarget")}
+              name="afterTarget"
+              value={values.afterTarget}
+              onChange={(e) => onChange({ afterTarget: e.target.value })}
+              className={mark("afterTarget")}
+            >
+              {AFTER_TARGET.map((v) => (
+                <option key={v} value={v}>
+                  {AFTER_TARGET_LABELS[v]}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              {values.afterTarget === "none"
+                ? "No new work is decided after the target year, and the network deteriorates for the rest of the period. With delivery lead times, work decided by the target year is still paid for and built. A work plan made from this scenario holds only the work that reaches the target."
+                : "The run keeps the network at the target for the rest of the period: without delivery lead times it buys only what that takes each year; with them it keeps committing the solved amount, since holding a target through a delivery pipeline means committing money years ahead."}
             </p>
           </div>
         </>
@@ -468,8 +496,9 @@ export function ScenarioFields({
               budget buys — in a budget run the treatment rules judge work against 70, the start of the Good band.
             </p>
           </div>
-          {/* Held so target mode keeps it across a switch. */}
+          {/* Held so target mode keeps them across a switch. */}
           <input type="hidden" name="targetInYears" value={values.targetInYears} />
+          <input type="hidden" name="afterTarget" value={values.afterTarget} />
         </>
       )}
       <div className="space-y-1.5">
@@ -673,9 +702,10 @@ export function ScenarioFields({
           {targeting && (
             <p className="text-xs text-muted-foreground">
               With lead times, the amount solved for is what has to be <em>committed</em> each year for the network to
-              be there in the target year — and the run keeps to that amount afterwards rather than easing off, since
-              holding a target through a delivery pipeline means committing money years before the shortfall it
-              answers is visible.
+              be there in the target year
+              {values.afterTarget === "none"
+                ? " — and nothing new is committed after it."
+                : " — and the run keeps to that amount afterwards rather than easing off, since holding a target through a delivery pipeline means committing money years before the shortfall it answers is visible."}
             </p>
           )}
         </div>
