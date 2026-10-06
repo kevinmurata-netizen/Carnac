@@ -11,6 +11,7 @@ import { formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/pending-button";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,6 +22,7 @@ import { ScenarioSetStatusBadge } from "../status-badge";
 import { ScenarioSetEditor } from "../set-editor";
 import {
   assignScenarioAction,
+  copyScenarioAction,
   copyScenarioSetAction,
   deleteScenarioSetAction,
   runScenarioSetAction,
@@ -217,6 +219,7 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
                     <TableHead>Own period</TableHead>
                     <TableHead>Results</TableHead>
                     {canEdit && destinations.length > 0 && <TableHead>Move to</TableHead>}
+                    {canEdit && !archived && <TableHead className="w-0" />}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -272,6 +275,24 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
                             <Button type="submit" size="sm" variant="ghost">
                               Move
                             </Button>
+                          </form>
+                        </TableCell>
+                      )}
+                      {/* A variant beside the original: same window, same
+                          settings, then change one thing and run it. */}
+                      {canEdit && !archived && (
+                        <TableCell>
+                          <form action={copyScenarioAction}>
+                            <input type="hidden" name="scenarioId" value={s.id} />
+                            <SubmitButton
+                              size="sm"
+                              variant="ghost"
+                              pendingLabel="Copying…"
+                              title={`Copies ${s.name} into this set, without its results, and opens the copy`}
+                            >
+                              <Copy className="mr-1 h-3.5 w-3.5" />
+                              Copy
+                            </SubmitButton>
                           </form>
                         </TableCell>
                       )}

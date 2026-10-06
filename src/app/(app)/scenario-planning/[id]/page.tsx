@@ -44,9 +44,11 @@ import { ScenarioEditForm } from "../scenario-form";
 import { ScenarioEditProvider } from "../scenario-edit-state";
 import { ScenarioHeaderActions } from "../scenario-header-actions";
 import { rerunScenarioAction, updateScenarioAction, deleteScenarioAction } from "../actions";
+import { copyScenarioAction } from "../sets/actions";
 import { RunProgressButton } from "../run-progress";
 import { estimateRunMs } from "@/server/run-estimate";
-import { AlertTriangle, Gauge, Layers, ListTree, Wallet } from "lucide-react";
+import { AlertTriangle, Copy, Gauge, Layers, ListTree, Wallet } from "lucide-react";
+import { SubmitButton } from "@/components/ui/pending-button";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { ExportButton } from "@/components/layout/export-button";
 import { getConditionBands } from "@/server/settings";
@@ -227,6 +229,26 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                     </form>
                   }
                 />
+                {/* Into the set it is in, beside it, to try a variant. Not
+                    offered where the set is archived and takes no new work. */}
+                {scenario.scenarioSet?.status !== "ARCHIVED" && (
+                  <form action={copyScenarioAction}>
+                    <input type="hidden" name="scenarioId" value={scenario.id} />
+                    <SubmitButton
+                      size="sm"
+                      variant="outline"
+                      pendingLabel="Copying…"
+                      title={
+                        scenario.scenarioSet
+                          ? `Copies this scenario into ${scenario.scenarioSet.name}, without its results, and opens the copy`
+                          : "Copies this scenario, without its results, and opens the copy"
+                      }
+                    >
+                      <Copy className="mr-1 h-4 w-4" />
+                      Copy
+                    </SubmitButton>
+                  </form>
+                )}
                 <form action={deleteScenarioAction}>
                   <input type="hidden" name="scenarioId" value={scenario.id} />
                   <ConfirmDelete

@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import {
   assignScenarioToSet,
+  copyScenario,
   copyScenarioSet,
   createScenarioSet,
   deleteScenarioSet,
@@ -83,6 +84,15 @@ export async function copyScenarioSetAction(formData: FormData) {
   const copyId = await copyScenarioSet(organizationId, String(formData.get("id") ?? ""), scenarioIds);
   revalidate();
   redirect(`/scenario-planning/sets/${copyId}`);
+}
+
+/** Copy one scenario into its own set, and open the copy — where the one thing
+ * that makes it a variant gets changed. */
+export async function copyScenarioAction(formData: FormData) {
+  const organizationId = await organizationFor("add scenarios to");
+  const copyId = await copyScenario(organizationId, String(formData.get("scenarioId") ?? ""));
+  revalidate();
+  redirect(`/scenario-planning/${copyId}`);
 }
 
 export async function deleteScenarioSetAction(formData: FormData) {
