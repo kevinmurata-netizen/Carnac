@@ -436,7 +436,15 @@ function walk(
   const whereProgrammed = new Map<Commitment, ScenarioProject[]>();
   /** Everything this pass holds, fixed or newly decided, for the next pass. */
   const decided: Commitment[] = [...fixed];
-  for (const commitment of fixed) commitments.set(commitment.assetId, commitment);
+  // A segment can be treated more than once in a run — a repair now, a
+  // renewal later — so its fixed work is queued in the order it is built, and
+  // each piece is held in turn. Holding only one per segment built the last
+  // and silently dropped the rest, though their money was still spent.
+  const queued = new Map<string, Commitment[]>();
+  for (const commitment of [...fixed].sort((a, b) => a.buildYear - b.buildYear || a.programYear - b.programYear)) {
+    queued.set(commitment.assetId, [...(queued.get(commitment.assetId) ?? []), commitment]);
+  }
+  for (const [assetId, list] of queued) commitments.set(assetId, list.shift()!);
 
   let totalSpend = 0;
   let totalFailureCost = 0;
@@ -450,8 +458,7 @@ function walk(
     //    programmed, so the condition it was scored against is the condition it
     //    actually meets.
     let builtCount = 0;
-    for (const [assetId, commitment] of [...commitments]) {
-      if (commitment.buildYear !== year) continue;
+    const build = (assetId: string, commitment: Commitment) => {
       const asset = byId.get(assetId)!;
       asset.condition = commitment.conditionAfter;
       asset.effectiveAge = effectiveAgeForCondition(asset.curve, commitment.conditionAfter);
@@ -460,6 +467,19 @@ function walk(
       commitments.delete(assetId);
       built.push(commitment);
       builtCount++;
+      // The segment's next fixed piece of work, if an earlier pass gave it one.
+      const next = queued.get(assetId)?.shift();
+      if (next) commitments.set(assetId, next);
+    };
+    // Until none is due: a segment's next queued piece can land the same year
+    // as the one just built — protection finished, then a repair decided on it.
+    for (let due = true; due; ) {
+      due = false;
+      for (const [assetId, commitment] of [...commitments]) {
+        if (commitment.buildYear !== year) continue;
+        build(assetId, commitment);
+        due = true;
+      }
     }
 
     // Locked projects built this year, on assets the run has left alone since
@@ -540,7 +560,8 @@ function walk(
         state,
         year,
         first: Math.max(year, targetYear),
-        last: Math.min(endYear, year + lookAhead),
+        reach: Math.min(endYear, year + lookAhead),
+        end: endYear,
         goal: goalOf(assumptions),
         commitments,
         locked: locks.projects,
@@ -587,6 +608,12 @@ function walk(
       decided.push(commitment);
       programmed.push(commitment.project);
       whereProgrammed.set(commitment, programmed);
+      // Work with no build lead at all is built the year it is decided, before
+      // the year's deterioration — as the same-year engine does. Step 1 has
+      // already passed for this year, so without this it was never built in
+      // the pass that decided it, and every later year of that pass judged a
+      // segment worse than it was.
+      if (commitment.buildYear === year) build(assetId, commitment);
     }
 
     // 6. A year passes for everything, including what was built this year.
@@ -679,7 +706,7 @@ function walk(
     year.supersededValue = Math.round(replacing.reduce((sum, p) => sum + p.cost, 0));
   }
 
-  const inFlight = [...commitments.values()].map((c) => ({
+  const inFlight = [...commitments.values(), ...[...queued.values()].flat()].map((c) => ({
     assetCode: c.project.assetCode,
     treatment: c.project.treatment,
     programYear: c.programYear,
@@ -941,18 +968,27 @@ function rankCandidates(args: {
   };
 }
 
+/** How far above the target a held year may be carried, in condition points:
+ * enough room for one more project to land, not enough to drift. */
+const HOLD_MARGIN = 0.5;
+
 /**
  * What holds a target where work lands.
  *
- * Every year from `first` to `last` — the target year or this one, whichever
- * is later, to the year this year's slowest work would be built — is projected
- * as it will end: each segment carrying whatever it already has on the way
- * (decided earlier, or locked in from a work plan), and deteriorating
- * otherwise. A step up is then allowed only while some year it improves is
- * still projected below the target, and only if it carries no year it lands
- * in more than HOLD_MARGIN above it. So work is bought, best first, just until
- * the network is held at the target in the years it can still reach — just
- * above it, not well over.
+ * Every year from `first` — the target year or this one, whichever is later —
+ * to the end of the run is projected as it will end: each segment carrying
+ * whatever it already has on the way (decided earlier, or locked in from a
+ * work plan), and deteriorating otherwise. A step up is then allowed only
+ * while some year it improves, up to `reach` — the year this year's slowest
+ * work would be built — is still projected below the target; and only if it
+ * carries no year to the end of the run more than HOLD_MARGIN above it. So
+ * work is bought, best first, just until the network is held at the target
+ * in the years it can still reach — just above it, not well over.
+ *
+ * The ceiling looks to the end of the run, not only as far as this year can
+ * reach: work built near the edge of that reach keeps lifting the years after
+ * it, and a ceiling that stopped at the edge let those years drift up out of
+ * sight of every check.
  *
  * Measured at year end, like the condition the run reports: a year of
  * deterioration falls on everything, work built that year included.
@@ -960,23 +996,22 @@ function rankCandidates(args: {
  * Null when there is no year to hold — a year before the target whose work
  * all lands before it, which only the flat amount governs.
  */
-/** How far above the target a held year may be carried, in condition points:
- * enough room for one more project to land, not enough to drift. */
-const HOLD_MARGIN = 1;
-
 function holdPurse(args: {
   state: SimAsset[];
   year: number;
   first: number;
-  last: number;
+  reach: number;
+  end: number;
   goal: number;
   commitments: Map<string, Commitment>;
   locked: LockedProject[];
   library: TreatmentDef[];
 }): Purse<Candidate> | null {
-  if (args.first > args.last) return null;
+  if (args.first > args.reach) return null;
   const years: number[] = [];
-  for (let t = args.first; t <= args.last; t++) years.push(t);
+  for (let t = args.first; t <= args.end; t++) years.push(t);
+  /** How many of `years` this year can still lift toward the target. */
+  const reachable = args.reach - args.first + 1;
   const count = args.state.length || 1;
 
   /** A segment's condition at the end of each year held, if it gets `work`. */
@@ -993,7 +1028,7 @@ function holdPurse(args: {
   // network being held, though the run never decides them.
   const lockedNext = new Map<string, LockedProject>();
   for (const project of args.locked) {
-    if (project.buildYear <= args.year || project.buildYear > args.last) continue;
+    if (project.buildYear <= args.year || project.buildYear > args.end) continue;
     const seen = lockedNext.get(project.assetId);
     if (!seen || project.buildYear < seen.buildYear) lockedNext.set(project.assetId, project);
   }
@@ -1033,7 +1068,7 @@ function holdPurse(args: {
     check(next, current) {
       const d = change(next, current);
       // It has to lift a year that is still short…
-      const helps = years.some((_, i) => sums[i] / count < args.goal && d[i] > 0);
+      const helps = years.some((_, i) => i < reachable && sums[i] / count < args.goal && d[i] > 0);
       if (!helps) return NOT_SELECTED.targetReached;
       // …without carrying any year it lands in past the ceiling. Otherwise a
       // shortfall six years out is answered by work built now, which holds

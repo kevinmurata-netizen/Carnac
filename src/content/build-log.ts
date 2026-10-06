@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-06",
+    title: "Lead-time targets held within half a point, and every decided project built",
+    summary:
+      "A target scenario with delivery lead times now holds within about half a point above its target, not drifting two to three points over. Getting there turned up two bugs in the lead-time engine that left decided work unbuilt, in every lead-time scenario, not only target ones.",
+    changes: [
+      "Held years can't be carried more than half a point over the target. That ceiling now looks to the end of the run, not just the next six years, so work landing late can't push later years up unnoticed.",
+    ],
+    fixes: [
+      "Work with no build lead (a repair decided, paid for and built in the same year) wasn't built in the pass of the run that decided it. Every later year of that pass judged the segment as worse than it was.",
+      "A segment given more than one project over a run (protection now, a repair later) had only its last project built in later passes of the run, though every project's money was spent. In Current Funding, 124 of 328 decided projects were never built. Now every decided project is built, or reported as still in progress at the end.",
+    ],
+    note: "No migration. Every scenario with delivery lead times gives different, more favourable results the next time it runs; re-run them. Scenarios without lead times are unchanged.",
+  },
+  {
+    date: "2026-10-06",
     title: "Target runs with lead times hold the target where work lands",
     summary:
       "With delivery lead times, a target scenario now keeps the network just above its target in the years work is built, paying for it in the years the money falls. Before, it kept committing the solved amount, and a target out of reach on time made it buy everything allowed, so condition overshot to the mid-80s once that work landed.",
