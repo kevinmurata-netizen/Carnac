@@ -7,8 +7,10 @@ import {
   DEFAULT_ASSUMPTIONS,
   STRATEGIES,
   FUNDING_MODES,
+  AFTER_TARGET,
   solveForTarget,
   goalOf,
+  type AfterTarget,
   type FundingMode,
   type ScenarioAssumptions,
   type SimAsset,
@@ -160,6 +162,11 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
     fundingMode,
     targetMetric: DEFAULT_ASSUMPTIONS.targetMetric,
     targetInYears: Number(map.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears),
+    // Absent on every scenario stored before the choice existed, all of which
+    // held the target.
+    afterTarget: AFTER_TARGET.includes(map.afterTarget as AfterTarget)
+      ? (map.afterTarget as AfterTarget)
+      : DEFAULT_ASSUMPTIONS.afterTarget,
     // Absent on every scenario stored before locked projects existed, none of
     // which locks anything; the default only matters once one does.
     programmedFunding: PROGRAMMED_FUNDING.includes(map.programmedFunding as ProgrammedFunding)
@@ -551,11 +558,12 @@ export function runForScenario(run: {
     // amount, see where the network is in the target year — so it is handed
     // the engine rather than duplicated for it.
     //
-    // What differs is what happens after the target year. Without lead times
-    // the run eases off to holding the target; with them it keeps to the
-    // solved amount, because "spend only what it takes to hold" would mean
-    // committing money years earlier for a shortfall not yet visible, and this
-    // model has no way to know that at the time of committing.
+    // What differs is what happens after the target year, when the scenario
+    // holds the target there. Without lead times the run eases off to holding
+    // it; with them it keeps to the solved amount, because "spend only what it
+    // takes to hold" would mean committing money years earlier for a shortfall
+    // not yet visible, and this model has no way to know that at the time of
+    // committing. Set to do nothing after the target, both engines stop.
     return solveForTarget(
       run.simAssets,
       run.assumptions,

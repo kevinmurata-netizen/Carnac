@@ -16,7 +16,7 @@ import {
   type ScenarioOptionCatalogue,
 } from "@/server/scenario-options";
 import { normalizeWeights } from "@/domain/waterline/optimization";
-import { STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
+import { AFTER_TARGET_LABELS, STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
@@ -160,6 +160,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     programmedFunding: a.programmedFunding,
     fundingMode: a.fundingMode,
     targetInYears: a.targetInYears,
+    afterTarget: a.afterTarget,
     scenarioSetId: scenario.scenarioSet?.id ?? null,
     annualBudget: a.annualBudget,
     fundingGrowthPct: toPercent(a.fundingGrowth),
@@ -826,6 +827,12 @@ function AssumptionsCard({
           />
           <Field label="Scenario Set" value={scenario.scenarioSet?.name ?? "—"} />
           <Field label="Condition Target" value={a.conditionTarget != null ? String(a.conditionTarget) : "None"} />
+          {a.fundingMode === "target" && (
+            <Field
+              label="After the target year"
+              value={`${AFTER_TARGET_LABELS[a.afterTarget]} (target in year ${a.targetInYears})`}
+            />
+          )}
           <Field label="Risk Threshold" value={String(a.riskThreshold)} />
           {/* Read-only readers need this most: a scenario funding nothing but
               relining looks like a badly performing scenario until you know

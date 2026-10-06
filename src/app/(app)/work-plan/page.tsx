@@ -96,7 +96,8 @@ export default async function WorkPlanPage() {
             <p className="text-sm font-normal text-muted-foreground">
               Takes what the scenario funds, year by year, as a plan you can change — the scenario decides, and this is
               where you move the work about. The plan keeps the scenario&apos;s budget, and re-running the scenario
-              leaves it alone.
+              leaves it alone. To take only the work that reaches a target, give the target&apos;s year count under
+              Only the first — or set the scenario to do nothing after its target year.
             </p>
           </CardHeader>
           <CardContent>
@@ -128,6 +129,20 @@ export default async function WorkPlanPage() {
                     id="planName"
                     name="name"
                     placeholder="Defaults to the scenario's name"
+                    className={inputClass}
+                  />
+                </div>
+                {/* The programme up to a target, without the work a run does
+                    afterwards to hold it. */}
+                <div className="w-40 space-y-1.5">
+                  <Label htmlFor="firstYears">Only the first (yr)</Label>
+                  <input
+                    id="firstYears"
+                    name="firstYears"
+                    type="number"
+                    min={1}
+                    max={50}
+                    placeholder="All years"
                     className={inputClass}
                   />
                 </div>

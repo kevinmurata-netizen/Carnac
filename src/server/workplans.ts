@@ -87,11 +87,15 @@ import {
  * under once work has been moved. The run's own mirror plan (see
  * `persistScenarioProgram`) is replaced every time the scenario runs; this one
  * is not, which is what makes it safe to edit.
+ *
+ * `firstYears` keeps only the work decided in the run's first so many years —
+ * the programme up to a target, say, without what the run did to hold it.
  */
 export async function createWorkPlanFromScenario(
   organizationId: string,
   scenarioId: string,
-  name?: string
+  name?: string,
+  firstYears?: number | null
 ): Promise<{ workPlanId: string; planned: number; years: number }> {
   const run = await loadScenarioRun(organizationId, scenarioId);
   if (!run) throw new Error("That scenario no longer exists");
@@ -100,9 +104,16 @@ export async function createWorkPlanFromScenario(
   // Running the immediate engine here would have produced a plan that
   // disagreed with the run it was made from about when work happens.
   const result = runForScenario(run);
-  const years = result.years.filter((y) => y.selected.length > 0);
+  // A year's projects are listed in the year that decided them, so "the first
+  // N years" is the work decided in them, wherever its money and build fall.
+  const lastYear = firstYears != null && result.years.length > 0 ? result.years[0].year + firstYears - 1 : Infinity;
+  const years = result.years.filter((y) => y.selected.length > 0 && y.year <= lastYear);
   if (years.length === 0) {
-    throw new Error(`${run.name} funds no work, so there is nothing to plan. Check its budget and what it considers.`);
+    throw new Error(
+      firstYears != null
+        ? `${run.name} funds no work in its first ${firstYears} year${firstYears === 1 ? "" : "s"}, so there is nothing to plan.`
+        : `${run.name} funds no work, so there is nothing to plan. Check its budget and what it considers.`
+    );
   }
 
   const scenario = await prisma.scenario.findFirst({
@@ -125,7 +136,9 @@ export async function createWorkPlanFromScenario(
       startYear: Math.min(...years.flatMap((y) => y.selected.map((p) => p.fundedYear))),
       endYear: Math.max(...years.flatMap((y) => y.selected.map((p) => p.fundedYear))),
       isScenarioMirror: false,
-      annualBudget: run.assumptions.annualBudget,
+      // A target run's budget is the amount it solved for, not the figure
+      // stored on the scenario, which the solve ignores.
+      annualBudget: result.target?.annualBudget ?? run.assumptions.annualBudget,
       fundingGrowth: run.assumptions.fundingGrowth,
       weightSetId: scenario?.weightSetId ?? null,
       categoryWeightSetId: scenario?.categoryWeightSetId ?? null,
