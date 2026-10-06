@@ -30,6 +30,17 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-06",
+    title: "Lead-time targets held to the end of the run",
+    summary:
+      "A target scenario with delivery lead times could fall just below its target in the last few years of the run, spending nothing. Near the end, slow work can't be built in time any more, and quick work that would have lifted the short year was refused for edging a later year over the ceiling. Now the target wins there.",
+    changes: [
+      "In the last years of a run, when the slowest work would land after it ends, quick work that lifts a year that is short is bought, even if it carries later years over the half-point ceiling.",
+      "Upgrading a project to a bigger one built later is refused if it would leave a year below the target that was at or above it.",
+    ],
+    note: "No migration. Re-run target scenarios with lead times to pick it up.",
+  },
+  {
+    date: "2026-10-06",
     title: "Lead-time targets held within half a point, and every decided project built",
     summary:
       "A target scenario with delivery lead times now holds within about half a point above its target, not drifting two to three points over. Getting there turned up two bugs in the lead-time engine that left decided work unbuilt, in every lead-time scenario, not only target ones.",
