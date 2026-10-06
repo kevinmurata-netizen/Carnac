@@ -1153,18 +1153,53 @@ export async function deleteScenario(organizationId: string, scenarioId: string)
   const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, organizationId } });
   if (!scenario) throw new Error("Scenario not found");
 
-  // The funded program a run materializes holds a scenarioId FK, so it has to
-  // go before the scenario itself does.
-  const plans = await prisma.workPlan.findMany({ where: { scenarioId }, select: { id: true } });
-  const planIds = plans.map((p) => p.id);
+  // The funded program a run materializes is the run's own record, and goes
+  // with it. A plan someone made from the scenario does not: it is their
+  // plan, edited perhaps, perhaps locked into another scenario, and deleting
+  // the scenario it came from is not deleting it. It is kept and unlinked.
+  const mirrors = await prisma.workPlan.findMany({
+    where: { scenarioId, isScenarioMirror: true },
+    select: { id: true },
+  });
+  const mirrorIds = mirrors.map((p) => p.id);
 
   await prisma.$transaction([
-    prisma.workPlanItem.deleteMany({ where: { workPlanId: { in: planIds } } }),
-    prisma.workPlan.deleteMany({ where: { id: { in: planIds } } }),
+    prisma.workPlanItem.deleteMany({ where: { workPlanId: { in: mirrorIds } } }),
+    prisma.workPlan.deleteMany({ where: { id: { in: mirrorIds } } }),
+    prisma.workPlan.updateMany({ where: { scenarioId }, data: { scenarioId: null } }),
     prisma.scenarioResult.deleteMany({ where: { scenarioId } }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
     prisma.scenario.delete({ where: { id: scenarioId } }),
   ]);
+}
+
+/**
+ * Delete the scenarios ticked in a set, each as `deleteScenario` would. Only
+ * the set's own members: the ids arrive from a form, and a scenario elsewhere
+ * must not go because its id was posted here.
+ */
+export async function deleteSetScenarios(organizationId: string, setId: string, ids: string[]) {
+  const members = await prisma.scenario.findMany({
+    where: { id: { in: ids }, organizationId, scenarioSetId: setId },
+    select: { id: true, name: true },
+  });
+  const deleted: string[] = [];
+  for (const scenario of members) {
+    await deleteScenario(organizationId, scenario.id);
+    deleted.push(scenario.name);
+  }
+  return deleted;
+}
+
+/** How many editable plans were made from each scenario — kept, unlinked,
+ * when it is deleted, which a confirmation should say. */
+export async function plansMadeFrom(scenarioIds: string[]): Promise<Map<string, number>> {
+  const rows = await prisma.workPlan.groupBy({
+    by: ["scenarioId"],
+    where: { scenarioId: { in: scenarioIds }, isScenarioMirror: false },
+    _count: { _all: true },
+  });
+  return new Map(rows.map((r) => [r.scenarioId!, r._count._all]));
 }
 
 /** The utility's current annual capital budget, used for dashboard KPIs and
