@@ -85,8 +85,9 @@ export type TargetMetric = (typeof TARGET_METRICS)[number];
 /**
  * What a target run does once its target year has passed.
  *
- * `hold` keeps the network at the target: the same-year engine buys only what
- * it takes, and with lead times the solved amount keeps being committed.
+ * `hold` keeps the network at the target by buying only what it takes: the
+ * same-year engine in the year itself, and with lead times in the years the
+ * work will be built, paid for in the years its money falls.
  * `none` stops there and lets the network deteriorate — for finding the
  * programme that reaches a target, and seeing what happens if nothing follows
  * it. With lead times, work decided by the target year is still built.
@@ -383,6 +384,14 @@ export type TargetOutcome = {
    * then the best that could be done, and `annualBudget` is what that cost.
    */
   reachable: boolean;
+  /**
+   * The year the run aimed for instead, counted like `inYears`, when the year
+   * asked for could not be reached and a later one could — with delivery
+   * lead times, work decided now may simply not be built in time. The amount
+   * is then what reaches the target by this year, and the target is held from
+   * it. Null when the run aimed for the year asked.
+   */
+  aimedFor: number | null;
   /** What the search had to do to find the amount, for anyone checking it. */
   search: { iterations: number; low: number; high: number };
 };
@@ -1225,6 +1234,7 @@ export function runScenario(
           metInYear,
           achieved: years[assumptions.targetInYears - 1]?.avgCondition ?? (last?.avgCondition ?? 0),
           reachable: metInYear != null && metInYear <= assumptions.targetInYears,
+          aimedFor: null,
           search: { iterations: 0, low: 0, high: 0 },
         }
       : null,
@@ -1268,19 +1278,32 @@ export function solveForTarget(
   assumptions: ScenarioAssumptions,
   options: ScenarioRunOptions = {},
   run: (assets: SimAsset[], a: ScenarioAssumptions, o: ScenarioRunOptions) => ScenarioRunResult = runScenario,
-  { shortProbe = true }: { shortProbe?: boolean } = {}
+  {
+    shortProbe = true,
+    deferUnreachable = false,
+  }: {
+    shortProbe?: boolean;
+    /** When the year asked for cannot be reached, aim for the earliest year
+     * that can rather than reporting the most the rules allow. For delivery
+     * lead times, where "cannot be reached by then" usually means "cannot be
+     * built by then", and buying everything to get as close as possible
+     * overshoots every year after it once that work lands. */
+    deferUnreachable?: boolean;
+  } = {}
 ): ScenarioRunResult {
   const inYears = Math.max(1, Math.min(assumptions.targetInYears, assumptions.analysisPeriodYears));
-  const probe = {
-    ...assumptions,
-    analysisPeriodYears: shortProbe ? inYears : assumptions.analysisPeriodYears,
-    targetInYears: inYears,
-  };
-  const reaches = (annualBudget: number) => {
-    const result = run(assets, { ...probe, annualBudget }, options);
-    const achieved = result.years[inYears - 1]?.avgCondition ?? 0;
+  const reachesBy = (annualBudget: number, by: number) => {
+    const probe = {
+      ...assumptions,
+      analysisPeriodYears: shortProbe ? by : assumptions.analysisPeriodYears,
+      targetInYears: by,
+      annualBudget,
+    };
+    const result = run(assets, probe, options);
+    const achieved = result.years[by - 1]?.avgCondition ?? 0;
     return { ok: achieved >= goalOf(assumptions), achieved };
   };
+  const reaches = (annualBudget: number) => reachesBy(annualBudget, inYears);
 
   let iterations = 0;
   const answer = (annualBudget: number, search: TargetOutcome["search"], reachable = true) => {
@@ -1305,6 +1328,32 @@ export function solveForTarget(
       break;
     }
     high *= 2;
+  }
+
+  // Out of reach on time. With lead times that usually means the work cannot
+  // be built by then, not that it cannot be done: find the earliest year it
+  // can be reached, and solve for that instead.
+  if (!found && deferUnreachable) {
+    for (let by = inYears + 1; by <= assumptions.analysisPeriodYears; by++) {
+      iterations++;
+      if (!reachesBy(high, by).ok) continue;
+      let low = 0;
+      let top = high;
+      const tolerance = () => Math.max(1000, top * 0.001);
+      while (top - low > tolerance()) {
+        const mid = (low + top) / 2;
+        iterations++;
+        if (reachesBy(mid, by).ok) top = mid;
+        else low = mid;
+      }
+      const annualBudget = Math.ceil(top / 1000) * 1000;
+      const result = run(assets, { ...assumptions, annualBudget, targetInYears: by }, options);
+      const search = { iterations: iterations + 1, low: Math.round(low), high: Math.round(top) };
+      return {
+        ...result,
+        target: { ...outcomeFor(result, assumptions, inYears, annualBudget, search, false), aimedFor: by },
+      };
+    }
   }
 
   if (!found) {
@@ -1365,6 +1414,7 @@ function outcomeFor(
     metInYear,
     achieved: result.years[inYears - 1]?.avgCondition ?? 0,
     reachable: reachable && metInYear != null && metInYear <= inYears,
+    aimedFor: null,
     search,
   };
 }

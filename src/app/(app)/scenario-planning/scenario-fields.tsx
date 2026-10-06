@@ -432,7 +432,7 @@ export function ScenarioFields({
             <p className="text-xs text-muted-foreground">
               {values.afterTarget === "none"
                 ? "No new work is decided after the target year, and the network deteriorates for the rest of the period. With delivery lead times, work decided by the target year is still paid for and built. A work plan made from this scenario holds only the work that reaches the target."
-                : "The run keeps the network at the target for the rest of the period: without delivery lead times it buys only what that takes each year; with them it keeps committing the solved amount, since holding a target through a delivery pipeline means committing money years ahead."}
+                : "The run keeps the network at the target for the rest of the period, buying only what that takes. With delivery lead times it decides work for the year it will be built in — just enough to keep that year at the target — and pays for it in the years the lead times say."}
             </p>
           </div>
         </>
@@ -705,7 +705,7 @@ export function ScenarioFields({
               be there in the target year
               {values.afterTarget === "none"
                 ? " — and nothing new is committed after it."
-                : " — and the run keeps to that amount afterwards rather than easing off, since holding a target through a delivery pipeline means committing money years before the shortfall it answers is visible."}
+                : " — and after it, only what holds the target in the years that work is built. If the target year comes too soon for the work to be built by it, the run aims for the earliest year it can be reached instead."}
             </p>
           )}
         </div>

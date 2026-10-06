@@ -558,12 +558,14 @@ export function runForScenario(run: {
     // amount, see where the network is in the target year — so it is handed
     // the engine rather than duplicated for it.
     //
-    // What differs is what happens after the target year, when the scenario
-    // holds the target there. Without lead times the run eases off to holding
-    // it; with them it keeps to the solved amount, because "spend only what it
-    // takes to hold" would mean committing money years earlier for a shortfall
-    // not yet visible, and this model has no way to know that at the time of
-    // committing. Set to do nothing after the target, both engines stop.
+    // Both engines hold the target after the target year by buying only what
+    // keeps the network there: the same-year engine in the year itself, the
+    // delivery engine in the years its work will be built, paying where the
+    // lead times put the money. Set to do nothing after the target, both stop.
+    //
+    // With lead times a target year that is out of reach usually means the
+    // work cannot be built by then, so the run aims for the earliest year it
+    // can be reached instead of buying everything in sight.
     return solveForTarget(
       run.simAssets,
       run.assumptions,
@@ -574,7 +576,7 @@ export function runForScenario(run: {
           : runScenario(assets, assumptions, options),
       // A delivery run cannot be shortened to the target year without becoming
       // a different run — see solveForTarget.
-      { shortProbe: !delivery }
+      { shortProbe: !delivery, deferUnreachable: delivery }
     );
   }
 
@@ -649,6 +651,8 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
         { scenarioId, year, metricKey: "targetAchieved", metricValue: result.target.achieved },
         { scenarioId, year, metricKey: "targetMetInYear", metricValue: result.target.metInYear ?? 0 },
         { scenarioId, year, metricKey: "targetReachable", metricValue: result.target.reachable ? 1 : 0 },
+        // Stored as 0 for "the year asked", like targetMetInYear.
+        { scenarioId, year, metricKey: "targetAimedFor", metricValue: result.target.aimedFor ?? 0 },
       ],
     });
   }
@@ -944,6 +948,9 @@ export type ScenarioSummary = {
     achieved: number;
     metInYear: number | null;
     reachable: boolean;
+    /** The year the run aimed for instead, counted from the start, when the
+     * one asked for was out of reach and a later one was not. */
+    aimedFor: number | null;
   } | null;
   /** Work the run paid for but never saw built, because its lead time carries
    * construction past the end. Null for a run with no lead times. */
@@ -1054,6 +1061,7 @@ export async function listScenarios(
             // Stored as 0 for "never", since the metric column holds numbers.
             metInYear: targetMetIn && targetMetIn.metricValue > 0 ? targetMetIn.metricValue : null,
             reachable: (byMetric("targetReachable")[0]?.metricValue ?? 0) === 1,
+            aimedFor: (byMetric("targetAimedFor")[0]?.metricValue ?? 0) || null,
           }
         : null,
       /** Work the run paid for that it never sees built, because its lead time

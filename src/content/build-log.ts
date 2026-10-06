@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-06",
+    title: "Target runs with lead times hold the target where work lands",
+    summary:
+      "With delivery lead times, a target scenario now keeps the network just above its target in the years work is built, paying for it in the years the money falls. Before, it kept committing the solved amount, and a target out of reach on time made it buy everything allowed, so condition overshot to the mid-80s once that work landed.",
+    changes: [
+      "After the target year, each year decides only enough work to keep the years it can still affect at the target, judged in the year that work will be built, and never carries a year more than a point above it.",
+      "Before the target year, the solved amount is still the limit, but work that would overshoot the target once built is no longer bought.",
+      "When the target year comes too soon for the work to be built by it, the run aims for the earliest year it can be reached instead and says so, rather than reporting the most the rules allow.",
+      "Without lead times nothing changes.",
+    ],
+    note: "No migration. Target scenarios with lead times give different results the next time they run, and take longer to run.",
+  },
+  {
+    date: "2026-10-06",
     title: "Delete several scenarios in a set at once",
     summary:
       "A scenario set's table has a checkbox on each scenario for deleting several at once, like the other lists.",
