@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-06",
+    title: "Delete several scenarios in a set at once",
+    summary:
+      "A scenario set's table has a checkbox on each scenario for deleting several at once, like the other lists.",
+    changes: [
+      "Tick scenarios, or use Select all, then Delete selected. The confirmation names them and says what goes with them.",
+      "Only the set's own scenarios can be deleted from its page.",
+    ],
+    fixes: [
+      "Deleting a scenario used to delete every work plan made from it under Plan from a scenario, edits and all. If another scenario locked one of those plans, the delete failed with a database error. Those plans are now kept, unlinked from the scenario. Only the run's own funded project list goes with it.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-06",
     title: "Reach a target, then let the network deteriorate",
     summary:
       "A target scenario can stop after its target year instead of holding the target: it finds the programme that reaches the target, then shows the rest of the period with no further work. A work plan made from it holds just that programme, ready to lock into the next scenario.",

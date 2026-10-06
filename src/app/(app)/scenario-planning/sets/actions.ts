@@ -14,7 +14,7 @@ import {
   updateScenarioSet,
   type ScenarioSetInput,
 } from "@/server/scenario-sets";
-import { runScenarioSet } from "@/server/scenarios";
+import { deleteSetScenarios, runScenarioSet } from "@/server/scenarios";
 import { SCENARIO_SET_STATUSES } from "@/lib/scenario-sets";
 
 export type SetFormState = { status: "idle" | "success" | "error"; message?: string };
@@ -93,6 +93,25 @@ export async function copyScenarioAction(formData: FormData) {
   const copyId = await copyScenario(organizationId, String(formData.get("scenarioId") ?? ""));
   revalidate();
   redirect(`/scenario-planning/${copyId}`);
+}
+
+export type BulkDeleteState = { status: "idle" | "success" | "error"; message: string | null };
+
+/** Delete the scenarios ticked in a set. */
+export async function deleteSetScenariosAction(_prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
+  const setId = String(formData.get("setId") ?? "");
+  try {
+    const organizationId = await organizationFor("delete scenarios in");
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No scenarios were selected." };
+    const deleted = await deleteSetScenarios(organizationId, setId, ids);
+    revalidate(setId);
+    revalidatePath("/work-plan");
+    if (deleted.length === 0) return { status: "error", message: "None of those scenarios are in this set any more." };
+    return { status: "success", message: `Deleted ${deleted.length}: ${deleted.join(", ")}.` };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not delete those scenarios" };
+  }
 }
 
 export async function deleteScenarioSetAction(formData: FormData) {

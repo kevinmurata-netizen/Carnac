@@ -257,7 +257,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                     title={`Delete the scenario “${scenario.name}”?`}
                     description={`Its assumptions, results and funded project list are deleted with it${
                       scenario.scenarioSet ? `, and it leaves ${scenario.scenarioSet.name}` : ""
-                    }. This cannot be undone.`}
+                    }. Work plans made from it under Plan from a scenario are kept. This cannot be undone.`}
                   >
                     Delete
                   </ConfirmDelete>

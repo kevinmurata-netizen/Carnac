@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getScenarioSet, listScenarioSets } from "@/server/scenario-sets";
-import { listScenarios } from "@/server/scenarios";
+import { listScenarios, plansMadeFrom } from "@/server/scenarios";
 import { estimateSetRunMs } from "@/server/run-estimate";
 import { getConditionBands } from "@/server/settings";
 import { describeWindow, endYear } from "@/lib/scenario-sets";
@@ -11,18 +11,16 @@ import { formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/layout/page-header";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { Button } from "@/components/ui/button";
-import { SubmitButton } from "@/components/ui/pending-button";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertTriangle, CalendarRange, Copy, Plus } from "lucide-react";
 import { ScenarioComparison } from "../../scenario-comparison";
 import { RunProgressButton } from "../../run-progress";
 import { ScenarioSetStatusBadge } from "../status-badge";
 import { ScenarioSetEditor } from "../set-editor";
+import { MemberTable } from "./member-table";
 import {
   assignScenarioAction,
-  copyScenarioAction,
   copyScenarioSetAction,
   deleteScenarioSetAction,
   runScenarioSetAction,
@@ -44,6 +42,7 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
 
   const canEdit = canRecordFieldData(session);
   const members = scenarios.filter((s) => s.scenarioSet?.id === set.id);
+  const madeFrom = await plansMadeFrom(members.map((s) => s.id));
   const others = scenarios.filter((s) => s.scenarioSet?.id !== set.id);
   const outOfWindow = members.filter((s) => s.resultsOutOfWindow);
   const notRun = members.filter((s) => !s.hasResults);
@@ -210,97 +209,25 @@ export default async function ScenarioSetPage({ params }: { params: Promise<{ id
               {canEdit && !archived && addScenario}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Scenario</TableHead>
-                    <TableHead>Strategy</TableHead>
-                    <TableHead>Own period</TableHead>
-                    <TableHead>Results</TableHead>
-                    {canEdit && destinations.length > 0 && <TableHead>Move to</TableHead>}
-                    {canEdit && !archived && <TableHead className="w-0" />}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {members.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell>
-                        <Link href={`/scenario-planning/${s.id}`} className="font-medium text-primary hover:underline">
-                          {s.name}
-                        </Link>
-                        {s.description && <div className="text-xs text-muted-foreground">{s.description}</div>}
-                      </TableCell>
-                      <TableCell className="text-xs">{s.assumptions.strategy}</TableCell>
-                      <TableCell
-                        className="text-xs text-muted-foreground tabular-nums"
-                        title="What this scenario runs over outside the set. Ignored while it is a member."
-                      >
-                        {s.ownAnalysisPeriodYears} yr
-                        {s.ownAnalysisPeriodYears !== set.planningPeriodYears && " (set overrides)"}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {!s.hasResults ? (
-                          <span className="text-muted-foreground">Not run</span>
-                        ) : s.resultsOutOfWindow ? (
-                          <span className="font-medium text-amber-600">
-                            {s.conditionSeries[0]?.year}–{s.conditionSeries.at(-1)?.year} · out of window
-                          </span>
-                        ) : (
-                          <span className="tabular-nums">
-                            {s.conditionSeries[0]?.year}–{s.conditionSeries.at(-1)?.year}
-                          </span>
-                        )}
-                      </TableCell>
-                      {canEdit && destinations.length > 0 && (
-                        <TableCell>
-                          <form action={assignScenarioAction} className="flex items-center gap-1.5">
-                            <input type="hidden" name="scenarioId" value={s.id} />
-                            <select
-                              name="setId"
-                              required
-                              defaultValue=""
-                              aria-label={`Move ${s.name} to another set`}
-                              className="h-8 max-w-[12rem] rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
-                              <option value="" disabled>
-                                Another set…
-                              </option>
-                              {destinations.map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.name}
-                                </option>
-                              ))}
-                            </select>
-                            <Button type="submit" size="sm" variant="ghost">
-                              Move
-                            </Button>
-                          </form>
-                        </TableCell>
-                      )}
-                      {/* A variant beside the original: same window, same
-                          settings, then change one thing and run it. */}
-                      {canEdit && !archived && (
-                        <TableCell>
-                          <form action={copyScenarioAction}>
-                            <input type="hidden" name="scenarioId" value={s.id} />
-                            <SubmitButton
-                              size="sm"
-                              variant="ghost"
-                              pendingLabel="Copying…"
-                              title={`Copies ${s.name} into this set, without its results, and opens the copy`}
-                            >
-                              <Copy className="mr-1 h-3.5 w-3.5" />
-                              Copy
-                            </SubmitButton>
-                          </form>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <MemberTable
+              setId={set.id}
+              planningPeriodYears={set.planningPeriodYears}
+              canEdit={canEdit}
+              archived={archived}
+              destinations={destinations.map((d) => ({ id: d.id, name: d.name }))}
+              members={members.map((s) => ({
+                id: s.id,
+                name: s.name,
+                description: s.description ?? null,
+                strategy: s.assumptions.strategy,
+                ownAnalysisPeriodYears: s.ownAnalysisPeriodYears,
+                hasResults: s.hasResults,
+                resultsOutOfWindow: s.resultsOutOfWindow,
+                firstYear: s.conditionSeries[0]?.year ?? null,
+                lastYear: s.conditionSeries.at(-1)?.year ?? null,
+                plansMadeFrom: madeFrom.get(s.id) ?? 0,
+              }))}
+            />
           )}
 
           {canEdit && !archived && others.length > 0 && (
