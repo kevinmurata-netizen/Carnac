@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-06",
+    title: "Delete several work plans at once",
+    summary:
+      "The Work Plans list has a checkbox on each row, like the treatment lists in Settings, for deleting several plans at once.",
+    changes: [
+      "Tick plans, or use Select all, then Delete selected. The confirmation names the plans and how many projects go with them.",
+      "A plan a scenario locks is kept, and the confirmation and result say which scenario locks it. The list marks those plans 'locked by a scenario'.",
+      "Deleting a plan from its own page works as before.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-05",
     title: "The rule editor's buttons stay in view",
     summary:

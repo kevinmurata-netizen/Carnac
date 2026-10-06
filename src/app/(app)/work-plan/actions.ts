@@ -12,6 +12,7 @@ import {
   moveWorkPlanItem,
   updateWorkPlanItemStatus,
   deleteWorkPlan,
+  deleteWorkPlans,
   searchSegments,
   previewWorkPlanAddition,
   addWorkPlanItem,
@@ -290,4 +291,31 @@ export async function deleteWorkPlanAction(formData: FormData) {
   if (!id) throw new Error("Work plan id is required");
   await deleteWorkPlan(id);
   redirect("/work-plan");
+}
+
+export type BulkDeleteState = { status: "idle" | "success" | "error"; message: string | null };
+
+/** Delete the plans ticked on the list, keeping any a scenario locks and
+ * saying why. A partial result reads as an error so it is never taken for
+ * the lot. */
+export async function deleteWorkPlansAction(_prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
+  try {
+    await requireEditor();
+    const ids = formData.getAll("id").map(String).filter(Boolean);
+    if (ids.length === 0) return { status: "error", message: "No work plans were selected." };
+
+    const { deleted, kept } = await deleteWorkPlans(ids);
+    revalidatePath("/work-plan");
+    revalidatePath("/scenario-planning", "layout");
+
+    const deletedText =
+      deleted.length === 0 ? "Nothing was deleted." : `Deleted ${deleted.length}: ${deleted.join(", ")}.`;
+    if (kept.length === 0) return { status: "success", message: deletedText };
+    return {
+      status: "error",
+      message: `${deletedText} Kept ${kept.length}: ${kept.map((k) => `${k.name} (${k.reason})`).join("; ")}`,
+    };
+  } catch (e) {
+    return { status: "error", message: e instanceof Error ? e.message : "Could not delete those work plans" };
+  }
 }

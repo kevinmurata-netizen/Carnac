@@ -631,10 +631,13 @@ export async function listWorkPlans() {
     include: {
       items: { select: { id: true, bundleId: true, estimatedCost: true, year: true, status: true } },
       scenario: { select: { name: true } },
+      lockingScenarios: { select: { name: true } },
     },
     orderBy: { createdAt: "desc" },
   });
   return plans.map((p) => ({
+    /** Why it cannot be deleted — a scenario locks it — or null. */
+    deleteBlocker: deleteBlocker(p.lockingScenarios),
     id: p.id,
     name: p.name,
     startYear: p.startYear,
@@ -1502,18 +1505,51 @@ export function countProjects(items: Array<{ id: string; bundleId: string | null
   return new Set(items.map((i) => i.bundleId ?? i.id)).size;
 }
 
+/** Why a plan cannot be deleted, or null when it can. A scenario running with
+ * the plan's projects locked would change what it runs if the plan went, so
+ * the plan stays until it is unlocked there. */
+function deleteBlocker(lockingScenarios: Array<{ name: string }>) {
+  if (lockingScenarios.length === 0) return null;
+  return (
+    `${lockingScenarios.map((s) => s.name).join(", ")} ${lockingScenarios.length === 1 ? "locks" : "lock"} its projects. ` +
+    `Choose another plan to lock there, or none, before deleting it.`
+  );
+}
+
 export async function deleteWorkPlan(id: string) {
-  // A scenario running with this plan's projects locked would change what it
-  // runs if the plan went, so the plan stays until it is unlocked there.
   const locking = await prisma.scenario.findMany({ where: { lockedWorkPlanId: id }, select: { name: true } });
-  if (locking.length > 0) {
-    throw new Error(
-      `${locking.map((s) => s.name).join(", ")} ${locking.length === 1 ? "locks" : "lock"} this plan's projects. ` +
-        `Choose another plan to lock there, or none, before deleting it.`
-    );
+  const blocker = deleteBlocker(locking);
+  if (blocker) throw new Error(blocker);
+  await prisma.$transaction([
+    prisma.workPlanItem.deleteMany({ where: { workPlanId: id } }),
+    prisma.workPlan.delete({ where: { id } }),
+  ]);
+}
+
+/**
+ * Delete the plans ticked on the list, with their projects. A plan a scenario
+ * locks is kept, and said why, rather than refusing the whole lot.
+ */
+export async function deleteWorkPlans(ids: string[]) {
+  const plans = await prisma.workPlan.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, lockingScenarios: { select: { name: true } } },
+  });
+  const deleted: string[] = [];
+  const kept: Array<{ name: string; reason: string }> = [];
+  for (const plan of plans) {
+    const blocker = deleteBlocker(plan.lockingScenarios);
+    if (blocker) {
+      kept.push({ name: plan.name, reason: blocker });
+      continue;
+    }
+    await prisma.$transaction([
+      prisma.workPlanItem.deleteMany({ where: { workPlanId: plan.id } }),
+      prisma.workPlan.delete({ where: { id: plan.id } }),
+    ]);
+    deleted.push(plan.name);
   }
-  await prisma.workPlanItem.deleteMany({ where: { workPlanId: id } });
-  await prisma.workPlan.delete({ where: { id } });
+  return { deleted, kept };
 }
 
 /**

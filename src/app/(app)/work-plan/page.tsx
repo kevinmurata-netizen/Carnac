@@ -9,14 +9,14 @@ import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weig
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatCurrency, formatNumber } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { generateWorkPlanAction, createFromScenarioAction } from "./actions";
 import { SubmitButton } from "@/components/ui/pending-button";
 import { listScenarios } from "@/server/scenarios";
 import { getPageName } from "@/server/navigation";
 import { ImportDialog } from "./[id]/import-dialog";
 import { ExportButton } from "@/components/layout/export-button";
+import { PlanList } from "./plan-list";
 
 const inputClass =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -51,51 +51,20 @@ export default async function WorkPlanPage() {
           <CardTitle>Work Plans</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Plan</TableHead>
-                <TableHead>Period</TableHead>
-                <TableHead>Scenario</TableHead>
-                <TableHead>Projects</TableHead>
-                <TableHead>Total Cost</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {plans.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
-                    No work plans yet — start one below.
-                  </TableCell>
-                </TableRow>
-              )}
-              {plans.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell>
-                    <Link href={`/work-plan/${p.id}`} className="font-medium text-primary hover:underline">
-                      {p.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    {p.startYear}–{p.endYear}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {p.scenarioName ?? "—"}
-                    {p.isScenarioMirror && (
-                      <span
-                        className="ml-1.5 rounded border px-1.5 py-0.5 text-[10px]"
-                        title="Written by the scenario run itself, and replaced every time that scenario runs again. Create a plan from the scenario below to have one you can change."
-                      >
-                        run&apos;s own
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell>{formatNumber(p.itemCount)}</TableCell>
-                  <TableCell>{formatCurrency(p.totalCost, { compact: true })}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <PlanList
+            canEdit={canEdit}
+            plans={plans.map((p) => ({
+              id: p.id,
+              name: p.name,
+              startYear: p.startYear,
+              endYear: p.endYear,
+              scenarioName: p.scenarioName,
+              isScenarioMirror: p.isScenarioMirror,
+              itemCount: p.itemCount,
+              totalCost: p.totalCost,
+              deleteBlocker: p.deleteBlocker,
+            }))}
+          />
         </CardContent>
       </Card>
 
