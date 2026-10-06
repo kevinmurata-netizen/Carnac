@@ -144,14 +144,7 @@ export async function copyScenarioSet(
   const source = await prisma.scenarioSet.findFirst({
     where: { id, organizationId },
     include: {
-      scenarios: {
-        include: {
-          assumptions: { select: { key: true, value: true } },
-          treatmentOptions: { select: { treatmentId: true } },
-          combinationOptions: { select: { combinationId: true } },
-        },
-        orderBy: { createdAt: "asc" },
-      },
+      scenarios: { include: SCENARIO_COPY_INCLUDE, orderBy: { createdAt: "asc" } },
     },
   });
   if (!source) throw new Error("Scenario set not found");
@@ -160,7 +153,7 @@ export async function copyScenarioSet(
   // from a form, and a scenario from another set must not be dragged in.
   const chosen = scenarioIds == null ? source.scenarios : source.scenarios.filter((s) => scenarioIds.includes(s.id));
 
-  const name = await freeName(organizationId, source.name);
+  const name = await freeSetName(organizationId, source.name);
 
   return prisma.$transaction(async (tx) => {
     const copy = await tx.scenarioSet.create({
@@ -176,59 +169,120 @@ export async function copyScenarioSet(
     });
 
     for (const scenario of chosen) {
-      await tx.scenario.create({
-        data: {
-          organizationId,
-          scenarioSetId: copy.id,
-          // Scenario names are not unique, and inside a new set the original
-          // names are the point — "Current Funding" in the copy answers the
-          // same question as "Current Funding" in the original.
-          name: scenario.name,
-          description: scenario.description,
-          criticalityModelId: scenario.criticalityModelId,
-          weightSetId: scenario.weightSetId,
-          categoryWeightSetId: scenario.categoryWeightSetId,
-          categoryFundingPlanId: scenario.categoryFundingPlanId,
-          limitsOptions: scenario.limitsOptions,
-          // A stored null — a budget scenario with no target line — is copied
-          // as null, not dropped, or the copy would gain the default target.
-          assumptions: {
-            create: scenario.assumptions.map((a) => ({
-              key: a.key,
-              value: a.value === null ? Prisma.JsonNull : (a.value as Prisma.InputJsonValue),
-            })),
-          },
-          treatmentOptions: { create: scenario.treatmentOptions.map((t) => ({ treatmentId: t.treatmentId })) },
-          combinationOptions: {
-            create: scenario.combinationOptions.map((c) => ({ combinationId: c.combinationId })),
-          },
-        },
-      });
+      // Scenario names are not unique, and inside a new set the original names
+      // are the point — "Current Funding" in the copy answers the same
+      // question as "Current Funding" in the original.
+      await tx.scenario.create({ data: scenarioCopyData(organizationId, scenario, copy.id, scenario.name) });
     }
 
     return copy.id;
   });
 }
 
+/** What a scenario copy needs read from the original. */
+const SCENARIO_COPY_INCLUDE = {
+  assumptions: { select: { key: true, value: true } },
+  treatmentOptions: { select: { treatmentId: true } },
+  combinationOptions: { select: { combinationId: true } },
+} satisfies Prisma.ScenarioInclude;
+
+type CopyableScenario = Prisma.ScenarioGetPayload<{ include: typeof SCENARIO_COPY_INCLUDE }>;
+
+/**
+ * A scenario as it is set up, without what it produced: its assumptions,
+ * weightings, the assets it runs over, its lead times, the work plan it locks
+ * and what it may consider, but no results and no run history. A copy has
+ * never run, and carrying the original's numbers across would say it had.
+ *
+ * One definition for both kinds of copy, so a setting added to scenarios is
+ * copied by both or by neither.
+ */
+function scenarioCopyData(
+  organizationId: string,
+  scenario: CopyableScenario,
+  scenarioSetId: string | null,
+  name: string
+): Prisma.ScenarioUncheckedCreateInput {
+  return {
+    organizationId,
+    scenarioSetId,
+    name,
+    description: scenario.description,
+    criticalityModelId: scenario.criticalityModelId,
+    weightSetId: scenario.weightSetId,
+    categoryWeightSetId: scenario.categoryWeightSetId,
+    categoryFundingPlanId: scenario.categoryFundingPlanId,
+    savedFilterId: scenario.savedFilterId,
+    leadTimeSetId: scenario.leadTimeSetId,
+    lockedWorkPlanId: scenario.lockedWorkPlanId,
+    limitsOptions: scenario.limitsOptions,
+    // A stored null — a budget scenario with no target line — is copied as
+    // null, not dropped, or the copy would gain the default target.
+    assumptions: {
+      create: scenario.assumptions.map((a) => ({
+        key: a.key,
+        value: a.value === null ? Prisma.JsonNull : (a.value as Prisma.InputJsonValue),
+      })),
+    },
+    treatmentOptions: { create: scenario.treatmentOptions.map((t) => ({ treatmentId: t.treatmentId })) },
+    combinationOptions: { create: scenario.combinationOptions.map((c) => ({ combinationId: c.combinationId })) },
+  };
+}
+
+/**
+ * Copy one scenario into the set it is in, to try a variant beside it: same
+ * window, same settings, then change one thing and run it. Named
+ * "… (copy)" so the two can be told apart in the set's comparison.
+ *
+ * An archived set takes no new work, so a scenario in one is not copied there.
+ */
+export async function copyScenario(organizationId: string, id: string): Promise<string> {
+  const source = await prisma.scenario.findFirst({
+    where: { id, organizationId },
+    include: { ...SCENARIO_COPY_INCLUDE, scenarioSet: { select: { name: true, status: true } } },
+  });
+  if (!source) throw new Error("Scenario not found");
+  if (source.scenarioSet?.status === "ARCHIVED") {
+    throw new Error(`${source.scenarioSet.name} is archived and takes no new scenarios. Copy the set instead.`);
+  }
+
+  const siblings = await prisma.scenario.findMany({
+    where: { organizationId, scenarioSetId: source.scenarioSetId },
+    select: { name: true },
+  });
+  const name = copyName(source.name, new Set(siblings.map((s) => s.name)));
+
+  const copy = await prisma.scenario.create({
+    data: scenarioCopyData(organizationId, source, source.scenarioSetId, name),
+    select: { id: true },
+  });
+  return copy.id;
+}
+
 /**
  * "2027 Capital Plan" → "2027 Capital Plan (copy)", then "(copy 2)" and so on.
- * Set names are unique per organization, so a copy has to find a free one.
+ * Set names are unique per organization, so a copy has to find a free one. A
+ * copied scenario takes the same kind of name, free within its own set.
  *
  * A copy of a copy numbers from the original name rather than stacking: three
  * variants of one plan read as "(copy)", "(copy 2)", "(copy 3)", not as
  * "(copy) (copy) (copy)", which says nothing about how they differ and grows a
  * word every time.
  */
-async function freeName(organizationId: string, original: string): Promise<string> {
-  const base = original.replace(/ \(copy(?: \d+)?\)$/, "");
-  const taken = new Set(
-    (
-      await prisma.scenarioSet.findMany({
-        where: { organizationId, name: { startsWith: base } },
-        select: { name: true },
-      })
-    ).map((s) => s.name)
-  );
+async function freeSetName(organizationId: string, original: string): Promise<string> {
+  const base = original.replace(COPY_SUFFIX, "");
+  const taken = await prisma.scenarioSet.findMany({
+    where: { organizationId, name: { startsWith: base } },
+    select: { name: true },
+  });
+  return copyName(original, new Set(taken.map((s) => s.name)));
+}
+
+const COPY_SUFFIX = / \(copy(?: \d+)?\)$/;
+
+/** The first of "… (copy)", "… (copy 2)", … not already taken. */
+function copyName(original: string, taken: Set<string>): string {
+  const base = original.replace(COPY_SUFFIX, "");
   const first = `${base} (copy)`;
   if (!taken.has(first)) return first;
   for (let n = 2; ; n++) {

@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-06",
+    title: "Copy a scenario within its set",
+    summary:
+      "A scenario can be copied into the set it is in, to try a variant beside the original: same settings, then change one thing and run it.",
+    changes: [
+      "Copy on each scenario in a set's table, and on the scenario's own page. The copy opens straight away.",
+      "The copy is named after the original — “Current Funding (copy)”, then “(copy 2)” — and keeps every setting: assumptions, weightings, the assets it runs over, lead times, the work plan it locks and the treatments it may consider. It has no results until it runs.",
+      "Not offered in an archived set, which takes no new scenarios.",
+    ],
+    fixes: [
+      "Copying a whole scenario set now keeps each scenario's asset filter, lead times and locked work plan. Before, the copies ran over the whole network with the default lead times and nothing locked.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-06",
     title: "Delete several work plans at once",
     summary:
       "The Work Plans list has a checkbox on each row, like the treatment lists in Settings, for deleting several plans at once.",
