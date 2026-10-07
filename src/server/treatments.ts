@@ -231,6 +231,7 @@ export async function buildContexts(organizationId: string, assetId?: string) {
       failuresLast10Years: asset.failureEvents.length,
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
+      assetTypeId: asset.assetTypeId,
       criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
       customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
       serviceArea: asset.location?.serviceArea ?? null,

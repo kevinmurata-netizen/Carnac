@@ -45,6 +45,7 @@ import {
   type TreatmentOption,
   type CombinationDef,
   type TreatmentCategory,
+  findTreatment,
 } from "./treatment";
 
 export const STRATEGIES = [
@@ -187,6 +188,8 @@ export const DEFAULT_ASSUMPTIONS: ScenarioAssumptions = {
 /** Per-asset state carried through the simulation. */
 export type SimAsset = {
   id: string;
+  /** Its asset type, which decides whose treatments it is offered. */
+  assetTypeId?: string | null;
   assetCode: string;
   material: string | null;
   diameterInches: number | null;
@@ -505,6 +508,7 @@ export function simAssetContext(asset: SimAsset): AssetTreatmentContext {
 function buildContext(asset: SimAsset): AssetTreatmentContext {
   const pof = pofFromCondition(asset.condition);
   return {
+    assetTypeId: asset.assetTypeId,
     conditionScore: asset.condition,
     material: asset.material,
     diameterInches: asset.diameterInches,
@@ -948,7 +952,8 @@ export function runScenario(
   for (const project of locks.projects) {
     const asset = byId.get(project.assetId);
     if (!asset) continue;
-    const category = library.find((d) => d.name === project.members[0]?.treatment)?.category ?? "Renew";
+    const category =
+      findTreatment(library, project.members[0]?.treatment ?? "", asset.assetTypeId)?.category ?? "Renew";
     lockedRecords.set(project.key, lockedRecord(project, asset, category));
   }
   let totalProgrammedSpend = 0;

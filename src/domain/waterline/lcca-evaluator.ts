@@ -3,6 +3,7 @@ import {
   type AssetTreatmentContext,
   type TreatmentDef,
   type TreatmentOption,
+  findTreatment,
 } from "./treatment";
 
 import { computeLcca, DEFAULT_LCCA_ASSUMPTIONS, EMERGENCY_COST_PREMIUM } from "./lcca";
@@ -51,7 +52,7 @@ export function buildLccaEvaluator(
     Math.round(curve.serviceLife - effectiveAgeForCondition(curve, conditionScore))
   );
 
-  const replacementDef = library.find((d) => d.name === "Replacement") ?? fallbackReplacement;
+  const replacementDef = findTreatment(library, "Replacement", ctx.assetTypeId) ?? fallbackReplacement;
   const plannedReplacementCost = estimateTreatmentCost(replacementDef, ctx);
   if (plannedReplacementCost == null) return null;
 

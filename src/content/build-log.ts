@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-07",
+    title: "Each asset type's treatments stay on its own assets",
+    summary:
+      "The engine now knows which asset type each treatment and each asset belongs to, and only ever offers a treatment on assets of its own type. This is groundwork for modelling several asset types side by side; nothing changes for water today.",
+    changes: [
+      "Scenarios, treatment planning, work plans, plan imports and locked projects match a treatment to an asset's own type before anything else.",
+      "Treatments found by name are found among the asset type's own, since two asset classes can each have a treatment with the same name.",
+    ],
+    fixes: [
+      "Saving a scenario run's funded project list looked treatments up by name across every organization in the database. It now looks only at this organization's.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-07",
     title: "The modelled asset type is a setting, not a code",
     summary:
       "The first step toward an asset-agnostic Carnac. Which asset type the engine models (water lines, today) is now a setting on the asset type, and no code names an asset class any more. Nothing changes in what the app does.",

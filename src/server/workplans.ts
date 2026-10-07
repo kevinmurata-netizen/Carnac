@@ -9,6 +9,7 @@ import {
   explainApplicability,
   splitOptionCost,
   type AssetTreatmentContext,
+  findTreatment,
 } from "@/domain/waterline/treatment";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { buildLccaEvaluator } from "@/domain/waterline/lcca-evaluator";
@@ -51,6 +52,7 @@ import {
   getScenarioAssumptions,
 } from "@/server/scenarios";
 import { MODELLED, modelledType } from "@/server/modelled-asset-type";
+import { treatmentIdsForAssets } from "@/server/treatment-lookup";
 
 /**
  * Generating a multi-year capital program (SPEC §17).
@@ -122,11 +124,10 @@ export async function createWorkPlanFromScenario(
     select: { weightSetId: true, categoryWeightSetId: true, categoryFundingPlanId: true },
   });
 
-  const treatmentRows = await prisma.treatment.findMany({
-    where: { assetType: modelledType(organizationId) },
-    select: { id: true, name: true },
-  });
-  const treatmentIdByName = new Map(treatmentRows.map((t) => [t.name, t.id]));
+  const treatmentIdFor = await treatmentIdsForAssets(
+    organizationId,
+    years.flatMap((y) => y.selected.map((p) => p.assetId))
+  );
 
   const workPlan = await prisma.workPlan.create({
     data: {
@@ -154,7 +155,7 @@ export async function createWorkPlanFromScenario(
       const isBundle = p.bundleName != null;
       const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${p.buildYear}:${p.treatment}` : null;
       return p.members.flatMap((member) => {
-        const treatmentId = treatmentIdByName.get(member.treatment);
+        const treatmentId = treatmentIdFor(p.assetId, member.treatment);
         if (!treatmentId) return [];
         return [
           {
@@ -346,6 +347,7 @@ async function buildCandidates(
       failuresLast10Years: asset.failureEvents.length,
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
+      assetTypeId: asset.assetTypeId,
       criticality: criticalityRating,
       customerType,
       serviceArea: asset.location?.serviceArea ?? null,
@@ -503,11 +505,10 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
     status: WorkPlanItemStatus;
   }> = [];
 
-  const treatmentRows = await prisma.treatment.findMany({
-    where: { assetType: modelledType(organizationId) },
-    select: { id: true, name: true },
-  });
-  const treatmentIdByName = new Map(treatmentRows.map((t) => [t.name, t.id]));
+  const treatmentIdFor = await treatmentIdsForAssets(
+    organizationId,
+    candidates.map((c) => c.assetId)
+  );
 
   const plan = fundingPlanFromCaps(caps);
 
@@ -525,7 +526,7 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
       // One row per treatment, so treatmentId stays a real foreign key and
       // every existing read path keeps working. A bundle becomes several rows
       // sharing a bundleId, which is what marks them as one decision.
-      const treatmentIds = c.option.members.map((m) => treatmentIdByName.get(m.name)!);
+      const treatmentIds = c.option.members.map((m) => treatmentIdFor(c.assetId, m.name)!);
 
       // Condition at the time the work is actually scheduled, not today —
       // deferring a year means the asset is worse when the crew arrives.
@@ -1003,6 +1004,7 @@ export async function assetTreatmentContext(
       failuresLast10Years: asset.failureEvents.length,
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
+      assetTypeId: asset.assetTypeId,
       criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
       customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
       serviceArea: asset.location?.serviceArea ?? null,
@@ -1091,7 +1093,7 @@ export async function previewWorkPlanAddition(
   if (!found) throw new Error("That segment is not an active one the model runs, so work cannot be planned on it");
   if (!treatment) throw new Error("That treatment no longer exists");
 
-  const def = library.find((d) => d.name === treatment.name);
+  const def = findTreatment(library, treatment.name, found.ctx.assetTypeId);
   if (!def) throw new Error(`${treatment.name} is not in the treatment library`);
 
   const option = buildOption(`t:${def.name}`, def.name, [def], found.ctx);
@@ -1283,7 +1285,7 @@ export async function previewCombine(
   if (!found) throw new Error("That segment is not an active one the model runs");
 
   const defs = items.map((i) => {
-    const def = library.find((d) => d.name === i.treatment.name);
+    const def = findTreatment(library, i.treatment.name, found.ctx.assetTypeId);
     if (!def) throw new Error(`${i.treatment.name} is no longer in the treatment library`);
     return def;
   });
@@ -1423,7 +1425,7 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
   await prisma.$transaction(
     items.map((item) => {
       const benefit = (item.expectedBenefit ?? {}) as { yearApart?: number; costApart?: number };
-      const def = library.find((d) => d.name === item.treatment.name);
+      const def = findTreatment(library, item.treatment.name, found.ctx.assetTypeId);
       const alone = def ? buildOption(`t:${def.name}`, def.name, [def], found.ctx) : null;
       return prisma.workPlanItem.update({
         where: { id: item.id },
