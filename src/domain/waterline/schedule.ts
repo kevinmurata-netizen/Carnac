@@ -1,6 +1,6 @@
 import { evaluateCurve, effectiveAgeForCondition } from "./deterioration";
 import { annualFailureProbability, failureEventCost, presentValue } from "./lcca";
-import { buildOption, type TreatmentDef } from "./treatment";
+import { buildOption, findTreatment, type TreatmentDef } from "./treatment";
 import { belowTargetBar, pofFromCondition, simAssetContext, type ScenarioAssumptions, type SimAsset } from "./scenario";
 
 /**
@@ -146,7 +146,7 @@ export function runSchedule(
       }
 
       const members = visit.treatments.flatMap((name) => {
-        const def = options.library.find((d) => d.name === name);
+        const def = findTreatment(options.library, name, asset.assetTypeId);
         return def ? [def] : [];
       });
       if (members.length !== visit.treatments.length) {

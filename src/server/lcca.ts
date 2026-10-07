@@ -13,6 +13,7 @@ import {
   estimateTreatmentCost,
   resolveTreatmentCost,
   type AssetTreatmentContext,
+  findTreatment,
 } from "@/domain/waterline/treatment";
 import { curveFor } from "@/domain/waterline/deterioration";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
@@ -73,6 +74,7 @@ export async function getAssetLcca(
     failuresLast10Years: asset.failureEvents.length,
     ageYears: ageInYears(asset.installationDate),
     expectedUsefulLife: asset.expectedUsefulLife ?? 75,
+    assetTypeId: asset.assetTypeId,
     criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
     serviceArea: asset.location?.serviceArea ?? null,
     pressureZone: asset.location?.pressureZone ?? null,
@@ -91,7 +93,8 @@ export async function getAssetLcca(
 
   // Cost of the replacement that eventually becomes unavoidable, at the
   // emergency premium since it happens on the pipe's schedule, not ours.
-  const replacementDef = library.find((d) => d.name === "Replacement") ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
+  const replacementDef =
+    findTreatment(library, "Replacement", ctx.assetTypeId) ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
   // The forced replacement is what the do-nothing baseline is measured
   // against, so if no rate prices Replacement for this asset there is no
   // baseline and the whole comparison is meaningless rather than merely

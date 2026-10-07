@@ -122,6 +122,7 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
   return {
     id: row.id,
     name: row.name,
+    assetTypeId: row.assetTypeId,
     description: row.description ?? "",
     category: (applicability.category as TreatmentCategory) ?? "Repair",
     // The window is absent on purpose. It described what a treatment applied

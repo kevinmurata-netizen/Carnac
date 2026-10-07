@@ -55,6 +55,7 @@ import {
   type AssetTreatmentContext,
   type TreatmentDef,
   type TreatmentOption,
+  findTreatment,
 } from "./treatment";
 import { cashPlan, leadTimeFor, type LeadTime, type LeadTimes } from "./lead-time";
 import { buildLocked, lockSchedule, lockedRecord, type LockedProject, type LockSchedule } from "./locked-projects";
@@ -397,7 +398,8 @@ function walk(
   for (const project of locks.projects) {
     const asset = byId.get(project.assetId);
     if (!asset) continue;
-    const category = library.find((d) => d.name === project.members[0]?.treatment)?.category ?? "Renew";
+    const category =
+      findTreatment(library, project.members[0]?.treatment ?? "", asset.assetTypeId)?.category ?? "Renew";
     lockedRecords.set(project.key, lockedRecord(project, asset, category));
     if (assumptions.programmedFunding !== "additional" && project.fundedYear >= startYear && project.fundedYear <= endYear) {
       money.reserve({
@@ -1065,7 +1067,7 @@ function holdPurse(args: {
     if (held) {
       work = { buildYear: held.buildYear, conditionAfter: held.conditionAfter };
     } else if (locked) {
-      const defs = locked.members.map((m) => args.library.find((d) => d.name === m.treatment));
+      const defs = locked.members.map((m) => findTreatment(args.library, m.treatment, asset.assetTypeId));
       if (defs.every((d): d is TreatmentDef => d != null)) {
         const before = evaluateCurve(asset.curve, asset.effectiveAge + (locked.buildYear - args.year));
         work = { buildYear: locked.buildYear, conditionAfter: projectedConditionOf(defs, before) };

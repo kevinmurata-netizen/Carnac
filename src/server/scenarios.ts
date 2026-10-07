@@ -43,6 +43,7 @@ import { matchingAssetIds } from "@/server/saved-filters";
 import { resultsOutOfWindow, type ScenarioSetStatusValue, type ScenarioWindow } from "@/lib/scenario-sets";
 import { assertSetInOrganization } from "@/server/scenario-sets";
 import { MODELLED, modelledType } from "@/server/modelled-asset-type";
+import { treatmentIdsForAssets } from "@/server/treatment-lookup";
 
 /** Snapshot the current network into simulation inputs. Condition comes from
  * the latest measurement; uninspected assets fall back to their curve position
@@ -101,6 +102,7 @@ export async function buildSimAssets(organizationId: string, only?: string[]): P
 
     return {
       id: asset.id,
+      assetTypeId: asset.assetTypeId,
       assetCode: asset.assetCode,
       material,
       diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
@@ -667,7 +669,7 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       ],
     });
   }
-  await persistScenarioProgram(scenarioId, run.name, result, run.assumptions, run.locked?.planName ?? null);
+  await persistScenarioProgram(organizationId, scenarioId, run.name, result, run.assumptions, run.locked?.planName ?? null);
   // Measured across everything the run actually did — loading, simulating and
   // persisting — because that is what the person waiting experiences. Written
   // only on success, so a failed run cannot poison the next estimate.
@@ -711,6 +713,7 @@ export async function runScenarioSet(organizationId: string, setId: string): Pro
  * — carries the flag false and is left alone here.
  */
 async function persistScenarioProgram(
+  organizationId: string,
   scenarioId: string,
   scenarioName: string,
   result: ScenarioRunResult,
@@ -738,8 +741,12 @@ async function persistScenarioProgram(
     .filter((y) => y.selected.length > 0);
   if (years.length === 0) return;
 
-  const treatments = await prisma.treatment.findMany({ select: { id: true, name: true } });
-  const treatmentIdByName = new Map(treatments.map((t) => [t.name, t.id]));
+  // By the asset's own type: a name alone could match another asset class's
+  // treatment, or — before this was scoped — another organization's.
+  const treatmentIdFor = await treatmentIdsForAssets(
+    organizationId,
+    years.flatMap((y) => y.selected.map((p) => p.assetId))
+  );
 
   // The span of the money, not of the decisions: a row sits in the year it is
   // paid for, and with delivery lead times that is not the year it was chosen.
@@ -770,7 +777,7 @@ async function persistScenarioProgram(
       const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${p.buildYear}:${p.treatment}` : null;
 
       return p.members.flatMap((member) => {
-        const treatmentId = treatmentIdByName.get(member.treatment);
+        const treatmentId = treatmentIdFor(p.assetId, member.treatment);
         if (!treatmentId) return [];
         return [
           {

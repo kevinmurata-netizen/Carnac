@@ -29,6 +29,9 @@ export type TreatmentCategory = "Assess" | "Repair" | "Rehabilitate" | "Renew" |
 
 export type TreatmentDef = {
   name: string;
+  /** The asset type this treatment is for. Names are unique within a type,
+   * not across types. Absent on the built-in defaults, which apply to any. */
+  assetTypeId?: string | null;
   description: string;
   category: TreatmentCategory;
   /**
@@ -791,6 +794,9 @@ export function splitOptionCost(option: TreatmentOption, ctx: AssetTreatmentCont
 }
 
 export type AssetTreatmentContext = {
+  /** The asset's type: only that type's treatments are offered on it.
+   * Absent means no restriction, for call sites with one asset type. */
+  assetTypeId?: string | null;
   conditionScore: number | null;
   material: string | null;
   diameterInches: number | null;
@@ -831,7 +837,26 @@ export type AssetTreatmentContext = {
  * exist would be a fabricated justification (SPEC §32) rather than a policy
  * choice. That is not a rule to be tuned, so it is not offered as one.
  */
+/** Whether a treatment is one of this asset type's. A treatment or an asset
+ * with no type recorded — the built-in defaults, an old call site — is not
+ * held back on that account. */
+export function forAssetType(def: TreatmentDef, assetTypeId: string | null | undefined): boolean {
+  return !def.assetTypeId || !assetTypeId || def.assetTypeId === assetTypeId;
+}
+
+/** A treatment by name, among an asset type's own. Two asset classes can each
+ * have a "Replacement", so a name alone is not enough to find one. */
+export function findTreatment(
+  library: TreatmentDef[],
+  name: string,
+  assetTypeId: string | null | undefined
+): TreatmentDef | undefined {
+  return library.find((d) => d.name === name && forAssetType(d, assetTypeId));
+}
+
 export function isApplicable(def: TreatmentDef, ctx: AssetTreatmentContext): boolean {
+  // Another asset type's treatment never applies, whatever its rules say.
+  if (!forAssetType(def, ctx.assetTypeId)) return false;
   if (ctx.conditionScore == null) return def.name === "Inspection";
   return explainApplicability(def, ctx).pass;
 }

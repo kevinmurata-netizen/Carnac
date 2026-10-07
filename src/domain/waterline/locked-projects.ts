@@ -21,7 +21,7 @@
 
 import { effectiveAgeForCondition } from "./deterioration";
 import { pofFromCondition, type ScenarioProject, type SimAsset } from "./scenario";
-import { projectedConditionOf, type TreatmentDef, type TreatmentOption } from "./treatment";
+import { findTreatment, projectedConditionOf, type TreatmentDef, type TreatmentOption } from "./treatment";
 
 /** How programmed work counts against a scenario's annual budget. */
 export const PROGRAMMED_FUNDING = ["within", "additional"] as const;
@@ -96,7 +96,7 @@ export function buildLocked(
   library: TreatmentDef[],
   record: ScenarioProject
 ): TreatmentOption | null {
-  const defs = project.members.map((m) => library.find((d) => d.name === m.treatment));
+  const defs = project.members.map((m) => findTreatment(library, m.treatment, asset.assetTypeId));
   const known = defs.every((d): d is TreatmentDef => d != null);
 
   const before = asset.condition;

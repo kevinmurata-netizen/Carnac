@@ -10,6 +10,8 @@ import {
   type AssetTreatmentContext,
   type CombinationDef,
   type TreatmentDef,
+  findTreatment,
+  forAssetType,
 } from "@/domain/waterline/treatment";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { loadCombinations } from "@/server/combinations";
@@ -17,6 +19,7 @@ import { splitCsvLine } from "@/server/import";
 import { assetTreatmentContext } from "@/server/workplans";
 import { buildWorkbookSheets } from "@/server/excel";
 import { MODELLED, modelledType } from "@/server/modelled-asset-type";
+import { treatmentKey } from "@/server/treatment-lookup";
 
 /**
  * Bringing already-programmed work into a plan from a spreadsheet.
@@ -290,18 +293,35 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     loadCombinations(organizationId),
     prisma.treatment.findMany({
       where: { assetType: modelledType(organizationId) },
-      select: { id: true, name: true },
+      select: { id: true, name: true, assetTypeId: true },
     }),
     // A new plan holds nothing yet, so nothing in it can be repeated.
     plan.id
       ? prisma.workPlanItem.findMany({ where: { workPlanId: plan.id }, select: { assetId: true, year: true, treatmentId: true } })
       : Promise.resolve([] as Array<{ assetId: string; year: number; treatmentId: string }>),
   ]);
-  const treatmentId = new Map(treatments.map((t) => [t.name, t.id]));
-  const byName = new Map<string, { def: TreatmentDef } | { combo: CombinationDef }>();
-  // Combinations first, so a treatment of the same name wins.
-  for (const combo of combinations) byName.set(normalize(combo.name), { combo });
-  for (const def of library) byName.set(normalize(def.name), { def });
+  // Names are unique within an asset type, so a treatment is found among the
+  // segment's own type's, and its id by its type and name.
+  const ids = new Map(treatments.map((t) => [treatmentKey(t.assetTypeId, t.name), t.id]));
+  const treatmentId = { get: (def: TreatmentDef) => ids.get(treatmentKey(def.assetTypeId, def.name)) };
+  const lookups = new Map<string, Map<string, { def: TreatmentDef } | { combo: CombinationDef }>>();
+  const byNameFor = (assetTypeId: string) => {
+    let byName = lookups.get(assetTypeId);
+    if (!byName) {
+      byName = new Map();
+      const own = library.filter((d) => forAssetType(d, assetTypeId));
+      // Combinations first, so a treatment of the same name wins. A
+      // combination is this type's when every member is.
+      for (const combo of combinations) {
+        if (combo.members.every((m) => own.some((d) => d.name === m.treatment))) {
+          byName.set(normalize(combo.name), { combo });
+        }
+      }
+      for (const def of own) byName.set(normalize(def.name), { def });
+      lookups.set(assetTypeId, byName);
+    }
+    return byName;
+  };
 
   // Every segment the file names, looked up once.
   const codes = [...new Set(dataRows.map((r) => cell(r, "asset").toUpperCase()).filter(Boolean))];
@@ -312,7 +332,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
       assetType: MODELLED,
       assetCode: { in: codes, mode: "insensitive" },
     },
-    select: { id: true, assetCode: true, status: true },
+    select: { id: true, assetCode: true, status: true, assetTypeId: true },
   });
   const assetByCode = new Map(assets.map((a) => [a.assetCode.toUpperCase(), a]));
   const contexts = new Map<string, { ctx: AssetTreatmentContext; assetCode: string } | null>();
@@ -345,7 +365,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     }
 
     const name = cell(r, "treatment");
-    const found = name ? byName.get(normalize(name)) : undefined;
+    const found = name && asset ? byNameFor(asset.assetTypeId).get(normalize(name)) : undefined;
     if (!name) fail("Treatment", "No treatment.");
     else if (!found) {
       fail(
@@ -408,12 +428,12 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     if (found && "combo" in found) {
       combo = found.combo;
       for (const m of combo.members) {
-        const def = library.find((d) => d.name === m.treatment);
+        const def = asset ? findTreatment(library, m.treatment, asset.assetTypeId) : undefined;
         if (def) defs.push(def);
         else fail("Treatment", `${combo.name} includes ${m.treatment}, which is no longer in the treatment library.`);
       }
     }
-    if (defs.some((d) => !treatmentId.has(d.name))) fail("Treatment", `“${name}” is missing from the treatment list.`);
+    if (defs.some((d) => !treatmentId.get(d))) fail("Treatment", `“${name}” is missing from the treatment list.`);
 
     const context = asset ? contexts.get(asset.id) : null;
     const option =
@@ -475,7 +495,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     }
     if (!option) warnings.push(`No rate prices this on ${asset!.assetCode}, so the file's cost is used and its effect is unknown.`);
 
-    const keys = defs.map((d) => `${asset!.id}|${year}|${treatmentId.get(d.name)}`);
+    const keys = defs.map((d) => `${asset!.id}|${year}|${treatmentId.get(d)}`);
     if (buildYear > plan.endYear) {
       warnings.push(`Built in ${buildYear}, after this plan ends in ${plan.endYear}.`);
     }
@@ -492,7 +512,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
       name: combo?.name ?? defs[0].name,
       isCombination: combo != null,
       members: defs.map((d) => d.name),
-      memberRows: defs.map((d, i) => ({ treatmentId: treatmentId.get(d.name)!, name: d.name, cost: shares[i] ?? 0 })),
+      memberRows: defs.map((d, i) => ({ treatmentId: treatmentId.get(d)!, name: d.name, cost: shares[i] ?? 0 })),
       year,
       programmedYear,
       buildYear,
