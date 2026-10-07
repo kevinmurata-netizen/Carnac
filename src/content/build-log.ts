@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-07",
+    title: "Lead-time targets held straight after a locked programme",
+    summary:
+      "A target scenario with lead times that locked a programme already reaching its target fell 1-4 points short for several years after the target year. It had decided nothing in the meantime for those years. Now work that holds the target after the target year is decided when its lead time needs it to be.",
+    changes: [
+      "Before the target year, the solved amount pays only for work that lands by the target year. Work landing after it is there to hold the target, so the target decides how much of it to buy, in whichever year its lead time requires: a renewal for six years after the target year is decided in the ramp.",
+      "When a year is short and only work built in that year can still lift it, that work may carry the years after up to 1.5 points over the target, instead of 0.5.",
+      "The solved amount is rounded up to the nearest $1,000 only when the rounded amount still reaches the target. Otherwise the exact amount found is used.",
+    ],
+    note: "No migration. Re-run target scenarios with lead times to pick it up.",
+  },
+  {
     date: "2026-10-06",
     title: "Lead-time targets held to the end of the run",
     summary:
