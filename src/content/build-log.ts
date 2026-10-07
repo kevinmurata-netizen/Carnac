@@ -30,6 +30,16 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-07",
+    title: "Export a target run's Annual Spend to Excel",
+    summary: "The Annual Spend card on a target scenario has an Export to Excel button, like Funded Projects.",
+    changes: [
+      "The workbook has every year of the run with its phase (Ramp, Target year, Hold or No new work), spend, average condition and segments below the target. These are the same rows and labels as the card.",
+      "A line above the table says what the run answered: the target and its year, the year aimed for if the asked one was out of reach, the yearly amount, what happens after the target year, and when the run was made.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-07",
     title: "Lead-time targets held straight after a locked programme",
     summary:
       "A target scenario with lead times that locked a programme already reaching its target fell 1-4 points short for several years after the target year. It had decided nothing in the meantime for those years. Now work that holds the target after the target year is decided when its lead time needs it to be.",
