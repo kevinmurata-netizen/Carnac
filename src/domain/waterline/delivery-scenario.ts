@@ -568,7 +568,23 @@ function walk(
         locked: locks.projects,
         library,
       });
-      if (hold) purse = both(hold, year > targetYear ? money.unlimited : money.purse);
+      // Before the target year, the flat amount pays only for work that lands
+      // by it. Work that lands after it is there to hold the target, and with
+      // lead times it has to be decided now — a renewal built six years after
+      // the target year is decided in the ramp — so the target governs it, as
+      // it governs every year after. Held to the flat amount instead, a ramp
+      // that needed little (a locked programme already reaching the target,
+      // say) decided nothing for the years just past it, and they fell short.
+      if (hold) {
+        purse = both(
+          hold,
+          year > targetYear
+            ? money.unlimited
+            : assumptions.afterTarget === "hold"
+              ? byBuildYear((c) => (c.buildYear > targetYear ? money.unlimited : money.purse), money.purse)
+              : money.purse
+        );
+      }
     }
     const outcome = selectAgainst(candidates, purse, heldCandidates);
 
@@ -973,6 +989,10 @@ function rankCandidates(args: {
  * enough room for one more project to land, not enough to drift. */
 const HOLD_MARGIN = 0.5;
 
+/** The room given instead to work that is the last chance to lift a year that
+ * has fallen short — built in that year — before the end of the run. */
+const LAST_CHANCE_MARGIN = 1.5;
+
 /**
  * What holds a target where work lands.
  *
@@ -1073,31 +1093,28 @@ function holdPurse(args: {
       // It has to lift a year that is still short…
       const short = (i: number) => i < reachable && sums[i] / count < args.goal;
       if (!years.some((_, i) => short(i) && d[i] > 0)) return NOT_SELECTED.targetReached;
-      // …without carrying any year past the ceiling. Otherwise a shortfall six
-      // years out is answered by work built now, which holds that year by
-      // lifting every year before it well past the target; work that lands
-      // later answers it instead.
-      //
-      // The target comes first at the end of the run, though. Once the
-      // slowest work can no longer be built inside the run, a year that falls
-      // short can only be lifted by quick work built in it — so that work is
-      // not held to the ceiling in the years after: what it does to them is
-      // the price of not falling below the target. Refusing it left the last
-      // years of a run short with nothing bought at all. Earlier in the run a
-      // shortfall still has better-timed work to answer it, and gets no pass:
-      // quick work bought there lifts years that slower work was already
-      // sized for, and the run drifts above the target.
-      // Nor may it leave a year short that was not. Stepping up from work a
-      // segment already holds to something larger built later takes the
-      // first project's lift out of the years in between.
+
+      // …must not leave a year short that was not — stepping up from work a
+      // segment already holds to something larger built later takes the first
+      // project's lift out of the years in between…
       if (years.some((_, i) => d[i] < 0 && (sums[i] + d[i]) / count < args.goal && sums[i] / count >= args.goal)) {
         return NOT_SELECTED.targetReached;
       }
-      const lastChance = args.endGame && years[0] === args.year && short(0) && d[0] > 0;
-      const upTo = lastChance ? 0 : years.length;
-      const overshoots = years.some(
-        (_, i) => i < upTo && d[i] > 0 && (sums[i] + d[i]) / count > args.goal + HOLD_MARGIN
-      );
+
+      // …and must not carry any year past the ceiling. Otherwise a shortfall
+      // six years out is answered by work built now, which holds that year by
+      // lifting every year before it well past the target; work that lands
+      // later answers it instead.
+      //
+      // When this very year is short, though, only work built now can still
+      // lift it, and the target comes first: that work gets more room in the
+      // years after. At the end of the run, where slow work can no longer
+      // land, all the room it needs; earlier, LAST_CHANCE_MARGIN, since later,
+      // better-timed work is already sized for those years and an open ceiling
+      // there let the run drift well above the target.
+      const lastChance = years[0] === args.year && short(0) && d[0] > 0;
+      const ceiling = args.goal + (lastChance ? (args.endGame ? Infinity : LAST_CHANCE_MARGIN) : HOLD_MARGIN);
+      const overshoots = years.some((_, i) => d[i] > 0 && (sums[i] + d[i]) / count > ceiling);
       return overshoots ? NOT_SELECTED.targetReached : null;
     },
     commit(next, current) {
@@ -1105,6 +1122,19 @@ function holdPurse(args: {
     },
     byCategory: () => [],
     totalSpent: () => 0,
+  };
+}
+
+/** A purse chosen per step by the work being bought. The purses picked from
+ * share `ledgerPurse`'s ledger, so whichever records a step, its money is
+ * counted once, and that ledger is what the run reports. */
+function byBuildYear(pick: (c: Candidate) => Purse<Candidate>, ledgerPurse: Purse<Candidate>): Purse<Candidate> {
+  return {
+    unfunded: (c) => pick(c).unfunded(c),
+    check: (next, current) => pick(next).check(next, current),
+    commit: (next, current) => pick(next).commit(next, current),
+    byCategory: () => ledgerPurse.byCategory(),
+    totalSpent: () => ledgerPurse.totalSpent(),
   };
 }
 

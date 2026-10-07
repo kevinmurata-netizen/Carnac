@@ -1346,8 +1346,13 @@ export function solveForTarget(
         if (reachesBy(mid, by).ok) top = mid;
         else low = mid;
       }
-      const annualBudget = Math.ceil(top / 1000) * 1000;
-      const result = run(assets, { ...assumptions, annualBudget, targetInYears: by }, options);
+      let annualBudget = Math.ceil(top / 1000) * 1000;
+      let result = run(assets, { ...assumptions, annualBudget, targetInYears: by }, options);
+      if ((result.years[by - 1]?.avgCondition ?? 0) < goalOf(assumptions)) {
+        // See `settle` below: the amount the search found, unrounded.
+        annualBudget = top;
+        result = run(assets, { ...assumptions, annualBudget, targetInYears: by }, options);
+      }
       const search = { iterations: iterations + 1, low: Math.round(low), high: Math.round(top) };
       return {
         ...result,
@@ -1387,8 +1392,21 @@ export function solveForTarget(
   }
 
   // `high` is the amount that reached it; `low` is the one that did not.
-  const annualBudget = Math.ceil(high / 1000) * 1000;
-  return answer(annualBudget, { iterations: iterations + 1, low: Math.round(low), high: Math.round(high) });
+  return settle(high, (annualBudget) => answer(annualBudget, { iterations: iterations + 1, low: Math.round(low), high: Math.round(high) }));
+}
+
+/**
+ * The answer at the found amount rounded up to the nearest $1,000 — unless
+ * rounding loses the target. More money is not always better: a slightly
+ * larger amount can buy a different mix of work, and with lead times that mix
+ * can land the target year a few tenths short. The search verified `found`
+ * itself, so that is the fallback.
+ */
+function settle(found: number, answerAt: (annualBudget: number) => ScenarioRunResult): ScenarioRunResult {
+  const rounded = answerAt(Math.ceil(found / 1000) * 1000);
+  const t = rounded.target;
+  if (!t || (rounded.years[t.inYears - 1]?.avgCondition ?? 0) >= t.value) return rounded;
+  return answerAt(found);
 }
 
 /**
