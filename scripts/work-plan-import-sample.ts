@@ -53,7 +53,7 @@ async function main() {
 
   // The segments in the worst condition first, by their latest measurement.
   const segments = await prisma.asset.findMany({
-    where: { organizationId: org.id, deletedAt: null, status: "ACTIVE", assetType: { code: "WATERLINE" } },
+    where: { organizationId: org.id, deletedAt: null, status: "ACTIVE", assetType: { isModelled: true } },
     select: {
       id: true,
       assetCode: true,

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { copyName, takenNames } from "@/lib/copy-name";
 import { parseRules } from "@/server/rules";
 import type { CombinationDef } from "@/domain/waterline/treatment";
+import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Treatment combinations: which treatments an organization is willing to apply
@@ -96,7 +97,7 @@ function fetchOne(organizationId: string, id: string) {
  * effects resetting is enough, the same reading toDef() gives. */
 async function resetFlags(organizationId: string): Promise<Map<string, boolean>> {
   const rows = await prisma.treatment.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     select: { id: true, effectLinks: { select: { effect: { select: { conditionMode: true } } } } },
   });
   return new Map(rows.map((r) => [r.id, r.effectLinks.some((l) => l.effect.conditionMode === "reset")]));
@@ -169,7 +170,7 @@ async function assertOwned(organizationId: string, input: CombinationInput) {
   // Checked rather than trusted, so a crafted request cannot bundle another
   // tenant's treatments or gate on their rules.
   const treatments = await prisma.treatment.findMany({
-    where: { id: { in: input.members.map((m) => m.treatmentId) }, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: { in: input.members.map((m) => m.treatmentId) }, assetType: modelledType(organizationId) },
     select: { id: true },
   });
   if (treatments.length !== input.members.length) throw new Error("One of those treatments no longer exists");

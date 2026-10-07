@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { effectiveAssumptions } from "@/server/scenarios";
+import { MODELLED } from "@/server/modelled-asset-type";
 
 /**
  * How long a scenario run is likely to take.
@@ -57,7 +58,7 @@ export async function estimateRunMs(organizationId: string, scenarioId: string):
       include: { assumptions: true, scenarioSet: { select: { baseYear: true, planningPeriodYears: true } } },
     }),
     prisma.asset.count({
-      where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
+      where: { organizationId, assetType: MODELLED, deletedAt: null, status: "ACTIVE" },
     }),
     prisma.scenario.findMany({
       where: { organizationId, lastRunMs: { not: null }, id: { not: scenarioId } },
@@ -108,7 +109,7 @@ export async function estimateNewRunMs(
 ): Promise<RunEstimate> {
   const [assetCount, others] = await Promise.all([
     prisma.asset.count({
-      where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
+      where: { organizationId, assetType: MODELLED, deletedAt: null, status: "ACTIVE" },
     }),
     prisma.scenario.findMany({
       where: { organizationId, lastRunMs: { not: null } },

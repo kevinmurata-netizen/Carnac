@@ -13,6 +13,7 @@ import {
   type Rule,
   type RuleEffect,
 } from "@/domain/waterline/decision-tree";
+import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Treatment rules are configuration, and these loaders are what the
@@ -317,7 +318,7 @@ export async function getTreatmentRules(
   treatmentId: string
 ): Promise<TreatmentRuleSelection | null> {
   const treatment = await prisma.treatment.findFirst({
-    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: treatmentId, assetType: modelledType(organizationId) },
     include: {
       ruleLinks: {
         include: { rule: { include: withUsage } },
@@ -369,7 +370,7 @@ export async function setTreatmentRuleTree(
   blockRuleIds: string[]
 ) {
   const treatment = await prisma.treatment.findFirst({
-    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: treatmentId, assetType: modelledType(organizationId) },
     select: { id: true },
   });
   if (!treatment) throw new Error("That treatment no longer exists");

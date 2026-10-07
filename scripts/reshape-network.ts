@@ -31,7 +31,7 @@ async function main() {
   // first. Diameter driving position is what makes the result read correctly:
   // heavy mains through the middle of town, small ones out on the blocks.
   const assets = await prisma.asset.findMany({
-    where: { organizationId: org.id, assetType: { code: "WATERLINE" }, deletedAt: null },
+    where: { organizationId: org.id, assetType: { isModelled: true }, deletedAt: null },
     select: {
       id: true,
       assetCode: true,

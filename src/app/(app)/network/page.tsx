@@ -82,8 +82,10 @@ export default async function NetworkPage({
   // a tank, so this is a separate choice rather than another field in that bar.
   const assetTypes = await listAssetTypes(organizationId);
   const typeParam = params.assetType && assetTypes.some((t) => t.code === params.assetType) ? params.assetType : null;
-  const showPipes = typeParam === null || typeParam === "WATERLINE";
-  const showFacilities = typeParam === null || typeParam !== "WATERLINE";
+  // The modelled type is the line network; every other type stands at points.
+  const modelledCode = assetTypes.find((t) => t.isModelled)?.code ?? null;
+  const showPipes = typeParam === null || typeParam === modelledCode;
+  const showFacilities = typeParam === null || typeParam !== modelledCode;
 
   const [pipeFeatures, allFacilities] = await Promise.all([
     showPipes
@@ -100,7 +102,7 @@ export default async function NetworkPage({
 
   const geojson = pipeFeatures;
   const facilities: GeoJSON.FeatureCollection =
-    typeParam && typeParam !== "WATERLINE"
+    typeParam && typeParam !== modelledCode
       ? {
           type: "FeatureCollection",
           features: allFacilities.features.filter((f) => f.properties?.assetTypeCode === typeParam),
@@ -195,7 +197,7 @@ function AssetTypeFilter({
   selected,
   params,
 }: {
-  types: Array<{ code: string; name: string; count: number }>;
+  types: Array<{ code: string; name: string; count: number; isModelled: boolean }>;
   selected: string | null;
   params: Record<string, string | undefined>;
 }) {
@@ -209,11 +211,11 @@ function AssetTypeFilter({
     return query ? `/network?${query}` : "/network";
   };
 
-  // Waterlines lead: they are what this map is mostly of, and what every other
-  // filter on the page applies to. The rest follow by name.
+  // The modelled type leads: it is what this map is mostly of, and what every
+  // other filter on the page applies to. The rest follow by name.
   const shown = types
     .filter((t) => t.count > 0)
-    .sort((a, b) => (a.code === "WATERLINE" ? -1 : b.code === "WATERLINE" ? 1 : a.name.localeCompare(b.name)));
+    .sort((a, b) => Number(b.isModelled) - Number(a.isModelled) || a.name.localeCompare(b.name));
   if (shown.length < 2) return null;
 
   return (

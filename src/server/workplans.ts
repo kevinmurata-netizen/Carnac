@@ -50,6 +50,7 @@ import {
   getAnnualBudget,
   getScenarioAssumptions,
 } from "@/server/scenarios";
+import { MODELLED, modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Generating a multi-year capital program (SPEC §17).
@@ -122,7 +123,7 @@ export async function createWorkPlanFromScenario(
   });
 
   const treatmentRows = await prisma.treatment.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     select: { id: true, name: true },
   });
   const treatmentIdByName = new Map(treatmentRows.map((t) => [t.name, t.id]));
@@ -285,7 +286,7 @@ async function buildCandidates(
 ): Promise<CandidateInfo[]> {
   const since = new Date(Date.now() - TEN_YEARS_MS);
   const assetType = await prisma.assetType.findFirst({
-    where: { organizationId, code: "WATERLINE" },
+    where: modelledType(organizationId),
     select: { id: true },
   });
   const [curves, library, combinations, scale, treatmentRows] = await Promise.all([
@@ -298,14 +299,14 @@ async function buildCandidates(
       ? assetScaleFactors(organizationId, assetType.id)
       : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
     prisma.treatment.findMany({
-      where: { assetType: { code: "WATERLINE", organizationId } },
+      where: { assetType: modelledType(organizationId) },
       select: { name: true },
     }),
   ]);
   const writable = new Set(treatmentRows.map((t) => t.name));
 
   const assets = await prisma.asset.findMany({
-    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
+    where: { organizationId, assetType: MODELLED, deletedAt: null, status: "ACTIVE" },
     include: {
       attributeValues: { include: { definition: true } },
       conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
@@ -503,7 +504,7 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
   }> = [];
 
   const treatmentRows = await prisma.treatment.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     select: { id: true, name: true },
   });
   const treatmentIdByName = new Map(treatmentRows.map((t) => [t.name, t.id]));
@@ -1025,7 +1026,7 @@ export async function searchSegments(organizationId: string, query: string) {
   const assets = await prisma.asset.findMany({
     where: {
       organizationId,
-      assetType: { code: "WATERLINE" },
+      assetType: MODELLED,
       deletedAt: null,
       status: "ACTIVE",
       ...(q
@@ -1083,7 +1084,7 @@ export async function previewWorkPlanAddition(
     assetTreatmentContext(organizationId, input.assetId),
     loadTreatmentDefs(organizationId),
     prisma.treatment.findFirst({
-      where: { id: input.treatmentId, assetType: { code: "WATERLINE", organizationId } },
+      where: { id: input.treatmentId, assetType: modelledType(organizationId) },
       select: { name: true },
     }),
   ]);

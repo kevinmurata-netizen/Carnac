@@ -10,10 +10,11 @@ import {
   recordComponentFinding,
   type ComponentFinding,
 } from "@/server/component-inspections";
+import { modelledType } from "@/server/modelled-asset-type";
 
 export async function getWaterlineTemplate(organizationId: string) {
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
+    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
     include: { fields: { orderBy: { sortOrder: "asc" } } },
   });
   if (!template) throw new Error("No active inspection template configured for waterlines");

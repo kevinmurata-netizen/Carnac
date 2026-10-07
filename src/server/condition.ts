@@ -2,10 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { getConditionBands } from "@/server/settings";
+import { MODELLED, modelledType } from "@/server/modelled-asset-type";
 
 async function getWciModel(organizationId: string) {
   const model = await prisma.conditionModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
   });
   if (!model) throw new Error("Waterline Condition Index model is not configured");
   return model;
@@ -58,7 +59,7 @@ export async function getConditionSummary(organizationId: string): Promise<Condi
   const latest = await getLatestConditionByAsset(organizationId);
 
   const totalAssets = await prisma.asset.count({
-    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null },
+    where: { organizationId, assetType: MODELLED, deletedAt: null },
   });
 
   const byBandMap = new Map<string, { count: number; color: string }>();

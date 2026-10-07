@@ -34,6 +34,7 @@ import { criticalityForModel } from "@/server/criticality";
 import type { PriorityOptions } from "@/server/priority";
 import { categoryWeight } from "@/domain/waterline/category-weight";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
+import { MODELLED, modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
 
 /**
  * Idempotently write the treatment library, and the rules that decide what
@@ -48,8 +49,7 @@ import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
  * one agree about which assets qualify.
  */
 export async function ensureTreatments(organizationId: string) {
-  const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
-  if (!assetType) throw new Error("WATERLINE asset type not found");
+  const assetType = await requireModelledAssetType(organizationId);
 
   for (const def of WATERLINE_TREATMENTS) {
     const existing = await prisma.treatment.findFirst({ where: { assetTypeId: assetType.id, name: def.name } });
@@ -152,7 +152,7 @@ export async function ensureTreatments(organizationId: string) {
  */
 export async function listTreatments(organizationId: string) {
   const treatments = await prisma.treatment.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     include: {
       ruleLinks: { include: { rule: true } },
       costRates: { orderBy: { sortOrder: "asc" } },
@@ -200,7 +200,7 @@ export async function buildContexts(organizationId: string, assetId?: string) {
   const assets = await prisma.asset.findMany({
     where: {
       organizationId,
-      assetType: { code: "WATERLINE" },
+      assetType: MODELLED,
       deletedAt: null,
       ...(assetId ? { id: assetId } : { status: "ACTIVE" }),
     },
@@ -304,7 +304,7 @@ export async function getNetworkRecommendations(
 ): Promise<NetworkRecommendations> {
   const contexts = await buildContexts(organizationId);
   const assetType = await prisma.assetType.findFirst({
-    where: { organizationId, code: "WATERLINE" },
+    where: modelledType(organizationId),
     select: { id: true },
   });
 

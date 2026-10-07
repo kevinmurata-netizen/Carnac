@@ -31,6 +31,7 @@ import { assetScaleFactors } from "@/server/scale-factors";
 import { criticalityForModel } from "@/server/criticality";
 import { resolveOptionSelection } from "@/server/scenario-options";
 import { CONSIDER_ALL, filterOptions } from "@/domain/waterline/option-selection";
+import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Every treatment option on every asset, scored and ranked.
@@ -155,7 +156,7 @@ export async function rankOptions(
   const startedAt = Date.now();
 
   const assetType = await prisma.assetType.findFirst({
-    where: { organizationId, code: "WATERLINE" },
+    where: modelledType(organizationId),
     select: { id: true },
   });
 

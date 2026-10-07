@@ -2,6 +2,7 @@ import { Prisma, AssetStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { sameCalendarDay } from "@/lib/format";
+import { MODELLED } from "@/server/modelled-asset-type";
 
 const attributeValueInclude = {
   attributeValues: { include: { definition: true } },
@@ -59,7 +60,7 @@ export type AssetFilters = {
 export async function listAssets(organizationId: string, filters: AssetFilters = {}) {
   const where: Prisma.AssetWhereInput = {
     organizationId,
-    assetType: { code: "WATERLINE" },
+    assetType: MODELLED,
     deletedAt: null,
   };
 
@@ -305,8 +306,6 @@ export async function updateAsset(
   await prisma.$transaction(writes);
 }
 
-const WATERLINE_TYPE_CODE = "WATERLINE";
-
 /**
  * What the New asset form needs for one type: the type, its attributes, the
  * components it is made of, and the service areas and pressure zones already
@@ -320,6 +319,7 @@ export async function getNewAssetForm(organizationId: string, typeCode: string) 
       id: true,
       code: true,
       name: true,
+      isModelled: true,
       attributeDefinitions: { orderBy: { sortOrder: "asc" } },
       componentTypes: {
         orderBy: { sortOrder: "asc" },
@@ -339,7 +339,7 @@ export async function getNewAssetForm(organizationId: string, typeCode: string) 
   ]);
 
   return {
-    type: { id: type.id, code: type.code, name: type.name },
+    type: { id: type.id, code: type.code, name: type.name, isModelled: type.isModelled },
     attributes: type.attributeDefinitions.map((d) => ({
       code: d.code,
       label: d.label,
@@ -375,11 +375,13 @@ export type NewAsset = {
 };
 
 /**
- * A new asset of a type other than waterline, entered by hand.
+ * A new asset of a type other than the modelled one, entered by hand.
  *
- * Waterlines are refused: a segment is a line with two ends, a length and a
- * place in the network, which is what the GIS import supplies and a form
- * cannot. A facility stands at one point, which a form can take.
+ * The modelled type's assets are refused: each is a line segment with two
+ * ends, a length and a place in the network, which is what the GIS import
+ * supplies and a form cannot. A facility stands at one point, which a form can
+ * take. (Until asset types say whether they are lines or points, the modelled
+ * type is taken to be the line network.)
  */
 export async function createAsset(organizationId: string, input: NewAsset, createdBy?: string | null) {
   const type = await prisma.assetType.findFirst({
@@ -387,8 +389,8 @@ export async function createAsset(organizationId: string, input: NewAsset, creat
     include: { attributeDefinitions: true, componentTypes: { select: { componentTypeId: true } } },
   });
   if (!type) throw new Error("Asset type not found");
-  if (type.code === WATERLINE_TYPE_CODE) {
-    throw new Error("Waterline segments come in through Data Import, which brings their geometry with them");
+  if (type.isModelled) {
+    throw new Error(`${type.name} assets come in through Data Import, which brings their geometry with them`);
   }
 
   const assetCode = input.assetCode.trim();
@@ -523,7 +525,7 @@ export async function listAssetOptions(
 // filters offering values no pipe can have.
 export async function listServiceAreas(organizationId: string): Promise<string[]> {
   const rows = await prisma.assetLocation.findMany({
-    where: { asset: { organizationId, deletedAt: null, assetType: { code: "WATERLINE" } } },
+    where: { asset: { organizationId, deletedAt: null, assetType: MODELLED } },
     select: { serviceArea: true },
     distinct: ["serviceArea"],
   });
@@ -533,7 +535,7 @@ export async function listServiceAreas(organizationId: string): Promise<string[]
 export async function listMaterials(organizationId: string): Promise<string[]> {
   const rows = await prisma.assetAttributeValue.findMany({
     where: {
-      definition: { code: WATERLINE_ATTRIBUTES.MATERIAL, assetType: { code: "WATERLINE" } },
+      definition: { code: WATERLINE_ATTRIBUTES.MATERIAL, assetType: MODELLED },
       asset: { organizationId, deletedAt: null },
     },
     select: { textValue: true },
@@ -553,10 +555,16 @@ export async function listMaterials(organizationId: string): Promise<string[]> {
 export async function listAssetTypes(organizationId: string) {
   const types = await prisma.assetType.findMany({
     where: { organizationId },
-    select: { code: true, name: true, description: true, _count: { select: { assets: true } } },
+    select: { code: true, name: true, description: true, isModelled: true, _count: { select: { assets: true } } },
     orderBy: { name: "asc" },
   });
-  return types.map((t) => ({ code: t.code, name: t.name, description: t.description, count: t._count.assets }));
+  return types.map((t) => ({
+    code: t.code,
+    name: t.name,
+    description: t.description,
+    isModelled: t.isModelled,
+    count: t._count.assets,
+  }));
 }
 
 export type TypedAssetList = {
@@ -629,7 +637,7 @@ export type NetworkSummary = {
 
 export async function getNetworkSummary(organizationId: string): Promise<NetworkSummary> {
   const assets = await prisma.asset.findMany({
-    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null },
+    where: { organizationId, assetType: MODELLED, deletedAt: null },
     select: {
       status: true,
       installationDate: true,

@@ -9,6 +9,7 @@ import {
   MARKOV_STATES,
   type CurveParams,
 } from "@/domain/waterline/deterioration";
+import { modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
 
 /**
  * Settings are the modelling configuration behind every number the system
@@ -22,8 +23,7 @@ import {
  */
 
 export async function requireAssetType(organizationId: string) {
-  const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
-  if (!assetType) throw new Error("WATERLINE asset type is not configured for this organization");
+  const assetType = await requireModelledAssetType(organizationId);
   return assetType;
 }
 
@@ -55,7 +55,7 @@ export function parseBands(value: unknown): ConditionBand[] {
 /** The bands every condition colour and grade label in the app is read from. */
 export async function getConditionBands(organizationId: string): Promise<ConditionBand[]> {
   const model = await prisma.conditionModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     select: { bands: true },
   });
   return parseBands(model?.bands);
@@ -63,7 +63,7 @@ export async function getConditionBands(organizationId: string): Promise<Conditi
 
 export async function getConditionModelConfig(organizationId: string): Promise<ConditionModelConfig> {
   const model = await prisma.conditionModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     include: { _count: { select: { measurements: true } } },
   });
   if (!model) throw new Error("Condition model is not configured for this organization");
@@ -102,7 +102,7 @@ export async function updateConditionModel(
   }
 
   const model = await prisma.conditionModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
   });
   if (!model) throw new Error("Condition model not found");
 
@@ -148,7 +148,7 @@ function parseWeights<T extends Record<string, number>>(value: unknown, fallback
 /** The weights risk scoring actually runs with. */
 export async function getRiskWeights(organizationId: string): Promise<RiskWeights> {
   const model = await prisma.riskModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     select: { probabilityConfig: true, consequenceConfig: true },
   });
   return {
@@ -159,7 +159,7 @@ export async function getRiskWeights(organizationId: string): Promise<RiskWeight
 
 export async function getRiskModelConfig(organizationId: string): Promise<RiskModelConfig> {
   const model = await prisma.riskModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     include: { _count: { select: { assessments: true } } },
   });
   if (!model) throw new Error("Risk model is not configured for this organization");
@@ -186,7 +186,7 @@ export async function updateRiskModel(
   if (sum(input.cof) <= 0) throw new Error("At least one consequence factor needs a weight above zero");
 
   const model = await prisma.riskModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
   });
   if (!model) throw new Error("Risk model not found");
 
@@ -239,7 +239,7 @@ function materialOf(applicability: unknown): string | null {
  */
 export async function getMaterialCurves(organizationId: string): Promise<Record<string, CurveParams>> {
   const models = await prisma.deteriorationModel.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true },
+    where: { assetType: modelledType(organizationId), isActive: true },
     include: { parameters: true },
   });
 
@@ -254,7 +254,7 @@ export async function getMaterialCurves(organizationId: string): Promise<Record<
 
 export async function listDeteriorationModels(organizationId: string): Promise<DeteriorationModelConfig[]> {
   const models = await prisma.deteriorationModel.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     include: { parameters: true, _count: { select: { predictions: true } } },
     orderBy: { name: "asc" },
   });
@@ -423,12 +423,12 @@ export async function listAssetTypeDetails(organizationId: string): Promise<Asse
 /** The templates screen: every form, said in terms of the type it is for. */
 export async function listInspectionTemplateDetails(
   organizationId: string
-): Promise<Array<TemplateDetail & { assetTypeId: string; assetTypeName: string; assetTypeCode: string }>> {
+): Promise<Array<TemplateDetail & { assetTypeId: string; assetTypeName: string; assetTypeIsModelled: boolean }>> {
   const templates = await prisma.inspectionTemplate.findMany({
     where: { assetType: { organizationId }, componentTypeId: null },
     orderBy: [{ assetType: { name: "asc" } }, { name: "asc" }],
     include: {
-      assetType: { select: { id: true, name: true, code: true } },
+      assetType: { select: { id: true, name: true, isModelled: true } },
       _count: { select: { fields: true, inspections: true } },
     },
   });
@@ -442,7 +442,7 @@ export async function listInspectionTemplateDetails(
     inspectionCount: t._count.inspections,
     assetTypeId: t.assetType.id,
     assetTypeName: t.assetType.name,
-    assetTypeCode: t.assetType.code,
+    assetTypeIsModelled: t.assetType.isModelled,
   }));
 }
 
@@ -525,9 +525,9 @@ export async function updateAssetType(
   const existing = await prisma.assetType.findFirst({ where: { id, organizationId } });
   if (!existing) throw new Error("Asset type not found");
 
-  // `code` stays immutable on purpose: the domain modules and every server
-  // query select on "WATERLINE", so renaming it would detach the data from the
-  // logic that reads it. The display name is what the UI shows.
+  // `code` stays immutable on purpose: imports, links (`/assets?type=…`) and
+  // the SQL loaders find a type by it, so renaming it would detach them. The
+  // display name is what the UI shows.
   await prisma.assetType.update({
     where: { id },
     data: { name: input.name.trim(), description: input.description?.trim() || null },
@@ -579,7 +579,7 @@ export type FailureTypeRow = { id: string; code: string; label: string; eventCou
 
 export async function listFailureTypes(organizationId: string): Promise<FailureTypeRow[]> {
   const types = await prisma.failureType.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     include: { _count: { select: { events: true } } },
     orderBy: { label: "asc" },
   });
@@ -603,7 +603,7 @@ export async function createFailureType(organizationId: string, input: { code: s
 export async function updateFailureType(organizationId: string, id: string, input: { label: string }) {
   if (!input.label.trim()) throw new Error("Label is required");
   const existing = await prisma.failureType.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId } },
+    where: { id, assetType: modelledType(organizationId) },
   });
   if (!existing) throw new Error("Failure type not found");
 
@@ -614,7 +614,7 @@ export async function updateFailureType(organizationId: string, id: string, inpu
 
 export async function deleteFailureType(organizationId: string, id: string) {
   const existing = await prisma.failureType.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId } },
+    where: { id, assetType: modelledType(organizationId) },
     include: { _count: { select: { events: true } } },
   });
   if (!existing) throw new Error("Failure type not found");
@@ -691,7 +691,7 @@ function parseMatrix(value: unknown, size: number): number[][] | null {
  */
 export async function getTransitionMatrix(organizationId: string): Promise<number[][]> {
   const model = await prisma.deteriorationModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, modelType: "MARKOV", isActive: true },
+    where: { assetType: modelledType(organizationId), modelType: "MARKOV", isActive: true },
     include: { parameters: true },
   });
   if (!model) return DEFAULT_TRANSITION_MATRIX;
@@ -702,7 +702,7 @@ export async function getTransitionMatrix(organizationId: string): Promise<numbe
 
 export async function getMarkovConfig(organizationId: string): Promise<MarkovConfig | null> {
   const model = await prisma.deteriorationModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, modelType: "MARKOV" },
+    where: { assetType: modelledType(organizationId), modelType: "MARKOV" },
     include: { parameters: true, _count: { select: { predictions: true } } },
   });
   if (!model) return null;
@@ -733,7 +733,7 @@ export async function updateMarkovModel(
   if (!input.name.trim()) throw new Error("Model name is required");
 
   const model = await prisma.deteriorationModel.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId }, modelType: "MARKOV" },
+    where: { id, assetType: modelledType(organizationId), modelType: "MARKOV" },
     include: { parameters: true },
   });
   if (!model) throw new Error("Markov model not found");

@@ -42,6 +42,7 @@ import { criticalityRescorer } from "@/server/criticality";
 import { matchingAssetIds } from "@/server/saved-filters";
 import { resultsOutOfWindow, type ScenarioSetStatusValue, type ScenarioWindow } from "@/lib/scenario-sets";
 import { assertSetInOrganization } from "@/server/scenario-sets";
+import { MODELLED, modelledType } from "@/server/modelled-asset-type";
 
 /** Snapshot the current network into simulation inputs. Condition comes from
  * the latest measurement; uninspected assets fall back to their curve position
@@ -58,7 +59,7 @@ export async function buildSimAssets(organizationId: string, only?: string[]): P
   const assets = await prisma.asset.findMany({
     where: {
       organizationId,
-      assetType: { code: "WATERLINE" },
+      assetType: MODELLED,
       deletedAt: null,
       status: "ACTIVE",
       ...(only ? { id: { in: only } } : {}),
@@ -79,7 +80,7 @@ export async function buildSimAssets(organizationId: string, only?: string[]): P
   // the formula is over length, diameter and the like, none of which a
   // treatment changes.
   const assetType = await prisma.assetType.findFirst({
-    where: { organizationId, code: "WATERLINE" },
+    where: modelledType(organizationId),
     select: { id: true },
   });
   const [curves, scale] = await Promise.all([
@@ -408,7 +409,7 @@ export async function loadScenarioRun(
   // period replaces the scenario's own, so every member covers the same span.
   const assumptions = effectiveAssumptions(scenario.assumptions, scenario.scenarioSet);
   const waterlineType = await prisma.assetType.findFirst({
-    where: { organizationId, code: "WATERLINE" },
+    where: modelledType(organizationId),
     select: { id: true },
   });
   const [simAssets, library, combinations, weights, categories, funding, selection, curves, criticality, leadTimes] =
