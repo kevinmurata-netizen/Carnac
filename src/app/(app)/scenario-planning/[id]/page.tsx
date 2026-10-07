@@ -51,6 +51,7 @@ import { AlertTriangle, Copy, Gauge, Layers, ListTree, Wallet } from "lucide-rea
 import { SubmitButton } from "@/components/ui/pending-button";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { ExportButton } from "@/components/layout/export-button";
+import { targetPhases } from "@/lib/target-phases";
 import { getConditionBands } from "@/server/settings";
 import { listScenarioSets } from "@/server/scenario-sets";
 import { STATUS_LABELS, describeWindow } from "@/lib/scenario-sets";
@@ -878,8 +879,7 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
   const delivery = scenario.inFlightCount != null;
   const stops = scenario.assumptions.afterTarget === "none";
   const targetYear = years[target.inYears - 1]?.year ?? null;
-  /** Where the ramp ends: the year asked for, or the one aimed for instead. */
-  const aim = target.aimedFor ?? target.inYears;
+  const { aim, phaseOf } = targetPhases(target, scenario.assumptions.afterTarget);
   const aimYear = years[aim - 1]?.year ?? null;
 
   const ramp = years.slice(0, aim);
@@ -890,8 +890,6 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
   const holdLow = after.length > 0 ? Math.min(...after.map((y) => y.spend)) : null;
   const holdHigh = after.length > 0 ? Math.max(...after.map((y) => y.spend)) : null;
 
-  const phaseOf = (index: number) =>
-    index < aim - 1 ? "Ramp" : index === aim - 1 ? "Target year" : stops ? "No new work" : "Hold";
 
   const money = (n: number) => formatCurrency(n, { compact: true });
 
@@ -914,8 +912,12 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
 
   return (
     <Card className="mt-4">
-      <CardHeader>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>Annual Spend to Reach WCI {target.value}</CardTitle>
+        <ExportButton
+          href={`/scenario-planning/${scenario.id}/target-spend/export`}
+          title={`Each year of this run: its phase, spend, average condition and segments below ${target.value}`}
+        />
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
