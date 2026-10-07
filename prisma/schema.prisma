@@ -125,6 +125,13 @@ model AssetType {
   name        String // e.g. "Waterline"
   description String?
 
+  /// Whether the engine models this type: its assets are the ones scenarios
+  /// run over and treatment planning ranks, and its treatments, rules and
+  /// condition, risk and deterioration models are the ones Settings edits.
+  /// Chosen here rather than by `code`, so no code names an asset class. One
+  /// per organization until the engine can model several side by side.
+  isModelled  Boolean @default(false)
+
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 

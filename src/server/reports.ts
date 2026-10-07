@@ -7,6 +7,7 @@ import { listScenarios } from "@/server/scenarios";
 import { getAssetLcca } from "@/server/lcca";
 import { ageInYears } from "@/lib/format";
 import { getConditionBands } from "@/server/settings";
+import { MODELLED } from "@/server/modelled-asset-type";
 
 /**
  * Report definitions are data, not bespoke endpoints: each one declares its
@@ -41,7 +42,7 @@ export type ReportDefinition = {
 
 async function assetsWithContext(organizationId: string) {
   return prisma.asset.findMany({
-    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null },
+    where: { organizationId, assetType: MODELLED, deletedAt: null },
     include: {
       attributeValues: { include: { definition: true } },
       location: true,
@@ -398,7 +399,7 @@ export const REPORTS: ReportDefinition[] = [
       // LCCA is per-asset and expensive; cap at the highest-risk segments,
       // which are the ones a capital decision actually turns on.
       const assets = await prisma.asset.findMany({
-        where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
+        where: { organizationId, assetType: MODELLED, deletedAt: null, status: "ACTIVE" },
         include: { riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 } },
       });
       const ranked = assets

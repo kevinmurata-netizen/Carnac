@@ -50,11 +50,13 @@ export default async function AssetsPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
 
-  // Which kind of asset is being looked at. Waterlines by default, because
-  // they are what this app plans; the other types are here to be read.
+  // Which kind of asset is being looked at. The modelled type by default,
+  // because it is what this app plans; the other types are here to be read.
   const assetTypes = await listAssetTypes(organizationId);
-  const selectedType = params.type && assetTypes.some((t) => t.code === params.type) ? params.type : "WATERLINE";
-  if (selectedType !== "WATERLINE") {
+  const modelledCode = assetTypes.find((t) => t.isModelled)?.code ?? null;
+  const selectedType =
+    params.type && assetTypes.some((t) => t.code === params.type) ? params.type : (modelledCode ?? assetTypes[0]?.code);
+  if (selectedType && selectedType !== modelledCode) {
     const typed = await listTypedAssets(organizationId, selectedType);
     if (typed) {
       // Each asset's score, rolled up from its components under the strategy
@@ -90,7 +92,7 @@ export default async function AssetsPage({
       />
 
       <div className="mb-4 flex flex-wrap items-end gap-4">
-        <AssetTypeTabs types={assetTypes} selected="WATERLINE" />
+        <AssetTypeTabs types={assetTypes} selected={modelledCode ?? ""} />
         <SavedFilterSelect
           filters={savedFilters.map((f) => ({ id: f.id, name: f.name, criteriaCount: f.criteria.length }))}
         />
@@ -182,7 +184,7 @@ function AssetTypeTabs({
   types,
   selected,
 }: {
-  types: Array<{ code: string; name: string; count: number }>;
+  types: Array<{ code: string; name: string; count: number; isModelled: boolean }>;
   selected: string;
 }) {
   if (types.length < 2) return null;
@@ -193,7 +195,7 @@ function AssetTypeTabs({
         return (
           <Link
             key={type.code}
-            href={type.code === "WATERLINE" ? "/assets" : `/assets?type=${type.code}`}
+            href={type.isModelled ? "/assets" : `/assets?type=${type.code}`}
             className={`rounded-md border px-2.5 py-1 text-sm ${
               active ? "border-primary bg-primary/10 font-medium text-foreground" : "text-muted-foreground hover:bg-muted"
             }`}
@@ -258,7 +260,7 @@ function TypedAssets({
   canAdd,
 }: {
   typed: TypedAssetList;
-  assetTypes: Array<{ code: string; name: string; count: number }>;
+  assetTypes: Array<{ code: string; name: string; count: number; isModelled: boolean }>;
   rollups: AssetRollup[];
   canAdd: boolean;
 }) {

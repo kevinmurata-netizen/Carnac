@@ -17,18 +17,18 @@ import {
 } from "@/domain/waterline/risk";
 import { ageInYears } from "@/lib/format";
 import { getRiskWeights, getConditionBands } from "@/server/settings";
+import { MODELLED, modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
 
 async function getRiskModel(organizationId: string) {
   const model = await prisma.riskModel.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true },
+    where: { assetType: modelledType(organizationId), isActive: true },
   });
   if (!model) throw new Error("Waterline risk model is not configured");
   return model;
 }
 
 export async function ensureRiskModel(organizationId: string) {
-  const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
-  if (!assetType) throw new Error("WATERLINE asset type not found");
+  const assetType = await requireModelledAssetType(organizationId);
   const existing = await prisma.riskModel.findFirst({ where: { assetTypeId: assetType.id, isActive: true } });
   if (existing) return existing;
   return prisma.riskModel.create({
@@ -52,7 +52,7 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
   const tenYearsAgo = new Date(Date.now() - 10 * 365.25 * 24 * 60 * 60 * 1000);
 
   const assets = await prisma.asset.findMany({
-    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null },
+    where: { organizationId, assetType: MODELLED, deletedAt: null },
     include: {
       attributeValues: { include: { definition: true } },
       conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },

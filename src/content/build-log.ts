@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-07",
+    title: "The modelled asset type is a setting, not a code",
+    summary:
+      "The first step toward an asset-agnostic Carnac. Which asset type the engine models (water lines, today) is now a setting on the asset type, and no code names an asset class any more. Nothing changes in what the app does.",
+    changes: [
+      "Scenarios, treatment planning, condition, risk, deterioration, metrics, reports, work plans, import and the treatment settings all find their asset type through the new setting, not the WATERLINE code.",
+      "The Assets list, New asset, the Network map and Inspection Templates decide which type is the line network by the same setting.",
+      "One modelled asset type per organization for now. Modelling several side by side comes next.",
+    ],
+    note: "One migration: 20261007120000_modelled_asset_type adds isModelled to asset types and marks the water line type. It stops with an error if an organization with assets would be left with no modelled type.",
+  },
+  {
+    date: "2026-10-07",
     title: "Export a target run's Annual Spend to Excel",
     summary: "The Annual Spend card on a target scenario has an Export to Excel button, like Funded Projects.",
     changes: [

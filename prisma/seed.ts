@@ -269,6 +269,8 @@ async function main() {
       name: "Waterline",
       description: "Water distribution pipeline segment",
       organizationId: org.id,
+      // The demo network is water lines, so they are what the engine models.
+      isModelled: true,
     },
   });
 

@@ -24,15 +24,17 @@ export default async function NewAssetPage({ searchParams }: { searchParams: Pro
   const form = await getNewAssetForm(organizationId, type);
   if (!form) notFound();
 
-  if (form.type.code === "WATERLINE") {
+  // The modelled type's assets are line segments: until asset types say
+  // whether they are lines or points, that is what the modelled one is.
+  if (form.type.isModelled) {
     return (
       <div>
-        <PageHeader title="New waterline segment" />
+        <PageHeader title={`New ${form.type.name} segment`} />
         <Card>
           <CardContent className="space-y-2 py-10 text-center text-sm text-muted-foreground">
             <p>A segment is a line with two ends, a length and a place in the network — more than a form can supply.</p>
             <p>
-              Waterline segments come in through{" "}
+              {form.type.name} segments come in through{" "}
               <Link href="/administration/import" className="text-primary hover:underline">
                 Data Import
               </Link>

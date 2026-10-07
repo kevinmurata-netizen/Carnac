@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
+import { modelledType } from "@/server/modelled-asset-type";
 
 export async function listFailureTypes(organizationId: string) {
   return prisma.failureType.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     orderBy: { label: "asc" },
   });
 }

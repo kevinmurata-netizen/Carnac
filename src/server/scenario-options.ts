@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { CONSIDER_ALL, type OptionSelection } from "@/domain/waterline/option-selection";
+import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Which treatments and combinations each scenario may consider.
@@ -45,7 +46,7 @@ export async function getScenarioOptionCatalogue(
 ): Promise<ScenarioOptionCatalogue> {
   const [treatments, combinations, scenario] = await Promise.all([
     prisma.treatment.findMany({
-      where: { assetType: { code: "WATERLINE", organizationId } },
+      where: { assetType: modelledType(organizationId) },
       select: { id: true, name: true, description: true, applicability: true },
       orderBy: { name: "asc" },
     }),
@@ -160,7 +161,7 @@ export async function setScenarioOptions(
   const [treatments, combinations] = await Promise.all([
     input.treatments.length > 0
       ? prisma.treatment.findMany({
-          where: { name: { in: input.treatments }, assetType: { code: "WATERLINE", organizationId } },
+          where: { name: { in: input.treatments }, assetType: modelledType(organizationId) },
           select: { id: true },
         })
       : Promise.resolve([]),

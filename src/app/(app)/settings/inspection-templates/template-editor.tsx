@@ -17,13 +17,13 @@ const input =
 export function TemplateEditor({
   template,
   assetTypeName,
-  assetTypeCode,
+  assetTypeIsModelled,
 }: {
   template: TemplateDetail;
   assetTypeName: string;
-  /** Editing the questions is still a waterline-only screen, so the note below
-   * only points there for the form it can actually open. */
-  assetTypeCode: string;
+  /** Editing the questions is still a screen for the modelled asset type only,
+   * so the note below only points there for the form it can actually open. */
+  assetTypeIsModelled: boolean;
 }) {
   const [state, action] = useActionState(saveTemplateAction, EMPTY_SETTINGS_STATE);
 
@@ -65,9 +65,9 @@ export function TemplateEditor({
             {formatNumber(template.inspectionCount)} inspection{template.inspectionCount === 1 ? "" : "s"} recorded.
             Deactivating a template stops it being offered for new inspections; existing inspections keep their
             answers.{" "}
-            {assetTypeCode === "WATERLINE"
+            {assetTypeIsModelled
               ? "The questions themselves are edited under Administration → Fields."
-              : "Editing the questions on this form is not built yet — Administration → Fields covers the waterline form only."}
+              : `Editing the questions on this form is not built yet — Administration → Fields covers the modelled asset type's form only.`}
           </p>
           <SaveBar state={state} label="Save template" />
         </CardContent>

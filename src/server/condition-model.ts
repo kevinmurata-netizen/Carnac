@@ -6,6 +6,7 @@ import {
   computeWCI,
   type ConditionBand,
 } from "@/domain/waterline/condition";
+import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * The Condition Index is configuration, not code: its components and their
@@ -83,7 +84,7 @@ function parseBands(bands: unknown): ConditionBand[] {
  */
 async function findIndexModel(organizationId: string) {
   const models = await prisma.conditionModel.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     orderBy: { id: "asc" },
   });
   return models.find((m) => !isDerivedMetric(m.formula)) ?? null;
@@ -107,7 +108,7 @@ export async function getConditionIndex(organizationId: string): Promise<Conditi
   const weights = parseWeights(model.formula);
 
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
+    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
     include: {
       fields: {
         orderBy: { sortOrder: "asc" },
@@ -204,7 +205,7 @@ export async function addComponent(
   if (!input.label.trim()) throw new Error("Component label is required");
 
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
+    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
     include: { fields: true },
   });
   if (!template) throw new Error("No active inspection template to attach the component to");

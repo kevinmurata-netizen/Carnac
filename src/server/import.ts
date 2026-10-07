@@ -6,6 +6,7 @@ import {
   CRITICALITY_OPTIONS,
 } from "@/domain/waterline/attributes";
 import { insertAssetLineLocation } from "@/server/geo";
+import { requireModelledAssetType } from "@/server/modelled-asset-type";
 
 /**
  * CSV import for waterline inventory (SPEC §27). Validation is a separate,
@@ -257,8 +258,7 @@ export async function commitImport(organizationId: string, csv: string): Promise
   const report = await validateImport(organizationId, csv);
   if (report.validRows.length === 0) return { imported: 0, skipped: report.totalRows };
 
-  const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
-  if (!assetType) throw new Error("WATERLINE asset type is not configured");
+  const assetType = await requireModelledAssetType(organizationId);
 
   const definitions = await prisma.assetAttributeDefinition.findMany({
     where: { assetTypeId: assetType.id },

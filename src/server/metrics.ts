@@ -7,6 +7,7 @@ import {
   type MetricSource,
   type MetricSourceKind,
 } from "@/server/metrics-shared";
+import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Metrics are banded measures read from a single inspection or inventory field.
@@ -99,7 +100,7 @@ export async function listMetricSources(organizationId: string): Promise<MetricS
       orderBy: { sortOrder: "asc" },
     }),
     prisma.conditionModel.findMany({
-      where: { assetType: { code: "WATERLINE", organizationId } },
+      where: { assetType: modelledType(organizationId) },
       select: { formula: true },
     }),
   ]);
@@ -135,7 +136,7 @@ export async function listMetricSources(organizationId: string): Promise<MetricS
 
 export async function listMetrics(organizationId: string): Promise<MetricConfig[]> {
   const models = await prisma.conditionModel.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     orderBy: { name: "asc" },
   });
 
@@ -229,7 +230,7 @@ export async function createMetric(
 /** Loads the row and refuses if it is the condition index rather than a metric. */
 async function requireMetric(organizationId: string, id: string) {
   const model = await prisma.conditionModel.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId } },
+    where: { id, assetType: modelledType(organizationId) },
     include: { _count: { select: { measurements: true } } },
   });
   if (!model) throw new Error("Metric not found");

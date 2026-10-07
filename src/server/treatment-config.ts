@@ -17,6 +17,7 @@ import { parseRules } from "@/server/rules";
 import { toEffectDef } from "@/server/effects";
 import { combineEffects } from "@/domain/waterline/effect";
 import { createStandardRate } from "@/server/cost-rates";
+import { modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
 
 /**
  * The treatment library is configuration. These loaders map Treatment rows
@@ -94,7 +95,7 @@ export function standardRateFor(def: TreatmentDef): CostRate {
 
 function fetchTreatments(organizationId: string) {
   return prisma.treatment.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     include: withRules,
     // Was the condition window, which no longer exists. Name, because a
     // treatment library is a list someone looks things up in, and category
@@ -191,7 +192,7 @@ function toAdminRow(
 
 export async function listTreatmentsForAdmin(organizationId: string): Promise<TreatmentAdminRow[]> {
   const rows = await prisma.treatment.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     include: { ...withRules, _count: { select: { workPlanItems: true, combinationMemberships: true } } },
     orderBy: { name: "asc" },
   });
@@ -203,7 +204,7 @@ export async function getTreatmentForAdmin(
   id: string
 ): Promise<TreatmentAdminRow | null> {
   const row = await prisma.treatment.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId } },
+    where: { id, assetType: modelledType(organizationId) },
     include: { ...withRules, _count: { select: { workPlanItems: true, combinationMemberships: true } } },
   });
   return row ? toAdminRow(row) : null;
@@ -258,7 +259,7 @@ function toApplicability(input: TreatmentInput, existing: Record<string, unknown
 export async function updateTreatment(organizationId: string, id: string, input: TreatmentInput) {
   validate(input);
   const existing = await prisma.treatment.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId } },
+    where: { id, assetType: modelledType(organizationId) },
   });
   if (!existing) throw new Error("Treatment not found");
 
@@ -280,8 +281,7 @@ export async function updateTreatment(organizationId: string, id: string, input:
 
 export async function createTreatment(organizationId: string, input: TreatmentInput) {
   validate(input);
-  const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
-  if (!assetType) throw new Error("WATERLINE asset type not found");
+  const assetType = await requireModelledAssetType(organizationId);
 
   const clash = await prisma.treatment.findFirst({
     where: { assetTypeId: assetType.id, name: input.name.trim() },
@@ -327,7 +327,7 @@ export async function deleteTreatments(
   ids: string[]
 ): Promise<{ deleted: string[]; kept: Array<{ name: string; reason: string }> }> {
   const rows = await prisma.treatment.findMany({
-    where: { id: { in: ids }, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: { in: ids }, assetType: modelledType(organizationId) },
     select: { id: true, name: true, _count: { select: { workPlanItems: true } } },
   });
 
@@ -343,7 +343,7 @@ export async function deleteTreatments(
     // Scoped again by organization in the delete itself, not only by the ids
     // the lookup returned — the ids arrive from a form.
     await prisma.treatment.deleteMany({
-      where: { id: { in: deletable.map((r) => r.id) }, assetType: { code: "WATERLINE", organizationId } },
+      where: { id: { in: deletable.map((r) => r.id) }, assetType: modelledType(organizationId) },
     });
   }
 
@@ -363,12 +363,12 @@ export async function deleteTreatments(
 export async function copyTreatments(organizationId: string, ids: string[]): Promise<string[]> {
   const [rows, all] = await Promise.all([
     prisma.treatment.findMany({
-      where: { id: { in: ids }, assetType: { code: "WATERLINE", organizationId } },
+      where: { id: { in: ids }, assetType: modelledType(organizationId) },
       include: { costRates: { orderBy: { sortOrder: "asc" } }, ruleLinks: true, effectLinks: true },
       orderBy: { name: "asc" },
     }),
     prisma.treatment.findMany({
-      where: { assetType: { code: "WATERLINE", organizationId } },
+      where: { assetType: modelledType(organizationId) },
       select: { name: true },
     }),
   ]);
@@ -413,7 +413,7 @@ export async function copyTreatments(organizationId: string, ids: string[]): Pro
 
 export async function deleteTreatment(organizationId: string, id: string) {
   const row = await prisma.treatment.findFirst({
-    where: { id, assetType: { code: "WATERLINE", organizationId } },
+    where: { id, assetType: modelledType(organizationId) },
     include: { _count: { select: { workPlanItems: true } } },
   });
   if (!row) throw new Error("Treatment not found");

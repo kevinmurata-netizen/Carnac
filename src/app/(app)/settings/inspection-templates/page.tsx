@@ -59,7 +59,7 @@ export default async function InspectionTemplatesPage() {
               key={template.id}
               template={template}
               assetTypeName={template.assetTypeName}
-              assetTypeCode={template.assetTypeCode}
+              assetTypeIsModelled={template.assetTypeIsModelled}
             />
           ) : (
             <Card key={template.id}>

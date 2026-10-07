@@ -7,6 +7,7 @@ import {
   type EffectConditionMode,
   type EffectDef,
 } from "@/domain/waterline/effect";
+import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Treatment effects: named, organization-owned descriptions of what a
@@ -229,7 +230,7 @@ export async function getTreatmentEffects(
   treatmentId: string
 ): Promise<{ effects: EffectSummary[]; combined: CombinedEffect } | null> {
   const treatment = await prisma.treatment.findFirst({
-    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: treatmentId, assetType: modelledType(organizationId) },
     include: { effectLinks: { include: { effect: { include: withUsage } }, orderBy: { sortOrder: "asc" } } },
   });
   if (!treatment) return null;
@@ -245,7 +246,7 @@ export async function getTreatmentEffects(
  */
 export async function setTreatmentEffects(organizationId: string, treatmentId: string, effectIds: string[]) {
   const treatment = await prisma.treatment.findFirst({
-    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: treatmentId, assetType: modelledType(organizationId) },
     select: { id: true },
   });
   if (!treatment) throw new Error("That treatment no longer exists");

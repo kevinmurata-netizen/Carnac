@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { copyName, takenNames } from "@/lib/copy-name";
 import { describeNode } from "@/domain/waterline/decision-tree";
 import { parseRules } from "@/server/rules";
+import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Cost rates are the prices a treatment can carry, and the rule saying when
@@ -37,7 +38,7 @@ export async function getTreatmentCosts(
   treatmentId: string
 ): Promise<TreatmentCosts | null> {
   const treatment = await prisma.treatment.findFirst({
-    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: treatmentId, assetType: modelledType(organizationId) },
     include: { costRates: { include: { rule: true }, orderBy: { sortOrder: "asc" } } },
   });
   if (!treatment) return null;
@@ -67,7 +68,7 @@ export async function getTreatmentCosts(
  * which is what makes an annual rate review tolerable. */
 export async function listAllCostRates(organizationId: string) {
   const rows = await prisma.treatmentCostRate.findMany({
-    where: { treatment: { assetType: { code: "WATERLINE", organizationId } } },
+    where: { treatment: { assetType: modelledType(organizationId) } },
     include: { treatment: { select: { id: true, name: true } }, rule: { select: { name: true } } },
     orderBy: [{ treatment: { name: "asc" } }, { sortOrder: "asc" }],
   });
@@ -154,7 +155,7 @@ export async function setTreatmentCosts(
   rates: CostRateInput[]
 ) {
   const treatment = await prisma.treatment.findFirst({
-    where: { id: treatmentId, assetType: { code: "WATERLINE", organizationId } },
+    where: { id: treatmentId, assetType: modelledType(organizationId) },
     select: { id: true },
   });
   if (!treatment) throw new Error("That treatment no longer exists");
@@ -209,7 +210,7 @@ export async function deleteCostRates(
   ids: string[]
 ): Promise<{ deleted: string[]; kept: Array<{ name: string; reason: string }> }> {
   const rows = await prisma.treatmentCostRate.findMany({
-    where: { id: { in: ids }, treatment: { assetType: { code: "WATERLINE", organizationId } } },
+    where: { id: { in: ids }, treatment: { assetType: modelledType(organizationId) } },
     include: { treatment: { select: { name: true } } },
     orderBy: [{ treatment: { name: "asc" } }, { sortOrder: "asc" }],
   });
@@ -223,7 +224,7 @@ export async function deleteCostRates(
       where: {
         id: { in: deletable.map((r) => r.id) },
         ruleId: { not: null },
-        treatment: { assetType: { code: "WATERLINE", organizationId } },
+        treatment: { assetType: modelledType(organizationId) },
       },
     });
   }
@@ -244,7 +245,7 @@ export async function copyCostRates(
   ids: string[]
 ): Promise<{ copied: string[]; skipped: Array<{ name: string; reason: string }> }> {
   const picked = await prisma.treatmentCostRate.findMany({
-    where: { id: { in: ids }, treatment: { assetType: { code: "WATERLINE", organizationId } } },
+    where: { id: { in: ids }, treatment: { assetType: modelledType(organizationId) } },
     select: { id: true, treatmentId: true },
   });
   const pickedIds = new Set(picked.map((p) => p.id));

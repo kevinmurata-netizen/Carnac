@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { AttributeDataType, Prisma } from "@prisma/client";
 import { getIndexWeights } from "@/server/condition-model";
+import { modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
 
 /**
  * Editing for the two field definitions that shape data collection:
@@ -35,7 +36,7 @@ export type InspectionFieldRow = {
 
 export async function listInspectionFields(organizationId: string): Promise<InspectionFieldRow[]> {
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
+    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
     include: { fields: { orderBy: { sortOrder: "asc" }, include: { _count: { select: { results: true } } } } },
   });
   if (!template) return [];
@@ -61,7 +62,7 @@ export async function updateInspectionField(
   input: { label: string; unit: string | null; isRequired: boolean; sortOrder: number; helpText: string | null }
 ) {
   const field = await prisma.inspectionTemplateField.findFirst({
-    where: { id: fieldId, template: { assetType: { code: "WATERLINE", organizationId } } },
+    where: { id: fieldId, template: { assetType: modelledType(organizationId) } },
   });
   if (!field) throw new Error("Inspection field not found");
   if (!input.label.trim()) throw new Error("Label is required");
@@ -84,7 +85,7 @@ export async function createInspectionField(
   input: { code: string; label: string; dataType: AttributeDataType; unit?: string; isRequired: boolean; helpText?: string }
 ) {
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, componentTypeId: null },
+    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
     include: { fields: true },
   });
   if (!template) throw new Error("No active inspection template");
@@ -116,7 +117,7 @@ export async function createInspectionField(
 
 export async function deleteInspectionField(organizationId: string, fieldId: string) {
   const field = await prisma.inspectionTemplateField.findFirst({
-    where: { id: fieldId, template: { assetType: { code: "WATERLINE", organizationId } } },
+    where: { id: fieldId, template: { assetType: modelledType(organizationId) } },
     include: { _count: { select: { results: true } } },
   });
   if (!field) throw new Error("Inspection field not found");
@@ -153,7 +154,7 @@ export type InventoryFieldRow = {
 
 export async function listInventoryFields(organizationId: string): Promise<InventoryFieldRow[]> {
   const definitions = await prisma.assetAttributeDefinition.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     orderBy: { sortOrder: "asc" },
     include: { _count: { select: { values: true } } },
   });
@@ -217,8 +218,7 @@ export type NewAttribute = {
 
 /** The waterline inventory, which is what the Fields screen edits. */
 export async function createInventoryField(organizationId: string, input: NewAttribute) {
-  const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
-  if (!assetType) throw new Error("WATERLINE asset type not found");
+  const assetType = await requireModelledAssetType(organizationId);
   return createAttributeDefinition(organizationId, assetType.id, input);
 }
 

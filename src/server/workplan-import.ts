@@ -16,6 +16,7 @@ import { loadCombinations } from "@/server/combinations";
 import { splitCsvLine } from "@/server/import";
 import { assetTreatmentContext } from "@/server/workplans";
 import { buildWorkbookSheets } from "@/server/excel";
+import { MODELLED, modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Bringing already-programmed work into a plan from a spreadsheet.
@@ -288,7 +289,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
     prisma.treatment.findMany({
-      where: { assetType: { code: "WATERLINE", organizationId } },
+      where: { assetType: modelledType(organizationId) },
       select: { id: true, name: true },
     }),
     // A new plan holds nothing yet, so nothing in it can be repeated.
@@ -308,7 +309,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     where: {
       organizationId,
       deletedAt: null,
-      assetType: { code: "WATERLINE" },
+      assetType: MODELLED,
       assetCode: { in: codes, mode: "insensitive" },
     },
     select: { id: true, assetCode: true, status: true },

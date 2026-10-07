@@ -16,14 +16,14 @@ import {
   type CurveParams,
 } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
+import { MODELLED, modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
 
 const CURVE_MODEL_PREFIX = "Curve — ";
 export const MARKOV_MODEL_NAME = "Markov State-Transition (network)";
 
 /** Idempotently create one curve model per material plus the Markov model. */
 export async function ensureDeteriorationModels(organizationId: string) {
-  const assetType = await prisma.assetType.findFirst({ where: { code: "WATERLINE", organizationId } });
-  if (!assetType) throw new Error("WATERLINE asset type not found");
+  const assetType = await requireModelledAssetType(organizationId);
 
   for (const [material, params] of Object.entries(MATERIAL_CURVES)) {
     const name = `${CURVE_MODEL_PREFIX}${material}`;
@@ -75,7 +75,7 @@ function curveParamsFromRows(rows: Array<{ key: string; value: unknown }>): Curv
 
 async function getCurveModelsByMaterial(organizationId: string) {
   const models = await prisma.deteriorationModel.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId }, isActive: true, modelType: { not: "MARKOV" } },
+    where: { assetType: modelledType(organizationId), isActive: true, modelType: { not: "MARKOV" } },
     include: { parameters: true },
   });
   const byMaterial = new Map<string, { id: string; name: string; params: CurveParams }>();
@@ -97,7 +97,7 @@ export async function generatePredictions(organizationId: string): Promise<numbe
   const startYear = new Date().getFullYear();
 
   const assets = await prisma.asset.findMany({
-    where: { organizationId, assetType: { code: "WATERLINE" }, deletedAt: null, status: "ACTIVE" },
+    where: { organizationId, assetType: MODELLED, deletedAt: null, status: "ACTIVE" },
     include: {
       attributeValues: { include: { definition: true } },
       conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
@@ -205,7 +205,7 @@ export async function getNetworkForecast(organizationId: string): Promise<Networ
 
 export async function listDeteriorationModels(organizationId: string) {
   const models = await prisma.deteriorationModel.findMany({
-    where: { assetType: { code: "WATERLINE", organizationId } },
+    where: { assetType: modelledType(organizationId) },
     include: { parameters: true, _count: { select: { predictions: true } } },
     orderBy: { name: "asc" },
   });
