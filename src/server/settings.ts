@@ -233,23 +233,33 @@ function materialOf(applicability: unknown): string | null {
 }
 
 /**
- * Material → curve, as the forecasts actually run. Inactive models are skipped
- * so deactivating one falls back to the default curve rather than continuing
- * to shape the forecast invisibly.
+ * Each modelled asset type's curves, by material, as the forecasts actually
+ * run: an asset ages on its own type's curves, since two asset classes can
+ * share a material name ("Steel") and nothing else. A type with no curves
+ * configured falls back to the built-in set, as the organization's only type
+ * always has.
+ *
+ * Inactive models are skipped, so deactivating one falls back to the default
+ * curve rather than continuing to shape the forecast invisibly.
  */
-export async function getMaterialCurves(organizationId: string): Promise<Record<string, CurveParams>> {
+export async function getCurvesByAssetType(
+  organizationId: string
+): Promise<(assetTypeId: string | null | undefined) => Record<string, CurveParams>> {
   const models = await prisma.deteriorationModel.findMany({
     where: { assetType: modelledType(organizationId), isActive: true },
     include: { parameters: true },
   });
-
-  const curves: Record<string, CurveParams> = {};
+  const byType = new Map<string, Record<string, CurveParams>>();
+  const all: Record<string, CurveParams> = {};
   for (const m of models) {
     const material = materialOf(m.applicability);
     if (!material) continue;
-    curves[material] = parseCurve(m.parameters, material);
+    const curve = parseCurve(m.parameters, material);
+    byType.set(m.assetTypeId, { ...(byType.get(m.assetTypeId) ?? {}), [material]: curve });
+    all[material] = curve;
   }
-  return Object.keys(curves).length > 0 ? curves : MATERIAL_CURVES;
+  const merged = Object.keys(all).length > 0 ? all : MATERIAL_CURVES;
+  return (assetTypeId) => (assetTypeId ? byType.get(assetTypeId) : undefined) ?? (assetTypeId ? MATERIAL_CURVES : merged);
 }
 
 export async function listDeteriorationModels(organizationId: string): Promise<DeteriorationModelConfig[]> {
@@ -634,7 +644,7 @@ export async function deleteFailureType(organizationId: string, id: string) {
  * the whole curve form.
  *
  * Deactivating takes the model out of every forecast, work plan and scenario
- * run — getMaterialCurves only reads active models, so its material falls back
+ * run — getCurvesByAssetType only reads active models, so its material falls back
  * to the default curve rather than continuing to shape results invisibly.
  */
 export async function setDeteriorationModelActive(organizationId: string, id: string, isActive: boolean) {

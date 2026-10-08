@@ -553,7 +553,7 @@ function rankCandidates(
     selection: OptionSelection;
     benefitWeights: BenefitWeights;
     categoryWeights: CategoryWeights;
-    curves: Record<string, CurveParams>;
+    curvesOf: (asset: SimAsset) => Record<string, CurveParams>;
     fallbackReplacement: TreatmentDef;
   },
   /** Where to record options that never reach the ranked list, or null when
@@ -650,7 +650,7 @@ function rankCandidates(
     // One evaluator per asset per year, reused across its options: building it
     // per option would repeat the whole deterioration walk for every
     // candidate, and this loop already runs once a year for twenty years.
-    const lcca = buildLccaEvaluator(assetCtx, asset.condition, ctx.library, ctx.curves, ctx.fallbackReplacement);
+    const lcca = buildLccaEvaluator(assetCtx, asset.condition, ctx.library, ctx.curvesOf(asset), ctx.fallbackReplacement);
 
     for (const option of options) {
       const riskAfter =
@@ -845,6 +845,9 @@ export type ScenarioRunOptions = {
   fundingPlan?: FundingPlan;
   /** Deterioration curves by material. */
   curves?: Record<string, CurveParams>;
+  /** The same, for one asset type: where several are modelled, each ages on
+   * its own curves. Absent means `curves` for every asset. */
+  curvesFor?: (assetTypeId: string | null | undefined) => Record<string, CurveParams>;
   /** The first year of the run. A scenario set supplies its base year; on
    * its own a scenario starts in the year it is run. */
   startYear?: number;
@@ -903,6 +906,7 @@ export function runScenario(
   const categoryWeights = options.categoryWeights ?? NEUTRAL_CATEGORY_WEIGHTS;
   const fundingPlan = options.fundingPlan ?? null;
   const curves = options.curves ?? MATERIAL_CURVES;
+  const curvesOf = (asset: SimAsset) => options.curvesFor?.(asset.assetTypeId) ?? curves;
   const fallbackReplacement =
     library.find((d) => d.name === "Replacement") ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
 
@@ -1010,7 +1014,7 @@ export function runScenario(
       selection,
       benefitWeights,
       categoryWeights,
-      curves,
+      curvesOf,
       fallbackReplacement,
     }, trace);
 

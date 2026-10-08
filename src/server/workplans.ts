@@ -18,8 +18,8 @@ import { effectiveAgeForCondition, evaluateCurve } from "@/domain/waterline/dete
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { loadCombinations } from "@/server/combinations";
-import { getMaterialCurves } from "@/server/settings";
-import { assetScaleFactors } from "@/server/scale-factors";
+import { getCurvesByAssetType } from "@/server/settings";
+import { modelledScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
 import {
@@ -52,7 +52,7 @@ import {
   getScenarioAssumptions,
 } from "@/server/scenarios";
 import { MODELLED, modelledType } from "@/server/modelled-asset-type";
-import { treatmentIdsForAssets } from "@/server/treatment-lookup";
+import { treatmentIdsForAssets, treatmentKey } from "@/server/treatment-lookup";
 
 /**
  * Generating a multi-year capital program (SPEC §17).
@@ -286,25 +286,20 @@ async function buildCandidates(
   categoryWeights: CategoryWeights
 ): Promise<CandidateInfo[]> {
   const since = new Date(Date.now() - TEN_YEARS_MS);
-  const assetType = await prisma.assetType.findFirst({
-    where: modelledType(organizationId),
-    select: { id: true },
-  });
-  const [curves, library, combinations, scale, treatmentRows] = await Promise.all([
-    getMaterialCurves(organizationId),
+  const [curvesFor, library, combinations, scale, treatmentRows] = await Promise.all([
+    getCurvesByAssetType(organizationId),
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
     // Read once rather than per option: the formula is over length, diameter
-    // and the like, none of which a treatment changes.
-    assetType
-      ? assetScaleFactors(organizationId, assetType.id)
-      : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
+    // and the like, none of which a treatment changes. Each asset type's own.
+    modelledScaleFactors(organizationId),
     prisma.treatment.findMany({
       where: { assetType: modelledType(organizationId) },
-      select: { name: true },
+      select: { name: true, assetTypeId: true },
     }),
   ]);
-  const writable = new Set(treatmentRows.map((t) => t.name));
+  // Treatments that exist as rows, by type and name: a plan row needs one.
+  const writable = new Set(treatmentRows.map((t) => treatmentKey(t.assetTypeId, t.name)));
 
   const assets = await prisma.asset.findMany({
     where: { organizationId, assetType: MODELLED, deletedAt: null, status: "ACTIVE" },
@@ -362,7 +357,7 @@ async function buildCandidates(
       ctx,
       conditionScore,
       library,
-      curves,
+      curvesFor(ctx.assetTypeId),
       WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!
     );
     if (!lcca) continue;
@@ -395,7 +390,7 @@ async function buildCandidates(
       // A row names one treatment, so an option whose members have no
       // Treatment row could be selected and then not written — leaving the
       // year's budget committed to work that never appears in the plan.
-      if (!option.members.every((m) => writable.has(m.name))) continue;
+      if (!option.members.every((m) => writable.has(treatmentKey(m.assetTypeId, m.name)))) continue;
 
       const riskAfter = Math.max(1, pof * option.failureProbMultiplier) * cof;
       const riskNow = Math.round(pof * cof * 10) / 10;
@@ -460,7 +455,7 @@ function fundingPlanFromCaps(caps: CategoryCaps): FundingPlan {
 }
 
 export async function generateWorkPlan(organizationId: string, input: GenerateWorkPlanInput) {
-  const curves = await getMaterialCurves(organizationId);
+  const curvesFor = await getCurvesByAssetType(organizationId);
   const categoryWeights = input.categoryWeights ?? NEUTRAL_CATEGORY_WEIGHTS;
   const caps = input.caps ?? UNCAPPED;
 
@@ -530,7 +525,7 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
 
       // Condition at the time the work is actually scheduled, not today —
       // deferring a year means the asset is worse when the crew arrives.
-      const curve = curveFor(c.material, curves);
+      const curve = curveFor(c.material, curvesFor(c.ctx.assetTypeId));
       const deferredCondition =
         i === 0
           ? c.conditionNow

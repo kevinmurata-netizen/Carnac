@@ -19,7 +19,7 @@ import { curveFor } from "@/domain/waterline/deterioration";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
-import { getMaterialCurves } from "@/server/settings";
+import { getCurvesByAssetType } from "@/server/settings";
 
 export type AssetLcca = {
   assumptions: LccaAssumptions;
@@ -84,7 +84,10 @@ export async function getAssetLcca(
   const library = await loadTreatmentDefs(organizationId);
 
   // How long before this asset is exhausted if nothing resets its condition.
-  const curve = curveFor(attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null, await getMaterialCurves(organizationId));
+  const curve = curveFor(
+    attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
+    (await getCurvesByAssetType(organizationId))(asset.assetTypeId)
+  );
   const currentCurveAge =
     conditionScore != null
       ? effectiveAgeForCondition(curve, conditionScore)

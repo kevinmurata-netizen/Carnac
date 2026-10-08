@@ -29,6 +29,17 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-08",
+    title: "Each asset type ages, sizes and scores by its own models",
+    summary:
+      "Where several asset types are modelled, each now uses its own deterioration curves, its own size formula and its own criticality formula. Before, their curves were merged by material name, so one type's curve could age another's assets, and only one type's formulas were read. Nothing changes for water today.",
+    changes: [
+      "Scenarios, Treatment Planning, the dashboard's recommendations and work-plan generation age each asset on its own type's curves, falling back to the built-in curves only for a type with none.",
+      "Size factors and criticality come from each asset type's own active formula. A formula chosen for a scenario or a ranking applies to the asset type it belongs to, and every other type keeps its own.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-07",
     title: "Each asset type's treatments stay on its own assets",
     summary:

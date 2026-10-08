@@ -8,6 +8,7 @@ import {
   type ValueMaps,
 } from "@/server/criticality";
 import { assertAssetTypeInOrg, validateExpression, validateFormulaName } from "@/server/formula";
+import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 
 /**
  * Scale Factor formulas — how big a piece of work each asset represents.
@@ -117,6 +118,23 @@ export async function assetScaleFactors(
   }
 
   return { factors, name: model.name };
+}
+
+/**
+ * Size factors for every modelled asset type, each from its own formula. A
+ * chosen formula applies to its own type; every other type keeps its active
+ * one, since a formula over one type's attributes means nothing for another.
+ */
+export async function modelledScaleFactors(
+  organizationId: string,
+  modelId?: string | null
+): Promise<{ factors: Map<string, { factor: number; missing: boolean }>; name: string | null }> {
+  const types = await listModelledAssetTypes(organizationId);
+  const results = await Promise.all(types.map((t) => assetScaleFactors(organizationId, t.id, modelId)));
+  const factors = new Map<string, { factor: number; missing: boolean }>();
+  for (const r of results) for (const [assetId, f] of r.factors) factors.set(assetId, f);
+  const names = [...new Set(results.map((r) => r.name).filter((n): n is string => n != null))];
+  return { factors, name: names.length > 0 ? names.join(" · ") : null };
 }
 
 export type ScaleFactorPreview = {

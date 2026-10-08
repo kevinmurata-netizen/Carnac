@@ -34,15 +34,15 @@ import { resolveFundingPlan } from "@/server/category-funding";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveOptionSelection } from "@/server/scenario-options";
 import { loadCombinations } from "@/server/combinations";
-import { getMaterialCurves } from "@/server/settings";
-import { assetScaleFactors } from "@/server/scale-factors";
+import { getCurvesByAssetType } from "@/server/settings";
+import { modelledScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
-import { criticalityRescorer } from "@/server/criticality";
+import { modelledCriticalityRescorer } from "@/server/criticality";
 import { matchingAssetIds } from "@/server/saved-filters";
 import { resultsOutOfWindow, type ScenarioSetStatusValue, type ScenarioWindow } from "@/lib/scenario-sets";
 import { assertSetInOrganization } from "@/server/scenario-sets";
-import { MODELLED, modelledType } from "@/server/modelled-asset-type";
+import { MODELLED } from "@/server/modelled-asset-type";
 import { treatmentIdsForAssets } from "@/server/treatment-lookup";
 
 /** Snapshot the current network into simulation inputs. Condition comes from
@@ -80,21 +80,16 @@ export async function buildSimAssets(organizationId: string, only?: string[]): P
   // Scale factors are read once, here, rather than each year inside the run:
   // the formula is over length, diameter and the like, none of which a
   // treatment changes.
-  const assetType = await prisma.assetType.findFirst({
-    where: modelledType(organizationId),
-    select: { id: true },
-  });
-  const [curves, scale] = await Promise.all([
-    getMaterialCurves(organizationId),
-    assetType
-      ? assetScaleFactors(organizationId, assetType.id)
-      : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
+  // Each from the asset's own type: its curves by material, its size formula.
+  const [curvesFor, scale] = await Promise.all([
+    getCurvesByAssetType(organizationId),
+    modelledScaleFactors(organizationId),
   ]);
 
   return assets.map((asset) => {
     const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
     const material = attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null;
-    const curve = curveFor(material, curves);
+    const curve = curveFor(material, curvesFor(asset.assetTypeId));
 
     const measured = asset.conditionMeasurements[0]?.score ?? null;
     const age = ageInYears(asset.installationDate) ?? 0;
@@ -410,11 +405,7 @@ export async function loadScenarioRun(
   // A set decides the years: its base year starts the run and its planning
   // period replaces the scenario's own, so every member covers the same span.
   const assumptions = effectiveAssumptions(scenario.assumptions, scenario.scenarioSet);
-  const waterlineType = await prisma.assetType.findFirst({
-    where: modelledType(organizationId),
-    select: { id: true },
-  });
-  const [simAssets, library, combinations, weights, categories, funding, selection, curves, criticality, leadTimes] =
+  const [simAssets, library, combinations, weights, categories, funding, selection, curvesFor, criticality, leadTimes] =
     await Promise.all([
     buildSimAssets(organizationId, only),
     // Run against the configured library so edited treatments and decision
@@ -430,12 +421,11 @@ export async function loadScenarioRun(
     resolveFundingPlan(organizationId, scenario.categoryFundingPlanId),
     // And what it is allowed to consider at all. Null means the whole library.
     resolveOptionSelection(organizationId, scenarioId),
-    getMaterialCurves(organizationId),
+    getCurvesByAssetType(organizationId),
     // How criticality is rescored as the run changes the network — the
-    // scenario's own formula where it names one, otherwise the active one.
-    waterlineType
-      ? criticalityRescorer(organizationId, waterlineType.id, scenario.criticalityModelId)
-      : Promise.resolve(null),
+    // scenario's own formula for its asset type where it names one, otherwise
+    // each type's active one.
+    modelledCriticalityRescorer(organizationId, scenario.criticalityModelId),
     // How long its work takes to be paid for and built. No set, or a set that
     // leaves everything immediate, is the engine this app has always had.
     resolveLeadTimes(organizationId, scenario.leadTimeSetId),
@@ -474,7 +464,7 @@ export async function loadScenarioRun(
       },
       categoryWeights: categories.weights,
       fundingPlan: funding.plan,
-      curves,
+      curvesFor,
       startYear: scenario.scenarioSet?.baseYear,
       // Absent when no formula is configured, in which case each asset keeps
       // its stored criticality for the whole run.
