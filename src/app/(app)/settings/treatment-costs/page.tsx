@@ -5,6 +5,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getPageName } from "@/server/navigation";
 import { CostRatesTable } from "./cost-rates-table";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
 /**
  * Every price in the library on one screen.
@@ -15,14 +17,16 @@ import { CostRatesTable } from "./cost-rates-table";
  * visits — and a treatment's prices open in a pop-up here, so the review never
  * has to leave the page.
  */
-export default async function TreatmentCostsPage() {
+export default async function TreatmentCostsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/treatment-costs", "Treatment Costs");
   await requireCard("/settings/treatment-costs");
+  const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
 
   const [rates, canEdit, canEditRules] = await Promise.all([
-    listAllCostRates(organizationId),
+    listAllCostRates(organizationId, selected?.id),
     // Prices are saved on the treatment, so changing them is the treatment
     // library's permission rather than this card's.
     canWriteCard("/settings/treatments"),
@@ -41,10 +45,13 @@ export default async function TreatmentCostsPage() {
         }`}
       />
 
+      <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/treatment-costs?type=${id}`} />
+
       <Card>
         <CardHeader>
           <CardTitle>
-            Rates <span className="text-muted-foreground">({rates.length})</span>
+            {types.length > 1 && selected ? `${selected.name} rates` : "Rates"}{" "}
+            <span className="text-muted-foreground">({rates.length})</span>
             <span className="ml-2 text-xs font-normal text-muted-foreground">
               across {treatmentCount} treatment{treatmentCount === 1 ? "" : "s"}
               {ruleSelected > 0 ? ` · ${ruleSelected} selected by a rule` : ""}

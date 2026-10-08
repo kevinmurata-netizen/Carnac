@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-08",
+    title: "One treatment library per asset type",
+    summary:
+      "Where several asset types are modelled, Settings › Treatments, Treatment Costs and Treatment Combinations show one asset type's library at a time, with tabs to switch. With one modelled type nothing looks different.",
+    changes: [
+      "Tabs for each modelled asset type on Treatments, Treatment Costs and Treatment Combinations. They open on the type with the most assets.",
+      "A treatment added from a tab is created for that asset type, and its page says which.",
+      "A combination's treatments must all be for one asset type, since a bundle is work done together on one asset.",
+      "Rules and effects stay shared across asset types: a condition band or a reset to 100 means the same for any asset.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-08",
     title: "Each asset type ages, sizes and scores by its own models",
     summary:
       "Where several asset types are modelled, each now uses its own deterioration curves, its own size formula and its own criticality formula. Before, their curves were merged by material name, so one type's curve could age another's assets, and only one type's formulas were read. Nothing changes for water today.",

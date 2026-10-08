@@ -33,6 +33,39 @@ export async function listModelledAssetTypes(organizationId: string): Promise<Mo
   });
 }
 
+/**
+ * Which modelled asset type a settings screen is showing: the one asked for
+ * (`?type=<id>`), or else the one with the most assets — the main network, so
+ * modelling a second, smaller type doesn't move the screen off the library
+ * everyone was working in. `types` is every modelled type, by name, for the
+ * tabs that switch between them.
+ */
+export async function chooseModelledAssetType(
+  organizationId: string,
+  requestedId?: string | null
+): Promise<{ types: ModelledAssetType[]; selected: ModelledAssetType | null }> {
+  const rows = await prisma.assetType.findMany({
+    where: modelledType(organizationId),
+    select: { id: true, code: true, name: true, _count: { select: { assets: true } } },
+    orderBy: { name: "asc" },
+  });
+  const types = rows.map(({ id, code, name }) => ({ id, code, name }));
+  const largest = [...rows].sort((a, b) => b._count.assets - a._count.assets)[0];
+  const selected = types.find((t) => t.id === requestedId) ?? types.find((t) => t.id === largest?.id) ?? null;
+  return { types, selected };
+}
+
+/** A modelled asset type by id, checked to be this organization's — for the
+ * create paths, whose type arrives from a form. */
+export async function requireModelledAssetTypeById(organizationId: string, id: string): Promise<ModelledAssetType> {
+  const type = await prisma.assetType.findFirst({
+    where: { id, ...modelledType(organizationId) },
+    select: { id: true, code: true, name: true },
+  });
+  if (!type) throw new Error("That asset type isn't one this organization models.");
+  return type;
+}
+
 /** The organization's modelled asset type, or null when it has none. */
 export async function findModelledAssetType(organizationId: string): Promise<ModelledAssetType | null> {
   const types = await prisma.assetType.findMany({

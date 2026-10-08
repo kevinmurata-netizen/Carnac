@@ -10,13 +10,15 @@ import { CombinationEditor, type CombinationDraft } from "./combination-editor";
 import { CombinationList } from "./combination-list";
 import { saveCombinationAction, deleteCombinationAction } from "./actions";
 import { getPageName } from "@/server/navigation";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
 export default async function TreatmentCombinationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ combination?: string }>;
+  searchParams: Promise<{ combination?: string; type?: string }>;
 }) {
-  const { combination: requested } = await searchParams;
+  const { combination: requested, type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatment-combinations");
@@ -26,11 +28,25 @@ export default async function TreatmentCombinationsPage({
     "Treatment Combinations"
   );
 
-  const [combinations, treatments, rules] = await Promise.all([
+  const [allCombinations, allTreatments, rules, { types, selected: chosenType }] = await Promise.all([
     listCombinations(organizationId),
     listTreatmentsForAdmin(organizationId),
     listRules(organizationId),
+    chooseModelledAssetType(organizationId, requestedType),
   ]);
+  const selected =
+    requested && requested !== "new" ? await getCombination(organizationId, requested) : null;
+
+  // A combination is one asset type's: its members are all that type's
+  // treatments. One opened from the list shows under its own type; otherwise
+  // the tab decides, and new bundles are built from that type's treatments.
+  const typeOfTreatment = new Map(allTreatments.map((t) => [t.id, t.assetTypeId]));
+  const typeId =
+    (selected ? typeOfTreatment.get(selected.members[0]?.treatmentId ?? "") : null) ?? chosenType?.id ?? null;
+  const treatments = typeId ? allTreatments.filter((t) => t.assetTypeId === typeId) : allTreatments;
+  const combinations = typeId
+    ? allCombinations.filter((c) => c.members.every((m) => typeOfTreatment.get(m.treatmentId) === typeId))
+    : allCombinations;
 
   // The fallback rate's mobilization travels with each treatment so the
   // editor can show what a bundle would be charged if nobody overrides it.
@@ -56,9 +72,6 @@ export default async function TreatmentCombinationsPage({
     mobilizationCost: (t.costRates ?? []).find((r) => r.rule == null)?.mobilizationCost ?? 0,
   }));
   const resetTreatmentIds = treatments.filter((t) => t.conditionResetTo != null).map((t) => t.id);
-
-  const selected =
-    requested && requested !== "new" ? await getCombination(organizationId, requested) : null;
 
   const draft: CombinationDraft | null =
     requested === "new" && canEdit
@@ -98,6 +111,12 @@ export default async function TreatmentCombinationsPage({
         </div>
       )}
 
+      <AssetTypePills
+        types={types}
+        selectedId={typeId}
+        href={(id) => `/settings/treatment-combinations?type=${id}`}
+      />
+
       <div className="space-y-4">
         <Card>
           <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
@@ -106,7 +125,7 @@ export default async function TreatmentCombinationsPage({
             </CardTitle>
             {canEdit && (
               <Link
-                href="/settings/treatment-combinations?combination=new"
+                href={`/settings/treatment-combinations?combination=new${typeId ? `&type=${typeId}` : ""}`}
                 className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 New combination
