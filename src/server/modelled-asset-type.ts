@@ -23,6 +23,16 @@ export const MODELLED = { isModelled: true } as const;
 
 export type ModelledAssetType = { id: string; code: string; name: string };
 
+/** Every asset type this organization models, for what is loaded per type:
+ * curves, size and criticality formulas. */
+export async function listModelledAssetTypes(organizationId: string): Promise<ModelledAssetType[]> {
+  return prisma.assetType.findMany({
+    where: modelledType(organizationId),
+    select: { id: true, code: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
 /** The organization's modelled asset type, or null when it has none. */
 export async function findModelledAssetType(organizationId: string): Promise<ModelledAssetType | null> {
   const types = await prisma.assetType.findMany({

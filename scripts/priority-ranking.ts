@@ -6,7 +6,7 @@ import { buildSimAssets } from "@/server/scenarios";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { runScenario, DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { loadCombinations } from "@/server/combinations";
-import { getMaterialCurves } from "@/server/settings";
+import { getCurvesByAssetType } from "@/server/settings";
 
 /**
  * What the Priority Score actually ranks, measured against the real network.
@@ -93,17 +93,17 @@ async function main() {
   // place each asset on its curve. Letting the evaluator fall back to the
   // built-in defaults while the assets carry the database's makes the run
   // internally inconsistent, and the numbers it prints unusable.
-  const [simAssets, library, combos, curves] = await Promise.all([
+  const [simAssets, library, combos, curvesFor] = await Promise.all([
     buildSimAssets(org.id),
     loadTreatmentDefs(org.id),
     loadCombinations(org.id),
-    getMaterialCurves(org.id),
+    getCurvesByAssetType(org.id),
   ]);
   const assumptions = { ...DEFAULT_ASSUMPTIONS, analysisPeriodYears: 10 };
 
   const plans = await listFundingPlans(org.id);
   for (const set of [{ name: "No category order", plan: null }, ...plans.map((p) => ({ name: p.name, plan: p.steps }))]) {
-    const run = runScenario(simAssets, assumptions, { library, combinations: combos, curves, fundingPlan: set.plan });
+    const run = runScenario(simAssets, assumptions, { library, combinations: combos, curvesFor, fundingPlan: set.plan });
     const spentByCategory = new Map<string, number>();
     for (const year of run.years) {
       for (const project of year.selected) {

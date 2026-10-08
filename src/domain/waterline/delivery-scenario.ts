@@ -337,6 +337,7 @@ function walk(
   const benefitWeights = options.benefitWeights ?? DEFAULT_BENEFIT_WEIGHTS;
   const categoryWeights = options.categoryWeights ?? NEUTRAL_CATEGORY_WEIGHTS;
   const curves: Record<string, CurveParams> = options.curves ?? MATERIAL_CURVES;
+  const curvesOf = (asset: SimAsset) => options.curvesFor?.(asset.assetTypeId) ?? curves;
   const fallbackReplacement =
     library.find((d) => d.name === "Replacement") ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
   const leadTimes = options.leadTimes;
@@ -537,7 +538,7 @@ function walk(
       selection,
       benefitWeights,
       categoryWeights,
-      curves,
+      curvesOf,
       fallbackReplacement,
       trace,
     });
@@ -817,7 +818,7 @@ function rankCandidates(args: {
   selection: Parameters<typeof filterOptions>[0];
   benefitWeights: Parameters<typeof scoreBenefits>[1];
   categoryWeights: Parameters<typeof categoryWeight>[0];
-  curves: Record<string, CurveParams>;
+  curvesOf: (asset: SimAsset) => Record<string, CurveParams>;
   fallbackReplacement: Parameters<typeof buildLccaEvaluator>[4];
   trace: YearAlternative[] | null;
 }): { candidates: Candidate[]; heldCandidates: Map<string, Candidate> } {
@@ -900,7 +901,7 @@ function rankCandidates(args: {
         diameterInches: future.diameterInches,
         customerType: future.customerType,
       });
-      const lcca = buildLccaEvaluator(ctx, future.condition, args.library, args.curves, args.fallbackReplacement);
+      const lcca = buildLccaEvaluator(ctx, future.condition, args.library, args.curvesOf(asset), args.fallbackReplacement);
 
       for (const option of options) {
         const lead = leadFor(option.label, option.category);

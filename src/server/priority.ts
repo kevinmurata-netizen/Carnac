@@ -24,14 +24,13 @@ import { buildContexts } from "@/server/treatments";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { loadCombinations } from "@/server/combinations";
 import { buildLccaEvaluator } from "@/domain/waterline/lcca-evaluator";
-import { getMaterialCurves } from "@/server/settings";
+import { getCurvesByAssetType } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
-import { assetScaleFactors } from "@/server/scale-factors";
+import { modelledScaleFactors } from "@/server/scale-factors";
 import { criticalityForModel } from "@/server/criticality";
 import { resolveOptionSelection } from "@/server/scenario-options";
 import { CONSIDER_ALL, filterOptions } from "@/domain/waterline/option-selection";
-import { modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Every treatment option on every asset, scored and ranked.
@@ -155,23 +154,16 @@ export async function rankOptions(
 ): Promise<PriorityRanking> {
   const startedAt = Date.now();
 
-  const assetType = await prisma.assetType.findFirst({
-    where: modelledType(organizationId),
-    select: { id: true },
-  });
-
-  const [contexts, library, combinations, curves, chosen, chosenCategories, selection, scale, liveCriticality] =
+  const [contexts, library, combinations, curvesFor, chosen, chosenCategories, selection, scale, liveCriticality] =
     await Promise.all([
     buildContexts(organizationId),
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
-    getMaterialCurves(organizationId),
+    getCurvesByAssetType(organizationId),
     resolveWeights(organizationId, options.weightSetId),
     resolveCategoryWeights(organizationId, options.categoryWeightSetId),
     resolveOptionSelection(organizationId, options.scenarioId),
-    assetType
-      ? assetScaleFactors(organizationId, assetType.id, options.scaleFactorModelId)
-      : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
+    modelledScaleFactors(organizationId, options.scaleFactorModelId),
     options.criticalityModelId
       ? criticalityForModel(organizationId, options.criticalityModelId)
       : Promise.resolve(null),
@@ -225,7 +217,7 @@ export async function rankOptions(
     // option would repeat the whole deterioration walk for every candidate.
     const lcca =
       ctx.conditionScore != null
-        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curves, fallbackReplacement)
+        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curvesFor(ctx.assetTypeId), fallbackReplacement)
         : null;
 
     const scaled = scale.factors.get(asset.id);

@@ -26,10 +26,10 @@ import { parseRules } from "@/server/rules";
 import { createStandardRate } from "@/server/cost-rates";
 import { loadCombinations } from "@/server/combinations";
 import { buildLccaEvaluator } from "@/domain/waterline/lcca-evaluator";
-import { getMaterialCurves } from "@/server/settings";
+import { getCurvesByAssetType } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
-import { assetScaleFactors } from "@/server/scale-factors";
+import { modelledScaleFactors } from "@/server/scale-factors";
 import { criticalityForModel } from "@/server/criticality";
 import type { PriorityOptions } from "@/server/priority";
 import { categoryWeight } from "@/domain/waterline/category-weight";
@@ -304,20 +304,13 @@ export async function getNetworkRecommendations(
   options: PriorityOptions = {}
 ): Promise<NetworkRecommendations> {
   const contexts = await buildContexts(organizationId);
-  const assetType = await prisma.assetType.findFirst({
-    where: modelledType(organizationId),
-    select: { id: true },
-  });
-
-  const [library, combinations, curves, chosen, chosenCategories, scale, liveCriticality] = await Promise.all([
+  const [library, combinations, curvesFor, chosen, chosenCategories, scale, liveCriticality] = await Promise.all([
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
-    getMaterialCurves(organizationId),
+    getCurvesByAssetType(organizationId),
     resolveWeights(organizationId, options.weightSetId),
     resolveCategoryWeights(organizationId, options.categoryWeightSetId),
-    assetType
-      ? assetScaleFactors(organizationId, assetType.id, options.scaleFactorModelId)
-      : Promise.resolve({ factors: new Map<string, { factor: number; missing: boolean }>(), name: null }),
+    modelledScaleFactors(organizationId, options.scaleFactorModelId),
     options.criticalityModelId
       ? criticalityForModel(organizationId, options.criticalityModelId)
       : Promise.resolve(null),
@@ -372,7 +365,7 @@ export async function getNetworkRecommendations(
 
     const lcca =
       ctx.conditionScore != null
-        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curves, fallbackReplacement)
+        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curvesFor(ctx.assetTypeId), fallbackReplacement)
         : null;
 
     // The same arithmetic the full ranking uses, so this table and the ranked

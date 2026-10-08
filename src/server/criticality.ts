@@ -9,6 +9,7 @@ import {
 } from "@/domain/waterline/criticality-formula";
 import { assertAssetTypeInOrg, validateExpression, validateFormulaName } from "@/server/formula";
 import type { CriticalityState } from "@/domain/waterline/scenario";
+import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 
 /**
  * Criticality formulas: the field catalogue they can read, and running one.
@@ -526,6 +527,39 @@ export async function criticalityRescorer(
         RISK_SCORE: state.riskScore,
       });
       return result.ok ? toCriticalityScore(result.value) : null;
+    },
+  };
+}
+
+/**
+ * Criticality rescoring across every modelled asset type. A chosen formula
+ * rescores its own type's assets; every other type uses its active formula.
+ * Null when no type has one, in which case assets keep their stored scores.
+ */
+export async function modelledCriticalityRescorer(
+  organizationId: string,
+  modelId?: string | null
+): Promise<{ name: string; score: (assetId: string, state: CriticalityState) => number | null } | null> {
+  const [types, chosen] = await Promise.all([
+    listModelledAssetTypes(organizationId),
+    modelId ? prisma.criticalityModel.findFirst({ where: { id: modelId }, select: { assetTypeId: true } }) : null,
+  ]);
+  const rescorers = (
+    await Promise.all(
+      types.map((t) => criticalityRescorer(organizationId, t.id, chosen?.assetTypeId === t.id ? modelId : null))
+    )
+  ).filter((r): r is NonNullable<typeof r> => r != null);
+  if (rescorers.length === 0) return null;
+  return {
+    name: rescorers.map((r) => r.name).join(" · "),
+    // Each rescorer knows only its own type's assets, so the first answer is
+    // the asset's own type's.
+    score: (assetId, state) => {
+      for (const r of rescorers) {
+        const score = r.score(assetId, state);
+        if (score != null) return score;
+      }
+      return null;
     },
   };
 }
