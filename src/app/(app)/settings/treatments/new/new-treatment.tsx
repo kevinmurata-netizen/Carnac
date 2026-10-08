@@ -44,12 +44,15 @@ const STARTING_ROWS: CostRateRow[] = [
 ];
 
 export function NewTreatmentForm({
+  assetTypeId,
   allRules,
   allEffects,
   emptyTree,
   canEditRules,
   canEditEffects,
 }: {
+  /** The asset type the treatment is for. */
+  assetTypeId: string | null;
   allRules: RuleSummary[];
   allEffects: EffectSummary[];
   emptyTree: RuleGroup;
@@ -97,6 +100,7 @@ export function NewTreatmentForm({
         <input type="hidden" name="ruleTree" value={JSON.stringify(tree)} />
         <input type="hidden" name="blockIds" value={JSON.stringify(blockIds)} />
         <input type="hidden" name="effectIds" value={JSON.stringify(effectIds)} />
+        {assetTypeId && <input type="hidden" name="assetTypeId" value={assetTypeId} />}
 
         <SectionGroup ids={SECTION_IDS}>
           <CollapsibleSection

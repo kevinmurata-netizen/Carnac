@@ -9,14 +9,19 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { getPageName } from "@/server/navigation";
 import { TreatmentLibrary } from "./treatment-library";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
-export default async function TreatmentsAdminPage() {
+export default async function TreatmentsAdminPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/treatments", "Treatments");
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
-  const treatments = await listTreatmentsForAdmin(organizationId);
+  // One asset type's library at a time: names are only unique within a type.
+  const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
+  const treatments = await listTreatmentsForAdmin(organizationId, selected?.id);
   const withRules = treatments.filter((t) => t.ruleCount > 0).length;
 
   return (
@@ -33,7 +38,7 @@ export default async function TreatmentsAdminPage() {
               size="sm"
               nativeButton={false}
               render={
-                <Link href="/settings/treatments/new">
+                <Link href={selected ? `/settings/treatments/new?type=${selected.id}` : "/settings/treatments/new"}>
                   <Plus className="mr-1 h-4 w-4" />
                   Add new Treatment
                 </Link>
@@ -49,10 +54,13 @@ export default async function TreatmentsAdminPage() {
         </div>
       )}
 
+      <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/treatments?type=${id}`} />
+
       <Card className="mb-4">
         <CardHeader>
           <CardTitle>
-            Library <span className="text-muted-foreground">({treatments.length})</span>
+            {types.length > 1 && selected ? `${selected.name} library` : "Library"}{" "}
+            <span className="text-muted-foreground">({treatments.length})</span>
             {withRules > 0 && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
                 · {withRules} with a rule

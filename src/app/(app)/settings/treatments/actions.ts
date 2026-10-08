@@ -175,6 +175,7 @@ export async function createTreatmentAction(
     const fallback = rates.find((r) => !r.ruleId) ?? rates[rates.length - 1];
     const id = await createTreatment(organizationId, {
       ...parseInput(formData),
+      assetTypeId: String(formData.get("assetTypeId") ?? "") || null,
       unitCost: fallback.unitCost,
       costUnit: fallback.costUnit,
       mobilizationCost: fallback.mobilizationCost,

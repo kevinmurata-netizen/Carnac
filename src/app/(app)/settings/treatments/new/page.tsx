@@ -6,6 +6,7 @@ import { listEffects } from "@/server/effects";
 import { emptyRuleGroup } from "@/domain/waterline/decision-tree";
 import { PageHeader } from "@/components/layout/page-header";
 import { NewTreatmentForm } from "./new-treatment";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
 
 /**
  * Creating a treatment, with the same four sections as the page for an
@@ -16,11 +17,14 @@ import { NewTreatmentForm } from "./new-treatment";
  * from. Here they are held as a draft and written together, so a treatment is
  * complete the moment it exists rather than arriving priceless and ungated.
  */
-export default async function NewTreatmentPage() {
+export default async function NewTreatmentPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
   if (!canEdit) redirect("/settings/treatments");
+  // The asset type it is for: the library tab it was added from.
+  const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
 
   const [rules, effects, canEditRules, canEditEffects] = await Promise.all([
     listRules(organizationId),
@@ -34,7 +38,7 @@ export default async function NewTreatmentPage() {
       {/* No SetBreadcrumb: the trail only takes a supplied label for a record
           id, and "new" already reads as New on its own. */}
       <PageHeader
-        title="New Treatment"
+        title={types.length > 1 && selected ? `New ${selected.name} Treatment` : "New Treatment"}
         description="Everything a treatment needs to be used: what it is, what it does, what it costs, and when it applies"
       />
 
@@ -42,6 +46,7 @@ export default async function NewTreatmentPage() {
           carries a generated id, and generating it during a client render
           would give the server and the browser two different ids. */}
       <NewTreatmentForm
+        assetTypeId={selected?.id ?? null}
         allRules={rules}
         allEffects={effects}
         emptyTree={emptyRuleGroup("AND")}

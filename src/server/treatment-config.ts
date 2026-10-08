@@ -17,7 +17,7 @@ import { parseRules } from "@/server/rules";
 import { toEffectDef } from "@/server/effects";
 import { combineEffects } from "@/domain/waterline/effect";
 import { createStandardRate } from "@/server/cost-rates";
-import { modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
+import { modelledType, requireModelledAssetType, requireModelledAssetTypeById } from "@/server/modelled-asset-type";
 
 /**
  * The treatment library is configuration. These loaders map Treatment rows
@@ -191,9 +191,14 @@ function toAdminRow(
   };
 }
 
-export async function listTreatmentsForAdmin(organizationId: string): Promise<TreatmentAdminRow[]> {
+/** The library as Settings shows it: one asset type's treatments when one is
+ * named, every modelled type's otherwise. */
+export async function listTreatmentsForAdmin(
+  organizationId: string,
+  assetTypeId?: string | null
+): Promise<TreatmentAdminRow[]> {
   const rows = await prisma.treatment.findMany({
-    where: { assetType: modelledType(organizationId) },
+    where: { assetType: modelledType(organizationId), ...(assetTypeId ? { assetTypeId } : {}) },
     include: { ...withRules, _count: { select: { workPlanItems: true, combinationMemberships: true } } },
     orderBy: { name: "asc" },
   });
@@ -280,9 +285,12 @@ export async function updateTreatment(organizationId: string, id: string, input:
   });
 }
 
-export async function createTreatment(organizationId: string, input: TreatmentInput) {
+export async function createTreatment(organizationId: string, input: TreatmentInput & { assetTypeId?: string | null }) {
   validate(input);
-  const assetType = await requireModelledAssetType(organizationId);
+  // The asset type the screen was showing; the only modelled one otherwise.
+  const assetType = input.assetTypeId
+    ? await requireModelledAssetTypeById(organizationId, input.assetTypeId)
+    : await requireModelledAssetType(organizationId);
 
   const clash = await prisma.treatment.findFirst({
     where: { assetTypeId: assetType.id, name: input.name.trim() },

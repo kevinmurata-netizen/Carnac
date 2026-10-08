@@ -171,9 +171,13 @@ async function assertOwned(organizationId: string, input: CombinationInput) {
   // tenant's treatments or gate on their rules.
   const treatments = await prisma.treatment.findMany({
     where: { id: { in: input.members.map((m) => m.treatmentId) }, assetType: modelledType(organizationId) },
-    select: { id: true },
+    select: { id: true, assetTypeId: true },
   });
   if (treatments.length !== input.members.length) throw new Error("One of those treatments no longer exists");
+  // A bundle is work done together on one asset, and an asset has one type.
+  if (new Set(treatments.map((t) => t.assetTypeId)).size > 1) {
+    throw new Error("A combination's treatments must all be for the same asset type.");
+  }
 
   if (input.ruleIds.length > 0) {
     const rules = await prisma.rule.findMany({

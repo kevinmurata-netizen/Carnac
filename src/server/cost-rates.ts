@@ -66,9 +66,9 @@ export async function getTreatmentCosts(
 
 /** Every rate across the library, for the roll-up on the Treatments page —
  * which is what makes an annual rate review tolerable. */
-export async function listAllCostRates(organizationId: string) {
+export async function listAllCostRates(organizationId: string, assetTypeId?: string | null) {
   const rows = await prisma.treatmentCostRate.findMany({
-    where: { treatment: { assetType: modelledType(organizationId) } },
+    where: { treatment: { assetType: modelledType(organizationId), ...(assetTypeId ? { assetTypeId } : {}) } },
     include: { treatment: { select: { id: true, name: true } }, rule: { select: { name: true } } },
     orderBy: [{ treatment: { name: "asc" } }, { sortOrder: "asc" }],
   });
