@@ -9,8 +9,9 @@ import {
   MARKOV_STATES,
   type CurveParams,
 } from "@/domain/waterline/deterioration";
-import { modelledType, resolveModelledAssetType } from "@/server/modelled-asset-type";
-import { findIndexModel } from "@/server/condition-model";
+import { chooseModelledAssetType, modelledType, resolveModelledAssetType } from "@/server/modelled-asset-type";
+import { findIndexModel, indexModelsByType } from "@/server/condition-model";
+import { isComponentScoped } from "@/domain/components/scope";
 
 /**
  * Settings are the modelling configuration behind every number the system
@@ -54,11 +55,30 @@ export function parseBands(value: unknown): ConditionBand[] {
   return bands.length > 0 ? [...bands].sort((a, b) => b.min - a.min) : WCI_BANDS;
 }
 
-/** The bands every condition colour and grade label in the app is read from. */
-export async function getConditionBands(organizationId: string): Promise<ConditionBand[]> {
-  // The index's bands, not a metric's: metrics are condition models too.
-  const model = await findIndexModel(organizationId);
-  return parseBands(model?.bands);
+/**
+ * The bands every condition colour and grade label in the app is read from:
+ * the condition index's, never a metric's (metrics are condition models too).
+ *
+ * Each modelled asset type has its own. Given a type, its bands; otherwise the
+ * main network's — the type with the most assets — for the legends and
+ * summaries that speak for the whole network.
+ */
+export async function getConditionBands(
+  organizationId: string,
+  assetTypeId?: string | null
+): Promise<ConditionBand[]> {
+  if (assetTypeId) return parseBands((await findIndexModel(organizationId, assetTypeId))?.bands);
+  const byType = await indexModelsByType(organizationId);
+  if (byType.size <= 1) return parseBands([...byType.values()][0]?.bands);
+  const { selected } = await chooseModelledAssetType(organizationId);
+  return parseBands((selected && byType.get(selected.id))?.bands);
+}
+
+/** Each modelled type's bands by condition model id, for banding measurement
+ * rows that may belong to several asset types. */
+export async function getConditionBandsByModel(organizationId: string): Promise<Map<string, ConditionBand[]>> {
+  const byType = await indexModelsByType(organizationId);
+  return new Map([...byType.values()].map((m) => [m.id, parseBands(m.bands)]));
 }
 
 /** The condition scale and bands of one modelled asset type (the only one,
@@ -148,12 +168,21 @@ function parseWeights<T extends Record<string, number>>(value: unknown, fallback
   return out as T;
 }
 
-/** The weights risk scoring actually runs with. */
-export async function getRiskWeights(organizationId: string): Promise<RiskWeights> {
-  const model = await prisma.riskModel.findFirst({
-    where: { assetType: modelledType(organizationId) },
-    select: { probabilityConfig: true, consequenceConfig: true },
+/** A modelled type's whole-asset risk model — never one that only holds
+ * component scores. */
+export async function findRiskModel(organizationId: string, assetTypeId?: string | null) {
+  const models = await prisma.riskModel.findMany({
+    where: { assetType: modelledType(organizationId, assetTypeId) },
+    include: { _count: { select: { assessments: true } } },
+    orderBy: { id: "asc" },
   });
+  return models.find((m) => !isComponentScoped(m.probabilityConfig)) ?? null;
+}
+
+/** The weights risk scoring actually runs with, for one modelled asset type
+ * (the only one, when none is named). */
+export async function getRiskWeights(organizationId: string, assetTypeId?: string | null): Promise<RiskWeights> {
+  const model = await findRiskModel(organizationId, assetTypeId);
   return {
     pof: parseWeights(model?.probabilityConfig, POF_WEIGHTS),
     cof: parseWeights(model?.consequenceConfig, COF_WEIGHTS),
@@ -164,10 +193,7 @@ export async function getRiskModelConfig(
   organizationId: string,
   assetTypeId?: string | null
 ): Promise<RiskModelConfig> {
-  const model = await prisma.riskModel.findFirst({
-    where: { assetType: modelledType(organizationId, assetTypeId) },
-    include: { _count: { select: { assessments: true } } },
-  });
+  const model = await findRiskModel(organizationId, assetTypeId);
   if (!model) throw new Error("Risk model is not configured for this organization");
 
   return {
@@ -192,9 +218,7 @@ export async function updateRiskModel(
   if (sum(input.pof) <= 0) throw new Error("At least one probability factor needs a weight above zero");
   if (sum(input.cof) <= 0) throw new Error("At least one consequence factor needs a weight above zero");
 
-  const model = await prisma.riskModel.findFirst({
-    where: { assetType: modelledType(organizationId, input.assetTypeId) },
-  });
+  const model = await findRiskModel(organizationId, input.assetTypeId);
   if (!model) throw new Error("Risk model not found");
 
   await prisma.riskModel.update({
@@ -720,9 +744,9 @@ function parseMatrix(value: unknown, size: number): number[][] | null {
  * malformed — a half-valid matrix would produce a forecast nobody could
  * explain, so it is rejected wholesale rather than patched.
  */
-export async function getTransitionMatrix(organizationId: string): Promise<number[][]> {
+export async function getTransitionMatrix(organizationId: string, assetTypeId?: string | null): Promise<number[][]> {
   const model = await prisma.deteriorationModel.findFirst({
-    where: { assetType: modelledType(organizationId), modelType: "MARKOV", isActive: true },
+    where: { assetType: modelledType(organizationId, assetTypeId), modelType: "MARKOV", isActive: true },
     include: { parameters: true },
   });
   if (!model) return DEFAULT_TRANSITION_MATRIX;

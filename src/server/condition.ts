@@ -1,15 +1,21 @@
 import { prisma } from "@/lib/prisma";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
-import { getConditionBands } from "@/server/settings";
-import { MODELLED, modelledType } from "@/server/modelled-asset-type";
+import { getConditionBandsByModel } from "@/server/settings";
+import { MODELLED } from "@/server/modelled-asset-type";
 
-async function getWciModel(organizationId: string) {
-  const model = await prisma.conditionModel.findFirst({
-    where: { assetType: modelledType(organizationId) },
-  });
-  if (!model) throw new Error("Waterline Condition Index model is not configured");
-  return model;
+/**
+ * Each modelled asset type's condition index, and the bands to grade a score
+ * filed under it. Condition is read across every modelled type at once, each
+ * measurement graded by its own type's bands.
+ */
+async function getIndexModels(organizationId: string) {
+  const bandsByModel = await getConditionBandsByModel(organizationId);
+  if (bandsByModel.size === 0) throw new Error("No condition index is configured for this organization");
+  return {
+    ids: [...bandsByModel.keys()],
+    bandsOf: (modelId: string) => bandsByModel.get(modelId)!,
+  };
 }
 
 export type AssetCondition = {
@@ -21,30 +27,32 @@ export type AssetCondition = {
 /** Latest condition measurement per asset, using Postgres DISTINCT ON semantics
  * via Prisma's distinct+orderBy combination. */
 export async function getLatestConditionByAsset(organizationId: string): Promise<Map<string, AssetCondition>> {
-  const bands = await getConditionBands(organizationId);
-  const model = await getWciModel(organizationId);
+  const index = await getIndexModels(organizationId);
   const rows = await prisma.conditionMeasurement.findMany({
-    where: { conditionModelId: model.id, assetComponentId: null, asset: { organizationId, deletedAt: null } },
+    where: { conditionModelId: { in: index.ids }, assetComponentId: null, asset: { organizationId, deletedAt: null } },
     orderBy: [{ assetId: "asc" }, { measurementDate: "desc" }],
     distinct: ["assetId"],
-    select: { assetId: true, score: true, measurementDate: true },
+    select: { assetId: true, score: true, measurementDate: true, conditionModelId: true },
   });
 
   const map = new Map<string, AssetCondition>();
   for (const row of rows) {
-    map.set(row.assetId, { score: row.score, band: getConditionBand(row.score, bands), measurementDate: row.measurementDate });
+    map.set(row.assetId, {
+      score: row.score,
+      band: getConditionBand(row.score, index.bandsOf(row.conditionModelId)),
+      measurementDate: row.measurementDate,
+    });
   }
   return map;
 }
 
 export async function getConditionHistoryForAsset(organizationId: string, assetId: string) {
-  const bands = await getConditionBands(organizationId);
-  const model = await getWciModel(organizationId);
+  const index = await getIndexModels(organizationId);
   const rows = await prisma.conditionMeasurement.findMany({
-    where: { conditionModelId: model.id, assetId, assetComponentId: null, asset: { organizationId } },
+    where: { conditionModelId: { in: index.ids }, assetId, assetComponentId: null, asset: { organizationId } },
     orderBy: { measurementDate: "asc" },
   });
-  return rows.map((r) => ({ ...r, band: getConditionBand(r.score, bands) }));
+  return rows.map((r) => ({ ...r, band: getConditionBand(r.score, index.bandsOf(r.conditionModelId)) }));
 }
 
 export type ConditionSummary = {
@@ -102,17 +110,21 @@ export async function getConditionSummary(organizationId: string): Promise<Condi
 }
 
 export async function getWorstConditionAssets(organizationId: string, limit = 10) {
-  const bands = await getConditionBands(organizationId);
-  const model = await getWciModel(organizationId);
+  const index = await getIndexModels(organizationId);
   const rows = await prisma.conditionMeasurement.findMany({
-    where: { conditionModelId: model.id, assetComponentId: null, asset: { organizationId, deletedAt: null } },
+    where: { conditionModelId: { in: index.ids }, assetComponentId: null, asset: { organizationId, deletedAt: null } },
     orderBy: [{ assetId: "asc" }, { measurementDate: "desc" }],
     distinct: ["assetId"],
     include: { asset: { select: { id: true, assetCode: true, status: true } } },
   });
 
   return rows
-    .map((r) => ({ asset: r.asset, score: r.score, band: getConditionBand(r.score, bands), measurementDate: r.measurementDate }))
+    .map((r) => ({
+      asset: r.asset,
+      score: r.score,
+      band: getConditionBand(r.score, index.bandsOf(r.conditionModelId)),
+      measurementDate: r.measurementDate,
+    }))
     .sort((a, b) => a.score - b.score)
     .slice(0, limit);
 }

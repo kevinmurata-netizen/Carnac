@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
-import { getConditionIndex } from "@/server/condition-model";
+import { findIndexModel, getConditionIndex } from "@/server/condition-model";
+import { ModelNotSetUp } from "@/components/settings/model-not-set-up";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { IndexEditor } from "./index-editor";
@@ -19,6 +20,18 @@ export default async function ConditionIndexPage({ searchParams }: { searchParam
 
   // Each modelled asset type is scored by its own index.
   const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
+  const pills = (
+    <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/condition-index?type=${id}`} />
+  );
+  if (selected && !(await findIndexModel(organizationId, selected.id))) {
+    return (
+      <div>
+        <PageHeader title={pageTitle} description="The components and weights that produce every condition score" />
+        {pills}
+        <ModelNotSetUp typeName={selected.name} model="condition index" />
+      </div>
+    );
+  }
   const config = await getConditionIndex(organizationId, selected?.id);
 
   return (
@@ -28,7 +41,7 @@ export default async function ConditionIndexPage({ searchParams }: { searchParam
         description={`${config.name} — the components and weights that produce every condition score`}
       />
 
-      <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/condition-index?type=${id}`} />
+      {pills}
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard

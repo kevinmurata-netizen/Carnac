@@ -16,22 +16,32 @@ import {
   type CurveParams,
 } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
-import { MODELLED, modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
+import { MODELLED, chooseModelledAssetType, listModelledAssetTypes, modelledType } from "@/server/modelled-asset-type";
 
 const CURVE_MODEL_PREFIX = "Curve — ";
 export const MARKOV_MODEL_NAME = "Markov State-Transition (network)";
 
-/** Idempotently create one curve model per material plus the Markov model. */
+/**
+ * Give each modelled asset type that has no deterioration models of its own
+ * the built-in set: one curve per material plus the Markov model. A type that
+ * already has any — its own curves, or its components' — is left as it is,
+ * rather than having another asset class's curves added to it.
+ */
 export async function ensureDeteriorationModels(organizationId: string) {
-  const assetType = await requireModelledAssetType(organizationId);
+  for (const assetType of await listModelledAssetTypes(organizationId)) {
+    const hasModels = await prisma.deteriorationModel.count({ where: { assetTypeId: assetType.id } });
+    if (hasModels === 0) await createBuiltInModels(assetType.id);
+  }
+}
 
+async function createBuiltInModels(assetTypeId: string) {
   for (const [material, params] of Object.entries(MATERIAL_CURVES)) {
     const name = `${CURVE_MODEL_PREFIX}${material}`;
-    const existing = await prisma.deteriorationModel.findFirst({ where: { assetTypeId: assetType.id, name } });
+    const existing = await prisma.deteriorationModel.findFirst({ where: { assetTypeId, name } });
     if (existing) continue;
     await prisma.deteriorationModel.create({
       data: {
-        assetTypeId: assetType.id,
+        assetTypeId,
         name,
         modelType: "POLYNOMIAL",
         applicability: { material },
@@ -43,12 +53,12 @@ export async function ensureDeteriorationModels(organizationId: string) {
   }
 
   const markovExisting = await prisma.deteriorationModel.findFirst({
-    where: { assetTypeId: assetType.id, name: MARKOV_MODEL_NAME },
+    where: { assetTypeId, name: MARKOV_MODEL_NAME },
   });
   if (!markovExisting) {
     await prisma.deteriorationModel.create({
       data: {
-        assetTypeId: assetType.id,
+        assetTypeId,
         name: MARKOV_MODEL_NAME,
         modelType: "MARKOV",
         applicability: { material: "*" },
@@ -73,18 +83,24 @@ function curveParamsFromRows(rows: Array<{ key: string; value: unknown }>): Curv
   };
 }
 
-async function getCurveModelsByMaterial(organizationId: string) {
+type CurveModel = { id: string; name: string; params: CurveParams };
+
+/** Each modelled asset type's active curves, by material: two asset classes
+ * can share a material name and nothing else. */
+async function getCurveModelsByType(organizationId: string) {
   const models = await prisma.deteriorationModel.findMany({
     where: { assetType: modelledType(organizationId), isActive: true, modelType: { not: "MARKOV" } },
     include: { parameters: true },
   });
-  const byMaterial = new Map<string, { id: string; name: string; params: CurveParams }>();
+  const byType = new Map<string, Map<string, CurveModel>>();
   for (const model of models) {
     const material = (model.applicability as { material?: string }).material;
     if (!material || material === "*") continue;
+    const byMaterial = byType.get(model.assetTypeId) ?? new Map<string, CurveModel>();
     byMaterial.set(material, { id: model.id, name: model.name, params: curveParamsFromRows(model.parameters) });
+    byType.set(model.assetTypeId, byMaterial);
   }
-  return byMaterial;
+  return byType;
 }
 
 /** Regenerate 10-year "current trajectory" predictions for every active
@@ -93,7 +109,7 @@ async function getCurveModelsByMaterial(organizationId: string) {
  * derived data, unlike append-only assessments. */
 export async function generatePredictions(organizationId: string): Promise<number> {
   await ensureDeteriorationModels(organizationId);
-  const curveByMaterial = await getCurveModelsByMaterial(organizationId);
+  const curvesByType = await getCurveModelsByType(organizationId);
   const startYear = new Date().getFullYear();
 
   const assets = await prisma.asset.findMany({
@@ -111,7 +127,7 @@ export async function generatePredictions(organizationId: string): Promise<numbe
   let count = 0;
   for (const asset of assets) {
     const material = asset.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.MATERIAL)?.textValue;
-    const model = material ? curveByMaterial.get(material) : undefined;
+    const model = material ? curvesByType.get(asset.assetTypeId)?.get(material) : undefined;
     if (!model) continue;
 
     const latest = asset.conditionMeasurements[0];
@@ -163,10 +179,18 @@ export type NetworkForecast = {
 };
 
 export async function getNetworkForecast(organizationId: string): Promise<NetworkForecast> {
-  // The matrix configured in Settings, not the seeded constant — otherwise
+  // The matrices configured in Settings, not the seeded constant — otherwise
   // the stored one is shown to administrators while a different one drives
-  // the forecast.
-  const transitionMatrix = await getTransitionMatrix(organizationId);
+  // the forecast. Each modelled asset type steps with its own; any other
+  // asset, with the main network's.
+  const { types, selected } = await chooseModelledAssetType(organizationId);
+  const matrices = new Map(
+    await Promise.all(types.map(async (t) => [t.id, await getTransitionMatrix(organizationId, t.id)] as const))
+  );
+  const MAIN = "main";
+  const groupOf = (assetTypeId: string) => (matrices.has(assetTypeId) && assetTypeId !== selected?.id ? assetTypeId : MAIN);
+  const matrixOf = (group: string) =>
+    (group === MAIN ? selected && matrices.get(selected.id) : matrices.get(group)) ?? DEFAULT_TRANSITION_MATRIX;
   const startYear = new Date().getFullYear();
 
   const rows = await prisma.deteriorationPrediction.groupBy({
@@ -186,17 +210,27 @@ export async function getNetworkForecast(organizationId: string): Promise<Networ
     where: { assetComponentId: null, asset: { organizationId, deletedAt: null, status: "ACTIVE" } },
     orderBy: [{ assetId: "asc" }, { measurementDate: "desc" }],
     distinct: ["assetId"],
-    select: { score: true },
+    select: { score: true, asset: { select: { assetTypeId: true } } },
   });
   const markov: Array<{ year: number; avgCondition: number }> = [];
   if (measurements.length > 0) {
-    let aggregate = measurements
-      .map((m) => conditionToStateVector(m.score))
-      .reduce((sum, v) => sum.map((s, i) => s + v[i]))
-      .map((s) => s / measurements.length);
+    // Each group's share of the network, stepped with its own matrix. Stepping
+    // is linear, so one group gives exactly the single network aggregate.
+    const groups = new Map<string, number[][]>();
+    for (const m of measurements) {
+      const key = groupOf(m.asset.assetTypeId);
+      const vectors = groups.get(key) ?? [];
+      vectors.push(conditionToStateVector(m.score));
+      groups.set(key, vectors);
+    }
+    let shares = [...groups.entries()].map(([key, vectors]) => ({
+      matrix: matrixOf(key),
+      vector: vectors.reduce((sum, v) => sum.map((s, i) => s + v[i])).map((s) => s / measurements.length),
+    }));
     for (let i = 0; i <= FORECAST_HORIZON_YEARS; i++) {
+      const aggregate = shares.map((g) => g.vector).reduce((sum, v) => sum.map((s, j) => s + v[j]));
       markov.push({ year: startYear + i, avgCondition: expectedCondition(aggregate) });
-      aggregate = stepStateVector(aggregate, transitionMatrix);
+      shares = shares.map((g) => ({ ...g, vector: stepStateVector(g.vector, g.matrix) }));
     }
   }
 

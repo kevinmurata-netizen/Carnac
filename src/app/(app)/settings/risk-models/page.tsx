@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
-import { getRiskModelConfig } from "@/server/settings";
+import { findRiskModel, getRiskModelConfig } from "@/server/settings";
+import { ModelNotSetUp } from "@/components/settings/model-not-set-up";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { RiskModelEditor } from "./editor";
@@ -20,16 +21,29 @@ export default async function RiskModelsPage({ searchParams }: { searchParams: P
 
   // Each modelled asset type weighs its own risk factors.
   const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
-  const config = await getRiskModelConfig(organizationId, selected?.id);
-
-  return (
-    <div>
+  const header = (
+    <>
       <PageHeader
         title={pageTitle}
         description="How much each factor counts toward probability and consequence of failure"
       />
 
       <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/risk-models?type=${id}`} />
+    </>
+  );
+  if (selected && !(await findRiskModel(organizationId, selected.id))) {
+    return (
+      <div>
+        {header}
+        <ModelNotSetUp typeName={selected.name} model="risk model" />
+      </div>
+    );
+  }
+  const config = await getRiskModelConfig(organizationId, selected?.id);
+
+  return (
+    <div>
+      {header}
 
       {canEdit && (
         <Card className="mb-4">

@@ -7,6 +7,7 @@ import {
 } from "@/domain/waterline/attributes";
 import { insertAssetLineLocation } from "@/server/geo";
 import { requireModelledAssetType } from "@/server/modelled-asset-type";
+import { wholeAssetConditionModel } from "@/server/components";
 
 /**
  * CSV import for waterline inventory (SPEC §27). Validation is a separate,
@@ -266,7 +267,7 @@ export async function commitImport(organizationId: string, csv: string): Promise
   });
   const defByCode = new Map(definitions.map((d) => [d.code, d.id]));
 
-  const conditionModel = await prisma.conditionModel.findFirst({ where: { assetTypeId: assetType.id } });
+  const conditionModel = await wholeAssetConditionModel(assetType.id);
 
   for (const row of report.validRows) {
     const attributeValues = [

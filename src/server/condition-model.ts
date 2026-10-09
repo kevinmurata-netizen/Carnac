@@ -7,6 +7,8 @@ import {
   type ConditionBand,
 } from "@/domain/waterline/condition";
 import { modelledType } from "@/server/modelled-asset-type";
+import { isComponentScoped } from "@/domain/components/scope";
+import type { ConditionModel } from "@prisma/client";
 
 /**
  * The Condition Index is configuration, not code: its components and their
@@ -83,6 +85,9 @@ function parseBands(bands: unknown): ConditionBand[] {
  * every condition score. Derived metrics are marked by metricSource in their
  * formula; the index is the row without one.
  *
+ * A model that only holds component scores (a reservoir's roof, its vents) is
+ * not an index either: the asset's own condition is rolled up from those.
+ *
  * Each modelled asset type has its own index; `assetTypeId` names which (a
  * settings screen's tab), and without it this is the only modelled type's.
  */
@@ -91,7 +96,30 @@ export async function findIndexModel(organizationId: string, assetTypeId?: strin
     where: { assetType: modelledType(organizationId, assetTypeId) },
     orderBy: { id: "asc" },
   });
-  return models.find((m) => !isDerivedMetric(m.formula)) ?? null;
+  return models.find(isIndexModel) ?? null;
+}
+
+function isIndexModel(model: { formula: unknown }): boolean {
+  return !isDerivedMetric(model.formula) && !isComponentScoped(model.formula);
+}
+
+/** Every modelled asset type's condition index, by asset type id: for what
+ * reads condition across the network, each asset by its own type's index. */
+export async function indexModelsByType(organizationId: string): Promise<Map<string, ConditionModel>> {
+  const models = await prisma.conditionModel.findMany({
+    where: { assetType: modelledType(organizationId) },
+    orderBy: { id: "asc" },
+  });
+  const byType = new Map<string, ConditionModel>();
+  for (const m of models) {
+    if (isIndexModel(m) && !byType.has(m.assetTypeId)) byType.set(m.assetTypeId, m);
+  }
+  return byType;
+}
+
+/** The weights a condition model scores with. */
+export function indexWeightsOf(model: { formula: unknown }): Record<string, number> {
+  return parseWeights(model.formula);
 }
 
 async function requireModel(organizationId: string, assetTypeId?: string | null) {

@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getConditionBand, computeWCI , type ConditionBand } from "@/domain/waterline/condition";
-import { getIndexWeights } from "@/server/condition-model";
+import { indexWeightsOf } from "@/server/condition-model";
 import { sameCalendarDay } from "@/lib/format";
 import { refreshComponentSnapshot, wholeAssetConditionModel } from "@/server/components";
 import {
@@ -10,16 +10,6 @@ import {
   recordComponentFinding,
   type ComponentFinding,
 } from "@/server/component-inspections";
-import { modelledType } from "@/server/modelled-asset-type";
-
-export async function getWaterlineTemplate(organizationId: string) {
-  const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
-    include: { fields: { orderBy: { sortOrder: "asc" } } },
-  });
-  if (!template) throw new Error("No active inspection template configured for waterlines");
-  return template;
-}
 
 /**
  * The asset being inspected and the form for its kind.
@@ -216,7 +206,7 @@ export async function createInspection(organizationId: string, input: CreateInsp
   // Score against the currently configured index, not the seed constant, so a
   // reweighted index takes effect on the very next inspection. Only asked for
   // when there is a model to file the score against.
-  const wci = conditionModel ? computeWCI(numericScores, await getIndexWeights(organizationId)) : 0;
+  const wci = conditionModel ? computeWCI(numericScores, indexWeightsOf(conditionModel)) : 0;
 
   const inspection = await prisma.inspection.create({
     data: {
@@ -273,7 +263,10 @@ export type InspectionEdit = {
 export async function updateInspection(organizationId: string, id: string, edit: InspectionEdit) {
   const inspection = await prisma.inspection.findFirst({
     where: { id, asset: { organizationId, deletedAt: null } },
-    include: { results: { include: { field: true } }, conditionMeasurements: true },
+    include: {
+      results: { include: { field: true } },
+      conditionMeasurements: { include: { conditionModel: { select: { formula: true } } } },
+    },
   });
   if (!inspection) throw new Error("That inspection no longer exists");
 
@@ -335,7 +328,8 @@ export async function updateInspection(organizationId: string, id: string, edit:
   const measurement = inspection.conditionMeasurements[0];
 
   if (measurement && (ratingsChanged || dateChanged)) {
-    const wci = computeWCI(scores, await getIndexWeights(organizationId));
+    // Rescored with the index the measurement is filed under: its asset type's.
+    const wci = computeWCI(scores, indexWeightsOf(measurement.conditionModel));
     writes.push(
       prisma.conditionMeasurement.update({
         where: { id: measurement.id },
