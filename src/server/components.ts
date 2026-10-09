@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isDerivedMetric } from "@/server/metrics-shared";
 import type { ComponentScore } from "@/domain/components/rollup";
 import { attributesOf, coerceComponentAttributes, type ComponentAttribute } from "@/domain/components/attributes";
 import {
@@ -21,10 +22,11 @@ import {
 
 export { COMPONENT_SCOPE, isComponentScoped };
 
-/** The whole-asset condition model for a type, never a component-scoped one. */
+/** The whole-asset condition model for a type: never a component-scoped one,
+ * and never a metric, which is stored as a condition model too. */
 export async function wholeAssetConditionModel(assetTypeId: string) {
   const models = await prisma.conditionModel.findMany({ where: { assetTypeId }, orderBy: { name: "asc" } });
-  return models.find((m) => !isComponentScoped(m.formula)) ?? null;
+  return models.find((m) => !isComponentScoped(m.formula) && !isDerivedMetric(m.formula)) ?? null;
 }
 
 /** The model component condition rows belong to for this asset type,

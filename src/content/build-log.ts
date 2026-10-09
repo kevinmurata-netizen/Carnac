@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-09",
+    title: "Each asset type scored by its own condition, risk and Markov models",
+    summary:
+      "Groundwork for modelling several asset types side by side: condition, risk and the network forecast now read each modelled asset type's own models, rather than one type's for everything. Nothing changes for water today.",
+    changes: [
+      "Condition lists and summaries grade each asset with its own asset type's bands. Legends and network summaries use the main network's.",
+      "Risk is recomputed once per asset type, each with its own risk model, weights and criticality formula. The risk views read every type's assessments.",
+      "The Markov network forecast steps each asset type with its own matrix and combines them by asset count.",
+      "A new or edited inspection is scored with its asset type's own condition index.",
+      "The built-in water curves are only added to an asset type that has no deterioration models of its own.",
+      "Condition Index, Metrics and Risk Models say so when an asset type has no such model, instead of failing.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-09",
     title: "One asset type's models at a time in Settings",
     summary:
       "Where several asset types are modelled, the model screens show one asset type at a time, with tabs to switch: Condition Index, Metrics, Risk Models, Deterioration Models, Failure Types and Fields. With one modelled type nothing looks different.",

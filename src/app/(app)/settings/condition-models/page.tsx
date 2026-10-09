@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { getConditionModelConfig } from "@/server/settings";
 import { listMetrics, listMetricSources } from "@/server/metrics";
+import { findIndexModel } from "@/server/condition-model";
+import { ModelNotSetUp } from "@/components/settings/model-not-set-up";
 import { getPageName } from "@/server/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +22,19 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
 
   // Each modelled asset type has its own condition scale, bands and metrics.
   const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
+  const pills = (
+    <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/condition-models?type=${id}`} />
+  );
+  const description = "The condition scale and its bands, plus any metric built on an inspection or inventory field";
+  if (selected && !(await findIndexModel(organizationId, selected.id))) {
+    return (
+      <div>
+        <PageHeader title={pageTitle} description={description} />
+        {pills}
+        <ModelNotSetUp typeName={selected.name} model="condition scale" />
+      </div>
+    );
+  }
   const [config, metrics, sources] = await Promise.all([
     getConditionModelConfig(organizationId, selected?.id),
     listMetrics(organizationId, selected?.id),
@@ -28,12 +43,9 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
 
   return (
     <div>
-      <PageHeader
-        title={pageTitle}
-        description="The condition scale and its bands, plus any metric built on an inspection or inventory field"
-      />
+      <PageHeader title={pageTitle} description={description} />
 
-      <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/condition-models?type=${id}`} />
+      {pills}
 
       {canEdit ? (
         <>

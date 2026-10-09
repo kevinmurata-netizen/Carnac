@@ -16,24 +16,38 @@ import {
   type FactorRating,
 } from "@/domain/waterline/risk";
 import { ageInYears } from "@/lib/format";
-import { getRiskWeights, getConditionBands } from "@/server/settings";
-import { MODELLED, modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
+import { getRiskWeights, getConditionBands, getConditionBandsByModel } from "@/server/settings";
+import { listModelledAssetTypes, modelledType } from "@/server/modelled-asset-type";
+import { isComponentScoped } from "@/domain/components/scope";
 
-async function getRiskModel(organizationId: string) {
-  const model = await prisma.riskModel.findFirst({
-    where: { assetType: modelledType(organizationId), isActive: true },
-  });
-  if (!model) throw new Error("Waterline risk model is not configured");
-  return model;
+/** A whole-asset risk model, not one that only holds component scores. */
+function isWholeAsset(model: { probabilityConfig: unknown }): boolean {
+  return !isComponentScoped(model.probabilityConfig);
 }
 
-export async function ensureRiskModel(organizationId: string) {
-  const assetType = await requireModelledAssetType(organizationId);
-  const existing = await prisma.riskModel.findFirst({ where: { assetTypeId: assetType.id, isActive: true } });
+/**
+ * Every modelled asset type's active risk model. Risk is read across all of
+ * them at once; each asset's assessments are filed under its own type's.
+ */
+async function getRiskModelIds(organizationId: string): Promise<string[]> {
+  const models = await prisma.riskModel.findMany({
+    where: { assetType: modelledType(organizationId), isActive: true },
+    select: { id: true, probabilityConfig: true },
+  });
+  const ids = models.filter(isWholeAsset).map((m) => m.id);
+  if (ids.length === 0) throw new Error("No risk model is configured for this organization");
+  return ids;
+}
+
+/** One asset type's active risk model, created with the built-in weights
+ * the first time the type is scored. */
+export async function ensureRiskModel(assetTypeId: string) {
+  const models = await prisma.riskModel.findMany({ where: { assetTypeId, isActive: true }, orderBy: { id: "asc" } });
+  const existing = models.find(isWholeAsset);
   if (existing) return existing;
   return prisma.riskModel.create({
     data: {
-      assetTypeId: assetType.id,
+      assetTypeId,
       name: RISK_MODEL_NAME,
       probabilityConfig: { weights: POF_WEIGHTS, scale: "1-5" },
       consequenceConfig: { weights: COF_WEIGHTS, scale: "1-5" },
@@ -41,18 +55,28 @@ export async function ensureRiskModel(organizationId: string) {
   });
 }
 
-/** Recompute POF/COF/risk + criticality for every waterline in the org from
- * current data (latest condition, failures, attributes). Each run appends new
- * RiskAssessment/CriticalityScore rows, preserving assessment history. */
+/** Recompute POF/COF/risk + criticality for every modelled asset in the org
+ * from current data (latest condition, failures, attributes). Each run appends
+ * new RiskAssessment/CriticalityScore rows, preserving assessment history. */
 export async function recomputeRiskForOrganization(organizationId: string): Promise<number> {
-  const model = await ensureRiskModel(organizationId);
+  // Each modelled asset type is scored by its own model, weights and
+  // criticality formula.
+  let count = 0;
+  for (const type of await listModelledAssetTypes(organizationId)) {
+    count += await recomputeRiskForAssetType(organizationId, type.id);
+  }
+  return count;
+}
+
+async function recomputeRiskForAssetType(organizationId: string, assetTypeId: string): Promise<number> {
+  const model = await ensureRiskModel(assetTypeId);
   // Scoring runs with the weights configured in Settings, not the seeded
   // constants, so a reweight changes the next recompute.
-  const { pof: pofWeights, cof: cofWeights } = await getRiskWeights(organizationId);
+  const { pof: pofWeights, cof: cofWeights } = await getRiskWeights(organizationId, assetTypeId);
   const tenYearsAgo = new Date(Date.now() - 10 * 365.25 * 24 * 60 * 60 * 1000);
 
   const assets = await prisma.asset.findMany({
-    where: { organizationId, assetType: MODELLED, deletedAt: null },
+    where: { organizationId, assetTypeId, deletedAt: null },
     include: {
       attributeValues: { include: { definition: true } },
       conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
@@ -63,12 +87,9 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
   // A configured criticality formula defines criticality for its asset type.
   // Without one, criticality stays what it has always been here — a rescale of
   // the consequence-of-failure rating — so this changes nothing until used.
-  const assetTypeId = assets[0]?.assetTypeId;
-  const formula = assetTypeId ? await getActiveFormula(assetTypeId) : null;
+  const formula = assets.length > 0 ? await getActiveFormula(assetTypeId) : null;
   const formulaValues = formula
-    ? new Map(
-        (await loadAssetValues(organizationId, assetTypeId!, formula.valueMaps)).map((a) => [a.assetId, a])
-      )
+    ? new Map((await loadAssetValues(organizationId, assetTypeId, formula.valueMaps)).map((a) => [a.assetId, a]))
     : null;
 
   const now = new Date();
@@ -167,6 +188,17 @@ export async function recomputeRiskForOrganization(organizationId: string): Prom
   return assets.length;
 }
 
+/** Grades a condition score by the bands of the index it was filed under —
+ * its asset type's — falling back to the main network's. */
+async function conditionBandsFor(organizationId: string) {
+  const [byModel, fallback] = await Promise.all([
+    getConditionBandsByModel(organizationId),
+    getConditionBands(organizationId),
+  ]);
+  return (m: { score: number; conditionModelId: string }) =>
+    getConditionBand(m.score, byModel.get(m.conditionModelId) ?? fallback);
+}
+
 export type AssetRisk = {
   assetId: string;
   pof: number;
@@ -177,9 +209,9 @@ export type AssetRisk = {
 };
 
 export async function getLatestRiskByAsset(organizationId: string): Promise<Map<string, AssetRisk>> {
-  const model = await getRiskModel(organizationId);
+  const modelIds = await getRiskModelIds(organizationId);
   const rows = await prisma.riskAssessment.findMany({
-    where: { riskModelId: model.id, assetComponentId: null, asset: { organizationId, deletedAt: null } },
+    where: { riskModelId: { in: modelIds }, assetComponentId: null, asset: { organizationId, deletedAt: null } },
     orderBy: [{ assetId: "asc" }, { assessmentDate: "desc" }],
     distinct: ["assetId"],
     select: { assetId: true, probabilityScore: true, consequenceScore: true, riskScore: true, assessmentDate: true },
@@ -200,9 +232,9 @@ export async function getLatestRiskByAsset(organizationId: string): Promise<Map<
 }
 
 export async function getRiskForAsset(organizationId: string, assetId: string) {
-  const model = await getRiskModel(organizationId);
+  const modelIds = await getRiskModelIds(organizationId);
   const assessment = await prisma.riskAssessment.findFirst({
-    where: { riskModelId: model.id, assetId, assetComponentId: null, asset: { organizationId } },
+    where: { riskModelId: { in: modelIds }, assetId, assetComponentId: null, asset: { organizationId } },
     orderBy: { assessmentDate: "desc" },
     include: { factors: true },
   });
@@ -281,10 +313,9 @@ export async function getRiskSummary(organizationId: string): Promise<RiskSummar
 }
 
 export async function getTopRiskAssets(organizationId: string, limit = 10) {
-  const model = await getRiskModel(organizationId);
-  const bands = await getConditionBands(organizationId);
+  const [modelIds, bandsOf] = await Promise.all([getRiskModelIds(organizationId), conditionBandsFor(organizationId)]);
   const rows = await prisma.riskAssessment.findMany({
-    where: { riskModelId: model.id, assetComponentId: null, asset: { organizationId, deletedAt: null } },
+    where: { riskModelId: { in: modelIds }, assetComponentId: null, asset: { organizationId, deletedAt: null } },
     orderBy: [{ assetId: "asc" }, { assessmentDate: "desc" }],
     distinct: ["assetId"],
     include: {
@@ -292,7 +323,12 @@ export async function getTopRiskAssets(organizationId: string, limit = 10) {
         select: {
           id: true,
           assetCode: true,
-          conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
+          conditionMeasurements: {
+            where: { assetComponentId: null },
+            orderBy: { measurementDate: "desc" },
+            take: 1,
+            select: { score: true, conditionModelId: true },
+          },
         },
       },
     },
@@ -304,7 +340,7 @@ export async function getTopRiskAssets(organizationId: string, limit = 10) {
     .map((r) => ({
       asset: { id: r.asset.id, assetCode: r.asset.assetCode },
       conditionScore: r.asset.conditionMeasurements[0]?.score ?? null,
-      conditionBand: r.asset.conditionMeasurements[0] ? getConditionBand(r.asset.conditionMeasurements[0].score, bands) : null,
+      conditionBand: r.asset.conditionMeasurements[0] ? bandsOf(r.asset.conditionMeasurements[0]) : null,
       pof: r.probabilityScore,
       cof: r.consequenceScore,
       riskScore: r.riskScore,
@@ -333,10 +369,7 @@ export type RiskMatrixAsset = {
  * than the client re-deriving it, which keeps the bucketing rule in one place.
  */
 export async function getRiskMatrixAssets(organizationId: string): Promise<RiskMatrixAsset[]> {
-  const [latest, bands] = await Promise.all([
-    getLatestRiskByAsset(organizationId),
-    getConditionBands(organizationId),
-  ]);
+  const [latest, bandsOf] = await Promise.all([getLatestRiskByAsset(organizationId), conditionBandsFor(organizationId)]);
 
   const assets = await prisma.asset.findMany({
     where: { id: { in: [...latest.keys()] }, deletedAt: null },
@@ -344,7 +377,12 @@ export async function getRiskMatrixAssets(organizationId: string): Promise<RiskM
       id: true,
       assetCode: true,
       location: { select: { serviceArea: true } },
-      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1, select: { score: true } },
+      conditionMeasurements: {
+        where: { assetComponentId: null },
+        orderBy: { measurementDate: "desc" },
+        take: 1,
+        select: { score: true, conditionModelId: true },
+      },
     },
   });
 
@@ -352,13 +390,14 @@ export async function getRiskMatrixAssets(organizationId: string): Promise<RiskM
     .map((a) => {
       const risk = latest.get(a.id)!;
       const [cellP, cellC] = riskMatrixCell(risk.pof, risk.cof);
-      const score = a.conditionMeasurements[0]?.score ?? null;
+      const latestCondition = a.conditionMeasurements[0];
+      const score = latestCondition?.score ?? null;
       return {
         assetId: a.id,
         assetCode: a.assetCode,
         serviceArea: a.location?.serviceArea ?? null,
         conditionScore: score != null ? Math.round(score * 10) / 10 : null,
-        conditionBand: score != null ? getConditionBand(score, bands) : null,
+        conditionBand: latestCondition ? bandsOf(latestCondition) : null,
         pof: risk.pof,
         cof: risk.cof,
         riskScore: risk.riskScore,
