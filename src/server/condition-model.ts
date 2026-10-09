@@ -42,6 +42,7 @@ export type UnusedField = {
 
 export type ConditionIndexConfig = {
   modelId: string;
+  assetTypeId: string;
   name: string;
   scaleMin: number;
   scaleMax: number;
@@ -81,34 +82,45 @@ function parseBands(bands: unknown): ConditionBand[] {
  * findFirst here could return a metric and silently swap the weights behind
  * every condition score. Derived metrics are marked by metricSource in their
  * formula; the index is the row without one.
+ *
+ * Each modelled asset type has its own index; `assetTypeId` names which (a
+ * settings screen's tab), and without it this is the only modelled type's.
  */
-async function findIndexModel(organizationId: string) {
+export async function findIndexModel(organizationId: string, assetTypeId?: string | null) {
   const models = await prisma.conditionModel.findMany({
-    where: { assetType: modelledType(organizationId) },
+    where: { assetType: modelledType(organizationId, assetTypeId) },
     orderBy: { id: "asc" },
   });
   return models.find((m) => !isDerivedMetric(m.formula)) ?? null;
 }
 
-async function requireModel(organizationId: string) {
-  const model = await findIndexModel(organizationId);
+async function requireModel(organizationId: string, assetTypeId?: string | null) {
+  const model = await findIndexModel(organizationId, assetTypeId);
   if (!model) throw new Error("Condition index is not configured for this organization");
   return model;
 }
 
 /** Live weights for scoring. Used by inspection creation so a new inspection
  * is always scored with the currently configured index. */
-export async function getIndexWeights(organizationId: string): Promise<Record<string, number>> {
-  const model = await findIndexModel(organizationId);
+export async function getIndexWeights(
+  organizationId: string,
+  assetTypeId?: string | null
+): Promise<Record<string, number>> {
+  const model = await findIndexModel(organizationId, assetTypeId);
   return parseWeights(model?.formula);
 }
 
-export async function getConditionIndex(organizationId: string): Promise<ConditionIndexConfig> {
-  const model = await requireModel(organizationId);
+export async function getConditionIndex(
+  organizationId: string,
+  assetTypeId?: string | null
+): Promise<ConditionIndexConfig> {
+  const model = await requireModel(organizationId, assetTypeId);
   const weights = parseWeights(model.formula);
 
+  // The form for the index's own asset type, which is where its components
+  // are collected.
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
+    where: { assetTypeId: model.assetTypeId, isActive: true, componentTypeId: null },
     include: {
       fields: {
         orderBy: { sortOrder: "asc" },
@@ -148,6 +160,7 @@ export async function getConditionIndex(organizationId: string): Promise<Conditi
 
   return {
     modelId: model.id,
+    assetTypeId: model.assetTypeId,
     name: model.name,
     scaleMin: model.scaleMin,
     scaleMax: model.scaleMax,
@@ -160,8 +173,8 @@ export async function getConditionIndex(organizationId: string): Promise<Conditi
   };
 }
 
-async function writeWeights(organizationId: string, weights: Record<string, number>) {
-  const model = await requireModel(organizationId);
+async function writeWeights(organizationId: string, weights: Record<string, number>, assetTypeId?: string | null) {
+  const model = await requireModel(organizationId, assetTypeId);
   const existing = (model.formula ?? {}) as Record<string, unknown>;
   await prisma.conditionModel.update({
     where: { id: model.id },
@@ -175,7 +188,11 @@ async function writeWeights(organizationId: string, weights: Record<string, numb
   });
 }
 
-export async function updateComponentWeights(organizationId: string, weights: Record<string, number>) {
+export async function updateComponentWeights(
+  organizationId: string,
+  weights: Record<string, number>,
+  assetTypeId?: string | null
+) {
   const clean: Record<string, number> = {};
   for (const [code, value] of Object.entries(weights)) {
     if (!Number.isFinite(value) || value < 0) continue;
@@ -187,14 +204,14 @@ export async function updateComponentWeights(organizationId: string, weights: Re
   if (Object.values(clean).every((w) => w === 0)) {
     throw new Error("At least one component must carry a weight greater than zero");
   }
-  await writeWeights(organizationId, clean);
+  await writeWeights(organizationId, clean, assetTypeId);
 }
 
 /** Add a brand-new component: creates the inspection field that will collect
  * it, then gives it a weight. */
 export async function addComponent(
   organizationId: string,
-  input: { code: string; label: string; weight: number; helpText?: string }
+  input: { code: string; label: string; weight: number; helpText?: string; assetTypeId?: string | null }
 ) {
   const code = input.code
     .trim()
@@ -205,12 +222,12 @@ export async function addComponent(
   if (!input.label.trim()) throw new Error("Component label is required");
 
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
+    where: { assetType: modelledType(organizationId, input.assetTypeId), isActive: true, componentTypeId: null },
     include: { fields: true },
   });
   if (!template) throw new Error("No active inspection template to attach the component to");
 
-  const weights = await getIndexWeights(organizationId);
+  const weights = await getIndexWeights(organizationId, input.assetTypeId);
   if (code in weights) throw new Error(`"${code}" is already a component of the index`);
 
   const existingField = template.fields.find((f) => f.code === code);
@@ -237,14 +254,19 @@ export async function addComponent(
     });
   }
 
-  await writeWeights(organizationId, { ...weights, [code]: input.weight });
+  await writeWeights(organizationId, { ...weights, [code]: input.weight }, input.assetTypeId);
 }
 
 /** Adopt an existing numeric inspection field into the index. */
-export async function addExistingFieldAsComponent(organizationId: string, code: string, weight: number) {
-  const weights = await getIndexWeights(organizationId);
+export async function addExistingFieldAsComponent(
+  organizationId: string,
+  code: string,
+  weight: number,
+  assetTypeId?: string | null
+) {
+  const weights = await getIndexWeights(organizationId, assetTypeId);
   if (code in weights) throw new Error(`"${code}" is already a component`);
-  await writeWeights(organizationId, { ...weights, [code]: weight });
+  await writeWeights(organizationId, { ...weights, [code]: weight }, assetTypeId);
 }
 
 /**
@@ -253,18 +275,18 @@ export async function addExistingFieldAsComponent(organizationId: string, code: 
  * not silently destroy field data. Delete the field itself from the Fields
  * screen if that is genuinely intended.
  */
-export async function removeComponent(organizationId: string, code: string) {
-  const weights = await getIndexWeights(organizationId);
+export async function removeComponent(organizationId: string, code: string, assetTypeId?: string | null) {
+  const weights = await getIndexWeights(organizationId, assetTypeId);
   if (!(code in weights)) throw new Error(`"${code}" is not a component of the index`);
   if (Object.keys(weights).length === 1) {
     throw new Error("The index needs at least one component");
   }
   delete weights[code];
-  await writeWeights(organizationId, weights);
+  await writeWeights(organizationId, weights, assetTypeId);
 }
 
-export async function updateBands(organizationId: string, bands: ConditionBand[]) {
-  const model = await requireModel(organizationId);
+export async function updateBands(organizationId: string, bands: ConditionBand[], assetTypeId?: string | null) {
+  const model = await requireModel(organizationId, assetTypeId);
   const sorted = [...bands].sort((a, b) => b.min - a.min);
   await prisma.conditionModel.update({ where: { id: model.id }, data: { bands: sorted } });
 }
@@ -279,12 +301,17 @@ export type RecalculationResult = { inspectionsScored: number; measurementsUpdat
  * whole history can be recomputed rather than left inconsistent. Manual
  * overrides are not touched: they were entered by a person, not derived.
  */
-export async function recalculateConditionScores(organizationId: string): Promise<RecalculationResult> {
-  const model = await requireModel(organizationId);
+export async function recalculateConditionScores(
+  organizationId: string,
+  assetTypeId?: string | null
+): Promise<RecalculationResult> {
+  const model = await requireModel(organizationId, assetTypeId);
   const weights = parseWeights(model.formula);
 
+  // Only the index's own asset type: another type's inspections are scored by
+  // its own index.
   const inspections = await prisma.inspection.findMany({
-    where: { asset: { organizationId, deletedAt: null }, assetComponentId: null },
+    where: { asset: { organizationId, deletedAt: null, assetTypeId: model.assetTypeId }, assetComponentId: null },
     include: {
       results: { include: { field: { select: { code: true, dataType: true } } } },
       conditionMeasurements: { where: { conditionModelId: model.id, source: "Inspection", assetComponentId: null } },

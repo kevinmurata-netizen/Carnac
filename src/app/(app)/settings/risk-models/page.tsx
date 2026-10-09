@@ -8,14 +8,19 @@ import { formatNumber } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
 import { RecomputeButton } from "../recompute-button";
 import { recomputeRiskAction } from "../actions";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
-export default async function RiskModelsPage() {
+export default async function RiskModelsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/risk-models", "Risk Models");
   const { canWrite: canEdit } = await requireCard("/settings/risk-models");
 
-  const config = await getRiskModelConfig(organizationId);
+  // Each modelled asset type weighs its own risk factors.
+  const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
+  const config = await getRiskModelConfig(organizationId, selected?.id);
 
   return (
     <div>
@@ -23,6 +28,8 @@ export default async function RiskModelsPage() {
         title={pageTitle}
         description="How much each factor counts toward probability and consequence of failure"
       />
+
+      <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/risk-models?type=${id}`} />
 
       {canEdit && (
         <Card className="mb-4">

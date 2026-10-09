@@ -8,16 +8,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ConditionModelEditor } from "./editor";
 import { MetricEditor, NewMetricForm } from "./metrics-editor";
 import { formatNumber } from "@/lib/format";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
-export default async function MetricsPage() {
+export default async function MetricsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/condition-models", "Metrics");
   const { canWrite: canEdit } = await requireCard("/settings/condition-models");
 
+  // Each modelled asset type has its own condition scale, bands and metrics.
+  const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
   const [config, metrics, sources] = await Promise.all([
-    getConditionModelConfig(organizationId),
-    listMetrics(organizationId),
+    getConditionModelConfig(organizationId, selected?.id),
+    listMetrics(organizationId, selected?.id),
     canEdit ? listMetricSources(organizationId) : Promise.resolve([]),
   ]);
 
@@ -27,6 +32,8 @@ export default async function MetricsPage() {
         title={pageTitle}
         description="The condition scale and its bands, plus any metric built on an inspection or inventory field"
       />
+
+      <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/condition-models?type=${id}`} />
 
       {canEdit ? (
         <>
@@ -47,7 +54,7 @@ export default async function MetricsPage() {
             </div>
           )}
 
-          <NewMetricForm sources={sources} />
+          <NewMetricForm sources={sources} assetTypeId={selected?.id} />
         </>
       ) : (
         <Card>

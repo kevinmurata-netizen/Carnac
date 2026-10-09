@@ -10,16 +10,22 @@ import { ActiveToggle } from "@/components/settings/active-toggle";
 import { toggleDeteriorationActiveAction } from "../actions";
 import { listComponentCurves } from "@/server/component-deterioration";
 import { ComponentCurveList } from "./component-curve-list";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
-export default async function DeteriorationModelSettingsPage() {
+export default async function DeteriorationModelSettingsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/deterioration-models", "Deterioration Models");
   const { canWrite: canEdit } = await requireCard("/settings/deterioration-models");
 
+  // Material curves and the Markov matrix belong to one modelled asset type;
+  // component curves, below, already say which kind of asset they are for.
+  const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
   const [models, markov, componentCurves] = await Promise.all([
-    listDeteriorationModels(organizationId),
-    getMarkovConfig(organizationId),
+    listDeteriorationModels(organizationId, selected?.id),
+    getMarkovConfig(organizationId, selected?.id),
     listComponentCurves(organizationId),
   ]);
 
@@ -28,6 +34,12 @@ export default async function DeteriorationModelSettingsPage() {
       <PageHeader
         title={pageTitle}
         description="Service life and curve shape per material and per component — what every condition forecast projects against"
+      />
+
+      <AssetTypePills
+        types={types}
+        selectedId={selected?.id}
+        href={(id) => `/settings/deterioration-models?type=${id}`}
       />
 
       <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-xs text-muted-foreground">

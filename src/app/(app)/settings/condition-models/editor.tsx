@@ -36,6 +36,7 @@ export function ConditionModelEditor({ config }: { config: ConditionModelConfig 
 
   return (
     <form action={action}>
+      <input type="hidden" name="assetTypeId" value={config.assetTypeId} />
       <Card>
         <CardHeader>
           <CardTitle>Metric</CardTitle>

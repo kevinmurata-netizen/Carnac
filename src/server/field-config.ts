@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { AttributeDataType, Prisma } from "@prisma/client";
 import { getIndexWeights } from "@/server/condition-model";
-import { modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
+import { modelledType, resolveModelledAssetType } from "@/server/modelled-asset-type";
 
 /**
  * Editing for the two field definitions that shape data collection:
@@ -34,14 +34,17 @@ export type InspectionFieldRow = {
   indexWeight: number | null;
 };
 
-export async function listInspectionFields(organizationId: string): Promise<InspectionFieldRow[]> {
+export async function listInspectionFields(
+  organizationId: string,
+  assetTypeId?: string | null
+): Promise<InspectionFieldRow[]> {
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
+    where: { assetType: modelledType(organizationId, assetTypeId), isActive: true, componentTypeId: null },
     include: { fields: { orderBy: { sortOrder: "asc" }, include: { _count: { select: { results: true } } } } },
   });
   if (!template) return [];
 
-  const weights = await getIndexWeights(organizationId);
+  const weights = await getIndexWeights(organizationId, template.assetTypeId);
   return template.fields.map((f) => ({
     id: f.id,
     code: f.code,
@@ -82,10 +85,18 @@ export async function updateInspectionField(
 
 export async function createInspectionField(
   organizationId: string,
-  input: { code: string; label: string; dataType: AttributeDataType; unit?: string; isRequired: boolean; helpText?: string }
+  input: {
+    code: string;
+    label: string;
+    dataType: AttributeDataType;
+    unit?: string;
+    isRequired: boolean;
+    helpText?: string;
+    assetTypeId?: string | null;
+  }
 ) {
   const template = await prisma.inspectionTemplate.findFirst({
-    where: { assetType: modelledType(organizationId), isActive: true, componentTypeId: null },
+    where: { assetType: modelledType(organizationId, input.assetTypeId), isActive: true, componentTypeId: null },
     include: { fields: true },
   });
   if (!template) throw new Error("No active inspection template");
@@ -118,7 +129,7 @@ export async function createInspectionField(
 export async function deleteInspectionField(organizationId: string, fieldId: string) {
   const field = await prisma.inspectionTemplateField.findFirst({
     where: { id: fieldId, template: { assetType: modelledType(organizationId) } },
-    include: { _count: { select: { results: true } } },
+    include: { _count: { select: { results: true } }, template: { select: { assetTypeId: true } } },
   });
   if (!field) throw new Error("Inspection field not found");
 
@@ -128,7 +139,7 @@ export async function deleteInspectionField(organizationId: string, fieldId: str
     );
   }
 
-  const weights = await getIndexWeights(organizationId);
+  const weights = await getIndexWeights(organizationId, field.template.assetTypeId);
   if (field.code in weights) {
     throw new Error(`"${field.label}" is still a Condition Index component. Remove it from the index first.`);
   }
@@ -152,9 +163,12 @@ export type InventoryFieldRow = {
   valueCount: number;
 };
 
-export async function listInventoryFields(organizationId: string): Promise<InventoryFieldRow[]> {
+export async function listInventoryFields(
+  organizationId: string,
+  assetTypeId?: string | null
+): Promise<InventoryFieldRow[]> {
   const definitions = await prisma.assetAttributeDefinition.findMany({
-    where: { assetType: modelledType(organizationId) },
+    where: { assetType: modelledType(organizationId, assetTypeId) },
     orderBy: { sortOrder: "asc" },
     include: { _count: { select: { values: true } } },
   });
@@ -216,9 +230,13 @@ export type NewAttribute = {
   help?: string;
 };
 
-/** The waterline inventory, which is what the Fields screen edits. */
-export async function createInventoryField(organizationId: string, input: NewAttribute) {
-  const assetType = await requireModelledAssetType(organizationId);
+/** A modelled type's inventory, which is what the Fields screen edits: the
+ * type on its tab, else the only one. */
+export async function createInventoryField(
+  organizationId: string,
+  input: NewAttribute & { assetTypeId?: string | null }
+) {
+  const assetType = await resolveModelledAssetType(organizationId, input.assetTypeId);
   return createAttributeDefinition(organizationId, assetType.id, input);
 }
 

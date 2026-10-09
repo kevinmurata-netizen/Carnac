@@ -65,6 +65,11 @@ export async function saveInspectionFieldAction(
   }
 }
 
+/** The asset type tab a form was posted from; absent with a single modelled type. */
+function assetTypeOf(formData: FormData): string | null {
+  return String(formData.get("assetTypeId") ?? "") || null;
+}
+
 export async function createInspectionFieldAction(
   _prev: FieldActionState,
   formData: FormData
@@ -78,6 +83,7 @@ export async function createInspectionFieldAction(
       unit: String(formData.get("unit") ?? ""),
       isRequired: formData.get("isRequired") === "on",
       helpText: String(formData.get("helpText") ?? ""),
+      assetTypeId: assetTypeOf(formData),
     });
     revalidateAffected();
     return ok("Inspection field created. Add it to the Condition Index if it should affect the score.");
@@ -135,6 +141,7 @@ export async function createInventoryFieldAction(
       unit: String(formData.get("unit") ?? ""),
       isRequired: formData.get("isRequired") === "on",
       options: parseOptions(formData.get("options")),
+      assetTypeId: assetTypeOf(formData),
     });
     revalidateAffected();
     return ok("Inventory field created.");

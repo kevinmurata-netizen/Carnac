@@ -7,14 +7,19 @@ import { IndexEditor } from "./index-editor";
 import { formatNumber } from "@/lib/format";
 import { Gauge, Layers, ListChecks } from "lucide-react";
 import { getPageName } from "@/server/navigation";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
-export default async function ConditionIndexPage() {
+export default async function ConditionIndexPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/condition-index", "Condition Index");
   const { canWrite: canEdit } = await requireCard("/settings/condition-index");
 
-  const config = await getConditionIndex(organizationId);
+  // Each modelled asset type is scored by its own index.
+  const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
+  const config = await getConditionIndex(organizationId, selected?.id);
 
   return (
     <div>
@@ -22,6 +27,8 @@ export default async function ConditionIndexPage() {
         title={pageTitle}
         description={`${config.name} — the components and weights that produce every condition score`}
       />
+
+      <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/condition-index?type=${id}`} />
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
