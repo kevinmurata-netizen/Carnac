@@ -22,7 +22,7 @@ const input =
  * submit that form instead of its own. */
 const LABELS_FORM_ID = "failure-type-labels";
 
-export function FailureTypeEditor({ types }: { types: FailureTypeRow[] }) {
+export function FailureTypeEditor({ types, assetTypeId }: { types: FailureTypeRow[]; assetTypeId?: string }) {
   const [saveState, saveAction] = useActionState(saveFailureTypesAction, EMPTY_SETTINGS_STATE);
   const [createState, createAction] = useActionState(createFailureTypeAction, EMPTY_SETTINGS_STATE);
   const [deleteState, deleteAction] = useActionState(deleteFailureTypeAction, EMPTY_SETTINGS_STATE);
@@ -117,6 +117,7 @@ export function FailureTypeEditor({ types }: { types: FailureTypeRow[] }) {
         </CardHeader>
         <CardContent>
           <form action={createAction} className="space-y-4">
+            <input type="hidden" name="assetTypeId" value={assetTypeId ?? ""} />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label htmlFor="code">Code</Label>

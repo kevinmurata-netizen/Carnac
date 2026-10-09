@@ -17,6 +17,11 @@ async function requireWriteAccess() {
   return requireCardWrite("/settings/condition-index", "Only an Administrator can change the condition index");
 }
 
+/** The asset type tab a form was posted from; absent with a single modelled type. */
+function assetTypeOf(formData: FormData): string | null {
+  return String(formData.get("assetTypeId") ?? "") || null;
+}
+
 function revalidateAffected() {
   // Condition drives risk, deterioration, treatment and planning views.
   for (const path of ["/settings/condition-index", "/condition", "/dashboard", "/risk", "/assets"]) {
@@ -38,7 +43,7 @@ export async function saveWeightsAction(_prev: IndexActionState, formData: FormD
       weights[code] = n;
     }
 
-    await updateComponentWeights(session.user.organizationId, weights);
+    await updateComponentWeights(session.user.organizationId, weights, assetTypeOf(formData));
     revalidateAffected();
     return {
       status: "success",
@@ -60,13 +65,14 @@ export async function addComponentAction(_prev: IndexActionState, formData: Form
     }
 
     if (existingCode) {
-      await addExistingFieldAsComponent(session.user.organizationId, existingCode, weight);
+      await addExistingFieldAsComponent(session.user.organizationId, existingCode, weight, assetTypeOf(formData));
     } else {
       await addComponent(session.user.organizationId, {
         code: String(formData.get("code") ?? ""),
         label: String(formData.get("label") ?? ""),
         weight,
         helpText: String(formData.get("helpText") ?? ""),
+        assetTypeId: assetTypeOf(formData),
       });
     }
 
@@ -88,7 +94,7 @@ export async function removeComponentAction(_prev: IndexActionState, formData: F
   try {
     const session = await requireWriteAccess();
     const code = String(formData.get("code") ?? "");
-    await removeComponent(session.user.organizationId, code);
+    await removeComponent(session.user.organizationId, code, assetTypeOf(formData));
     revalidateAffected();
     return {
       status: "success",
@@ -100,10 +106,10 @@ export async function removeComponentAction(_prev: IndexActionState, formData: F
   }
 }
 
-export async function recalculateAction(_prev: IndexActionState, _formData: FormData): Promise<IndexActionState> {
+export async function recalculateAction(_prev: IndexActionState, formData: FormData): Promise<IndexActionState> {
   try {
     const session = await requireWriteAccess();
-    const result = await recalculateConditionScores(session.user.organizationId);
+    const result = await recalculateConditionScores(session.user.organizationId, assetTypeOf(formData));
     revalidateAffected();
     return {
       status: "success",

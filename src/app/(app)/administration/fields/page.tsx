@@ -5,16 +5,21 @@ import { ASSET_LABEL } from "@/config/labels";
 import { PageHeader } from "@/components/layout/page-header";
 import { InspectionFieldsEditor, InventoryFieldsEditor } from "./fields-editor";
 import { getPageName } from "@/server/navigation";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
-export default async function FieldsPage() {
+export default async function FieldsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/administration/fields", "Fields");
   const { canWrite: canEdit } = await requireCard("/administration/fields");
 
+  // One modelled asset type's inspection form and inventory at a time.
+  const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
   const [inspectionFields, inventoryFields] = await Promise.all([
-    listInspectionFields(organizationId),
-    listInventoryFields(organizationId),
+    listInspectionFields(organizationId, selected?.id),
+    listInventoryFields(organizationId, selected?.id),
   ]);
 
   return (
@@ -30,9 +35,11 @@ export default async function FieldsPage() {
         </div>
       )}
 
+      <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/administration/fields?type=${id}`} />
+
       <div className="space-y-4">
-        <InspectionFieldsEditor fields={inspectionFields} canEdit={canEdit} />
-        <InventoryFieldsEditor fields={inventoryFields} canEdit={canEdit} />
+        <InspectionFieldsEditor fields={inspectionFields} canEdit={canEdit} assetTypeId={selected?.id} />
+        <InventoryFieldsEditor fields={inventoryFields} canEdit={canEdit} assetTypeId={selected?.id} />
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground">

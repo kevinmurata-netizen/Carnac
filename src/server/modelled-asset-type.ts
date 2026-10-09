@@ -12,9 +12,10 @@ import { prisma } from "@/lib/prisma";
  * run one asset class through another's arithmetic.
  */
 
-/** An asset type filter: the modelled type in this organization. */
-export function modelledType(organizationId: string) {
-  return { organizationId, isModelled: true } as const;
+/** An asset type filter: the modelled type in this organization — or, given
+ * an id (a settings screen's tab), that one of them. */
+export function modelledType(organizationId: string, assetTypeId?: string | null) {
+  return { organizationId, isModelled: true as const, ...(assetTypeId ? { id: assetTypeId } : {}) };
 }
 
 /** The same, for a relation filter where the organization is already fixed
@@ -64,6 +65,17 @@ export async function requireModelledAssetTypeById(organizationId: string, id: s
   });
   if (!type) throw new Error("That asset type isn't one this organization models.");
   return type;
+}
+
+/** The type a create path writes under: the one a settings screen's tab
+ * names, else the organization's only modelled type. */
+export async function resolveModelledAssetType(
+  organizationId: string,
+  assetTypeId?: string | null
+): Promise<ModelledAssetType> {
+  return assetTypeId
+    ? requireModelledAssetTypeById(organizationId, assetTypeId)
+    : requireModelledAssetType(organizationId);
 }
 
 /** The organization's modelled asset type, or null when it has none. */

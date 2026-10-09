@@ -33,6 +33,7 @@ export function RiskModelEditor({ config }: { config: RiskModelConfig }) {
 
   return (
     <form action={action}>
+      <input type="hidden" name="assetTypeId" value={config.assetTypeId} />
       <Card>
         <CardHeader>
           <CardTitle>Model</CardTitle>

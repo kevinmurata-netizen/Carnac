@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-09",
+    title: "One asset type's models at a time in Settings",
+    summary:
+      "Where several asset types are modelled, the model screens show one asset type at a time, with tabs to switch: Condition Index, Metrics, Risk Models, Deterioration Models, Failure Types and Fields. With one modelled type nothing looks different.",
+    changes: [
+      "Each tab shows and edits that asset type's own condition index, condition scale and bands, metrics, risk weights, material curves, Markov matrix, failure types, inspection fields and inventory fields. The tabs open on the type with the most assets.",
+      "Anything added from a tab (a failure type, a metric, an index component, an inspection or inventory field) is created for that asset type.",
+      "Recalculating condition scores replays only that asset type's inspections.",
+      "The condition bands shown across the app now always come from the condition index, never from a metric, which shares the same storage.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-08",
     title: "One treatment library per asset type",
     summary:

@@ -125,7 +125,7 @@ function BandRows({
   );
 }
 
-export function NewMetricForm({ sources }: { sources: MetricSourceOption[] }) {
+export function NewMetricForm({ sources, assetTypeId }: { sources: MetricSourceOption[]; assetTypeId?: string }) {
   const [state, action] = useActionState(createMetricAction, EMPTY_SETTINGS_STATE);
   const [bands, setBands] = useState<BandRow[]>(NEW_METRIC_BANDS);
   const [selected, setSelected] = useState("");
@@ -152,6 +152,7 @@ export function NewMetricForm({ sources }: { sources: MetricSourceOption[] }) {
           </p>
         ) : (
           <form action={action} className="space-y-4">
+            <input type="hidden" name="assetTypeId" value={assetTypeId ?? ""} />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="metric-name">Metric Name</Label>

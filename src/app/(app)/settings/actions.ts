@@ -73,6 +73,11 @@ function num(formData: FormData, key: string): number {
   return Number(formData.get(key) ?? 0);
 }
 
+/** The asset type tab a form was posted from; absent with a single modelled type. */
+function assetTypeOf(formData: FormData): string | null {
+  return String(formData.get("assetTypeId") ?? "") || null;
+}
+
 // ---------------------------------------------------------------------------
 
 export async function saveConditionModelAction(
@@ -101,6 +106,7 @@ export async function saveConditionModelAction(
       scaleMin: num(formData, "scaleMin"),
       scaleMax: num(formData, "scaleMax"),
       bands,
+      assetTypeId: assetTypeOf(formData),
     });
 
     revalidateAll("/settings/condition-models");
@@ -128,6 +134,7 @@ export async function saveRiskModelAction(
       name: String(formData.get("name") ?? ""),
       pof,
       cof,
+      assetTypeId: assetTypeOf(formData),
     });
 
     revalidateAll("/settings/risk-models");
@@ -471,6 +478,7 @@ export async function createFailureTypeAction(
     await createFailureType(session.user.organizationId, {
       code: String(formData.get("code") ?? ""),
       label: String(formData.get("label") ?? ""),
+      assetTypeId: assetTypeOf(formData),
     });
     revalidateAll("/settings/failure-types");
     return { status: "success", message: "Failure type added." };
@@ -607,6 +615,7 @@ export async function createMetricAction(
       scaleMin: num(formData, "scaleMin"),
       scaleMax: num(formData, "scaleMax"),
       bands: readBands(formData),
+      assetTypeId: assetTypeOf(formData),
     });
 
     revalidateAll("/settings/condition-models");

@@ -134,9 +134,9 @@ export async function listMetricSources(organizationId: string): Promise<MetricS
   return options;
 }
 
-export async function listMetrics(organizationId: string): Promise<MetricConfig[]> {
+export async function listMetrics(organizationId: string, assetTypeId?: string | null): Promise<MetricConfig[]> {
   const models = await prisma.conditionModel.findMany({
-    where: { assetType: modelledType(organizationId) },
+    where: { assetType: modelledType(organizationId, assetTypeId) },
     orderBy: { name: "asc" },
   });
 
@@ -198,10 +198,10 @@ function validateMetric(input: MetricInput): ConditionBand[] {
 
 export async function createMetric(
   organizationId: string,
-  input: MetricInput & { sourceKind: MetricSourceKind; sourceCode: string }
+  input: MetricInput & { sourceKind: MetricSourceKind; sourceCode: string; assetTypeId?: string | null }
 ) {
   const sorted = validateMetric(input);
-  const assetType = await requireAssetType(organizationId);
+  const assetType = await requireAssetType(organizationId, input.assetTypeId);
 
   const sources = await listMetricSources(organizationId);
   const source = sources.find((s) => s.kind === input.sourceKind && s.code === input.sourceCode);

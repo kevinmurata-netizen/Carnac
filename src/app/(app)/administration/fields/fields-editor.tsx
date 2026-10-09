@@ -48,9 +48,12 @@ function Feedback({ state }: { state: FieldActionState }) {
 export function InspectionFieldsEditor({
   fields,
   canEdit,
+  assetTypeId,
 }: {
   fields: InspectionFieldRow[];
   canEdit: boolean;
+  /** The asset type tab the page is showing; new fields are created under it. */
+  assetTypeId?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -94,6 +97,7 @@ export function InspectionFieldsEditor({
 
         {showAdd && canEdit && (
           <form action={create} className="space-y-3 rounded-md border p-3">
+            <input type="hidden" name="assetTypeId" value={assetTypeId ?? ""} />
             <div className="text-sm font-medium">New inspection field</div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <div className="space-y-1.5">
@@ -251,9 +255,12 @@ export function InspectionFieldsEditor({
 export function InventoryFieldsEditor({
   fields,
   canEdit,
+  assetTypeId,
 }: {
   fields: InventoryFieldRow[];
   canEdit: boolean;
+  /** The asset type tab the page is showing; new fields are created under it. */
+  assetTypeId?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -298,6 +305,7 @@ export function InventoryFieldsEditor({
 
         {showAdd && canEdit && (
           <form action={create} className="space-y-3 rounded-md border p-3">
+            <input type="hidden" name="assetTypeId" value={assetTypeId ?? ""} />
             <div className="text-sm font-medium">New inventory field</div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
               <div className="space-y-1.5">

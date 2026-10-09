@@ -62,6 +62,7 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
               <p className="text-sm font-medium">{feedback.message}</p>
               {stale && canEdit && (
                 <form action={recalculate} className="mt-2">
+                  <input type="hidden" name="assetTypeId" value={config.assetTypeId} />
                   <Button type="submit" size="sm" variant="outline" disabled={recalculating}>
                     <RotateCcw className="mr-1 h-3.5 w-3.5" />
                     {recalculating ? "Recalculating…" : "Recalculate all scores now"}
@@ -83,6 +84,7 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
                 {editing ? "Done editing" : "Edit weights"}
               </Button>
               <form action={recalculate}>
+                <input type="hidden" name="assetTypeId" value={config.assetTypeId} />
                 <Button type="submit" size="sm" variant="outline" disabled={recalculating}>
                   <RotateCcw className="mr-1 h-3.5 w-3.5" />
                   {recalculating ? "Recalculating…" : "Recalculate scores"}
@@ -102,7 +104,9 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
               each row also needs its own Remove form, and nested forms are
               invalid HTML — the browser silently drops the inner one. The
               weight inputs join this form via their `form` attribute instead. */}
-          <form id={WEIGHTS_FORM_ID} action={saveWeights} />
+          <form id={WEIGHTS_FORM_ID} action={saveWeights}>
+            <input type="hidden" name="assetTypeId" value={config.assetTypeId} />
+          </form>
 
           <div>
             <div className="overflow-x-auto rounded-md border">
@@ -157,7 +161,13 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
                       <TableCell>{c.resultCount.toLocaleString("en-US")}</TableCell>
                       {canEdit && (
                         <TableCell>
-                          <RemoveButton code={c.code} label={c.label} action={removeComponent} disabled={removing} />
+                          <RemoveButton
+                            code={c.code}
+                            label={c.label}
+                            assetTypeId={config.assetTypeId}
+                            action={removeComponent}
+                            disabled={removing}
+                          />
                         </TableCell>
                       )}
                     </TableRow>
@@ -192,6 +202,7 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
             <CardContent className="space-y-6">
               {config.unusedFields.length > 0 && (
                 <form action={addComponent} className="space-y-3 rounded-md border p-3">
+                  <input type="hidden" name="assetTypeId" value={config.assetTypeId} />
                   <div className="text-sm font-medium">Use an existing inspection field</div>
                   <p className="text-xs text-muted-foreground">
                     These numeric fields are already collected but carry no weight, so they do not affect the score.
@@ -221,6 +232,7 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
               )}
 
               <form action={addComponent} className="space-y-3 rounded-md border p-3">
+                <input type="hidden" name="assetTypeId" value={config.assetTypeId} />
                 <div className="text-sm font-medium">Create a new component</div>
                 <p className="text-xs text-muted-foreground">
                   This also creates the 0–10 inspection field that collects it, so inspectors can start scoring it
@@ -303,16 +315,19 @@ export function IndexEditor({ config, canEdit }: { config: ConditionIndexConfig;
 function RemoveButton({
   code,
   label,
+  assetTypeId,
   action,
   disabled,
 }: {
   code: string;
   label: string;
+  assetTypeId: string;
   action: (formData: FormData) => void;
   disabled: boolean;
 }) {
   return (
     <form action={action}>
+      <input type="hidden" name="assetTypeId" value={assetTypeId} />
       <input type="hidden" name="code" value={code} />
       <ConfirmDelete
         size="xs"
