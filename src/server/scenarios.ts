@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { Prisma, WorkPlanItemStatus } from "@prisma/client";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import {
   runScenario,
   curveFor,
@@ -94,9 +94,10 @@ export async function buildSimAssets(
     modelledScaleFactors(organizationId),
   ]);
 
+  const measuresOf = await getMeasureCodes(organizationId);
   return assets.map((asset) => {
-    const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
-    const material = attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null;
+    const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
+    const material = m.material;
     const curve = curveFor(material, curvesFor(asset.assetTypeId));
 
     const measured = asset.conditionMeasurements[0]?.score ?? null;
@@ -108,26 +109,26 @@ export async function buildSimAssets(
       assetTypeId: asset.assetTypeId,
       assetCode: asset.assetCode,
       material,
-      diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
-      lengthFt: attr(WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null,
-      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
+      diameterInches: m.diameter,
+      lengthFt: m.length,
+      customersServed: m.customersServed,
       cof: asset.riskAssessments[0]?.consequenceScore ?? 3,
       condition,
       effectiveAge: effectiveAgeForCondition(curve, condition),
       ageYears: age,
       curve,
-      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
-      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+      criticality: m.criticality,
+      customerType: m.customerType,
       // The stored score where the model has run, otherwise the risk-based
       // default — the same fallback the network-wide ranking uses, so a
       // scenario and Treatment Planning agree about what an asset is worth.
       criticalityScore:
         asset.criticalityScores[0]?.score ??
         computeCriticalityScore({
-          customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
-          criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
-          diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
-          customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+          customersServed: m.customersServed,
+          criticality: m.criticality,
+          diameterInches: m.diameter,
+          customerType: m.customerType,
         }).score,
       scaleFactor: scale.factors.get(asset.id)?.factor ?? NEUTRAL_SCALE_FACTOR,
       serviceArea: asset.location?.serviceArea ?? null,

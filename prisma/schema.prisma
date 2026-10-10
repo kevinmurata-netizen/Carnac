@@ -128,9 +128,14 @@ model AssetType {
   /// Whether the engine models this type: its assets are the ones scenarios
   /// run over and treatment planning ranks, and its treatments, rules and
   /// condition, risk and deterioration models are the ones Settings edits.
-  /// Chosen here rather than by `code`, so no code names an asset class. One
-  /// per organization until the engine can model several side by side.
+  /// Chosen here rather than by `code`, so no code names an asset class.
+  /// Several can be modelled side by side, each with its own models.
   isModelled  Boolean @default(false)
+
+  /// Which of this type's attributes holds each measure the engine reads,
+  /// by role: {"material": "MATERIAL", "diameter": "DIAMETER", ...}. A role
+  /// left out reads as unknown. See src/server/measures.ts.
+  measures Json?
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])

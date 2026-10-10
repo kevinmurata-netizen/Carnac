@@ -1,8 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { getActiveFormula, loadAssetValues } from "@/server/criticality";
 import { evaluate, fieldsUsed, toCriticalityScore } from "@/domain/waterline/criticality-formula";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { getConditionBand } from "@/domain/waterline/condition";
 import {
   RISK_MODEL_NAME,
@@ -96,21 +96,22 @@ async function recomputeRiskForAssetType(organizationId: string, assetTypeId: st
   const assessmentWrites: Prisma.PrismaPromise<unknown>[] = [];
   const criticalityRows: Prisma.CriticalityScoreCreateManyInput[] = [];
 
+  const measuresOf = await getMeasureCodes(organizationId);
   for (const asset of assets) {
-    const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
+    const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
 
     const pofFactors = computePofFactors({
       conditionScore: asset.conditionMeasurements[0]?.score ?? null,
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       failuresLast10Years: asset.failureEvents.length,
-      material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
+      material: m.material,
     }, pofWeights);
     const cofInputs = {
-      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
-      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
-      diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
-      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+      customersServed: m.customersServed,
+      criticality: m.criticality,
+      diameterInches: m.diameter,
+      customerType: m.customerType,
     };
     const cofFactors = computeCofFactors(cofInputs, cofWeights);
 

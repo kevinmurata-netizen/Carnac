@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ClipboardList, Pencil, Plus, Tags, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, Gauge, Pencil, Plus, Tags, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import type { SettingsActionState } from "../state";
 import type { AssetTypeDetail, AttributeDetail } from "@/server/settings";
 import type { ComponentComposition } from "@/server/component-types";
 import { ComponentsSection } from "./components-section";
+import { MEASURE_ROLES } from "@/lib/measure-roles";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -43,6 +44,7 @@ type AttributeDraft = {
   help: string;
 };
 type TemplateDraft = { assetTypeId: string; assetTypeName: string; name: string; description: string };
+type MeasuresDraft = { type: AssetTypeDetail };
 
 function Feedback({ state }: { state: State }) {
   if (state.status === "idle" || !state.message) return null;
@@ -85,6 +87,7 @@ export function AssetTypeList({
   canEdit,
   canEditTemplates,
   onSaveType,
+  onSaveMeasures,
   onCreateType,
   onCreateAttribute,
   onSaveAttribute,
@@ -103,6 +106,7 @@ export function AssetTypeList({
    * without being allowed to add forms. */
   canEditTemplates: boolean;
   onSaveType: Action;
+  onSaveMeasures: Action;
   onCreateType: Action;
   onCreateAttribute: Action;
   onSaveAttribute: Action;
@@ -121,6 +125,7 @@ export function AssetTypeList({
   const [editingType, setEditingTypeDraft] = useState<TypeDraft | null>(null);
   const [editingAttribute, setEditingAttributeDraft] = useState<AttributeDraft | null>(null);
   const [editingTemplate, setEditingTemplateDraft] = useState<TemplateDraft | null>(null);
+  const [editingMeasures, setEditingMeasuresDraft] = useState<MeasuresDraft | null>(null);
 
   // Opening a dialog clears the last message, so an old error can't greet a
   // new dialog as if it were about it.
@@ -133,6 +138,7 @@ export function AssetTypeList({
   const setEditingType = opening(setEditingTypeDraft);
   const setEditingAttribute = opening(setEditingAttributeDraft);
   const setEditingTemplate = opening(setEditingTemplateDraft);
+  const setEditingMeasures = opening(setEditingMeasuresDraft);
 
   /** A refused save leaves its dialog open, over the page-level message, so
    * the refusal is repeated inside the dialog where it can be read. */
@@ -287,6 +293,9 @@ export function AssetTypeList({
               )}
             </section>
 
+            {/* Measures ------------------------------------------------ */}
+            <MeasuresSection type={type} canEdit={canEdit} onEdit={() => setEditingMeasures({ type })} />
+
             {/* Components ---------------------------------------------- */}
             <ComponentsSection
               assetType={{ id: type.id, name: type.name }}
@@ -425,6 +434,26 @@ export function AssetTypeList({
                 )
               }
               onCancel={() => setEditingAttribute(null)}
+            />
+          )}
+        </EditorDialog>
+      )}
+
+      {/* Measures -------------------------------------------------------- */}
+      {canEdit && (
+        <EditorDialog
+          open={editingMeasures != null}
+          onClose={() => setEditingMeasures(null)}
+          title={`Measures for ${editingMeasures?.type.name ?? ""}`}
+          description="Which of this type's attributes the engine reads for each role. Changing one changes forecasts, risk scores and plans from the next run on."
+        >
+          {dialogError}
+          {editingMeasures && (
+            <MeasuresForm
+              type={editingMeasures.type}
+              pending={pending}
+              onSubmit={(formData) => submit(onSaveMeasures, formData, () => setEditingMeasures(null))}
+              onCancel={() => setEditingMeasures(null)}
             />
           )}
         </EditorDialog>
@@ -767,6 +796,132 @@ function TemplateForm({
         </Button>
         <Button type="submit" disabled={pending || !name.trim()}>
           {pending ? "Saving…" : "Add template"}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Whether an attribute's kind suits a role: numbers for the measured ones,
+ * text or a list for the named ones. */
+function fitsRole(kind: "text" | "number", dataType: string) {
+  return kind === "number" ? dataType === "NUMBER" : dataType === "TEXT" || dataType === "ENUM";
+}
+
+/**
+ * The measures the engine reads, and which attribute holds each on this type.
+ * Shown on every type; the engine reads them only where the type is modelled.
+ */
+function MeasuresSection({
+  type,
+  canEdit,
+  onEdit,
+}: {
+  type: AssetTypeDetail;
+  canEdit: boolean;
+  onEdit: () => void;
+}) {
+  const labelOf = (code: string | undefined) => type.attributes.find((a) => a.code === code)?.label ?? null;
+  const setCount = MEASURE_ROLES.filter((r) => labelOf(type.measures[r.key])).length;
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-medium">
+          <Gauge className="h-4 w-4 text-muted-foreground" />
+          Measures{" "}
+          <span className="text-muted-foreground">
+            ({setCount} of {MEASURE_ROLES.length})
+          </span>
+        </h3>
+        {canEdit && type.attributes.length > 0 && (
+          <Button type="button" size="sm" variant="outline" onClick={onEdit}>
+            <Pencil className="mr-1 h-3.5 w-3.5" />
+            Edit measures
+          </Button>
+        )}
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        {type.isModelled
+          ? "What the engine reads from each asset of this type, and which attribute holds it."
+          : "What the engine would read from each asset of this type if it were modelled, and which attribute holds it."}{" "}
+        A measure with no attribute reads as unknown.
+      </p>
+      <div className="overflow-x-auto rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableCell className="font-medium">Measure</TableCell>
+              <TableCell className="font-medium">Attribute</TableCell>
+              <TableCell className="font-medium">Used for</TableCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {MEASURE_ROLES.map((role) => {
+              const label = labelOf(type.measures[role.key]);
+              return (
+                <TableRow key={role.key}>
+                  <TableCell className="whitespace-nowrap">{role.label}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {label ?? <span className="text-muted-foreground">Not set</span>}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{role.purpose}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </section>
+  );
+}
+
+function MeasuresForm({
+  type,
+  pending,
+  onSubmit,
+  onCancel,
+}: {
+  type: AssetTypeDetail;
+  pending: boolean;
+  onSubmit: (formData: FormData) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form action={onSubmit} className="space-y-4">
+      <input type="hidden" name="id" value={type.id} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {MEASURE_ROLES.map((role) => {
+          const choices = type.attributes.filter((a) => fitsRole(role.kind, a.dataType));
+          return (
+            <div key={role.key} className="space-y-1.5">
+              <Label htmlFor={`measure-${role.key}`}>{role.label}</Label>
+              <select
+                id={`measure-${role.key}`}
+                name={`measure_${role.key}`}
+                defaultValue={type.measures[role.key] ?? ""}
+                className={input}
+              >
+                <option value="">Not set — reads as unknown</option>
+                {choices.map((a) => (
+                  <option key={a.code} value={a.code}>
+                    {a.label}
+                    {a.unit ? ` (${a.unit})` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {role.purpose} {role.kind === "number" ? "A number field." : "A text or list field."}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+      <div data-dialog-actions className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving…" : "Save measures"}
         </Button>
       </div>
     </form>

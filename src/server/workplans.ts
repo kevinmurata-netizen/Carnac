@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { WorkPlanItemStatus } from "@prisma/client";
 import { DEFAULT_WEIGHTS, type ObjectiveWeights } from "@/domain/waterline/optimization";
 import {
@@ -11,7 +12,6 @@ import {
   type AssetTreatmentContext,
   findTreatment,
 } from "@/domain/waterline/treatment";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { buildLccaEvaluator } from "@/domain/waterline/lcca-evaluator";
 import { curveFor } from "@/domain/waterline/deterioration";
 import { effectiveAgeForCondition, evaluateCurve } from "@/domain/waterline/deterioration";
@@ -316,23 +316,24 @@ async function buildCandidates(
   type Pending = Omit<CandidateInfo, "priority" | "value" | "benefit" | "terms">;
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
 
+  const measuresOf = await getMeasureCodes(organizationId);
   for (const asset of assets) {
-    const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
+    const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const risk = asset.riskAssessments[0];
     const conditionScore = asset.conditionMeasurements[0]?.score ?? null;
     if (conditionScore == null) continue; // never plan capital work off unknown condition
 
-    const diameterInches = attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null;
-    const lengthFt = attr(WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null;
-    const customersServed = attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null;
-    const criticalityRating = attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null;
-    const customerType = attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null;
+    const diameterInches = m.diameter;
+    const lengthFt = m.length;
+    const customersServed = m.customersServed;
+    const criticalityRating = m.criticality;
+    const customerType = m.customerType;
     const pof = risk?.probabilityScore ?? 3;
     const cof = risk?.consequenceScore ?? 3;
 
     const ctx: AssetTreatmentContext = {
       conditionScore,
-      material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
+      material: m.material,
       diameterInches,
       lengthFt,
       customersServed,
@@ -980,7 +981,8 @@ export async function assetTreatmentContext(
   });
   if (!asset) return null;
 
-  const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
+  const measuresOf = await getMeasureCodes(organizationId);
+  const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
   const risk = asset.riskAssessments[0];
   const pof = risk?.probabilityScore ?? 3;
   const cof = risk?.consequenceScore ?? 3;
@@ -989,10 +991,10 @@ export async function assetTreatmentContext(
     assetCode: asset.assetCode,
     ctx: {
       conditionScore: asset.conditionMeasurements[0]?.score ?? null,
-      material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
-      diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
-      lengthFt: attr(WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null,
-      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
+      material: m.material,
+      diameterInches: m.diameter,
+      lengthFt: m.length,
+      customersServed: m.customersServed,
       pof,
       cof,
       riskScore: risk?.riskScore ?? pof * cof,
@@ -1000,8 +1002,8 @@ export async function assetTreatmentContext(
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       assetTypeId: asset.assetTypeId,
-      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
-      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+      criticality: m.criticality,
+      customerType: m.customerType,
       serviceArea: asset.location?.serviceArea ?? null,
       pressureZone: asset.location?.pressureZone ?? null,
     },

@@ -1,6 +1,6 @@
 import { Prisma, AssetStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
+import { getMeasureCodes, getMeasureDefinitionFilters, readMeasures, type MeasureRole } from "@/server/measures";
 import { sameCalendarDay } from "@/lib/format";
 import { MODELLED } from "@/server/modelled-asset-type";
 
@@ -89,25 +89,29 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
 
   const attributeConditions: Prisma.AssetWhereInput[] = [];
 
-  const textAttribute = (code: string, value?: string) => {
+  // Each measure's attribute on whichever asset types have it, so a filter on
+  // material means each type's own material field.
+  const definitions = await getMeasureDefinitionFilters(organizationId);
+
+  const textAttribute = (role: MeasureRole, value?: string) => {
     if (!value) return;
-    attributeConditions.push({ attributeValues: { some: { definition: { code }, textValue: value } } });
+    attributeConditions.push({ attributeValues: { some: { definition: definitions[role], textValue: value } } });
   };
 
-  const numberAttribute = (code: string, min?: number, max?: number) => {
+  const numberAttribute = (role: MeasureRole, min?: number, max?: number) => {
     if (min == null && max == null) return;
     attributeConditions.push({
       attributeValues: {
-        some: { definition: { code }, numberValue: { gte: min ?? undefined, lte: max ?? undefined } },
+        some: { definition: definitions[role], numberValue: { gte: min ?? undefined, lte: max ?? undefined } },
       },
     });
   };
 
-  textAttribute(WATERLINE_ATTRIBUTES.MATERIAL, filters.material);
-  textAttribute(WATERLINE_ATTRIBUTES.CRITICALITY, filters.criticality);
-  textAttribute(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE, filters.customerType);
-  numberAttribute(WATERLINE_ATTRIBUTES.DIAMETER, filters.minDiameter, filters.maxDiameter);
-  numberAttribute(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED, filters.minCustomers, filters.maxCustomers);
+  textAttribute("material", filters.material);
+  textAttribute("criticality", filters.criticality);
+  textAttribute("customerType", filters.customerType);
+  numberAttribute("diameter", filters.minDiameter, filters.maxDiameter);
+  numberAttribute("customersServed", filters.minCustomers, filters.maxCustomers);
 
   if (attributeConditions.length > 0) where.AND = attributeConditions;
 
@@ -165,16 +169,18 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
   // Attribute-backed and derived columns cannot be ordered by in the query,
   // so they are sorted here. Nulls always sort last regardless of direction —
   // a column of blanks at the top is never what someone wanted.
+  const measuresOf = await getMeasureCodes(organizationId);
   const valueOf = (a: (typeof assets)[number]): string | number | null => {
+    const m = () => readMeasures(a.attributeValues, measuresOf(a.assetTypeId));
     switch (filters.sort) {
       case "material":
-        return a.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null;
+        return m().material;
       case "diameter":
-        return a.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null;
+        return m().diameter;
       case "length":
-        return a.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null;
+        return m().length;
       case "customers":
-        return a.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null;
+        return m().customersServed;
       case "serviceArea":
         return a.location?.serviceArea ?? null;
       default:
@@ -533,9 +539,10 @@ export async function listServiceAreas(organizationId: string): Promise<string[]
 }
 
 export async function listMaterials(organizationId: string): Promise<string[]> {
+  const { material } = await getMeasureDefinitionFilters(organizationId);
   const rows = await prisma.assetAttributeValue.findMany({
     where: {
-      definition: { code: WATERLINE_ATTRIBUTES.MATERIAL, assetType: MODELLED },
+      definition: { ...material, assetType: MODELLED },
       asset: { organizationId, deletedAt: null },
     },
     select: { textValue: true },
@@ -636,13 +643,18 @@ export type NetworkSummary = {
 };
 
 export async function getNetworkSummary(organizationId: string): Promise<NetworkSummary> {
+  const [definitions, measuresOf] = await Promise.all([
+    getMeasureDefinitionFilters(organizationId),
+    getMeasureCodes(organizationId),
+  ]);
   const assets = await prisma.asset.findMany({
     where: { organizationId, assetType: MODELLED, deletedAt: null },
     select: {
       status: true,
       installationDate: true,
+      assetTypeId: true,
       attributeValues: {
-        where: { definition: { code: { in: [WATERLINE_ATTRIBUTES.MATERIAL, WATERLINE_ATTRIBUTES.LENGTH] } } },
+        where: { definition: { OR: [...definitions.material.OR, ...definitions.length.OR] } },
         include: { definition: true },
       },
     },
@@ -656,8 +668,9 @@ export async function getNetworkSummary(organizationId: string): Promise<Network
   for (const asset of assets) {
     byStatusMap.set(asset.status, (byStatusMap.get(asset.status) ?? 0) + 1);
 
-    const material = asset.attributeValues.find((a) => a.definition.code === WATERLINE_ATTRIBUTES.MATERIAL)?.textValue;
-    const length = asset.attributeValues.find((a) => a.definition.code === WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? 0;
+    const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
+    const material = m.material;
+    const length = m.length ?? 0;
     totalLengthFt += length;
 
     if (material) {
@@ -684,10 +697,11 @@ export async function getNetworkSummary(organizationId: string): Promise<Network
   };
 }
 
-/** Distinct values for a text attribute, for filter dropdowns. */
-async function distinctAttribute(organizationId: string, code: string): Promise<string[]> {
+/** Distinct values for a text measure, for filter dropdowns. */
+async function distinctAttribute(organizationId: string, role: MeasureRole): Promise<string[]> {
+  const definition = (await getMeasureDefinitionFilters(organizationId))[role];
   const rows = await prisma.assetAttributeValue.findMany({
-    where: { definition: { code }, asset: { organizationId, deletedAt: null }, textValue: { not: null } },
+    where: { definition, asset: { organizationId, deletedAt: null }, textValue: { not: null } },
     select: { textValue: true },
     distinct: ["textValue"],
   });
@@ -695,11 +709,11 @@ async function distinctAttribute(organizationId: string, code: string): Promise<
 }
 
 export async function listCriticalities(organizationId: string) {
-  return distinctAttribute(organizationId, WATERLINE_ATTRIBUTES.CRITICALITY);
+  return distinctAttribute(organizationId, "criticality");
 }
 
 export async function listCustomerTypes(organizationId: string) {
-  return distinctAttribute(organizationId, WATERLINE_ATTRIBUTES.CUSTOMER_TYPE);
+  return distinctAttribute(organizationId, "customerType");
 }
 
 export async function listPressureZones(organizationId: string): Promise<string[]> {

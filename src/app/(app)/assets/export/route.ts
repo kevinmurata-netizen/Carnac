@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { auth } from "@/lib/auth";
 import { listAssets, flattenAttributes } from "@/server/assets";
 import { listSavedFilters } from "@/server/saved-filters";
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
   const organizationId = session.user.organizationId;
   const params = paramsFromRequest(request);
   const filters = await assetFiltersFromParams(organizationId, params);
-  const assets = await listAssets(organizationId, filters);
+  const [assets, measuresOf] = await Promise.all([listAssets(organizationId, filters), getMeasureCodes(organizationId)]);
 
   const savedFilterName = params.savedFilter
     ? (await listSavedFilters(organizationId)).find((f) => f.id === params.savedFilter)?.name
@@ -58,22 +59,23 @@ export async function GET(request: Request) {
   const rows = assets.map((asset) => {
     const attrs = flattenAttributes(asset);
     const attr = (code: string) => attrs[code] ?? null;
+    const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
 
     return {
       assetCode: asset.assetCode,
       name: asset.name,
-      material: attr(WATERLINE_ATTRIBUTES.MATERIAL) as string | null,
-      diameter: attr(WATERLINE_ATTRIBUTES.DIAMETER) as number | null,
-      length: attr(WATERLINE_ATTRIBUTES.LENGTH) as number | null,
+      material: m.material,
+      diameter: m.diameter,
+      length: m.length,
       installDate: asset.installationDate,
       age: ageInYears(asset.installationDate),
       expectedLife: asset.expectedUsefulLife,
       status: formatStatus(asset.status),
       serviceArea: asset.location?.serviceArea ?? null,
       pressureZone: asset.location?.pressureZone ?? null,
-      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY) as string | null,
-      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED) as number | null,
-      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE) as string | null,
+      criticality: m.criticality,
+      customersServed: m.customersServed,
+      customerType: m.customerType,
       pressureClass: attr(WATERLINE_ATTRIBUTES.PRESSURE_CLASS) as string | null,
       jointType: attr(WATERLINE_ATTRIBUTES.JOINT_TYPE) as string | null,
       liningType: attr(WATERLINE_ATTRIBUTES.LINING_TYPE) as string | null,

@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getAssetById, flattenAttributes } from "@/server/assets";
+import { getAssetById } from "@/server/assets";
 import { rollUpAssets } from "@/server/rollup";
 import { componentHistory, componentTypesForAsset } from "@/server/components";
 import { latestComponentReadings } from "@/server/component-inspections";
@@ -18,7 +19,6 @@ import { RecommendationPanel } from "@/components/treatments/recommendation-pane
 import type { FactorRating } from "@/domain/waterline/risk";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { canRecordFieldData } from "@/lib/permissions";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,9 +65,9 @@ export default async function AssetDetailPage({
   const asset = await getAssetById(organizationId, id);
   if (!asset) notFound();
 
-  const attrs = flattenAttributes(asset);
-  const material = attrs[WATERLINE_ATTRIBUTES.MATERIAL] as string | undefined;
-  const diameter = attrs[WATERLINE_ATTRIBUTES.DIAMETER] as number | undefined;
+  const measures = readMeasures(asset.attributeValues, (await getMeasureCodes(organizationId))(asset.assetTypeId));
+  const material = measures.material ?? undefined;
+  const diameter = measures.diameter ?? undefined;
   const age = ageInYears(asset.installationDate);
 
   // A pipe runs between two points; a reservoir or a well stands at one. Both
@@ -232,13 +232,13 @@ export default async function AssetDetailPage({
         <SummaryStat
           label="Length"
           value={
-            attrs[WATERLINE_ATTRIBUTES.LENGTH] ? `${formatNumber(Math.round(attrs[WATERLINE_ATTRIBUTES.LENGTH] as number))} ft` : "—"
+            measures.length ? `${formatNumber(Math.round(measures.length))} ft` : "—"
           }
         />
         <SummaryStat label="Diameter" value={formatInches(diameter)} />
         <SummaryStat label="Material" value={material ?? "—"} />
         <SummaryStat label="Installed" value={formatDate(asset.installationDate)} />
-        <SummaryStat label="Criticality" value={(attrs[WATERLINE_ATTRIBUTES.CRITICALITY] as string) ?? "—"} />
+        <SummaryStat label="Criticality" value={measures.criticality ?? "—"} />
         <SummaryStat
           label="Condition (WCI)"
           value={currentCondition ? `${currentCondition.score} · ${currentCondition.band.label}` : "Not inspected"}

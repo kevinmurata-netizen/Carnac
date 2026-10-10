@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import Link from "next/link";
 import {
   listAssets,
@@ -20,7 +21,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { FACILITY_COLORS, NetworkMap } from "@/components/map/network-map";
 import { StatusMapLegend } from "@/components/map/map-legend";
 import { formatFeetAsMiles, formatNumber } from "@/lib/format";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { AssetStatus } from "@prisma/client";
 import { getPageName } from "@/server/navigation";
 
@@ -118,10 +118,11 @@ export default async function NetworkPage({
   }
   const notGeolocated = facilities.features.filter((f) => f.properties?.geolocated === "Not geolocated").length;
 
-  const totalLengthFt = assets.reduce((sum, asset) => {
-    const length = asset.attributeValues.find((av) => av.definition.code === WATERLINE_ATTRIBUTES.LENGTH)?.numberValue;
-    return sum + (length ?? 0);
-  }, 0);
+  const measuresOf = await getMeasureCodes(organizationId);
+  const totalLengthFt = assets.reduce(
+    (sum, asset) => sum + (readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId)).length ?? 0),
+    0
+  );
 
   return (
     <div>

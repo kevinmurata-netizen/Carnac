@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { getTransitionMatrix } from "@/server/settings";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import {
   MATERIAL_CURVES,
   DEFAULT_CURVE,
@@ -124,9 +124,10 @@ export async function generatePredictions(organizationId: string): Promise<numbe
     where: { scenario: "current", asset: { organizationId } },
   });
 
+  const measuresOf = await getMeasureCodes(organizationId);
   let count = 0;
   for (const asset of assets) {
-    const material = asset.attributeValues.find((v) => v.definition.code === WATERLINE_ATTRIBUTES.MATERIAL)?.textValue;
+    const material = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId)).material;
     const model = material ? curvesByType.get(asset.assetTypeId)?.get(material) : undefined;
     if (!model) continue;
 

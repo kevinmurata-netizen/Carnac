@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { getMeasureDefinitionFilters } from "@/server/measures";
 import { getConditionBand } from "@/domain/waterline/condition";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { getConditionBandsByModel } from "@/server/settings";
 import { MODELLED } from "@/server/modelled-asset-type";
 
@@ -79,9 +79,10 @@ export async function getConditionSummary(organizationId: string): Promise<Condi
     byBandMap.set(band.label, entry);
   }
 
+  const { material } = await getMeasureDefinitionFilters(organizationId);
   const materialRows = await prisma.assetAttributeValue.findMany({
     where: {
-      definition: { code: WATERLINE_ATTRIBUTES.MATERIAL },
+      definition: material,
       asset: { organizationId, deletedAt: null },
     },
     select: { assetId: true, textValue: true },

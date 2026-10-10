@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { getRiskBand } from "@/domain/waterline/risk";
 import { getNetworkRecommendations } from "@/server/treatments";
@@ -40,25 +40,23 @@ export type ReportDefinition = {
 // Shared query helpers
 // ---------------------------------------------------------------------------
 
+/** Modelled assets with what the reports show, each with its measures read
+ * through its own asset type's fields. */
 async function assetsWithContext(organizationId: string) {
-  return prisma.asset.findMany({
-    where: { organizationId, assetType: MODELLED, deletedAt: null },
-    include: {
-      attributeValues: { include: { definition: true } },
-      location: true,
-      conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
-      riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
-    },
-    orderBy: { assetCode: "asc" },
-  });
-}
-
-function attrOf(
-  asset: { attributeValues: Array<{ definition: { code: string }; textValue: string | null; numberValue: number | null }> },
-  code: string
-) {
-  const v = asset.attributeValues.find((a) => a.definition.code === code);
-  return v?.textValue ?? v?.numberValue ?? null;
+  const [assets, measuresOf] = await Promise.all([
+    prisma.asset.findMany({
+      where: { organizationId, assetType: MODELLED, deletedAt: null },
+      include: {
+        attributeValues: { include: { definition: true } },
+        location: true,
+        conditionMeasurements: { where: { assetComponentId: null }, orderBy: { measurementDate: "desc" }, take: 1 },
+        riskAssessments: { where: { assetComponentId: null }, orderBy: { assessmentDate: "desc" }, take: 1 },
+      },
+      orderBy: { assetCode: "asc" },
+    }),
+    getMeasureCodes(organizationId),
+  ]);
+  return assets.map((a) => ({ ...a, measures: readMeasures(a.attributeValues, measuresOf(a.assetTypeId)) }));
 }
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
@@ -92,15 +90,15 @@ export const REPORTS: ReportDefinition[] = [
       return assets.map((a) => ({
         assetCode: a.assetCode,
         status: a.status,
-        material: attrOf(a, WATERLINE_ATTRIBUTES.MATERIAL) as string,
-        diameterIn: attrOf(a, WATERLINE_ATTRIBUTES.DIAMETER) as number,
-        lengthFt: attrOf(a, WATERLINE_ATTRIBUTES.LENGTH) as number,
+        material: a.measures.material,
+        diameterIn: a.measures.diameter,
+        lengthFt: a.measures.length,
         installationDate: iso(a.installationDate),
         ageYears: ageInYears(a.installationDate),
         serviceArea: a.location?.serviceArea ?? null,
         pressureZone: a.location?.pressureZone ?? null,
-        criticality: attrOf(a, WATERLINE_ATTRIBUTES.CRITICALITY) as string,
-        customersServed: attrOf(a, WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED) as number,
+        criticality: a.measures.criticality,
+        customersServed: a.measures.customersServed,
         ownerDepartment: a.ownerDepartment,
       }));
     },
@@ -125,7 +123,7 @@ export const REPORTS: ReportDefinition[] = [
         const m = a.conditionMeasurements[0];
         return {
           assetCode: a.assetCode,
-          material: attrOf(a, WATERLINE_ATTRIBUTES.MATERIAL) as string,
+          material: a.measures.material,
           wci: m ? Math.round(m.score * 10) / 10 : null,
           band: m ? getConditionBand(m.score, bands).label : "Not inspected",
           measuredOn: iso(m?.measurementDate),

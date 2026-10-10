@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { combineEffects, effectLabel } from "@/domain/waterline/effect";
 import { toEffectDef } from "@/server/effects";
 import {
@@ -216,15 +216,16 @@ export async function buildContexts(organizationId: string, assetId?: string) {
     },
   });
 
+  const measuresOf = await getMeasureCodes(organizationId);
   return assets.map((asset) => {
-    const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
+    const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const risk = asset.riskAssessments[0];
     const ctx: AssetTreatmentContext = {
       conditionScore: asset.conditionMeasurements[0]?.score ?? null,
-      material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
-      diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
-      lengthFt: attr(WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null,
-      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
+      material: m.material,
+      diameterInches: m.diameter,
+      lengthFt: m.length,
+      customersServed: m.customersServed,
       pof: risk?.probabilityScore ?? null,
       cof: risk?.consequenceScore ?? null,
       riskScore: risk?.riskScore ?? null,
@@ -232,8 +233,8 @@ export async function buildContexts(organizationId: string, assetId?: string) {
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       assetTypeId: asset.assetTypeId,
-      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
-      customerType: attr(WATERLINE_ATTRIBUTES.CUSTOMER_TYPE)?.textValue ?? null,
+      criticality: m.criticality,
+      customerType: m.customerType,
       serviceArea: asset.location?.serviceArea ?? null,
       pressureZone: asset.location?.pressureZone ?? null,
     };
