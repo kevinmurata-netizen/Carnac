@@ -42,7 +42,7 @@ import { modelledCriticalityRescorer } from "@/server/criticality";
 import { matchingAssetIds } from "@/server/saved-filters";
 import { resultsOutOfWindow, type ScenarioSetStatusValue, type ScenarioWindow } from "@/lib/scenario-sets";
 import { assertSetInOrganization } from "@/server/scenario-sets";
-import { MODELLED } from "@/server/modelled-asset-type";
+import { MODELLED, listModelledAssetTypes } from "@/server/modelled-asset-type";
 import { treatmentIdsForAssets } from "@/server/treatment-lookup";
 
 /** Snapshot the current network into simulation inputs. Condition comes from
@@ -55,8 +55,15 @@ import { treatmentIdsForAssets } from "@/server/treatment-lookup";
  * array is not the same as no array: it means the filter matched nothing, and
  * is the caller's to refuse rather than this function's to widen back to
  * everything.
+ *
+ * `assetTypeIds` narrows it to some of the modelled asset types. Absent or
+ * empty is every one of them.
  */
-export async function buildSimAssets(organizationId: string, only?: string[]): Promise<SimAsset[]> {
+export async function buildSimAssets(
+  organizationId: string,
+  only?: string[],
+  assetTypeIds?: string[]
+): Promise<SimAsset[]> {
   const assets = await prisma.asset.findMany({
     where: {
       organizationId,
@@ -64,6 +71,7 @@ export async function buildSimAssets(organizationId: string, only?: string[]): P
       deletedAt: null,
       status: "ACTIVE",
       ...(only ? { id: { in: only } } : {}),
+      ...(assetTypeIds && assetTypeIds.length > 0 ? { assetTypeId: { in: assetTypeIds } } : {}),
     },
     include: {
       attributeValues: { include: { definition: true } },
@@ -229,6 +237,21 @@ async function assertFilterInOrganization(organizationId: string, filterId: stri
   if (!filter) throw new Error("Saved filter not found");
 }
 
+/**
+ * The asset types a scenario is narrowed to, as stored: each checked to be one
+ * this organization models. Choosing every modelled type is stored as no
+ * choice at all, so a type modelled later joins the scenario rather than being
+ * left out of it.
+ */
+async function scenarioAssetTypes(organizationId: string, ids: string[] | undefined): Promise<string[]> {
+  if (!ids || ids.length === 0) return [];
+  const modelled = await listModelledAssetTypes(organizationId);
+  const known = new Set(modelled.map((t) => t.id));
+  const chosen = [...new Set(ids)];
+  if (chosen.some((id) => !known.has(id))) throw new Error("That asset type isn't one this organization models.");
+  return chosen.length === modelled.length ? [] : chosen;
+}
+
 export async function createScenario(
   organizationId: string,
   input: {
@@ -253,6 +276,8 @@ export async function createScenario(
     leadTimeSetId?: string | null;
     /** Which assets it runs over. Null is the whole network. */
     savedFilterId?: string | null;
+    /** Which modelled asset types it runs over. Empty is all of them. */
+    assetTypeIds?: string[];
     /** The set it belongs to. Null leaves it on its own. */
     scenarioSetId?: string | null;
     /** A work plan whose projects it runs with as they are. Null locks none. */
@@ -262,6 +287,7 @@ export async function createScenario(
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   await assertFilterInOrganization(organizationId, input.savedFilterId ?? null);
   await assertLockablePlan(input.lockedWorkPlanId ?? null);
+  const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
   return prisma.scenario.create({
     data: {
       organizationId,
@@ -278,6 +304,7 @@ export async function createScenario(
       assumptions: {
         create: assumptionRows(input.assumptions),
       },
+      assetTypes: { create: assetTypeIds.map((assetTypeId) => ({ assetTypeId })) },
     },
   });
 }
@@ -310,6 +337,8 @@ export async function updateScenario(
     leadTimeSetId?: string | null;
     /** Which assets it runs over. Null is the whole network. */
     savedFilterId?: string | null;
+    /** Which modelled asset types it runs over. Empty is all of them. */
+    assetTypeIds?: string[];
     /** The set it belongs to. Null takes it out of any set. */
     scenarioSetId?: string | null;
     /** A work plan whose projects it runs with as they are. Null locks none. */
@@ -327,8 +356,12 @@ export async function updateScenario(
   }
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   await assertLockablePlan(input.lockedWorkPlanId ?? null);
+  const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
 
   await prisma.$transaction([
+    // Replaced wholesale, like the assumptions below.
+    prisma.scenarioAssetType.deleteMany({ where: { scenarioId } }),
+    prisma.scenarioAssetType.createMany({ data: assetTypeIds.map((assetTypeId) => ({ scenarioId, assetTypeId })) }),
     prisma.scenario.update({
       where: { id: scenarioId },
       data: {
@@ -386,6 +419,7 @@ export async function loadScenarioRun(
       scenarioSet: { select: { baseYear: true, planningPeriodYears: true } },
       savedFilter: { select: { id: true, name: true } },
       lockedWorkPlan: { select: { id: true, name: true } },
+      assetTypes: { select: { assetTypeId: true, assetType: { select: { name: true } } } },
     },
   });
   if (!scenario) return null;
@@ -407,7 +441,11 @@ export async function loadScenarioRun(
   const assumptions = effectiveAssumptions(scenario.assumptions, scenario.scenarioSet);
   const [simAssets, library, combinations, weights, categories, funding, selection, curvesFor, criticality, leadTimes] =
     await Promise.all([
-    buildSimAssets(organizationId, only),
+    buildSimAssets(
+      organizationId,
+      only,
+      scenario.assetTypes.map((t) => t.assetTypeId)
+    ),
     // Run against the configured library so edited treatments and decision
     // trees change what a scenario is allowed to fund.
     loadTreatmentDefs(organizationId),
@@ -430,6 +468,12 @@ export async function loadScenarioRun(
     // leaves everything immediate, is the engine this app has always had.
     resolveLeadTimes(organizationId, scenario.leadTimeSetId),
   ]);
+
+  if (simAssets.length === 0 && scenario.assetTypes.length > 0) {
+    throw new Error(
+      `${scenario.assetTypes.map((t) => t.assetType.name).join(" and ")} ${scenario.assetTypes.length === 1 ? "has" : "have"} no active assets${scenario.savedFilter ? ` in ${scenario.savedFilter.name}` : ""}, so this scenario has nothing to run over.`
+    );
+  }
 
   const locked = scenario.lockedWorkPlan
     ? await lockedProjects(scenario.lockedWorkPlan.id, new Set(simAssets.map((a) => a.id)))
@@ -928,6 +972,9 @@ export type ScenarioSummary = {
    * be attached. */
   savedFilterId: string | null;
   savedFilterName: string | null;
+  /** The modelled asset types it is narrowed to. Empty is all of them. */
+  assetTypeIds: string[];
+  assetTypeNames: string[];
   /** The work plan whose projects this scenario locks, if any. */
   lockedWorkPlanId: string | null;
   lockedWorkPlanName: string | null;
@@ -999,6 +1046,7 @@ export async function listScenarios(
       leadTimeSet: { select: { name: true } },
       savedFilter: { select: { name: true } },
       lockedWorkPlan: { select: { name: true } },
+      assetTypes: { select: { assetTypeId: true, assetType: { select: { name: true } } } },
     },
     orderBy: { createdAt: "asc" },
   });
@@ -1041,6 +1089,8 @@ export async function listScenarios(
       leadTimeSetName: s.leadTimeSet?.name ?? null,
       savedFilterId: s.savedFilterId,
       savedFilterName: s.savedFilter?.name ?? null,
+      assetTypeIds: s.assetTypes.map((t) => t.assetTypeId),
+      assetTypeNames: s.assetTypes.map((t) => t.assetType.name).sort(),
       lockedWorkPlanId: s.lockedWorkPlanId,
       lockedWorkPlanName: s.lockedWorkPlan?.name ?? null,
       lockedRun: lockedCount

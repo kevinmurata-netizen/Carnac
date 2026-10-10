@@ -6,6 +6,7 @@ import { listFormulaChoices } from "@/server/criticality";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { getScenarioOptionCatalogue } from "@/server/scenario-options";
+import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { listLeadTimeSets } from "@/server/lead-times";
 import { listSavedFilters } from "@/server/saved-filters";
@@ -52,6 +53,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     lockedPlanChoices,
     catalogue,
     estimate,
+    assetTypeChoices,
   ] = await Promise.all([
     getAnnualBudget(organizationId),
     listFormulaChoices(organizationId),
@@ -65,6 +67,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     // The set's period, since that is what the run will cover. The first run
     // then measures itself and every later estimate comes from that.
     estimateNewRunMs(organizationId, set.planningPeriodYears),
+    listModelledAssetTypes(organizationId),
     ]);
 
   const scenarioSetChoices = [
@@ -130,6 +133,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
             filterChoices={filterChoices}
+            assetTypeChoices={assetTypeChoices}
             lockedPlanChoices={lockedPlanChoices}
             scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}

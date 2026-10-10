@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-10",
+    title: "Scenarios over chosen asset types",
+    summary:
+      "Where several asset types are modelled, a scenario can run over some of them rather than all, and its treatment choices are kept apart by asset type. With one modelled type nothing looks different, and every existing scenario runs as before.",
+    changes: [
+      "An Asset types choice on the scenario form, shown only when more than one type is modelled. Its averages, backlog and condition target are then those types' alone. Ticking every type means all of them, so a type modelled later joins the scenario.",
+      "Copying a scenario copies its asset types, and the read-only summary names them.",
+      "A scenario's treatment choices are kept by treatment rather than by name, so two asset types can each have a \"Replacement\" without one standing in for the other. With several types, each treatment says which type it is for.",
+    ],
+    note: "One migration: a new scenario_asset_types table. Existing scenarios have no rows in it, which means every modelled type.",
+  },
+  {
     date: "2026-10-09",
     title: "Each asset type scored by its own condition, risk and Markov models",
     summary:

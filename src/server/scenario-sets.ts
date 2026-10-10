@@ -184,6 +184,7 @@ const SCENARIO_COPY_INCLUDE = {
   assumptions: { select: { key: true, value: true } },
   treatmentOptions: { select: { treatmentId: true } },
   combinationOptions: { select: { combinationId: true } },
+  assetTypes: { select: { assetTypeId: true } },
 } satisfies Prisma.ScenarioInclude;
 
 type CopyableScenario = Prisma.ScenarioGetPayload<{ include: typeof SCENARIO_COPY_INCLUDE }>;
@@ -226,6 +227,7 @@ function scenarioCopyData(
     },
     treatmentOptions: { create: scenario.treatmentOptions.map((t) => ({ treatmentId: t.treatmentId })) },
     combinationOptions: { create: scenario.combinationOptions.map((c) => ({ combinationId: c.combinationId })) },
+    assetTypes: { create: scenario.assetTypes.map((t) => ({ assetTypeId: t.assetTypeId })) },
   };
 }
 

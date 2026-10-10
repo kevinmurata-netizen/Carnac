@@ -30,6 +30,9 @@ export type ScenarioValues = {
   categoryFundingPlanId: string;
   leadTimeSetId: string;
   savedFilterId: string;
+  /** The modelled asset types it is narrowed to, sorted and comma-joined so it
+   * compares like every other field. Empty is all of them. */
+  assetTypeIds: string;
   scenarioSetId: string;
   fundingMode: string;
   /** "on" when a budget scenario shows a condition target; a target run
@@ -58,6 +61,8 @@ export type ScenarioFieldDefaults = {
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
   savedFilterId: string | null;
+  /** Empty, or absent, is every modelled asset type. */
+  assetTypeIds?: string[];
   scenarioSetId: string | null;
   fundingMode: string;
   targetInYears: number;
@@ -85,6 +90,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     categoryFundingPlanId: d.categoryFundingPlanId ?? "",
     leadTimeSetId: d.leadTimeSetId ?? "",
     savedFilterId: d.savedFilterId ?? "",
+    assetTypeIds: [...(d.assetTypeIds ?? [])].sort().join(","),
     scenarioSetId: d.scenarioSetId ?? "",
     fundingMode: d.fundingMode,
     hasConditionTarget: d.conditionTarget != null ? "on" : "",
@@ -136,6 +142,9 @@ export type LeadTimeChoice = { id: string; name: string; isDefault: boolean; sum
  * before choosing it as a limit. */
 export type FilterChoice = { id: string; name: string; criteriaCount: number };
 
+/** The modelled asset types a scenario can be narrowed to. */
+export type AssetTypeChoice = { id: string; name: string };
+
 /** The work plans whose projects a scenario can lock. Never a scenario run's
  * own programme, which changes every time that scenario runs. */
 export type LockedPlanChoice = { id: string; name: string; startYear: number; endYear: number; projectCount: number };
@@ -165,6 +174,7 @@ export function ScenarioFields({
   fundingPlanChoices = [],
   leadTimeChoices = [],
   filterChoices = [],
+  assetTypeChoices = [],
   lockedPlanChoices = [],
   scenarioSetChoices = [],
   lockSet = false,
@@ -180,6 +190,8 @@ export function ScenarioFields({
   fundingPlanChoices?: FundingPlanChoice[];
   leadTimeChoices?: LeadTimeChoice[];
   filterChoices?: FilterChoice[];
+  /** Offered only when more than one asset type is modelled. */
+  assetTypeChoices?: AssetTypeChoice[];
   lockedPlanChoices?: LockedPlanChoice[];
   scenarioSetChoices?: ScenarioSetChoice[];
   /** Show the chosen set as fixed rather than as a choice. */
@@ -288,6 +300,17 @@ export function ScenarioFields({
             network&apos;s. Filters are built under Settings &rsaquo; Filters.
           </p>
         </div>
+      )}
+
+      {/* Beside the filter, because it narrows the same thing: which assets
+          the run is about. Only once there is more than one type to choose. */}
+      {assetTypeChoices.length > 1 && (
+        <AssetTypeField
+          choices={assetTypeChoices}
+          value={values.assetTypeIds}
+          changed={!!saved && values.assetTypeIds !== saved.assetTypeIds}
+          onChange={(assetTypeIds) => onChange({ assetTypeIds })}
+        />
       )}
 
       {/* Work already committed, which the run takes as given rather than
@@ -737,6 +760,58 @@ export function ScenarioFields({
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Which modelled asset types the run covers, as a box per type. Every box
+ * ticked is stored as no choice at all, so a type modelled later joins the
+ * scenario; the last ticked box cannot be unticked, since a run over no asset
+ * types has nothing to do.
+ */
+function AssetTypeField({
+  choices,
+  value,
+  changed,
+  onChange,
+}: {
+  choices: AssetTypeChoice[];
+  value: string;
+  changed: boolean;
+  onChange: (value: string) => void;
+}) {
+  const all = choices.map((c) => c.id);
+  const chosen = value ? value.split(",") : all;
+  const toggle = (id: string) => {
+    const next = chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id];
+    onChange(next.length === all.length ? "" : [...next].sort().join(","));
+  };
+  return (
+    <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+      <div className="text-sm font-medium">Asset types</div>
+      {/* Posted only when narrowed: nothing posted is every modelled type. */}
+      {value && chosen.map((id) => <input key={id} type="hidden" name="assetTypeIds" value={id} />)}
+      <div className={`flex flex-wrap gap-x-5 gap-y-2 rounded-md border px-3 py-2 ${changed ? "border-amber-500" : ""}`}>
+        {choices.map((c) => {
+          const on = chosen.includes(c.id);
+          return (
+            <label key={c.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={on}
+                disabled={on && chosen.length === 1}
+                onChange={() => toggle(c.id)}
+              />
+              {c.name}
+            </label>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Run this scenario over some of the modelled asset types rather than all of them. Its averages, backlog and
+        condition target are then those types&apos; alone.
+      </p>
     </div>
   );
 }

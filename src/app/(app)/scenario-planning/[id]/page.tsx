@@ -15,6 +15,7 @@ import {
   getScenarioOptionCatalogue,
   type ScenarioOptionCatalogue,
 } from "@/server/scenario-options";
+import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { AFTER_TARGET_LABELS, STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
@@ -37,6 +38,7 @@ import type {
   FundingPlanChoice,
   LeadTimeChoice,
   FilterChoice,
+  AssetTypeChoice,
   LockedPlanChoice,
   ScenarioSetChoice,
 } from "../scenario-fields";
@@ -75,6 +77,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     catalogue,
     estimate,
     sets,
+    assetTypeChoices,
   ] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
@@ -88,6 +91,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
     listScenarioSets(organizationId),
+    listModelledAssetTypes(organizationId),
     ]);
   if (!scenario) notFound();
 
@@ -157,6 +161,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
     leadTimeSetId: scenario.leadTimeSetId ?? null,
     savedFilterId: scenario.savedFilterId ?? null,
+    assetTypeIds: scenario.assetTypeIds,
     lockedWorkPlanId: scenario.lockedWorkPlanId ?? null,
     programmedFunding: a.programmedFunding,
     fundingMode: a.fundingMode,
@@ -378,7 +383,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={assetTypeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -475,7 +480,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               answer: what each year costs. */}
           {scenario.target && <TargetSpendCard scenario={scenario} />}
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={assetTypeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -787,6 +792,7 @@ function AssumptionsCard({
   fundingPlanChoices,
   leadTimeChoices,
   filterChoices,
+  assetTypeChoices,
   lockedPlanChoices,
   scenarioSetChoices,
   catalogue,
@@ -799,6 +805,7 @@ function AssumptionsCard({
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
   filterChoices: FilterChoice[];
+  assetTypeChoices: AssetTypeChoice[];
   lockedPlanChoices: LockedPlanChoice[];
   scenarioSetChoices: ScenarioSetChoice[];
   catalogue: ScenarioOptionCatalogue;
@@ -825,6 +832,7 @@ function AssumptionsCard({
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
             filterChoices={filterChoices}
+            assetTypeChoices={assetTypeChoices}
             lockedPlanChoices={lockedPlanChoices}
             scenarioSetChoices={scenarioSetChoices}
             treatmentChoices={catalogue.treatments}
@@ -854,6 +862,9 @@ function AssumptionsCard({
               relining looks like a badly performing scenario until you know
               that is what it was asked to do. */}
           <Field label="Considers" value={describeSelection(catalogue)} />
+          {scenario.assetTypeNames.length > 0 && (
+            <Field label="Asset Types" value={scenario.assetTypeNames.join(", ")} />
+          )}
         </CardContent>
       )}
     </Card>

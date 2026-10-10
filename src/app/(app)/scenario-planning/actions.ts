@@ -70,6 +70,7 @@ function parseForm(formData: FormData): {
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
   savedFilterId: string | null;
+  assetTypeIds: string[];
   scenarioSetId: string | null;
   lockedWorkPlanId: string | null;
 } {
@@ -111,6 +112,9 @@ function parseForm(formData: FormData): {
     // Empty means the whole network, which is what every scenario ran over
     // before a filter could be attached.
     savedFilterId: d.savedFilterId?.trim() || null,
+    // One entry per chosen type, and none when the scenario covers them all.
+    // The server checks each is a type this organization models.
+    assetTypeIds: formData.getAll("assetTypeIds").map(String).filter(Boolean),
     // Empty means "not in a set". The server checks the set belongs to this
     // organization before joining it.
     scenarioSetId: d.scenarioSetId?.trim() || null,
