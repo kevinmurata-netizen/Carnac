@@ -9,9 +9,10 @@ import { modelledType } from "@/server/modelled-asset-type";
  */
 
 export type OptionChoice = {
-  /** The stable key the form posts back. Treatments go by name because that is
-   * what a built option carries; combinations go by id because their names are
-   * editable and a rename must not silently change what a scenario runs. */
+  /** The stable key the form posts back: the id, for treatments and
+   * combinations alike. Not the name, which is editable — a rename must not
+   * silently change what a scenario runs — and which two asset types can
+   * share. */
   key: string;
   id: string;
   name: string;
@@ -25,7 +26,7 @@ export type ScenarioOptionCatalogue = {
   limitsOptions: boolean;
   treatments: OptionChoice[];
   combinations: OptionChoice[];
-  /** Treatment names this scenario has selected. */
+  /** Treatment ids this scenario has selected. */
   selectedTreatments: string[];
   /** Combination ids this scenario has selected. */
   selectedCombinations: string[];
@@ -47,8 +48,8 @@ export async function getScenarioOptionCatalogue(
   const [treatments, combinations, scenario] = await Promise.all([
     prisma.treatment.findMany({
       where: { assetType: modelledType(organizationId) },
-      select: { id: true, name: true, description: true, applicability: true },
-      orderBy: { name: "asc" },
+      select: { id: true, name: true, description: true, applicability: true, assetType: { select: { name: true } } },
+      orderBy: [{ assetType: { name: "asc" } }, { name: "asc" }],
     }),
     prisma.treatmentCombination.findMany({
       where: { organizationId },
@@ -66,23 +67,29 @@ export async function getScenarioOptionCatalogue(
           where: { id: scenarioId, organizationId },
           select: {
             limitsOptions: true,
-            treatmentOptions: { select: { treatment: { select: { name: true } } } },
+            treatmentOptions: { select: { treatmentId: true } },
             combinationOptions: { select: { combinationId: true } },
           },
         })
       : Promise.resolve(null),
   ]);
+  // With several modelled types, a treatment says which it is for: each can
+  // have its own "Replacement".
+  const severalTypes = new Set(treatments.map((t) => t.assetType.name)).size > 1;
 
   return {
     limitsOptions: scenario?.limitsOptions ?? false,
-    treatments: treatments.map((t) => ({
-      key: t.name,
-      id: t.id,
-      name: t.name,
-      description: t.description,
-      detail: ((t.applicability ?? {}) as Applicability).category ?? "Repair",
-      enabled: true,
-    })),
+    treatments: treatments.map((t) => {
+      const category = ((t.applicability ?? {}) as Applicability).category ?? "Repair";
+      return {
+        key: t.id,
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        detail: severalTypes ? `${t.assetType.name} · ${category}` : category,
+        enabled: true,
+      };
+    }),
     combinations: combinations.map((c) => ({
       key: c.id,
       id: c.id,
@@ -93,7 +100,7 @@ export async function getScenarioOptionCatalogue(
       // promise the run cannot keep. Shown, but said to be off.
       enabled: c.enabled,
     })),
-    selectedTreatments: scenario?.treatmentOptions.map((o) => o.treatment.name) ?? [],
+    selectedTreatments: scenario?.treatmentOptions.map((o) => o.treatmentId) ?? [],
     selectedCombinations: scenario?.combinationOptions.map((o) => o.combinationId) ?? [],
   };
 }
@@ -114,7 +121,7 @@ export async function resolveOptionSelection(
     where: { id: scenarioId, organizationId },
     select: {
       limitsOptions: true,
-      treatmentOptions: { select: { treatment: { select: { name: true } } } },
+      treatmentOptions: { select: { treatmentId: true } },
       combinationOptions: { select: { combinationId: true } },
     },
   });
@@ -122,14 +129,14 @@ export async function resolveOptionSelection(
   if (!scenario || !scenario.limitsOptions) return CONSIDER_ALL;
 
   return {
-    treatments: new Set(scenario.treatmentOptions.map((o) => o.treatment.name)),
+    treatments: new Set(scenario.treatmentOptions.map((o) => o.treatmentId)),
     combinations: new Set(scenario.combinationOptions.map((o) => o.combinationId)),
   };
 }
 
 export type OptionSelectionInput = {
   limitsOptions: boolean;
-  /** Treatment names. Resolved to ids here rather than trusted from the form. */
+  /** Treatment ids. Checked here rather than trusted from the form. */
   treatments: string[];
   combinations: string[];
 };
@@ -161,7 +168,7 @@ export async function setScenarioOptions(
   const [treatments, combinations] = await Promise.all([
     input.treatments.length > 0
       ? prisma.treatment.findMany({
-          where: { name: { in: input.treatments }, assetType: modelledType(organizationId) },
+          where: { id: { in: input.treatments }, assetType: modelledType(organizationId) },
           select: { id: true },
         })
       : Promise.resolve([]),
@@ -193,6 +200,7 @@ export async function setScenarioOptions(
  * matters as much as its budget but there is no room to list it. */
 export function describeSelection(catalogue: {
   limitsOptions: boolean;
+  treatments: Array<{ key: string; name: string }>;
   selectedTreatments: string[];
   selectedCombinations: string[];
 }): string {
@@ -201,7 +209,9 @@ export function describeSelection(catalogue: {
   const t = catalogue.selectedTreatments.length;
   const c = catalogue.selectedCombinations.length;
   if (t === 0 && c === 0) return "Nothing selected";
-  if (t === 1 && c === 0) return catalogue.selectedTreatments[0];
+  if (t === 1 && c === 0) {
+    return catalogue.treatments.find((x) => x.key === catalogue.selectedTreatments[0])?.name ?? "1 treatment";
+  }
   if (t === 0 && c === 1) return "1 combination";
 
   const parts: string[] = [];

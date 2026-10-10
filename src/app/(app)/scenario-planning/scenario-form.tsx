@@ -15,6 +15,7 @@ import {
   type FundingPlanChoice,
   type LeadTimeChoice,
   type FilterChoice,
+  type AssetTypeChoice,
   type LockedPlanChoice,
   type ScenarioSetChoice,
 } from "./scenario-fields";
@@ -56,6 +57,7 @@ export function ScenarioEditForm({
   fundingPlanChoices,
   leadTimeChoices,
   filterChoices,
+  assetTypeChoices,
   lockedPlanChoices,
   scenarioSetChoices,
   treatmentChoices,
@@ -69,6 +71,7 @@ export function ScenarioEditForm({
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
   filterChoices: FilterChoice[];
+  assetTypeChoices: AssetTypeChoice[];
   lockedPlanChoices: LockedPlanChoice[];
   scenarioSetChoices: ScenarioSetChoice[];
   treatmentChoices: OptionChoice[];
@@ -96,6 +99,7 @@ export function ScenarioEditForm({
         fundingPlanChoices={fundingPlanChoices}
         leadTimeChoices={leadTimeChoices}
         filterChoices={filterChoices}
+        assetTypeChoices={assetTypeChoices}
         lockedPlanChoices={lockedPlanChoices}
         scenarioSetChoices={scenarioSetChoices}
       />
@@ -149,6 +153,7 @@ export function ScenarioCreateForm({
   fundingPlanChoices,
   leadTimeChoices,
   filterChoices,
+  assetTypeChoices,
   lockedPlanChoices,
   scenarioSetChoices,
   treatmentChoices,
@@ -163,6 +168,7 @@ export function ScenarioCreateForm({
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
   filterChoices: FilterChoice[];
+  assetTypeChoices: AssetTypeChoice[];
   lockedPlanChoices: LockedPlanChoice[];
   scenarioSetChoices: ScenarioSetChoice[];
   treatmentChoices: OptionChoice[];
@@ -187,6 +193,7 @@ export function ScenarioCreateForm({
         fundingPlanChoices={fundingPlanChoices}
         leadTimeChoices={leadTimeChoices}
         filterChoices={filterChoices}
+        assetTypeChoices={assetTypeChoices}
         lockedPlanChoices={lockedPlanChoices}
         scenarioSetChoices={scenarioSetChoices}
         lockSet

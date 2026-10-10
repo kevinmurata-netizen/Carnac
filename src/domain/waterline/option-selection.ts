@@ -14,7 +14,8 @@ import type { TreatmentOption } from "./treatment";
  * of the truth.
  */
 export type OptionSelection = {
-  /** Treatment names, matching `TreatmentOption.label` for a lone treatment. */
+  /** Treatment ids, matching the lone member of a single-treatment option.
+   * Ids rather than names: two asset types can each have a "Replacement". */
   treatments: ReadonlySet<string>;
   /** Combination ids, matching the `combo:<id>` half of an option id. */
   combinations: ReadonlySet<string>;
@@ -39,7 +40,8 @@ export function allowsOption(selection: OptionSelection, option: TreatmentOption
   if (option.id.startsWith("combo:")) {
     return selection.combinations.has(option.id.slice("combo:".length));
   }
-  return selection.treatments.has(option.label);
+  const id = option.members[0]?.id;
+  return id != null && selection.treatments.has(id);
 }
 
 /** Convenience for the several callers that hold a list. */

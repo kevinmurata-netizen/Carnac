@@ -156,6 +156,8 @@ model AssetType {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  scenarios ScenarioAssetType[]
+
   @@map("asset_types")
 }
 
@@ -1410,6 +1412,10 @@ model Scenario {
   treatmentOptions   ScenarioTreatment[]
   combinationOptions ScenarioCombination[]
 
+  /// Which modelled asset types it runs over. None is every modelled type,
+  /// which is what every scenario ran over before this existed.
+  assetTypes ScenarioAssetType[]
+
   /// Wall-clock milliseconds the last successful run took. The only honest
   /// basis for telling someone how long the next one will take: a run is a
   /// single synchronous call with no way to report its own progress, so the
@@ -1488,6 +1494,18 @@ model ScenarioSet {
 
   @@unique([organizationId, name])
   @@map("scenario_sets")
+}
+
+/// One modelled asset type a scenario runs over.
+model ScenarioAssetType {
+  scenarioId  String
+  scenario    Scenario  @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  assetTypeId String
+  assetType   AssetType @relation(fields: [assetTypeId], references: [id], onDelete: Cascade)
+
+  @@id([scenarioId, assetTypeId])
+  @@index([assetTypeId])
+  @@map("scenario_asset_types")
 }
 
 /// One treatment a scenario is allowed to consider.
