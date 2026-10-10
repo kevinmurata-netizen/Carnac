@@ -14,6 +14,7 @@ import {
   updateRiskModel,
   updateDeteriorationModel,
   updateAssetType,
+  updateAssetTypeMeasures,
   createAssetType,
   updateInspectionTemplate,
   createInspectionTemplate,
@@ -187,6 +188,26 @@ export async function saveAssetTypeAction(
     });
     revalidateAll(ASSET_TYPES_CARD);
     return { status: "success", message: "Asset type updated." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function saveMeasuresAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess("/settings/asset-types");
+    const codes: Record<string, string> = {};
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith("measure_")) codes[key.slice("measure_".length)] = String(value);
+    }
+    const name = await updateAssetTypeMeasures(session.user.organizationId, String(formData.get("id") ?? ""), codes);
+    // Measures feed every forecast, risk score and plan, so everything that
+    // shows one is stale.
+    revalidateAll("/settings/asset-types");
+    return { status: "success", message: `${name}'s measures saved. They apply to the next run, recompute or plan.` };
   } catch (e) {
     return fail(e);
   }

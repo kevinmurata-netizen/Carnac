@@ -9,6 +9,7 @@ import { AssetTypeList } from "./asset-type-list";
 import {
   createAssetTypeAction,
   saveAssetTypeAction,
+  saveMeasuresAction,
   createAttributeAction,
   saveAttributeAction,
   deleteAttributeAction,
@@ -65,6 +66,7 @@ export default async function AssetTypesPage() {
         canEdit={canEdit}
         canEditTemplates={canEditTemplates}
         onSaveType={saveAssetTypeAction}
+        onSaveMeasures={saveMeasuresAction}
         onCreateType={createAssetTypeAction}
         onCreateAttribute={createAttributeAction}
         onSaveAttribute={saveAttributeAction}

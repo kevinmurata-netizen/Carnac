@@ -23,6 +23,20 @@ export const WATERLINE_ATTRIBUTES = {
 export type WaterlineAttributeCode =
   (typeof WATERLINE_ATTRIBUTES)[keyof typeof WATERLINE_ATTRIBUTES];
 
+/**
+ * Which waterline attribute holds each measure the engine reads — the seed
+ * for a waterline type's `measures`. Everything else reads them through the
+ * asset type (src/server/measures.ts), never by these codes.
+ */
+export const WATERLINE_MEASURES = {
+  material: WATERLINE_ATTRIBUTES.MATERIAL,
+  diameter: WATERLINE_ATTRIBUTES.DIAMETER,
+  length: WATERLINE_ATTRIBUTES.LENGTH,
+  customersServed: WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED,
+  criticality: WATERLINE_ATTRIBUTES.CRITICALITY,
+  customerType: WATERLINE_ATTRIBUTES.CUSTOMER_TYPE,
+} as const;
+
 export const MATERIAL_OPTIONS = [
   "Cast Iron",
   "Ductile Iron",

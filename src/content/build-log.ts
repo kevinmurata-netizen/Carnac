@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-10",
+    title: "Measures set per asset type",
+    summary:
+      "The few facts the engine reads from an asset (material, size, length, customers served, criticality and customer type) now come from whichever attribute each asset type names for them, rather than from fixed waterline field codes. Nothing changes for water today.",
+    changes: [
+      "Settings › Asset Types shows each type's measures and which attribute holds each one, with an editor that offers only fields of a suitable kind: a number for size, length and customers served, text or a list for the others.",
+      "Scenarios, Treatment Planning, work plans, risk, life-cycle cost, forecasts, reports and the inventory's filters, columns and totals all read measures through the asset's own type.",
+      "A measure a type has no attribute for reads as unknown, as a blank field always has.",
+    ],
+    note: "One migration: a measures setting on asset types, filled for the waterline with the fields the engine already read.",
+  },
+  {
+    date: "2026-10-10",
     title: "Scenarios over chosen asset types",
     summary:
       "Where several asset types are modelled, a scenario can run over some of them rather than all, and its treatment choices are kept apart by asset type. With one modelled type nothing looks different, and every existing scenario runs as before.",

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { listMaterials, listCriticalities, listServiceAreas, listPressureZones } from "@/server/assets";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { ageInYears } from "@/lib/format";
 import type { DecisionField, DecisionInput } from "@/domain/waterline/decision-tree";
 
@@ -38,10 +38,11 @@ export async function loadRuleSamples(organizationId: string): Promise<RuleSampl
     .map((f) => Math.min(measurements.length - 1, Math.round(f * (measurements.length - 1))))
     .filter((v, i, all) => all.indexOf(v) === i);
 
+  const measuresOf = await getMeasureCodes(organizationId);
   return picks.map((index) => {
     const measurement = measurements[index];
     const asset = measurement.asset;
-    const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
+    const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const risk = asset.riskAssessments[0];
     const age = ageInYears(asset.installationDate);
     const life = asset.expectedUsefulLife ?? 75;
@@ -50,15 +51,15 @@ export async function loadRuleSamples(organizationId: string): Promise<RuleSampl
       condition: Math.round(measurement.score * 10) / 10,
       ageYears: age,
       ageRatio: age != null ? Math.round((age / life) * 100) / 100 : null,
-      diameterInches: attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null,
-      lengthFt: attr(WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null,
-      customersServed: attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null,
+      diameterInches: m.diameter,
+      lengthFt: m.length,
+      customersServed: m.customersServed,
       riskScore: risk?.riskScore ?? null,
       pof: risk?.probabilityScore ?? null,
       cof: risk?.consequenceScore ?? null,
       failuresLast10Years: asset.failureEvents.length,
-      material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
-      criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+      material: m.material,
+      criticality: m.criticality,
       serviceArea: asset.location?.serviceArea ?? null,
       pressureZone: asset.location?.pressureZone ?? null,
     };

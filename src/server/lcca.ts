@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import {
   computeLcca,
   DEFAULT_LCCA_ASSUMPTIONS,
@@ -54,17 +54,18 @@ export async function getAssetLcca(
   });
   if (!asset) return null;
 
-  const attr = (code: string) => asset.attributeValues.find((v) => v.definition.code === code);
+  const measuresOf = await getMeasureCodes(organizationId);
+  const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
   const risk = asset.riskAssessments[0];
   const conditionScore = asset.conditionMeasurements[0]?.score ?? null;
-  const diameterInches = attr(WATERLINE_ATTRIBUTES.DIAMETER)?.numberValue ?? null;
-  const lengthFt = attr(WATERLINE_ATTRIBUTES.LENGTH)?.numberValue ?? null;
-  const customersServed = attr(WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED)?.numberValue ?? null;
+  const diameterInches = m.diameter;
+  const lengthFt = m.length;
+  const customersServed = m.customersServed;
   const currentPof = risk?.probabilityScore ?? 3;
 
   const ctx: AssetTreatmentContext = {
     conditionScore,
-    material: attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
+    material: m.material,
     diameterInches,
     lengthFt,
     customersServed,
@@ -75,7 +76,7 @@ export async function getAssetLcca(
     ageYears: ageInYears(asset.installationDate),
     expectedUsefulLife: asset.expectedUsefulLife ?? 75,
     assetTypeId: asset.assetTypeId,
-    criticality: attr(WATERLINE_ATTRIBUTES.CRITICALITY)?.textValue ?? null,
+    criticality: m.criticality,
     serviceArea: asset.location?.serviceArea ?? null,
     pressureZone: asset.location?.pressureZone ?? null,
   };
@@ -85,7 +86,7 @@ export async function getAssetLcca(
 
   // How long before this asset is exhausted if nothing resets its condition.
   const curve = curveFor(
-    attr(WATERLINE_ATTRIBUTES.MATERIAL)?.textValue ?? null,
+    m.material,
     (await getCurvesByAssetType(organizationId))(asset.assetTypeId)
   );
   const currentCurveAge =

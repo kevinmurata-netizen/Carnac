@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { auth } from "@/lib/auth";
 import {
   listAssets,
@@ -9,13 +10,11 @@ import {
   listPressureZones,
   listAssetTypes,
   listTypedAssets,
-  flattenAttributes,
   type TypedAssetList,
 } from "@/server/assets";
 import { listSavedFilters } from "@/server/saved-filters";
 import { rollUpAssets, type AssetRollup } from "@/server/rollup";
 import { assetFiltersFromParams } from "@/server/grid-params";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetFilterBar } from "@/components/filters/asset-filter-bar";
 import { SavedFilterSelect } from "@/components/filters/saved-filter-select";
@@ -72,7 +71,7 @@ export default async function AssetsPage({
   // never disagree with the screen.
   const filters = await assetFiltersFromParams(organizationId, params);
 
-  const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones, savedFilters] =
+  const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones, savedFilters, measuresOf] =
     await Promise.all([
       listAssets(organizationId, filters),
       listMaterials(organizationId),
@@ -81,6 +80,7 @@ export default async function AssetsPage({
       listCustomerTypes(organizationId),
       listPressureZones(organizationId),
       listSavedFilters(organizationId),
+      getMeasureCodes(organizationId),
     ]);
 
   return (
@@ -143,7 +143,7 @@ export default async function AssetsPage({
                 </TableRow>
               )}
               {assets.map((asset) => {
-                const attrs = flattenAttributes(asset);
+                const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
                 const age = ageInYears(asset.installationDate);
                 return (
                   <TableRow key={asset.id}>
@@ -152,9 +152,9 @@ export default async function AssetsPage({
                         {asset.assetCode}
                       </Link>
                     </TableCell>
-                    <TableCell>{(attrs[WATERLINE_ATTRIBUTES.MATERIAL] as string) ?? "—"}</TableCell>
-                    <TableCell>{formatInches(attrs[WATERLINE_ATTRIBUTES.DIAMETER] as number)}</TableCell>
-                    <TableCell>{formatNumber(Math.round((attrs[WATERLINE_ATTRIBUTES.LENGTH] as number) ?? 0))}</TableCell>
+                    <TableCell>{m.material ?? "—"}</TableCell>
+                    <TableCell>{formatInches(m.diameter)}</TableCell>
+                    <TableCell>{formatNumber(Math.round(m.length ?? 0))}</TableCell>
                     <TableCell>{asset.installationDate ? asset.installationDate.getFullYear() : "—"}</TableCell>
                     <TableCell>{age ?? "—"}</TableCell>
                     <TableCell>
@@ -162,8 +162,8 @@ export default async function AssetsPage({
                     </TableCell>
                     <TableCell>{asset.location?.serviceArea ?? "—"}</TableCell>
                     <TableCell>
-                      {attrs[WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED]
-                        ? formatNumber(attrs[WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED] as number)
+                      {m.customersServed
+                        ? formatNumber(m.customersServed)
                         : "—"}
                     </TableCell>
                   </TableRow>

@@ -3,6 +3,7 @@ import { prisma } from "../src/lib/prisma";
 import bcrypt from "bcryptjs";
 import {
   WATERLINE_ATTRIBUTE_DEFINITIONS,
+  WATERLINE_MEASURES,
   JOINT_TYPE_OPTIONS,
   LINING_TYPE_OPTIONS,
   INSTALLATION_METHOD_OPTIONS,
@@ -271,6 +272,7 @@ async function main() {
       organizationId: org.id,
       // The demo network is water lines, so they are what the engine models.
       isModelled: true,
+      measures: WATERLINE_MEASURES,
     },
   });
 

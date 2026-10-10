@@ -12,6 +12,7 @@ import {
 import { chooseModelledAssetType, modelledType, resolveModelledAssetType } from "@/server/modelled-asset-type";
 import { findIndexModel, indexModelsByType } from "@/server/condition-model";
 import { isComponentScoped } from "@/domain/components/scope";
+import { MEASURE_ROLES, parseMeasureCodes, type MeasureCodes } from "@/server/measures";
 
 /**
  * Settings are the modelling configuration behind every number the system
@@ -394,6 +395,10 @@ export type AssetTypeDetail = {
   name: string;
   description: string | null;
   assetCount: number;
+  /** Whether the engine models it, which is when its measures are read. */
+  isModelled: boolean;
+  /** Which of its attributes holds each measure the engine reads. */
+  measures: MeasureCodes;
   attributes: AttributeDetail[];
   templates: TemplateDetail[];
 };
@@ -446,6 +451,8 @@ export async function listAssetTypeDetails(organizationId: string): Promise<Asse
     name: t.name,
     description: t.description,
     assetCount: t._count.assets,
+    isModelled: t.isModelled,
+    measures: parseMeasureCodes(t.measures),
     attributes: t.attributeDefinitions.map((d) => ({
       id: d.id,
       code: d.code,
@@ -467,6 +474,43 @@ export async function listAssetTypeDetails(organizationId: string): Promise<Asse
       inspectionCount: i._count.inspections,
     })),
   }));
+}
+
+/**
+ * Which of an asset type's attributes holds each measure the engine reads.
+ *
+ * Each named attribute must be one of the type's own, of a kind the role can
+ * use: a number for size, length and customers served, text or a list for the
+ * others. A role left blank reads as unknown, as a blank field does.
+ */
+export async function updateAssetTypeMeasures(
+  organizationId: string,
+  assetTypeId: string,
+  input: Record<string, string>
+) {
+  const assetType = await prisma.assetType.findFirst({
+    where: { id: assetTypeId, organizationId },
+    include: { attributeDefinitions: { select: { code: true, label: true, dataType: true } } },
+  });
+  if (!assetType) throw new Error("Asset type not found");
+
+  const measures: MeasureCodes = {};
+  for (const role of MEASURE_ROLES) {
+    const code = input[role.key]?.trim();
+    if (!code) continue;
+    const attribute = assetType.attributeDefinitions.find((d) => d.code === code);
+    if (!attribute) throw new Error(`${assetType.name} has no attribute "${code}" to use as ${role.label.toLowerCase()}`);
+    const fits = role.kind === "number" ? attribute.dataType === "NUMBER" : ["TEXT", "ENUM"].includes(attribute.dataType);
+    if (!fits) {
+      throw new Error(
+        `${attribute.label} can't be used as ${role.label.toLowerCase()}: it needs ${role.kind === "number" ? "a number" : "text or a list"} field`
+      );
+    }
+    measures[role.key] = code;
+  }
+
+  await prisma.assetType.update({ where: { id: assetType.id }, data: { measures } });
+  return assetType.name;
 }
 
 /** The templates screen: every form, said in terms of the type it is for. */
