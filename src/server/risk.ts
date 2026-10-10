@@ -8,6 +8,8 @@ import {
   RISK_MODEL_NAME,
   POF_WEIGHTS,
   COF_WEIGHTS,
+  DEFAULT_POF_FACTORS,
+  DEFAULT_COF_FACTORS,
   computePofFactors,
   computeCofFactors,
   combineFactors,
@@ -49,8 +51,8 @@ export async function ensureRiskModel(assetTypeId: string) {
     data: {
       assetTypeId,
       name: RISK_MODEL_NAME,
-      probabilityConfig: { weights: POF_WEIGHTS, scale: "1-5" },
-      consequenceConfig: { weights: COF_WEIGHTS, scale: "1-5" },
+      probabilityConfig: { weights: POF_WEIGHTS, scale: "1-5", factors: DEFAULT_POF_FACTORS },
+      consequenceConfig: { weights: COF_WEIGHTS, scale: "1-5", factors: DEFAULT_COF_FACTORS },
     },
   });
 }
@@ -72,7 +74,10 @@ async function recomputeRiskForAssetType(organizationId: string, assetTypeId: st
   const model = await ensureRiskModel(assetTypeId);
   // Scoring runs with the weights configured in Settings, not the seeded
   // constants, so a reweight changes the next recompute.
-  const { pof: pofWeights, cof: cofWeights } = await getRiskWeights(organizationId, assetTypeId);
+  const { pof: pofWeights, cof: cofWeights, pofFactors: pofDefs, cofFactors: cofDefs } = await getRiskWeights(
+    organizationId,
+    assetTypeId
+  );
   const tenYearsAgo = new Date(Date.now() - 10 * 365.25 * 24 * 60 * 60 * 1000);
 
   const assets = await prisma.asset.findMany({
@@ -106,14 +111,21 @@ async function recomputeRiskForAssetType(organizationId: string, assetTypeId: st
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       failuresLast10Years: asset.failureEvents.length,
       material: m.material,
-    }, pofWeights);
+      customersServed: m.customersServed,
+      criticality: m.criticality,
+      diameterInches: m.diameter,
+      customerType: m.customerType,
+      lengthFt: m.length,
+    }, pofWeights, pofDefs);
     const cofInputs = {
       customersServed: m.customersServed,
       criticality: m.criticality,
       diameterInches: m.diameter,
       customerType: m.customerType,
+      material: m.material,
+      lengthFt: m.length,
     };
-    const cofFactors = computeCofFactors(cofInputs, cofWeights);
+    const cofFactors = computeCofFactors(cofInputs, cofWeights, cofDefs);
 
     const pof = combineFactors(pofFactors);
     const cof = combineFactors(cofFactors);
@@ -124,7 +136,7 @@ async function recomputeRiskForAssetType(organizationId: string, assetTypeId: st
       ...cofFactors.map((f) => ({ factorName: `COF: ${f.name} (${f.observed})`, factorValue: f.rating, weight: f.weight })),
     ];
 
-    const derived = computeCriticalityScore(cofInputs, cofWeights);
+    const derived = computeCriticalityScore(cofInputs, cofWeights, cofDefs);
     const viaFormula = formula && formulaValues ? formulaValues.get(asset.id) : null;
 
     // Recorded either way so a stored score can always be explained by what

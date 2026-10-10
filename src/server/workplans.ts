@@ -18,7 +18,7 @@ import { effectiveAgeForCondition, evaluateCurve } from "@/domain/waterline/dete
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { loadCombinations } from "@/server/combinations";
-import { getCurvesByAssetType } from "@/server/settings";
+import { getCurvesByAssetType, getRiskFactorsByType } from "@/server/settings";
 import { modelledScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
@@ -317,6 +317,7 @@ async function buildCandidates(
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
 
   const measuresOf = await getMeasureCodes(organizationId);
+  const riskFactorsOf = await getRiskFactorsByType(organizationId);
   for (const asset of assets) {
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const risk = asset.riskAssessments[0];
@@ -344,6 +345,7 @@ async function buildCandidates(
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       assetTypeId: asset.assetTypeId,
+      cofFactors: riskFactorsOf(asset.assetTypeId).cof,
       criticality: criticalityRating,
       customerType,
       serviceArea: asset.location?.serviceArea ?? null,
@@ -368,16 +370,18 @@ async function buildCandidates(
     // about what a segment is worth.
     const criticality =
       asset.criticalityScores[0]?.score ??
-      computeCriticalityScore({ customersServed, criticality: criticalityRating, diameterInches, customerType }).score;
+      computeCriticalityScore(
+        { customersServed, criticality: criticalityRating, diameterInches, customerType, material: m.material, lengthFt },
+        undefined,
+        riskFactorsOf(asset.assetTypeId).cof
+      ).score;
 
     // Criticality-free consequence, so the multiplier is not also hiding
     // inside the risk term. §5.3.
-    const cofNoCriticality = benefitCof({
-      customersServed,
-      criticality: criticalityRating,
-      diameterInches,
-      customerType,
-    });
+    const cofNoCriticality = benefitCof(
+      { customersServed, criticality: criticalityRating, diameterInches, customerType, material: m.material, lengthFt },
+      riskFactorsOf(asset.assetTypeId).cof
+    );
 
     const scaled = scale.factors.get(asset.id);
     const scaleFactor = scaled?.factor ?? NEUTRAL_SCALE_FACTOR;
@@ -982,6 +986,7 @@ export async function assetTreatmentContext(
   if (!asset) return null;
 
   const measuresOf = await getMeasureCodes(organizationId);
+  const riskFactorsOf = await getRiskFactorsByType(organizationId);
   const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
   const risk = asset.riskAssessments[0];
   const pof = risk?.probabilityScore ?? 3;
@@ -1002,6 +1007,7 @@ export async function assetTreatmentContext(
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       assetTypeId: asset.assetTypeId,
+      cofFactors: riskFactorsOf(asset.assetTypeId).cof,
       criticality: m.criticality,
       customerType: m.customerType,
       serviceArea: asset.location?.serviceArea ?? null,

@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-11",
+    title: "Risk factors kept on each asset type's risk model",
+    summary:
+      "What probability and consequence of failure are rated on, and how each input maps to 1–5, now comes from each asset type's risk model rather than from code. Another asset class can be rated on its own factors. Nothing changes for water today.",
+    changes: [
+      "Each factor rates the asset's condition, its age against expected life, its recent failures, or one of its measures, by four breakpoints for a number or a table of ratings for a word.",
+      "Risk recompute, Treatment Planning, work plans and scenarios rate every asset on its own type's factors, including the consequence used for benefit and the fallback criticality.",
+      "The weights editor names each factor from the model, and saving weights keeps the factors they belong to.",
+    ],
+    note: "One migration: the waterline risk model's factors, stored exactly as the code had them.",
+  },
+  {
     date: "2026-10-10",
     title: "Measures set per asset type",
     summary:

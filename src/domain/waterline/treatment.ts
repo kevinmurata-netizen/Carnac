@@ -9,6 +9,7 @@
 // Definitions here are the seed values; they are written to Treatment rows so
 // administrators can retune applicability/cost/effects without code changes.
 
+import type { RiskFactorDef } from "./risk";
 import { ASSET_LABEL } from "@/config/labels";
 import {
   qualifiesUnderRules,
@@ -797,6 +798,9 @@ export type AssetTreatmentContext = {
   /** The asset's type: only that type's treatments are offered on it.
    * Absent means no restriction, for call sites with one asset type. */
   assetTypeId?: string | null;
+  /** Its type's consequence factors, for the benefit term and the fallback
+   * criticality. Absent rates the built-in (waterline) factors. */
+  cofFactors?: RiskFactorDef[];
   conditionScore: number | null;
   material: string | null;
   diameterInches: number | null;

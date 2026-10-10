@@ -26,7 +26,7 @@ import { parseRules } from "@/server/rules";
 import { createStandardRate } from "@/server/cost-rates";
 import { loadCombinations } from "@/server/combinations";
 import { buildLccaEvaluator } from "@/domain/waterline/lcca-evaluator";
-import { getCurvesByAssetType } from "@/server/settings";
+import { getCurvesByAssetType, getRiskFactorsByType } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
 import { modelledScaleFactors } from "@/server/scale-factors";
@@ -217,6 +217,7 @@ export async function buildContexts(organizationId: string, assetId?: string) {
   });
 
   const measuresOf = await getMeasureCodes(organizationId);
+  const riskFactorsOf = await getRiskFactorsByType(organizationId);
   return assets.map((asset) => {
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const risk = asset.riskAssessments[0];
@@ -233,6 +234,7 @@ export async function buildContexts(organizationId: string, assetId?: string) {
       ageYears: ageInYears(asset.installationDate),
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       assetTypeId: asset.assetTypeId,
+      cofFactors: riskFactorsOf(asset.assetTypeId).cof,
       criticality: m.criticality,
       customerType: m.customerType,
       serviceArea: asset.location?.serviceArea ?? null,
@@ -353,12 +355,17 @@ export async function getNetworkRecommendations(
 
     // Criticality-free consequence, so the multiplier below is not also
     // hiding inside the risk term.
-    const cofNoCriticality = benefitCof({
-      customersServed: ctx.customersServed,
-      criticality: ctx.criticality ?? null,
-      diameterInches: ctx.diameterInches,
-      customerType: ctx.customerType ?? null,
-    });
+    const cofNoCriticality = benefitCof(
+      {
+        customersServed: ctx.customersServed,
+        criticality: ctx.criticality ?? null,
+        diameterInches: ctx.diameterInches,
+        customerType: ctx.customerType ?? null,
+        material: ctx.material,
+        lengthFt: ctx.lengthFt,
+      },
+      ctx.cofFactors
+    );
 
     const option = enumerateOptions(ctx, library, combinations).find(
       (o) => o.label === rec.recommended!.name
@@ -400,12 +407,18 @@ export async function getNetworkRecommendations(
         criticalityScore:
           liveCriticality?.get(asset.id) ??
           asset.storedCriticality ??
-          computeCriticalityScore({
-            customersServed: ctx.customersServed,
-            criticality: ctx.criticality ?? null,
-            diameterInches: ctx.diameterInches,
-            customerType: ctx.customerType ?? null,
-          }).score,
+          computeCriticalityScore(
+            {
+              customersServed: ctx.customersServed,
+              criticality: ctx.criticality ?? null,
+              diameterInches: ctx.diameterInches,
+              customerType: ctx.customerType ?? null,
+              material: ctx.material,
+              lengthFt: ctx.lengthFt,
+            },
+            undefined,
+            ctx.cofFactors
+          ).score,
         scaleFactor: scale.factors.get(asset.id)?.factor ?? NEUTRAL_SCALE_FACTOR,
         categoryWeight: categoryWeight(chosenCategories.weights, rec.recommended.category),
       },

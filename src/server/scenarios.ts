@@ -34,7 +34,7 @@ import { resolveFundingPlan } from "@/server/category-funding";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveOptionSelection } from "@/server/scenario-options";
 import { loadCombinations } from "@/server/combinations";
-import { getCurvesByAssetType } from "@/server/settings";
+import { getCurvesByAssetType, getRiskFactorsByType } from "@/server/settings";
 import { modelledScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
@@ -95,6 +95,7 @@ export async function buildSimAssets(
   ]);
 
   const measuresOf = await getMeasureCodes(organizationId);
+  const riskFactorsOf = await getRiskFactorsByType(organizationId);
   return assets.map((asset) => {
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const material = m.material;
@@ -107,6 +108,7 @@ export async function buildSimAssets(
     return {
       id: asset.id,
       assetTypeId: asset.assetTypeId,
+      cofFactors: riskFactorsOf(asset.assetTypeId).cof,
       assetCode: asset.assetCode,
       material,
       diameterInches: m.diameter,
@@ -124,12 +126,18 @@ export async function buildSimAssets(
       // scenario and Treatment Planning agree about what an asset is worth.
       criticalityScore:
         asset.criticalityScores[0]?.score ??
-        computeCriticalityScore({
-          customersServed: m.customersServed,
-          criticality: m.criticality,
-          diameterInches: m.diameter,
-          customerType: m.customerType,
-        }).score,
+        computeCriticalityScore(
+          {
+            customersServed: m.customersServed,
+            criticality: m.criticality,
+            diameterInches: m.diameter,
+            customerType: m.customerType,
+            material: m.material,
+            lengthFt: m.length,
+          },
+          undefined,
+          riskFactorsOf(asset.assetTypeId).cof
+        ).score,
       scaleFactor: scale.factors.get(asset.id)?.factor ?? NEUTRAL_SCALE_FACTOR,
       serviceArea: asset.location?.serviceArea ?? null,
       pressureZone: asset.location?.pressureZone ?? null,

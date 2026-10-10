@@ -8,7 +8,15 @@
 // benefit side — otherwise the product is roughly criticality squared and
 // large mains dominate for a reason no reader can see.
 
-import { COF_WEIGHTS, combineFactors, computeCofFactors, type CofInputs } from "./risk";
+import {
+  COF_WEIGHTS,
+  DEFAULT_COF_FACTORS,
+  combineFactors,
+  computeCofFactors,
+  defaultWeights,
+  type CofInputs,
+  type RiskFactorDef,
+} from "./risk";
 import type { TreatmentOption } from "./treatment";
 
 /**
@@ -25,9 +33,15 @@ import type { TreatmentOption } from "./treatment";
  */
 export const BENEFIT_COF_WEIGHTS = { ...COF_WEIGHTS, CRITICALITY: 0 };
 
-/** Consequence of failure with criticality taken out, 1–5. */
-export function benefitCof(inputs: CofInputs): number {
-  return combineFactors(computeCofFactors(inputs, BENEFIT_COF_WEIGHTS));
+/**
+ * Consequence of failure with criticality taken out, 1–5, on the asset type's
+ * own consequence factors (the waterline's by default). The factor rating the
+ * criticality measure is the one weighted to zero, whatever it is called.
+ */
+export function benefitCof(inputs: CofInputs, defs: RiskFactorDef[] = DEFAULT_COF_FACTORS): number {
+  const weights = defaultWeights(defs);
+  for (const d of defs) if (d.source === "criticality") weights[d.key] = 0;
+  return combineFactors(computeCofFactors(inputs, weights, defs));
 }
 
 /** The three things a treatment achieves, in their natural units. */

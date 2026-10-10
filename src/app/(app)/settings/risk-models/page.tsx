@@ -78,7 +78,12 @@ export default async function RiskModelsPage({ searchParams }: { searchParams: P
                   </div>
                   {Object.entries(config[group]).map(([code, weight]) => (
                     <div key={code} className="flex justify-between text-xs">
-                      <span>{code}</span>
+                      <span>
+                        {(() => {
+                          const def = config[group === "pof" ? "pofFactors" : "cofFactors"].find((d) => d.key === code);
+                          return def?.label ?? def?.name ?? code;
+                        })()}
+                      </span>
                       <span className="tabular-nums text-muted-foreground">{weight}</span>
                     </div>
                   ))}

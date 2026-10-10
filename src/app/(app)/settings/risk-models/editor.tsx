@@ -11,19 +11,9 @@ import { SaveBar } from "../save-bar";
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-const FACTOR_LABELS: Record<string, string> = {
-  CONDITION: "Condition (WCI)",
-  AGE: "Age vs expected life",
-  FAILURE_HISTORY: "Failure history (10 yr)",
-  MATERIAL: "Material",
-  CUSTOMERS_SERVED: "Customers served",
-  CRITICALITY: "Criticality",
-  DIAMETER: "Diameter",
-  CUSTOMER_TYPE: "Customer type",
-};
-
-function label(code: string) {
-  return FACTOR_LABELS[code] ?? code;
+/** Each factor's label, from the model's own factor definitions. */
+function labelsOf(defs: Array<{ key: string; name: string; label?: string }>): Record<string, string> {
+  return Object.fromEntries(defs.map((d) => [d.key, d.label ?? d.name]));
 }
 
 export function RiskModelEditor({ config }: { config: RiskModelConfig }) {
@@ -50,12 +40,14 @@ export function RiskModelEditor({ config }: { config: RiskModelConfig }) {
         <WeightGroup
           title="Probability of Failure"
           prefix="pof"
+          labels={labelsOf(config.pofFactors)}
           weights={pof}
           onChange={(code, v) => setPof((p) => ({ ...p, [code]: v }))}
         />
         <WeightGroup
           title="Consequence of Failure"
           prefix="cof"
+          labels={labelsOf(config.cofFactors)}
           weights={cof}
           onChange={(code, v) => setCof((p) => ({ ...p, [code]: v }))}
         />
@@ -84,11 +76,13 @@ export function RiskModelEditor({ config }: { config: RiskModelConfig }) {
 function WeightGroup({
   title,
   prefix,
+  labels,
   weights,
   onChange,
 }: {
   title: string;
   prefix: string;
+  labels: Record<string, string>;
   weights: Record<string, number>;
   onChange: (code: string, value: number) => void;
 }) {
@@ -106,7 +100,7 @@ function WeightGroup({
             <div key={code} className="space-y-1.5">
               <div className="flex items-center justify-between gap-3">
                 <Label htmlFor={`${prefix}_${code}`} className="text-sm">
-                  {label(code)}
+                  {labels[code] ?? code}
                 </Label>
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                   {share.toFixed(0)}% of {title.split(" ")[0].toLowerCase()}
