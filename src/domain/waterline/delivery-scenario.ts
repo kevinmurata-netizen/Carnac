@@ -895,12 +895,17 @@ function rankCandidates(args: {
 
       const pof = ctx.pof ?? pofFromCondition(future.condition);
       const riskNow = pof * future.cof;
-      const cofNoCriticality = benefitCof({
-        customersServed: future.customersServed,
-        criticality: future.criticality,
-        diameterInches: future.diameterInches,
-        customerType: future.customerType,
-      });
+      const cofNoCriticality = benefitCof(
+        {
+          customersServed: future.customersServed,
+          criticality: future.criticality,
+          diameterInches: future.diameterInches,
+          customerType: future.customerType,
+          material: future.material,
+          lengthFt: future.lengthFt,
+        },
+        asset.cofFactors
+      );
       const lcca = buildLccaEvaluator(ctx, future.condition, args.library, args.curvesOf(asset), args.fallbackReplacement);
 
       for (const option of options) {

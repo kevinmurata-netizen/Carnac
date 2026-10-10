@@ -192,12 +192,17 @@ export async function rankOptions(
     const opts = filterOptions(selection, enumerateOptions(ctx, library, combinations));
     if (opts.length === 0) continue;
 
-    const cofNoCriticality = benefitCof({
-      customersServed: ctx.customersServed,
-      criticality: ctx.criticality ?? null,
-      diameterInches: ctx.diameterInches,
-      customerType: ctx.customerType ?? null,
-    });
+    const cofNoCriticality = benefitCof(
+      {
+        customersServed: ctx.customersServed,
+        criticality: ctx.criticality ?? null,
+        diameterInches: ctx.diameterInches,
+        customerType: ctx.customerType ?? null,
+        material: ctx.material,
+        lengthFt: ctx.lengthFt,
+      },
+      ctx.cofFactors
+    );
 
     // A chosen formula wins, then the stored score, then the risk-based
     // default. An asset the formula could not score keeps its stored value
@@ -206,12 +211,18 @@ export async function rankOptions(
     const criticality =
       liveCriticality?.get(asset.id) ??
       asset.storedCriticality ??
-      computeCriticalityScore({
-        customersServed: ctx.customersServed,
-        criticality: ctx.criticality ?? null,
-        diameterInches: ctx.diameterInches,
-        customerType: ctx.customerType ?? null,
-      }).score;
+      computeCriticalityScore(
+        {
+          customersServed: ctx.customersServed,
+          criticality: ctx.criticality ?? null,
+          diameterInches: ctx.diameterInches,
+          customerType: ctx.customerType ?? null,
+          material: ctx.material,
+          lengthFt: ctx.lengthFt,
+        },
+        undefined,
+        ctx.cofFactors
+      ).score;
 
     // One evaluator per asset, reused across its options. Building it per
     // option would repeat the whole deterioration walk for every candidate.

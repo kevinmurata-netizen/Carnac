@@ -8,6 +8,7 @@
 // untreated. No optimizer, no black box — Phase 7 adds the optimization layer
 // on top of this.
 
+import type { RiskFactorDef } from "./risk";
 import {
   curveFor,
   evaluateCurve,
@@ -190,6 +191,9 @@ export type SimAsset = {
   id: string;
   /** Its asset type, which decides whose treatments it is offered. */
   assetTypeId?: string | null;
+  /** Its type's consequence factors, for the benefit term. Absent rates the
+   * built-in (waterline) factors. */
+  cofFactors?: RiskFactorDef[];
   assetCode: string;
   material: string | null;
   diameterInches: number | null;
@@ -640,12 +644,17 @@ function rankCandidates(
 
     // Criticality-free consequence, so the multiplier is not also hiding
     // inside the risk term. §5.3.
-    const cofNoCriticality = benefitCof({
-      customersServed: asset.customersServed,
-      criticality: asset.criticality,
-      diameterInches: asset.diameterInches,
-      customerType: asset.customerType,
-    });
+    const cofNoCriticality = benefitCof(
+      {
+        customersServed: asset.customersServed,
+        criticality: asset.criticality,
+        diameterInches: asset.diameterInches,
+        customerType: asset.customerType,
+        material: asset.material,
+        lengthFt: asset.lengthFt,
+      },
+      asset.cofFactors
+    );
 
     // One evaluator per asset per year, reused across its options: building it
     // per option would repeat the whole deterioration walk for every

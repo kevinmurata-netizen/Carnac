@@ -1,7 +1,15 @@
 import type { AttributeDataType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { WCI_BANDS, type ConditionBand } from "@/domain/waterline/condition";
-import { POF_WEIGHTS, COF_WEIGHTS, type PofWeightMap, type CofWeightMap } from "@/domain/waterline/risk";
+import {
+  DEFAULT_COF_FACTORS,
+  DEFAULT_POF_FACTORS,
+  defaultWeights,
+  type CofWeightMap,
+  type PofWeightMap,
+  type RiskFactorDef,
+} from "@/domain/waterline/risk";
+import { MEASURE_ROLES as ROLES } from "@/lib/measure-roles";
 import {
   MATERIAL_CURVES,
   DEFAULT_CURVE,
@@ -144,7 +152,13 @@ export async function updateConditionModel(
 // Risk model — POF and COF factor weights
 // ---------------------------------------------------------------------------
 
-export type RiskWeights = { pof: PofWeightMap; cof: CofWeightMap };
+/** The factors a risk model rates, and how much each counts. */
+export type RiskWeights = {
+  pof: PofWeightMap;
+  cof: CofWeightMap;
+  pofFactors: RiskFactorDef[];
+  cofFactors: RiskFactorDef[];
+};
 
 export type RiskModelConfig = RiskWeights & {
   id: string;
@@ -153,20 +167,88 @@ export type RiskModelConfig = RiskWeights & {
   assessmentCount: number;
 };
 
+const FACTOR_SOURCES = new Set<string>(["condition", "ageRatio", "failures", ...ROLES.map((r) => r.key)]);
+
+function isFactorDef(v: unknown): v is RiskFactorDef {
+  if (!v || typeof v !== "object") return false;
+  const d = v as Record<string, unknown>;
+  const breakpoints = d.breakpoints;
+  return (
+    typeof d.key === "string" &&
+    typeof d.name === "string" &&
+    typeof d.source === "string" &&
+    FACTOR_SOURCES.has(d.source) &&
+    typeof d.defaultWeight === "number" &&
+    (breakpoints === undefined ||
+      (Array.isArray(breakpoints) && breakpoints.length === 4 && breakpoints.every((n) => typeof n === "number"))) &&
+    (d.ratings === undefined || (typeof d.ratings === "object" && d.ratings !== null))
+  );
+}
+
 /**
- * Stored weights are merged OVER the seeded set rather than replacing it, so a
- * config that is missing a key keeps that factor at its default weight instead
- * of silently dropping the factor from the score entirely.
+ * The factors a model's config rates: its own, as stored on the risk model
+ * for its asset type. A config without any — a model made before factors were
+ * stored — rates the built-in ones, which are the waterline's.
  */
-function parseWeights<T extends Record<string, number>>(value: unknown, fallback: T): T {
+export function parseFactors(value: unknown, fallback: RiskFactorDef[]): RiskFactorDef[] {
+  const stored = (value as { factors?: unknown } | null)?.factors;
+  if (!Array.isArray(stored)) return fallback;
+  const defs = stored.filter(isFactorDef);
+  return defs.length > 0 ? defs : fallback;
+}
+
+/**
+ * Stored weights are merged OVER each factor's built-in weight rather than
+ * replacing them, so a config that is missing a key keeps that factor at its
+ * default weight instead of silently dropping the factor from the score.
+ */
+function parseWeights(value: unknown, defs: RiskFactorDef[]): Record<string, number> {
   const stored = (value as { weights?: unknown } | null)?.weights;
-  const out = { ...fallback } as Record<string, number>;
+  const out = defaultWeights(defs);
   if (stored && typeof stored === "object") {
     for (const [k, v] of Object.entries(stored as Record<string, unknown>)) {
       if (k in out && typeof v === "number" && Number.isFinite(v) && v >= 0) out[k] = v;
     }
   }
-  return out as T;
+  return out;
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readRiskConfig(model: { probabilityConfig: unknown; consequenceConfig: unknown } | null): RiskWeights {
+  const pofFactors = parseFactors(model?.probabilityConfig, DEFAULT_POF_FACTORS);
+  const cofFactors = parseFactors(model?.consequenceConfig, DEFAULT_COF_FACTORS);
+  return {
+    pof: parseWeights(model?.probabilityConfig, pofFactors),
+    cof: parseWeights(model?.consequenceConfig, cofFactors),
+    pofFactors,
+    cofFactors,
+  };
+}
+
+/**
+ * Each modelled asset type's risk factors, for what rates consequence outside
+ * a risk recompute — the benefit term and the fallback criticality — so an
+ * asset is rated on its own type's factors wherever it is rated.
+ */
+export async function getRiskFactorsByType(
+  organizationId: string
+): Promise<(assetTypeId: string | null | undefined) => { pof: RiskFactorDef[]; cof: RiskFactorDef[] }> {
+  const models = await prisma.riskModel.findMany({
+    where: { assetType: modelledType(organizationId) },
+    select: { assetTypeId: true, probabilityConfig: true, consequenceConfig: true },
+    orderBy: { id: "asc" },
+  });
+  const byType = new Map<string, { pof: RiskFactorDef[]; cof: RiskFactorDef[] }>();
+  for (const m of models) {
+    if (isComponentScoped(m.probabilityConfig) || byType.has(m.assetTypeId)) continue;
+    const config = readRiskConfig(m);
+    byType.set(m.assetTypeId, { pof: config.pofFactors, cof: config.cofFactors });
+  }
+  const builtIn = { pof: DEFAULT_POF_FACTORS, cof: DEFAULT_COF_FACTORS };
+  return (assetTypeId) => (assetTypeId ? byType.get(assetTypeId) : undefined) ?? builtIn;
 }
 
 /** A modelled type's whole-asset risk model — never one that only holds
@@ -183,11 +265,7 @@ export async function findRiskModel(organizationId: string, assetTypeId?: string
 /** The weights risk scoring actually runs with, for one modelled asset type
  * (the only one, when none is named). */
 export async function getRiskWeights(organizationId: string, assetTypeId?: string | null): Promise<RiskWeights> {
-  const model = await findRiskModel(organizationId, assetTypeId);
-  return {
-    pof: parseWeights(model?.probabilityConfig, POF_WEIGHTS),
-    cof: parseWeights(model?.consequenceConfig, COF_WEIGHTS),
-  };
+  return readRiskConfig(await findRiskModel(organizationId, assetTypeId));
 }
 
 export async function getRiskModelConfig(
@@ -202,8 +280,7 @@ export async function getRiskModelConfig(
     assetTypeId: model.assetTypeId,
     name: model.name,
     assessmentCount: model._count.assessments,
-    pof: parseWeights(model.probabilityConfig, POF_WEIGHTS),
-    cof: parseWeights(model.consequenceConfig, COF_WEIGHTS),
+    ...readRiskConfig(model),
   };
 }
 
@@ -226,8 +303,9 @@ export async function updateRiskModel(
     where: { id: model.id },
     data: {
       name: input.name.trim(),
-      probabilityConfig: { weights: input.pof, scale: "1-5" },
-      consequenceConfig: { weights: input.cof, scale: "1-5" },
+      // Merged into what is stored, so the factors the weights belong to stay.
+      probabilityConfig: { ...asObject(model.probabilityConfig), weights: input.pof, scale: "1-5" },
+      consequenceConfig: { ...asObject(model.consequenceConfig), weights: input.cof, scale: "1-5" },
     },
   });
 }
