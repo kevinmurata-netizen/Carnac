@@ -15,8 +15,9 @@ import { WATERLINE_FAILURE_TYPES, FAILURE_SEVERITIES } from "../src/domain/water
 import { insertAssetLineLocation } from "../src/server/geo";
 import { buildNetworkLayout, type NetworkEdge } from "../src/domain/waterline/network-layout";
 import { recomputeRiskForOrganization } from "../src/server/risk";
-import { generatePredictions } from "../src/server/deterioration";
-import { ensureTreatments } from "../src/server/treatments";
+import { generatePredictions, seedDeteriorationModels } from "../src/server/deterioration";
+import { seedTreatmentLibrary } from "../src/server/treatments";
+import { MATERIAL_CURVES } from "../src/domain/waterline/deterioration";
 import { ensureBaselineScenarios } from "../src/server/scenarios";
 import { ensureBaselineWorkPlan } from "../src/server/workplans";
 import { WATERLINE_TREATMENTS } from "../src/domain/waterline/treatment";
@@ -389,11 +390,14 @@ async function main() {
   console.log(`  assessed ${assessed} assets`);
 
   console.log("Generating deterioration forecasts…");
+  // The waterline's curves are its own seed data; the engine hands them to no
+  // other type.
+  await seedDeteriorationModels(assetType.id, MATERIAL_CURVES);
   const forecasted = await generatePredictions(org.id);
   console.log(`  forecasted ${forecasted} assets`);
 
   console.log("Loading treatment library…");
-  await ensureTreatments(org.id);
+  await seedTreatmentLibrary(org.id, assetType.id, WATERLINE_TREATMENTS);
   console.log(`  ${WATERLINE_TREATMENTS.length} treatments configured`);
 
   console.log("Building funding scenarios…");

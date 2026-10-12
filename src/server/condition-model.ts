@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { isDerivedMetric } from "@/server/metrics-shared";
 import {
-  WCI_COMPONENT_WEIGHTS,
   WCI_BANDS,
   computeWCI,
   type ConditionBand,
@@ -57,15 +56,17 @@ export type ConditionIndexConfig = {
   templateId: string | null;
 };
 
+/** The index's components and weights, as stored. An index with none has
+ * none — it is not scored on the waterline's components. */
 function parseWeights(formula: unknown): Record<string, number> {
   const components = (formula as { components?: Record<string, unknown> } | null)?.components;
-  if (!components || typeof components !== "object") return { ...WCI_COMPONENT_WEIGHTS };
+  if (!components || typeof components !== "object") return {};
   const out: Record<string, number> = {};
   for (const [code, value] of Object.entries(components)) {
     const n = Number(value);
     if (Number.isFinite(n)) out[code] = n;
   }
-  return Object.keys(out).length > 0 ? out : { ...WCI_COMPONENT_WEIGHTS };
+  return out;
 }
 
 function parseBands(bands: unknown): ConditionBand[] {

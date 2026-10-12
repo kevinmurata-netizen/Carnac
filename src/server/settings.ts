@@ -11,7 +11,6 @@ import {
 } from "@/domain/waterline/risk";
 import { MEASURE_ROLES as ROLES } from "@/lib/measure-roles";
 import {
-  MATERIAL_CURVES,
   DEFAULT_CURVE,
   DEFAULT_TRANSITION_MATRIX,
   MARKOV_STATES,
@@ -492,8 +491,10 @@ export type DeteriorationModelConfig = {
 
 const CURVE_KEYS = ["initialCondition", "minCondition", "serviceLife", "shape"] as const;
 
-function parseCurve(params: Array<{ key: string; value: unknown }>, material: string | null): CurveParams {
-  const seed = (material && MATERIAL_CURVES[material]) || DEFAULT_CURVE;
+/** A stored curve. A parameter it lacks takes the generic default, never
+ * another asset class's curve for a material of the same name. */
+function parseCurve(params: Array<{ key: string; value: unknown }>): CurveParams {
+  const seed = DEFAULT_CURVE;
   const byKey = new Map(params.map((p) => [p.key, typeof p.value === "number" ? p.value : Number(p.value)]));
   return {
     initialCondition: byKey.get("initialCondition") ?? seed.initialCondition,
@@ -515,9 +516,9 @@ function materialOf(applicability: unknown): string | null {
 /**
  * Each modelled asset type's curves, by material, as the forecasts actually
  * run: an asset ages on its own type's curves, since two asset classes can
- * share a material name ("Steel") and nothing else. A type with no curves
- * configured falls back to the built-in set, as the organization's only type
- * always has.
+ * share a material name ("Steel") and nothing else. A type with no curves of
+ * its own has none, and its assets age on the generic default curve — not on
+ * the waterline's, which are seed data for that type alone.
  *
  * Inactive models are skipped, so deactivating one falls back to the default
  * curve rather than continuing to shape the forecast invisibly.
@@ -534,12 +535,11 @@ export async function getCurvesByAssetType(
   for (const m of models) {
     const material = materialOf(m.applicability);
     if (!material) continue;
-    const curve = parseCurve(m.parameters, material);
+    const curve = parseCurve(m.parameters);
     byType.set(m.assetTypeId, { ...(byType.get(m.assetTypeId) ?? {}), [material]: curve });
     all[material] = curve;
   }
-  const merged = Object.keys(all).length > 0 ? all : MATERIAL_CURVES;
-  return (assetTypeId) => (assetTypeId ? byType.get(assetTypeId) : undefined) ?? (assetTypeId ? MATERIAL_CURVES : merged);
+  return (assetTypeId) => (assetTypeId ? (byType.get(assetTypeId) ?? {}) : all);
 }
 
 export async function listDeteriorationModels(
@@ -562,7 +562,7 @@ export async function listDeteriorationModels(
       material,
       isActive: m.isActive,
       predictionCount: m._count.predictions,
-      curve: parseCurve(m.parameters, material),
+      curve: parseCurve(m.parameters),
     };
   });
 }

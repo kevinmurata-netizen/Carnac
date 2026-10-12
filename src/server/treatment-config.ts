@@ -1,8 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { copyName, takenNames } from "@/lib/copy-name";
 import {
-  WATERLINE_TREATMENTS,
-  rulesFromWindow,
   type TreatmentDef,
   type TreatmentCategory,
   type CostRate,
@@ -152,14 +150,9 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
  * spectacularly wrong rather than quietly wrong.
  */
 export async function loadTreatmentDefs(organizationId: string): Promise<TreatmentDef[]> {
+  // What is stored, and nothing else: an organization with no treatments
+  // has none to offer, rather than quietly being offered the waterline's.
   const rows = await fetchTreatments(organizationId);
-  if (rows.length === 0) {
-    return WATERLINE_TREATMENTS.map((def) => ({
-      ...def,
-      rules: rulesFromWindow(def),
-      costRates: [standardRateFor(def)],
-    }));
-  }
   return rows.map(toDef);
 }
 
