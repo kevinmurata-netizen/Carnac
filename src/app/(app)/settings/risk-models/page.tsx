@@ -5,6 +5,8 @@ import { ModelNotSetUp } from "@/components/settings/model-not-set-up";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { RiskModelEditor } from "./editor";
+import { FactorEditor } from "./factor-editor";
+import { getMeasureInfo } from "@/server/measures";
 import { formatNumber } from "@/lib/format";
 import { getPageName } from "@/server/navigation";
 import { RecomputeButton } from "../recompute-button";
@@ -40,6 +42,19 @@ export default async function RiskModelsPage({ searchParams }: { searchParams: P
     );
   }
   const config = await getRiskModelConfig(organizationId, selected?.id);
+  const measures = await getMeasureInfo(organizationId, config.assetTypeId);
+  // The weights form holds its values in state, so it is remounted whenever
+  // the factors change and a new factor's weight appears straight away.
+  const factorSignature = [...config.pofFactors, ...config.cofFactors].map((f) => f.key).join(",");
+  const factorEditor = (
+    <FactorEditor
+      assetTypeId={config.assetTypeId}
+      pofFactors={config.pofFactors}
+      cofFactors={config.cofFactors}
+      measures={measures}
+      canEdit={canEdit}
+    />
+  );
 
   return (
     <div>
@@ -57,7 +72,10 @@ export default async function RiskModelsPage({ searchParams }: { searchParams: P
       )}
 
       {canEdit ? (
-        <RiskModelEditor config={config} />
+        <>
+          <RiskModelEditor key={factorSignature} config={config} />
+          {factorEditor}
+        </>
       ) : (
         <Card>
           <CardContent className="space-y-4 py-6 text-sm">
@@ -93,6 +111,7 @@ export default async function RiskModelsPage({ searchParams }: { searchParams: P
           </CardContent>
         </Card>
       )}
+      {!canEdit && factorEditor}
     </div>
   );
 }

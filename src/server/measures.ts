@@ -92,3 +92,50 @@ export async function getMeasureDefinitionFilters(
   }
   return out;
 }
+
+/** What the factor editor shows for each measure on one asset type. */
+export type MeasureInfo = {
+  role: MeasureRole;
+  label: string;
+  kind: "text" | "number";
+  /** The attribute holding it on this type, or null where none is set. */
+  attributeLabel: string | null;
+  unit: string | null;
+  /** For a word measure, the values recorded on this type's assets — what a
+   * rating table has to cover. */
+  values: string[];
+};
+
+export async function getMeasureInfo(organizationId: string, assetTypeId: string): Promise<MeasureInfo[]> {
+  const type = await prisma.assetType.findFirst({
+    where: { id: assetTypeId, organizationId },
+    select: { measures: true, attributeDefinitions: { select: { id: true, code: true, label: true, unit: true } } },
+  });
+  const codes = parseMeasureCodes(type?.measures);
+  return Promise.all(
+    MEASURE_ROLES.map(async (role) => {
+      const attribute = type?.attributeDefinitions.find((d) => d.code === codes[role.key]) ?? null;
+      const values =
+        attribute && role.kind === "text"
+          ? (
+              await prisma.assetAttributeValue.findMany({
+                where: { definitionId: attribute.id, textValue: { not: null }, asset: { deletedAt: null } },
+                select: { textValue: true },
+                distinct: ["textValue"],
+                take: 60,
+              })
+            )
+              .map((v) => v.textValue!)
+              .sort()
+          : [];
+      return {
+        role: role.key,
+        label: role.label,
+        kind: role.kind,
+        attributeLabel: attribute?.label ?? null,
+        unit: attribute?.unit ?? null,
+        values,
+      };
+    })
+  );
+}

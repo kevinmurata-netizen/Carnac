@@ -311,6 +311,172 @@ export async function updateRiskModel(
 }
 
 // ---------------------------------------------------------------------------
+// Risk model — the factors themselves
+// ---------------------------------------------------------------------------
+
+export type RiskFactorGroup = "pof" | "cof";
+
+export type RiskFactorInput = {
+  /** The factor being edited; absent adds a new one. */
+  originalKey?: string | null;
+  name: string;
+  label?: string | null;
+  source: string;
+  breakpoints?: number[] | null;
+  ratings?: Record<string, number> | null;
+  prefix?: string | null;
+  suffix?: string | null;
+  unknownRating?: number | null;
+  defaultWeight: number;
+};
+
+const NUMBER_SOURCES = new Set<string>([
+  "condition",
+  "ageRatio",
+  "failures",
+  ...ROLES.filter((r) => r.kind === "number").map((r) => r.key),
+]);
+
+const configField = (group: RiskFactorGroup) => (group === "pof" ? "probabilityConfig" : "consequenceConfig");
+const builtInFactors = (group: RiskFactorGroup) => (group === "pof" ? DEFAULT_POF_FACTORS : DEFAULT_COF_FACTORS);
+
+/** A rating on the 1–5 scale every factor uses. */
+function isRating(n: unknown): n is number {
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 5;
+}
+
+/**
+ * Check one factor as entered and turn it into a definition.
+ *
+ * The name goes onto every assessment's factor rows as "POF: name (observed)",
+ * and the asset page reads it back by splitting at the first " (", so a name
+ * with brackets is refused rather than recorded unreadably.
+ */
+function toFactorDef(input: RiskFactorInput, key: string): RiskFactorDef {
+  const name = input.name.trim();
+  if (!name) throw new Error("A factor needs a name");
+  if (name.length > 60) throw new Error("Keep the factor's name under 60 characters");
+  if (/[()]/.test(name)) throw new Error("A factor's name can't contain brackets: each assessment records it as name (observed value)");
+  if (!FACTOR_SOURCES.has(input.source)) throw new Error("Choose what the factor rates");
+  if (!Number.isFinite(input.defaultWeight) || input.defaultWeight < 0) {
+    throw new Error("The built-in weight must be zero or more");
+  }
+  const unknownRating = input.unknownRating ?? 3;
+  if (!isRating(unknownRating)) throw new Error("The rating for an unknown value must be a whole number from 1 to 5");
+
+  const def: RiskFactorDef = { key, name, source: input.source as RiskFactorDef["source"], defaultWeight: input.defaultWeight };
+  const label = input.label?.trim();
+  if (label && label !== name) def.label = label;
+  if (unknownRating !== 3) def.unknownRating = unknownRating;
+
+  if (NUMBER_SOURCES.has(input.source)) {
+    const b = input.breakpoints ?? [];
+    if (b.length !== 4 || !b.every((n) => Number.isFinite(n))) {
+      throw new Error("Enter the four values at which the rating reaches 2, 3, 4 and 5");
+    }
+    for (let i = 1; i < 4; i++) {
+      if (b[i] <= b[i - 1]) throw new Error("Each breakpoint must be higher than the one before it");
+    }
+    def.breakpoints = [b[0], b[1], b[2], b[3]];
+    const prefix = input.prefix ?? "";
+    const suffix = input.suffix ?? "";
+    if (prefix.length > 12 || suffix.length > 12) throw new Error("Keep the prefix and suffix short");
+    if (prefix) def.prefix = prefix;
+    if (suffix) def.suffix = suffix;
+  } else {
+    const ratings = Object.entries(input.ratings ?? {}).filter(([value]) => value.trim());
+    if (ratings.length === 0) throw new Error("Give at least one value a rating");
+    const bad = ratings.find(([, r]) => !isRating(r));
+    if (bad) throw new Error(`"${bad[0]}" needs a rating that is a whole number from 1 to 5`);
+    def.ratings = Object.fromEntries(ratings.map(([value, r]) => [value.trim(), r]));
+  }
+  return def;
+}
+
+/** A stable key from a factor's name: what its weight is stored against. */
+function keyFromName(name: string): string {
+  return (
+    name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "FACTOR"
+  );
+}
+
+async function loadFactorGroup(organizationId: string, assetTypeId: string | null | undefined, group: RiskFactorGroup) {
+  const model = await findRiskModel(organizationId, assetTypeId);
+  if (!model) throw new Error("Risk model not found");
+  const config = asObject(model[configField(group)]);
+  // A model saved before factors were stored rates the built-in ones; the
+  // first edit writes them out, so what is edited is what was being used.
+  const factors = parseFactors(config, builtInFactors(group));
+  const weights = parseWeights(config, factors);
+  return { model, config, factors, weights };
+}
+
+/**
+ * Add a factor to a risk model, or change one.
+ *
+ * A factor's key is fixed once it exists: its weight is stored against it,
+ * and changing what a key means would quietly reweight the model. A new one
+ * starts at its built-in weight, which the weights form can then change.
+ */
+export async function saveRiskFactor(
+  organizationId: string,
+  input: { assetTypeId?: string | null; group: RiskFactorGroup; factor: RiskFactorInput }
+): Promise<string> {
+  const { model, config, factors, weights } = await loadFactorGroup(organizationId, input.assetTypeId, input.group);
+  const original = input.factor.originalKey ? factors.find((f) => f.key === input.factor.originalKey) : null;
+  if (input.factor.originalKey && !original) throw new Error("That factor is no longer on this model — reload and try again");
+
+  let key = original?.key ?? keyFromName(input.factor.name);
+  if (!original) {
+    // Unique within the model, across both groups, so a weight key never
+    // means two things.
+    const taken = new Set([
+      ...factors.map((f) => f.key),
+      ...parseFactors(asObject(model[configField(input.group === "pof" ? "cof" : "pof")]), builtInFactors(input.group === "pof" ? "cof" : "pof")).map((f) => f.key),
+    ]);
+    for (let n = 2; taken.has(key); n++) key = `${keyFromName(input.factor.name)}_${n}`;
+  }
+  const def = toFactorDef(input.factor, key);
+  const clash = factors.find((f) => f.key !== key && f.name.toLowerCase() === def.name.toLowerCase());
+  if (clash) throw new Error(`This model already has a factor called "${clash.name}"`);
+
+  const next = original ? factors.map((f) => (f.key === key ? def : f)) : [...factors, def];
+  const nextWeights = { ...weights, ...(original ? {} : { [key]: def.defaultWeight }) };
+  await prisma.riskModel.update({
+    where: { id: model.id },
+    data: { [configField(input.group)]: { ...config, factors: next, weights: nextWeights, scale: "1-5" } },
+  });
+  return def.name;
+}
+
+/** Take a factor off a risk model, with its weight. A group keeps at least one. */
+export async function removeRiskFactor(
+  organizationId: string,
+  input: { assetTypeId?: string | null; group: RiskFactorGroup; key: string }
+): Promise<string> {
+  const { model, config, factors, weights } = await loadFactorGroup(organizationId, input.assetTypeId, input.group);
+  const factor = factors.find((f) => f.key === input.key);
+  if (!factor) throw new Error("That factor is no longer on this model — reload and try again");
+  if (factors.length === 1) {
+    throw new Error(`${factor.name} is the only ${input.group === "pof" ? "probability" : "consequence"} factor, and a score needs at least one`);
+  }
+  const next = factors.filter((f) => f.key !== input.key);
+  const nextWeights = Object.fromEntries(Object.entries(weights).filter(([k]) => k !== input.key));
+  if (Object.values(nextWeights).every((w) => w <= 0)) {
+    throw new Error(`Removing ${factor.name} would leave every remaining factor weighted zero. Give another factor a weight first.`);
+  }
+  await prisma.riskModel.update({
+    where: { id: model.id },
+    data: { [configField(input.group)]: { ...config, factors: next, weights: nextWeights, scale: "1-5" } },
+  });
+  return factor.name;
+}
+
+// ---------------------------------------------------------------------------
 // Deterioration models — material curves
 // ---------------------------------------------------------------------------
 
