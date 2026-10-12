@@ -12,6 +12,8 @@ import { recomputeRiskForOrganization } from "@/server/risk";
 import {
   updateConditionModel,
   updateRiskModel,
+  saveRiskFactor,
+  removeRiskFactor,
   updateDeteriorationModel,
   updateAssetType,
   updateAssetTypeMeasures,
@@ -112,6 +114,73 @@ export async function saveConditionModelAction(
 
     revalidateAll("/settings/condition-models");
     return { status: "success", message: `Saved — ${bands.length} bands now in effect across the system.` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** "Cast Iron = 4" per line, the last "=" or ":" splitting value from rating. */
+function parseRatings(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^(.*\S)\s*[=:]\s*(\S+)\s*$/);
+    if (!m) {
+      if (line.trim()) throw new Error(`"${line.trim()}" needs a rating, written as value = rating`);
+      continue;
+    }
+    out[m[1].trim()] = Number(m[2]);
+  }
+  return out;
+}
+
+export async function saveRiskFactorAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess("/settings/risk-models");
+    const group = formData.get("group") === "cof" ? "cof" : "pof";
+    const source = String(formData.get("source") ?? "");
+    const optionalNumber = (key: string) => {
+      const raw = String(formData.get(key) ?? "").trim();
+      return raw === "" ? null : Number(raw);
+    };
+    const name = await saveRiskFactor(session.user.organizationId, {
+      assetTypeId: assetTypeOf(formData),
+      group,
+      factor: {
+        originalKey: String(formData.get("originalKey") ?? "") || null,
+        name: String(formData.get("name") ?? ""),
+        label: String(formData.get("label") ?? ""),
+        source,
+        breakpoints: ["bp1", "bp2", "bp3", "bp4"].map((k) => optionalNumber(k) ?? NaN),
+        ratings: parseRatings(String(formData.get("ratings") ?? "")),
+        prefix: String(formData.get("prefix") ?? ""),
+        suffix: String(formData.get("suffix") ?? ""),
+        unknownRating: optionalNumber("unknownRating"),
+        defaultWeight: optionalNumber("defaultWeight") ?? 0,
+      },
+    });
+    revalidateAll("/settings/risk-models");
+    return { status: "success", message: `${name} saved. It applies to the next risk recompute.` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function removeRiskFactorAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess("/settings/risk-models");
+    const name = await removeRiskFactor(session.user.organizationId, {
+      assetTypeId: assetTypeOf(formData),
+      group: formData.get("group") === "cof" ? "cof" : "pof",
+      key: String(formData.get("key") ?? ""),
+    });
+    revalidateAll("/settings/risk-models");
+    return { status: "success", message: `${name} removed. The next risk recompute leaves it out.` };
   } catch (e) {
     return fail(e);
   }

@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-12",
+    title: "Edit risk factors in Settings",
+    summary:
+      "Settings › Risk Models now lists each probability and consequence factor with what it rates and how it becomes 1–5, and lets an administrator add, change or remove factors. A new asset class's risk model can be set up without touching the database.",
+    changes: [
+      "A factor rates the asset's condition, its age against expected life, its failures in the last ten years, or any of its measures.",
+      "Numbers are rated by four breakpoints; words by a rating table, which starts from the values actually recorded on that asset type.",
+      "A new factor joins the weights form straight away at its built-in weight. Removing one takes its weight with it, and a group always keeps at least one factor.",
+      "Changes apply from the next risk recompute. Past assessments keep the factors they were scored with.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-11",
     title: "Risk factors kept on each asset type's risk model",
     summary:
