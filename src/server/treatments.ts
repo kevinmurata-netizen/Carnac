@@ -9,6 +9,7 @@ import {
   enumerateOptions,
   type AssetTreatmentContext,
   type Recommendation,
+  type TreatmentDef,
 } from "@/domain/waterline/treatment";
 import {
   benefitCof,
@@ -34,7 +35,7 @@ import { criticalityForModel } from "@/server/criticality";
 import type { PriorityOptions } from "@/server/priority";
 import { categoryWeight } from "@/domain/waterline/category-weight";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
-import { MODELLED, modelledType, requireModelledAssetType } from "@/server/modelled-asset-type";
+import { MODELLED, modelledType } from "@/server/modelled-asset-type";
 
 /**
  * Idempotently write the treatment library, and the rules that decide what
@@ -48,10 +49,13 @@ import { MODELLED, modelledType, requireModelledAssetType } from "@/server/model
  * two produce identical names on purpose, so a seeded database and a migrated
  * one agree about which assets qualify.
  */
-export async function ensureTreatments(organizationId: string) {
-  const assetType = await requireModelledAssetType(organizationId);
+export async function seedTreatmentLibrary(organizationId: string, assetTypeId: string, library: TreatmentDef[]) {
+  // Seed data for one named asset type — the waterline's library for the
+  // waterline. The engine never calls this, so no type is handed another
+  // asset class's treatments.
+  const assetType = { id: assetTypeId };
 
-  for (const def of WATERLINE_TREATMENTS) {
+  for (const def of library) {
     const existing = await prisma.treatment.findFirst({ where: { assetTypeId: assetType.id, name: def.name } });
     if (existing) continue;
 

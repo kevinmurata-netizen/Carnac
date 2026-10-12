@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { getTransitionMatrix } from "@/server/settings";
 import {
-  MATERIAL_CURVES,
   DEFAULT_CURVE,
   DEFAULT_TRANSITION_MATRIX,
   MARKOV_STATES,
@@ -12,30 +11,22 @@ import {
   stepStateVector,
   expectedCondition,
   remainingLifeYears,
-  evaluateCurve,
   type CurveParams,
 } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
-import { MODELLED, chooseModelledAssetType, listModelledAssetTypes, modelledType } from "@/server/modelled-asset-type";
+import { MODELLED, chooseModelledAssetType, modelledType } from "@/server/modelled-asset-type";
 
-const CURVE_MODEL_PREFIX = "Curve — ";
+export const CURVE_MODEL_PREFIX = "Curve — ";
 export const MARKOV_MODEL_NAME = "Markov State-Transition (network)";
 
 /**
- * Give each modelled asset type that has no deterioration models of its own
- * the built-in set: one curve per material plus the Markov model. A type that
- * already has any — its own curves, or its components' — is left as it is,
- * rather than having another asset class's curves added to it.
+ * Seed data: give one asset type a set of material curves and the Markov
+ * model. Called by the seed for the waterline with its curves — never by the
+ * engine, so a type without curves of its own is not handed another asset
+ * class's. Idempotent: a curve that already exists is left as it is.
  */
-export async function ensureDeteriorationModels(organizationId: string) {
-  for (const assetType of await listModelledAssetTypes(organizationId)) {
-    const hasModels = await prisma.deteriorationModel.count({ where: { assetTypeId: assetType.id } });
-    if (hasModels === 0) await createBuiltInModels(assetType.id);
-  }
-}
-
-async function createBuiltInModels(assetTypeId: string) {
-  for (const [material, params] of Object.entries(MATERIAL_CURVES)) {
+export async function seedDeteriorationModels(assetTypeId: string, curves: Record<string, CurveParams>) {
+  for (const [material, params] of Object.entries(curves)) {
     const name = `${CURVE_MODEL_PREFIX}${material}`;
     const existing = await prisma.deteriorationModel.findFirst({ where: { assetTypeId, name } });
     if (existing) continue;
@@ -108,7 +99,6 @@ async function getCurveModelsByType(organizationId: string) {
  * inspected). Replaces prior current-scenario predictions — forecasts are
  * derived data, unlike append-only assessments. */
 export async function generatePredictions(organizationId: string): Promise<number> {
-  await ensureDeteriorationModels(organizationId);
   const curvesByType = await getCurveModelsByType(organizationId);
   const startYear = new Date().getFullYear();
 
@@ -155,13 +145,15 @@ export async function getForecastForAsset(organizationId: string, assetId: strin
   const predictions = await prisma.deteriorationPrediction.findMany({
     where: { assetId, scenario: "current", asset: { organizationId } },
     orderBy: { forecastYear: "asc" },
-    include: { model: { select: { name: true } } },
+    include: { model: { select: { name: true, parameters: { select: { key: true, value: true } } } } },
   });
   if (predictions.length === 0) return null;
 
+  // The curve the forecast was produced with, as configured — not the
+  // built-in curve of the same name, which an edit in Settings may have
+  // moved away from.
   const modelName = predictions[0].model.name;
-  const material = modelName.startsWith(CURVE_MODEL_PREFIX) ? modelName.slice(CURVE_MODEL_PREFIX.length) : null;
-  const params = material ? (MATERIAL_CURVES[material] ?? DEFAULT_CURVE) : DEFAULT_CURVE;
+  const params = curveParamsFromRows(predictions[0].model.parameters);
   const current = predictions[0].predictedCondition;
 
   return {
@@ -255,14 +247,3 @@ export async function listDeteriorationModels(organizationId: string) {
   }));
 }
 
-/** Curve shapes for the model-comparison chart: WCI vs age per material. */
-export function getMaterialCurveSeries(maxAge = 90, step = 5) {
-  const ages = Array.from({ length: Math.floor(maxAge / step) + 1 }, (_, i) => i * step);
-  return ages.map((age) => {
-    const row: Record<string, number> = { age };
-    for (const [material, params] of Object.entries(MATERIAL_CURVES)) {
-      row[material] = evaluateCurve(params, age);
-    }
-    return row;
-  });
-}

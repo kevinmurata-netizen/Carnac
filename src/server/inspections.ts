@@ -206,7 +206,11 @@ export async function createInspection(organizationId: string, input: CreateInsp
   // Score against the currently configured index, not the seed constant, so a
   // reweighted index takes effect on the very next inspection. Only asked for
   // when there is a model to file the score against.
-  const wci = conditionModel ? computeWCI(numericScores, indexWeightsOf(conditionModel)) : 0;
+  // An index with no components yet has nothing to score with: the answers
+  // are recorded, and no condition is filed rather than a misleading 0.
+  const indexWeights = conditionModel ? indexWeightsOf(conditionModel) : {};
+  const scorable = Object.keys(indexWeights).length > 0;
+  const wci = scorable ? computeWCI(numericScores, indexWeights) : 0;
 
   const inspection = await prisma.inspection.create({
     data: {
@@ -223,7 +227,7 @@ export async function createInspection(organizationId: string, input: CreateInsp
     },
   });
 
-  if (conditionModel && Object.keys(numericScores).length > 0) {
+  if (conditionModel && scorable && Object.keys(numericScores).length > 0) {
     await prisma.conditionMeasurement.create({
       data: {
         assetId: input.assetId,
@@ -329,7 +333,9 @@ export async function updateInspection(organizationId: string, id: string, edit:
 
   if (measurement && (ratingsChanged || dateChanged)) {
     // Rescored with the index the measurement is filed under: its asset type's.
-    const wci = computeWCI(scores, indexWeightsOf(measurement.conditionModel));
+    const weights = indexWeightsOf(measurement.conditionModel);
+    // No components to score with now: the stored score stands.
+    const wci = Object.keys(weights).length > 0 ? computeWCI(scores, weights) : measurement.score;
     writes.push(
       prisma.conditionMeasurement.update({
         where: { id: measurement.id },

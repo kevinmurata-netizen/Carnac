@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-12",
+    title: "The water defaults are the waterline's alone",
+    summary:
+      "The built-in water curves, treatment library and condition index components are now the waterline's seed data rather than fallbacks any asset type could pick up. Nothing changes for water today.",
+    changes: [
+      "An asset type with no curves of its own ages on the generic default curve, not on the waterline's curve for a material of the same name.",
+      "A condition index with no components has none, rather than showing and scoring the waterline's eleven. Inspections of such a type record their answers without a misleading score of 0.",
+      "With no treatments stored, there are none to offer, rather than the waterline's library.",
+      "An asset's remaining life on its forecast now follows its curve as configured in Settings, where before it used the built-in curve of the same name.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-12",
     title: "Edit risk factors in Settings",
     summary:
       "Settings › Risk Models now lists each probability and consequence factor with what it rates and how it becomes 1–5, and lets an administrator add, change or remove factors. A new asset class's risk model can be set up without touching the database.",
