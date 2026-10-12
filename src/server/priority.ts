@@ -6,7 +6,6 @@ import {
   riskEffectOf,
   MATERIAL_INTERVENTION_CONDITION,
   MIN_RISK_REDUCTION_PCT,
-  WATERLINE_TREATMENTS,
   type TreatmentCategory,
 } from "@/domain/waterline/treatment";
 import {
@@ -178,7 +177,6 @@ export async function rankOptions(
   };
   const categoryWeights: CategoryWeights = chosenCategories.weights;
 
-  const fallbackReplacement = WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
 
   type Pending = Omit<PriorityOptionRow, "expectedBenefit" | "priority" | "benefitTerms">;
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
@@ -228,7 +226,7 @@ export async function rankOptions(
     // option would repeat the whole deterioration walk for every candidate.
     const lcca =
       ctx.conditionScore != null
-        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curvesFor(ctx.assetTypeId), fallbackReplacement)
+        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curvesFor(ctx.assetTypeId))
         : null;
 
     const scaled = scale.factors.get(asset.id);

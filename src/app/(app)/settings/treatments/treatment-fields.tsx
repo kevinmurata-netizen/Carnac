@@ -32,6 +32,7 @@ export const CATEGORIES = ["Assess", "Repair", "Rehabilitate", "Renew", "Retire"
 export type TreatmentDraft = {
   name: string;
   category: string;
+  role: string;
   usefulLife: string;
   retreatmentIntervalYears: string;
   description: string;
@@ -44,6 +45,7 @@ export function draftFromTreatment(treatment?: TreatmentAdminRow): TreatmentDraf
   return {
     name: treatment?.name ?? "",
     category: treatment?.category ?? "Repair",
+    role: treatment?.role ?? "",
     usefulLife: str(treatment?.usefulLife ?? 0),
     // Blank rather than the default's number, so the box shows that nothing
     // has been decided rather than implying someone chose five.
@@ -109,6 +111,23 @@ export function DefinitionFields({ draft, onChange }: FieldProps) {
               </option>
             ))}
           </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="role">Role</Label>
+          <select
+            id="role"
+            name="role"
+            value={draft.role}
+            onChange={(e) => onChange({ role: e.target.value })}
+            className={input}
+          >
+            <option value="">None</option>
+            <option value="replacement">Replacement — the life-cycle cost baseline</option>
+            <option value="inspection">Inspection — offered when condition is unknown</option>
+          </select>
+          <p className="text-xs text-muted-foreground">
+            Each asset type has one of each. Choosing a role another treatment has moves it here.
+          </p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="usefulLife">Useful Life (yr)</Label>

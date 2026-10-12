@@ -28,11 +28,19 @@ import {
 
 export type TreatmentCategory = "Assess" | "Repair" | "Rehabilitate" | "Renew" | "Retire";
 
+/** The parts a treatment can play for its asset type. */
+export const TREATMENT_ROLES = ["replacement", "inspection"] as const;
+export type TreatmentRole = (typeof TREATMENT_ROLES)[number];
+
 export type TreatmentDef = {
   name: string;
   /** The asset type this treatment is for. Names are unique within a type,
    * not across types. Absent on the built-in defaults, which apply to any. */
   assetTypeId?: string | null;
+  /** The part it plays for its type, where it plays one: the planned renewal
+   * life-cycle costs are measured against, or what is offered on an asset
+   * whose condition is unknown. At most one of each per type. */
+  role?: TreatmentRole | null;
   description: string;
   category: TreatmentCategory;
   /**
@@ -97,6 +105,7 @@ const METALLIC = ["Cast Iron", "Ductile Iron", "Steel", "Copper"];
 export const WATERLINE_TREATMENTS: TreatmentDef[] = [
   {
     name: "Inspection",
+    role: "inspection",
     description: "Condition assessment to reduce uncertainty before committing capital.",
     category: "Assess",
     applicableConditionMin: 0,
@@ -241,6 +250,7 @@ export const WATERLINE_TREATMENTS: TreatmentDef[] = [
   },
   {
     name: "Replacement",
+    role: "replacement",
     description: "Full open-cut replacement of the segment with new pipe.",
     category: "Renew",
     applicableConditionMin: 0,
@@ -848,6 +858,15 @@ export function forAssetType(def: TreatmentDef, assetTypeId: string | null | und
   return !def.assetTypeId || !assetTypeId || def.assetTypeId === assetTypeId;
 }
 
+/** A treatment playing a role, among an asset type's own. */
+export function findByRole(
+  library: TreatmentDef[],
+  role: TreatmentRole,
+  assetTypeId: string | null | undefined
+): TreatmentDef | undefined {
+  return library.find((d) => d.role === role && forAssetType(d, assetTypeId));
+}
+
 /** A treatment by name, among an asset type's own. Two asset classes can each
  * have a "Replacement", so a name alone is not enough to find one. */
 export function findTreatment(
@@ -861,7 +880,9 @@ export function findTreatment(
 export function isApplicable(def: TreatmentDef, ctx: AssetTreatmentContext): boolean {
   // Another asset type's treatment never applies, whatever its rules say.
   if (!forAssetType(def, ctx.assetTypeId)) return false;
-  if (ctx.conditionScore == null) return def.name === "Inspection";
+  // With condition unknown, only the type's inspection is offered: the one
+  // thing worth doing before anything else can be judged.
+  if (ctx.conditionScore == null) return def.role === "inspection";
   return explainApplicability(def, ctx).pass;
 }
 

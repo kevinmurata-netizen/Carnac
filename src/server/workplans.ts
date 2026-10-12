@@ -3,7 +3,6 @@ import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { WorkPlanItemStatus } from "@prisma/client";
 import { DEFAULT_WEIGHTS, type ObjectiveWeights } from "@/domain/waterline/optimization";
 import {
-  WATERLINE_TREATMENTS,
   buildOption,
   clearsEffectivenessFloor,
   enumerateOptions,
@@ -356,13 +355,7 @@ async function buildCandidates(
     // Replacement. Without a rate that prices one for this asset there is no
     // baseline, so the asset yields no candidate at all rather than a set of
     // costs compared against nothing.
-    const lcca = buildLccaEvaluator(
-      ctx,
-      conditionScore,
-      library,
-      curvesFor(ctx.assetTypeId),
-      WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!
-    );
+    const lcca = buildLccaEvaluator(ctx, conditionScore, library, curvesFor(ctx.assetTypeId));
     if (!lcca) continue;
 
     // The stored score, then the risk-based default — the same fallback the

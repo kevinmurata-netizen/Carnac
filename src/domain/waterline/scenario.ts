@@ -558,7 +558,6 @@ function rankCandidates(
     benefitWeights: BenefitWeights;
     categoryWeights: CategoryWeights;
     curvesOf: (asset: SimAsset) => Record<string, CurveParams>;
-    fallbackReplacement: TreatmentDef;
   },
   /** Where to record options that never reach the ranked list, or null when
    * the run is not being traced. */
@@ -659,7 +658,7 @@ function rankCandidates(
     // One evaluator per asset per year, reused across its options: building it
     // per option would repeat the whole deterioration walk for every
     // candidate, and this loop already runs once a year for twenty years.
-    const lcca = buildLccaEvaluator(assetCtx, asset.condition, ctx.library, ctx.curvesOf(asset), ctx.fallbackReplacement);
+    const lcca = buildLccaEvaluator(assetCtx, asset.condition, ctx.library, ctx.curvesOf(asset));
 
     for (const option of options) {
       const riskAfter =
@@ -916,8 +915,6 @@ export function runScenario(
   const fundingPlan = options.fundingPlan ?? null;
   const curves = options.curves ?? MATERIAL_CURVES;
   const curvesOf = (asset: SimAsset) => options.curvesFor?.(asset.assetTypeId) ?? curves;
-  const fallbackReplacement =
-    library.find((d) => d.name === "Replacement") ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
 
   // Work on copies so a scenario run never mutates caller state.
   const state: SimAsset[] = assets.map((a) => ({ ...a }));
@@ -1024,7 +1021,6 @@ export function runScenario(
       benefitWeights,
       categoryWeights,
       curvesOf,
-      fallbackReplacement,
     }, trace);
 
     // 2. Choose what the year buys: one treatment per asset, each step up

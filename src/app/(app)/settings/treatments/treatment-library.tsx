@@ -162,6 +162,11 @@ export function TreatmentLibrary({
                     <Link href={`/settings/treatments/${t.id}`} className="font-medium text-primary hover:underline">
                       {t.name}
                     </Link>
+                    {t.role && (
+                      <Badge variant="outline" className="ml-2 align-middle text-[10px]">
+                        {t.role === "replacement" ? "Life-cycle baseline" : "When condition is unknown"}
+                      </Badge>
+                    )}
                     {t.description && <div className="text-xs text-muted-foreground">{t.description}</div>}
                   </TableCell>
                   <TableCell>
