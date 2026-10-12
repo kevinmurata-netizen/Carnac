@@ -1,29 +1,51 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { requireCard } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
-import { IMPORT_COLUMNS, IMPORT_TEMPLATE_HEADER, IMPORT_SAMPLE_ROWS } from "@/server/import";
+import { getImportSpec, templateHeader } from "@/server/import";
+import { chooseModelledAssetType } from "@/server/modelled-asset-type";
 import { PageHeader } from "@/components/layout/page-header";
+import { AssetTypePills } from "@/components/layout/asset-type-pills";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ImportForm } from "./import-form";
 import { getPageName } from "@/server/navigation";
 
-export default async function ImportPage() {
+export default async function ImportPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: requestedType } = await searchParams;
   const session = await auth();
   await requireCard("/administration/import");
-  const pageTitle = await getPageName(session!.user.organizationId, "/administration/import", "Data Import");
+  const organizationId = session!.user.organizationId;
+  const pageTitle = await getPageName(organizationId, "/administration/import", "Data Import");
   if (!canRecordFieldData(session)) redirect("/administration");
 
-  const template = [IMPORT_TEMPLATE_HEADER, ...IMPORT_SAMPLE_ROWS].join("\n");
+  // Any of the organization's asset types can be imported, modelled or not.
+  // Without a choice, the main modelled network's.
+  const [types, { selected }] = await Promise.all([
+    prisma.assetType.findMany({ where: { organizationId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    chooseModelledAssetType(organizationId),
+  ]);
+  const chosen = types.find((t) => t.id === requestedType) ?? types.find((t) => t.id === selected?.id) ?? types[0];
+  if (!chosen) {
+    return (
+      <div>
+        <PageHeader title={pageTitle} description="Load inventory from CSV" />
+        <p className="text-sm text-muted-foreground">Add an asset type under Settings › Asset Types first.</p>
+      </div>
+    );
+  }
+  const spec = await getImportSpec(organizationId, chosen.id);
 
   return (
     <div>
       <PageHeader
         title={pageTitle}
-        description="Load waterline inventory from CSV — validated in full before anything is written"
+        description={`Load ${spec.assetTypeName.toLowerCase()} inventory from CSV — validated in full before anything is written`}
       />
+
+      <AssetTypePills types={types} selectedId={chosen.id} href={(id) => `/administration/import?type=${id}`} />
 
       <Card className="mb-4">
         <CardHeader>
@@ -39,39 +61,32 @@ export default async function ImportPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {IMPORT_COLUMNS.map((c) => (
+              {spec.columns.map((c) => (
                 <TableRow key={c.key}>
                   <TableCell className="font-medium">{c.label}</TableCell>
                   <TableCell>
                     {c.required ? <Badge variant="default">Required</Badge> : <Badge variant="secondary">Optional</Badge>}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{NOTES[c.key] ?? ""}</TableCell>
+                  <TableCell className="whitespace-normal text-xs text-muted-foreground">{c.note}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
           <p className="border-t px-4 py-3 text-xs text-muted-foreground">
-            Column order does not matter and unrecognised columns are ignored. GeoJSON and shapefile import are the
-            natural next step; the validation and commit stages are already separated to accommodate them.
+            The columns are {spec.assetTypeName}&apos;s attributes, as set under Settings › Asset Types; a column
+            can be headed by an attribute&apos;s label or its code. Column order does not matter and unrecognised
+            columns are ignored.
           </p>
         </CardContent>
       </Card>
 
-      <ImportForm templateCsv={template} />
+      {/* Keyed by type, so switching tabs starts from that type's template. */}
+      <ImportForm
+        key={chosen.id}
+        assetTypeId={chosen.id}
+        assetTypeName={spec.assetTypeName}
+        templateCsv={templateHeader(spec)}
+      />
     </div>
   );
 }
-
-const NOTES: Record<string, string> = {
-  assetCode: "Must be unique — checked against existing assets and the rest of the file.",
-  material: "Must match a configured material exactly.",
-  diameter: "Inches, 1–120.",
-  installationYear: "Whole year, 1850 to present.",
-  length: "Feet, 1–100,000.",
-  latitude: "Decimal degrees, -90 to 90.",
-  longitude: "Decimal degrees, -180 to 180.",
-  condition: "Optional WCI 0–100; recorded as a manual condition measurement.",
-  criticality: "Optional; must match a configured criticality level.",
-  customersServed: "Optional whole number.",
-  serviceArea: "Optional free text.",
-};

@@ -9,7 +9,15 @@ import { validateImportAction, commitImportAction } from "./actions";
 import { EMPTY_IMPORT_STATE, type ImportState } from "./state";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
-export function ImportForm({ templateCsv }: { templateCsv: string }) {
+export function ImportForm({
+  assetTypeId,
+  assetTypeName,
+  templateCsv,
+}: {
+  assetTypeId: string;
+  assetTypeName: string;
+  templateCsv: string;
+}) {
   const [state, action, pending] = useActionState<ImportState, FormData>(
     validateImportAction,
     EMPTY_IMPORT_STATE
@@ -33,6 +41,7 @@ export function ImportForm({ templateCsv }: { templateCsv: string }) {
         </CardHeader>
         <CardContent>
           <form action={action} className="space-y-3">
+            <input type="hidden" name="assetTypeId" value={assetTypeId} />
             <textarea
               name="csv"
               rows={8}
@@ -124,25 +133,19 @@ export function ImportForm({ templateCsv }: { templateCsv: string }) {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Asset ID</TableHead>
-                      <TableHead>Material</TableHead>
-                      <TableHead>Diameter</TableHead>
-                      <TableHead>Length</TableHead>
-                      <TableHead>Installed</TableHead>
-                      <TableHead>Condition</TableHead>
-                      <TableHead>Service Area</TableHead>
+                      {report.previewColumns.map((label) => (
+                        <TableHead key={label}>{label}</TableHead>
+                      ))}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {report.validRows.slice(0, 20).map((r) => (
                       <TableRow key={r.rowNumber}>
-                        <TableCell className="font-medium">{r.assetCode}</TableCell>
-                        <TableCell>{r.material}</TableCell>
-                        <TableCell>{r.diameter}&quot;</TableCell>
-                        <TableCell>{r.length}</TableCell>
-                        <TableCell>{r.installationYear}</TableCell>
-                        <TableCell>{r.condition ?? "—"}</TableCell>
-                        <TableCell>{r.serviceArea ?? "—"}</TableCell>
+                        {r.preview.map((value, i) => (
+                          <TableCell key={i} className={i === 0 ? "font-medium" : undefined}>
+                            {value}
+                          </TableCell>
+                        ))}
                       </TableRow>
                     ))}
                   </TableBody>
@@ -166,10 +169,11 @@ export function ImportForm({ templateCsv }: { templateCsv: string }) {
           <CardContent>
             <form action={commitAction} className="flex items-center justify-between gap-4">
               <input type="hidden" name="csv" value={active.csv} />
+              <input type="hidden" name="assetTypeId" value={assetTypeId} />
               <p className="text-xs text-muted-foreground">
                 {hasErrors
                   ? "Commit is disabled while the file has errors — fix them and validate again."
-                  : `${report.validRows.length} row${report.validRows.length === 1 ? "" : "s"} will be created as ACTIVE waterline segments.`}
+                  : `${report.validRows.length} row${report.validRows.length === 1 ? "" : "s"} will be created as active ${assetTypeName.toLowerCase()} assets.`}
               </p>
               <Button type="submit" disabled={!canCommit || committing}>
                 {committing ? "Importing…" : "Commit Import"}

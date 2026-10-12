@@ -18,10 +18,11 @@ export async function validateImportAction(_prev: ImportState, formData: FormDat
   try {
     const session = await requireEditor();
     const csv = String(formData.get("csv") ?? "").trim();
+    const assetTypeId = String(formData.get("assetTypeId") ?? "");
     if (!csv) {
       return { ...EMPTY_IMPORT_STATE, phase: "error", message: "Paste CSV content or upload a file first." };
     }
-    const report = await validateImport(session.user.organizationId, csv);
+    const report = await validateImport(session.user.organizationId, assetTypeId, csv);
     return {
       phase: "validated",
       csv,
@@ -38,11 +39,12 @@ export async function commitImportAction(_prev: ImportState, formData: FormData)
   try {
     const session = await requireEditor();
     const csv = String(formData.get("csv") ?? "").trim();
+    const assetTypeId = String(formData.get("assetTypeId") ?? "");
     if (!csv) {
       return { ...EMPTY_IMPORT_STATE, phase: "error", message: "Nothing to import." };
     }
 
-    const report = await validateImport(session.user.organizationId, csv);
+    const report = await validateImport(session.user.organizationId, assetTypeId, csv);
     if (report.errors.length > 0) {
       return {
         phase: "validated",
@@ -53,7 +55,7 @@ export async function commitImportAction(_prev: ImportState, formData: FormData)
       };
     }
 
-    const result = await commitImport(session.user.organizationId, csv);
+    const result = await commitImport(session.user.organizationId, assetTypeId, csv);
     revalidatePath("/assets");
     revalidatePath("/network");
     revalidatePath("/dashboard");
@@ -63,7 +65,7 @@ export async function commitImportAction(_prev: ImportState, formData: FormData)
       csv: "",
       report: null,
       imported: result.imported,
-      message: `Imported ${result.imported} segment${result.imported === 1 ? "" : "s"}.`,
+      message: `Imported ${result.imported} ${result.assetTypeName.toLowerCase()} asset${result.imported === 1 ? "" : "s"}.`,
     };
   } catch (err) {
     return { ...EMPTY_IMPORT_STATE, phase: "error", message: err instanceof Error ? err.message : "Import failed" };
