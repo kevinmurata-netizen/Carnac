@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-12",
+    title: "Treatment roles instead of fixed names",
+    summary:
+      "Each asset type marks which of its treatments is its replacement — the baseline every life-cycle cost comparison is measured against — and which is offered when an asset's condition is unknown. These were found by the names Replacement and Inspection. Nothing changes for water today.",
+    changes: [
+      "A Role choice on each treatment, and badges in the library showing each type's life-cycle baseline and what is offered when condition is unknown. Choosing a role another treatment has moves it.",
+      "A treatment can be renamed without losing its part.",
+      "An asset type with no replacement has no life-cycle cost comparison, rather than borrowing the waterline's.",
+    ],
+    note: "One migration: the role column, filled for every treatment named Replacement or Inspection.",
+  },
+  {
+    date: "2026-10-12",
     title: "The water defaults are the waterline's alone",
     summary:
       "The built-in water curves, treatment library and condition index components are now the waterline's seed data rather than fallbacks any asset type could pick up. Nothing changes for water today.",

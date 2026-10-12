@@ -856,6 +856,13 @@ model Treatment {
   name        String // "Replacement", "Relining", "Spot Repair"
   description String?
 
+  /// The part this treatment plays for its asset type, where it plays one:
+  /// "replacement" is the planned renewal every life-cycle cost comparison
+  /// is measured against; "inspection" is what is offered on an asset whose
+  /// condition is unknown. At most one of each per asset type. Chosen here
+  /// rather than by name, so no code names a treatment.
+  role String?
+
   /// Category, the condition-effect discriminator and the implementation note.
   /// The material and diameter constraints it used to also carry became rules
   /// in Phase 1 and were dropped in Phase 6b.

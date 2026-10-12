@@ -8,12 +8,11 @@ import {
   type LccaAssumptions,
 } from "@/domain/waterline/lcca";
 import {
-  WATERLINE_TREATMENTS,
   isApplicable,
   estimateTreatmentCost,
   resolveTreatmentCost,
   type AssetTreatmentContext,
-  findTreatment,
+  findByRole,
 } from "@/domain/waterline/treatment";
 import { curveFor } from "@/domain/waterline/deterioration";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
@@ -97,8 +96,9 @@ export async function getAssetLcca(
 
   // Cost of the replacement that eventually becomes unavoidable, at the
   // emergency premium since it happens on the pipe's schedule, not ours.
-  const replacementDef =
-    findTreatment(library, "Replacement", ctx.assetTypeId) ?? WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
+  // The asset type's own replacement; without one there is no baseline.
+  const replacementDef = findByRole(library, "replacement", ctx.assetTypeId);
+  if (!replacementDef) return null;
   // The forced replacement is what the do-nothing baseline is measured
   // against, so if no rate prices Replacement for this asset there is no
   // baseline and the whole comparison is meaningless rather than merely

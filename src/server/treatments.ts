@@ -3,7 +3,6 @@ import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { combineEffects, effectLabel } from "@/domain/waterline/effect";
 import { toEffectDef } from "@/server/effects";
 import {
-  WATERLINE_TREATMENTS,
   rulesFromWindow,
   recommendTreatment,
   enumerateOptions,
@@ -62,6 +61,7 @@ export async function seedTreatmentLibrary(organizationId: string, assetTypeId: 
     const created = await prisma.treatment.create({
       data: {
         assetTypeId: assetType.id,
+        role: def.role ?? null,
         name: def.name,
         description: def.description,
         applicability: {
@@ -331,7 +331,6 @@ export async function getNetworkRecommendations(
     lifeCycleSaving: chosen.weights.lifeCycleCost,
   };
 
-  const fallbackReplacement = WATERLINE_TREATMENTS.find((d) => d.name === "Replacement")!;
 
   type Pending = {
     assetId: string;
@@ -377,7 +376,7 @@ export async function getNetworkRecommendations(
 
     const lcca =
       ctx.conditionScore != null
-        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curvesFor(ctx.assetTypeId), fallbackReplacement)
+        ? buildLccaEvaluator(ctx, ctx.conditionScore, library, curvesFor(ctx.assetTypeId))
         : null;
 
     // The same arithmetic the full ranking uses, so this table and the ranked

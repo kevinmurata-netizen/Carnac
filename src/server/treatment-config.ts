@@ -4,6 +4,8 @@ import {
   type TreatmentDef,
   type TreatmentCategory,
   type CostRate,
+  TREATMENT_ROLES,
+  type TreatmentRole,
 } from "@/domain/waterline/treatment";
 import {
   countConditions,
@@ -102,6 +104,10 @@ function fetchTreatments(organizationId: string) {
   });
 }
 
+function isTreatmentRole(value: unknown): value is TreatmentRole {
+  return typeof value === "string" && (TREATMENT_ROLES as readonly string[]).includes(value);
+}
+
 function toDef(row: TreatmentWithRules): TreatmentDef {
   const applicability = (row.applicability ?? {}) as {
     category?: string;
@@ -121,6 +127,7 @@ function toDef(row: TreatmentWithRules): TreatmentDef {
     id: row.id,
     name: row.name,
     assetTypeId: row.assetTypeId,
+    role: isTreatmentRole(row.role) ? row.role : null,
     description: row.description ?? "",
     category: (applicability.category as TreatmentCategory) ?? "Repair",
     // The window is absent on purpose. It described what a treatment applied
@@ -213,6 +220,10 @@ export type TreatmentInput = {
   name: string;
   description: string;
   category: TreatmentCategory;
+  /** The part it plays for its asset type. Absent leaves it as it is; null
+   * takes it off. Giving it a role another treatment of the type plays moves
+   * the role here, since a type has at most one of each. */
+  role?: TreatmentRole | null;
   // The condition window, material list and diameter bounds are absent on
   // purpose: they are rules now, edited on the treatment's own page, and as of
   // Phase 6b the columns behind them are gone too. What the treatment does is
@@ -262,20 +273,36 @@ export async function updateTreatment(organizationId: string, id: string, input:
   });
   if (!existing) throw new Error("Treatment not found");
 
-  await prisma.treatment.update({
-    where: { id },
-    data: {
-      name: input.name.trim(),
-      description: input.description.trim() || null,
-      applicability: toApplicability(input, (existing.applicability ?? {}) as Record<string, unknown>),
-      // The effect columns are not written: effects own what a treatment does.
-      // The cost columns are deliberately not written. Cost rates own the
-      // price now, the edit form no longer asks about it, and writing the
-      // form's empty defaults here would blank what these columns still hold.
-      usefulLife: input.usefulLife,
-      retreatmentIntervalYears: input.retreatmentIntervalYears,
-    },
-  });
+  await prisma.$transaction([
+    ...releaseRole(existing.assetTypeId, input.role, id),
+    prisma.treatment.update({
+      where: { id },
+      data: {
+        ...(input.role === undefined ? {} : { role: input.role }),
+        name: input.name.trim(),
+        description: input.description.trim() || null,
+        applicability: toApplicability(input, (existing.applicability ?? {}) as Record<string, unknown>),
+        // The effect columns are not written: effects own what a treatment does.
+        // The cost columns are deliberately not written. Cost rates own the
+        // price now, the edit form no longer asks about it, and writing the
+        // form's empty defaults here would blank what these columns still hold.
+        usefulLife: input.usefulLife,
+        retreatmentIntervalYears: input.retreatmentIntervalYears,
+      },
+    }),
+  ]);
+}
+
+/** Take a role off whichever other treatment of the type plays it, so the
+ * one being saved can. Nothing to do when no role is being given. */
+function releaseRole(assetTypeId: string, role: TreatmentRole | null | undefined, keepId?: string) {
+  if (!role) return [];
+  return [
+    prisma.treatment.updateMany({
+      where: { assetTypeId, role, ...(keepId ? { id: { not: keepId } } : {}) },
+      data: { role: null },
+    }),
+  ];
 }
 
 export async function createTreatment(organizationId: string, input: TreatmentInput & { assetTypeId?: string | null }) {
@@ -290,9 +317,11 @@ export async function createTreatment(organizationId: string, input: TreatmentIn
   });
   if (clash) throw new Error(`A treatment named "${input.name.trim()}" already exists`);
 
+  if (input.role) await prisma.$transaction(releaseRole(assetType.id, input.role));
   const created = await prisma.treatment.create({
     data: {
       assetTypeId: assetType.id,
+      role: input.role ?? null,
       name: input.name.trim(),
       description: input.description.trim() || null,
       applicability: toApplicability(input),

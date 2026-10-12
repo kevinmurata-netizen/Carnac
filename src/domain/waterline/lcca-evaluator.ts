@@ -3,7 +3,7 @@ import {
   type AssetTreatmentContext,
   type TreatmentDef,
   type TreatmentOption,
-  findTreatment,
+  findByRole,
 } from "./treatment";
 
 import { computeLcca, DEFAULT_LCCA_ASSUMPTIONS, EMERGENCY_COST_PREMIUM } from "./lcca";
@@ -43,8 +43,7 @@ export function buildLccaEvaluator(
   ctx: AssetTreatmentContext,
   conditionScore: number,
   library: TreatmentDef[],
-  curves: Record<string, CurveParams>,
-  fallbackReplacement: TreatmentDef
+  curves: Record<string, CurveParams>
 ): LccaEvaluator | null {
   const curve = curveFor(ctx.material, curves);
   const remainingLife = Math.max(
@@ -52,7 +51,10 @@ export function buildLccaEvaluator(
     Math.round(curve.serviceLife - effectiveAgeForCondition(curve, conditionScore))
   );
 
-  const replacementDef = findTreatment(library, "Replacement", ctx.assetTypeId) ?? fallbackReplacement;
+  // The asset type's own replacement is the baseline. A type without one has
+  // nothing to compare against, rather than borrowing another asset class's.
+  const replacementDef = findByRole(library, "replacement", ctx.assetTypeId);
+  if (!replacementDef) return null;
   const plannedReplacementCost = estimateTreatmentCost(replacementDef, ctx);
   if (plannedReplacementCost == null) return null;
 

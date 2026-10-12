@@ -1,5 +1,7 @@
 "use server";
 
+import { TREATMENT_ROLES, type TreatmentRole } from "@/domain/waterline/treatment";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireCardWrite } from "@/server/guard";
@@ -63,6 +65,10 @@ function parseInput(form: FormData): TreatmentInput {
     // administrator who never opens this box still gets the backstop.
     retreatmentIntervalYears: optionalNum(form, "retreatmentIntervalYears"),
     category: CATEGORIES.includes(category) ? category : "Repair",
+    // Present on the form, so always sent: blank takes the role off.
+    role: (TREATMENT_ROLES as readonly string[]).includes(String(form.get("role") ?? ""))
+      ? (String(form.get("role")) as TreatmentRole)
+      : null,
     // No cost fields: the form has not asked about them since prices moved to
     // cost rates, so reading them here only ever produced zeroes. The create
     // path supplies the fallback rate explicitly instead.
