@@ -37,6 +37,16 @@ export const MATERIAL_CURVES: Record<string, CurveParams> = {
 
 export const DEFAULT_CURVE: CurveParams = { initialCondition: 100, minCondition: 0, serviceLife: 75, shape: 1.4 };
 
+/** Why a curve cannot be used, or null when it can. */
+export function curveProblem(curve: CurveParams): string | null {
+  const values = [curve.initialCondition, curve.minCondition, curve.serviceLife, curve.shape];
+  if (values.some((v) => !Number.isFinite(v))) return "Every curve setting needs a number";
+  if (curve.serviceLife <= 0) return "Service life must be greater than zero";
+  if (curve.shape <= 0) return "Curve shape must be greater than zero";
+  if (curve.minCondition >= curve.initialCondition) return "Minimum condition must be below the initial condition";
+  return null;
+}
+
 export function evaluateCurve(params: CurveParams, ageYears: number): number {
   if (ageYears <= 0) return params.initialCondition;
   const ratio = Math.min(ageYears / params.serviceLife, 1);

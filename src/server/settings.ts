@@ -13,6 +13,7 @@ import { MEASURE_ROLES as ROLES } from "@/lib/measure-roles";
 import {
   DEFAULT_CURVE,
   DEFAULT_TRANSITION_MATRIX,
+  curveProblem,
   MARKOV_STATES,
   type CurveParams,
 } from "@/domain/waterline/deterioration";
@@ -575,13 +576,8 @@ export async function updateDeteriorationModel(
   input: { name: string; isActive?: boolean; curve: CurveParams }
 ) {
   if (!input.name.trim()) throw new Error("Model name is required");
-  const { initialCondition, minCondition, serviceLife, shape } = input.curve;
-
-  if (serviceLife <= 0) throw new Error("Service life must be greater than zero");
-  if (shape <= 0) throw new Error("Curve shape must be greater than zero");
-  if (minCondition >= initialCondition) {
-    throw new Error("Minimum condition must be below the initial condition");
-  }
+  const problem = curveProblem(input.curve);
+  if (problem) throw new Error(problem);
 
   // Any curve in the organization: a waterline material's or a component's.
   const model = await prisma.deteriorationModel.findFirst({

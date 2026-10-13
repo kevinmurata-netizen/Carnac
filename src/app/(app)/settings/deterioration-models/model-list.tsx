@@ -20,10 +20,13 @@ import { LineChart } from "lucide-react";
 export function DeteriorationModelList({
   models,
   markov,
+  addCurve,
 }: {
   models: DeteriorationModelConfig[];
   /** Rendered separately: it has a transition matrix, not a curve. */
   markov: MarkovConfig | null;
+  /** The form for another material's curve, below the existing ones. */
+  addCurve?: React.ReactNode;
 }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set());
 
@@ -76,11 +79,14 @@ export function DeteriorationModelList({
               m.curve.minCondition,
             ].join("|")}
             model={m}
+            deletable={m.material != null}
             showGraph={open.has(m.id)}
             onShowGraphChange={(next) => setOne(m.id, next)}
           />
         ))}
       </div>
+
+      {addCurve && <div className="mt-4">{addCurve}</div>}
 
       {markov && (
         <div className="mt-4">

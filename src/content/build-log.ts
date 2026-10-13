@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-13",
+    title: "Add a material's curve from Settings",
+    summary:
+      "Settings › Deterioration Models can now add a curve for a material, on any modelled asset type, and remove one added by mistake. A new asset class no longer has to age everything on the default 75-year curve.",
+    changes: [
+      "An \"Add a curve\" card under each type's curves lists the materials recorded on its assets that have no curve yet, starts from the default curve, and draws the new one beside it as it is edited.",
+      "A material can have one curve per asset type; a second is refused, whatever its capitals.",
+      "A curve can be removed until it has produced predictions. After that it is kept with them, and switching it off does the same job for later forecasts.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-13",
     title: "Sizes and lengths in the network's own units",
     summary:
       "Size and length headings and values come from the attributes that hold them, with those attributes' own labels and units — \"Diameter (in)\" for water, \"Height (m)\" for a network recorded that way. Nothing looks different for water.",

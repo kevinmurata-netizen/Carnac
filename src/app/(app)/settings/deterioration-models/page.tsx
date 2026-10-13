@@ -12,6 +12,8 @@ import { listComponentCurves } from "@/server/component-deterioration";
 import { ComponentCurveList } from "./component-curve-list";
 import { chooseModelledAssetType } from "@/server/modelled-asset-type";
 import { AssetTypePills } from "@/components/layout/asset-type-pills";
+import { getMeasureInfo } from "@/server/measures";
+import { NewCurve } from "./new-curve";
 
 export default async function DeteriorationModelSettingsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
@@ -23,11 +25,17 @@ export default async function DeteriorationModelSettingsPage({ searchParams }: {
   // Material curves and the Markov matrix belong to one modelled asset type;
   // component curves, below, already say which kind of asset they are for.
   const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
-  const [models, markov, componentCurves] = await Promise.all([
+  const [models, markov, componentCurves, measureInfo] = await Promise.all([
     listDeteriorationModels(organizationId, selected?.id),
     getMarkovConfig(organizationId, selected?.id),
     listComponentCurves(organizationId),
+    selected ? getMeasureInfo(organizationId, selected.id) : Promise.resolve([]),
   ]);
+  // The materials recorded on this type's assets that no curve covers — what
+  // currently ages on the default curve.
+  const materialInfo = measureInfo.find((m) => m.role === "material");
+  const covered = new Set(models.map((m) => m.material).filter((m): m is string => !!m));
+  const uncovered = (materialInfo?.values ?? []).filter((v) => !covered.has(v));
 
   return (
     <div>
@@ -49,7 +57,22 @@ export default async function DeteriorationModelSettingsPage({ searchParams }: {
       </div>
 
       {canEdit ? (
-        <DeteriorationModelList models={models} markov={markov} />
+        <DeteriorationModelList
+          models={models}
+          markov={markov}
+          addCurve={
+            selected && (
+              <NewCurve
+                // A fresh, empty form once a curve is added.
+                key={models.length}
+                assetTypeId={selected.id}
+                typeName={selected.name}
+                materialName={materialInfo?.attributeLabel ?? "Material"}
+                uncovered={uncovered}
+              />
+            )
+          }
+        />
       ) : (
         <Card>
           <CardContent className="space-y-3 py-6 text-sm">

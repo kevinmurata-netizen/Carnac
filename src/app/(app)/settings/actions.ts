@@ -2,6 +2,7 @@
 
 import { setAssetTypeModelled } from "@/server/modelling";
 import { updateBranding } from "@/server/branding";
+import { createMaterialCurve, deleteMaterialCurve } from "@/server/deterioration";
 
 import { revalidatePath } from "next/cache";
 import { AttributeDataType } from "@prisma/client";
@@ -242,6 +243,42 @@ export async function saveDeteriorationModelAction(
     return { status: "success", message: "Saved — forecasts now use this curve." };
   } catch (e) {
     return fail(e);
+  }
+}
+
+export async function addMaterialCurveAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess("/settings/deterioration-models");
+    const material = String(formData.get("material") ?? "").trim();
+    await createMaterialCurve(session.user.organizationId, String(formData.get("assetTypeId") ?? ""), {
+      material,
+      curve: {
+        initialCondition: num(formData, "initialCondition"),
+        minCondition: num(formData, "minCondition"),
+        serviceLife: num(formData, "serviceLife"),
+        shape: num(formData, "shape"),
+      },
+    });
+    revalidateAll("/settings/deterioration-models");
+    return { status: "success", message: `Added — ${material} now ages on its own curve in the next forecast or run.` };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Called directly, like the active badge: the button sits inside the
+ * curve's own form. */
+export async function deleteMaterialCurveAction(id: string): Promise<{ ok: boolean; message: string }> {
+  try {
+    const session = await requireWriteAccess("/settings/deterioration-models");
+    const name = await deleteMaterialCurve(session.user.organizationId, id);
+    revalidateAll("/settings/deterioration-models");
+    return { ok: true, message: `${name} removed.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not remove the curve" };
   }
 }
 
