@@ -47,6 +47,7 @@ import {
   type CombinationDef,
   type TreatmentCategory,
   findTreatment,
+  type SizeCostScale,
 } from "./treatment";
 
 export const STRATEGIES = [
@@ -194,6 +195,8 @@ export type SimAsset = {
   /** Its type's consequence factors, for the benefit term. Absent rates the
    * built-in (waterline) factors. */
   cofFactors?: RiskFactorDef[];
+  /** How its type's prices grow with size. Absent: they do not. */
+  sizeCostScale?: SizeCostScale | null;
   assetCode: string;
   material: string | null;
   diameterInches: number | null;
@@ -513,6 +516,7 @@ function buildContext(asset: SimAsset): AssetTreatmentContext {
   const pof = pofFromCondition(asset.condition);
   return {
     assetTypeId: asset.assetTypeId,
+    sizeCostScale: asset.sizeCostScale,
     conditionScore: asset.condition,
     material: asset.material,
     diameterInches: asset.diameterInches,

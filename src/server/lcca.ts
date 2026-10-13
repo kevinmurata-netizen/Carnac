@@ -18,7 +18,7 @@ import { curveFor } from "@/domain/waterline/deterioration";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
-import { getCurvesByAssetType } from "@/server/settings";
+import { getCurvesByAssetType, getSizeCostByType } from "@/server/settings";
 
 export type AssetLcca = {
   assumptions: LccaAssumptions;
@@ -75,6 +75,7 @@ export async function getAssetLcca(
     ageYears: ageInYears(asset.installationDate),
     expectedUsefulLife: asset.expectedUsefulLife ?? 75,
     assetTypeId: asset.assetTypeId,
+    sizeCostScale: (await getSizeCostByType(organizationId))(asset.assetTypeId),
     criticality: m.criticality,
     serviceArea: asset.location?.serviceArea ?? null,
     pressureZone: asset.location?.pressureZone ?? null,

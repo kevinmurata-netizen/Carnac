@@ -892,6 +892,8 @@ function MeasuresSection({
 }) {
   const labelOf = (code: string | undefined) => type.attributes.find((a) => a.code === code)?.label ?? null;
   const setCount = MEASURE_ROLES.filter((r) => labelOf(type.measures[r.key])).length;
+  const sizeLabel = labelOf(type.measures.diameter);
+  const sizeUnit = type.attributes.find((a) => a.code === type.measures.diameter)?.unit ?? null;
   return (
     <section>
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -940,6 +942,18 @@ function MeasuresSection({
           </TableBody>
         </Table>
       </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {type.sizeCostScale && sizeLabel ? (
+          <>
+            Treatment prices grow with {sizeLabel.toLowerCase()}: a {sizeLabel.toLowerCase()} of{" "}
+            {type.sizeCostScale.reference}
+            {sizeUnit ? ` ${sizeUnit}` : ""} prices at the rate, and price rises as ({sizeLabel.toLowerCase()} ÷{" "}
+            {type.sizeCostScale.reference})^{type.sizeCostScale.exponent}.
+          </>
+        ) : (
+          "Treatment prices do not change with size."
+        )}
+      </p>
     </section>
   );
 }
@@ -985,6 +999,7 @@ function MeasuresForm({
           );
         })}
       </div>
+      <SizeCostFields scale={type.sizeCostScale} />
       <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
@@ -994,6 +1009,55 @@ function MeasuresForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** Whether a bigger asset costs more to treat, and how steeply. */
+function SizeCostFields({ scale }: { scale: AssetTypeDetail["sizeCostScale"] }) {
+  const [on, setOn] = useState(scale != null);
+  return (
+    <fieldset className="space-y-2 rounded-md border p-3">
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input type="checkbox" name="sizeCost" checked={on} onChange={(e) => setOn(e.target.checked)} />
+        Bigger assets cost more to treat
+      </label>
+      <p className="text-xs text-muted-foreground">
+        Every rate is multiplied by (size ÷ reference)^exponent: at the reference size a treatment costs its rate.
+        Water mains use 8 and 0.7, so larger mains cost more but less than in proportion. Leave it off where size
+        does not move price.
+      </p>
+      {on && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="sizeCostReference">Reference size</Label>
+            <input
+              id="sizeCostReference"
+              name="sizeCostReference"
+              type="number"
+              min={0}
+              step="any"
+              defaultValue={scale?.reference ?? ""}
+              className={input}
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sizeCostExponent">Exponent</Label>
+            <input
+              id="sizeCostExponent"
+              name="sizeCostExponent"
+              type="number"
+              min={0}
+              max={3}
+              step="any"
+              defaultValue={scale?.exponent ?? 1}
+              className={input}
+              required
+            />
+          </div>
+        </div>
+      )}
+    </fieldset>
   );
 }
 

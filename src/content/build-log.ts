@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-14",
+    title: "Size moves price only where a type says so",
+    summary:
+      "Every treatment price was scaled by pipe size — (size ÷ 8)^0.7 — whatever the asset was, so a 35 ft pole priced its work 2.8 times its rate. Each asset type now says whether its size moves price, and how. Water prices are unchanged.",
+    changes: [
+      "Settings › Asset Types: under a type's measures, \"Bigger assets cost more to treat\", with a reference size (priced at the rate) and an exponent. The measures section says which rule applies.",
+      "The waterline keeps 8 and 0.7. A newly modelled type starts with no size scaling.",
+      "Treatment Planning's note on costs points at the setting rather than at diameter.",
+    ],
+    fixes: ["A freshly seeded database now creates the waterline as a line type, as the map expects."],
+    note: "Migration: 20261014120000_size_cost_scale — adds the setting and fills it with today's factor for every modelled type.",
+  },
+  {
     date: "2026-10-13",
     title: "Add a material's curve from Settings",
     summary:

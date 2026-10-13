@@ -35,7 +35,7 @@ import { resolveFundingPlan } from "@/server/category-funding";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveOptionSelection } from "@/server/scenario-options";
 import { loadCombinations } from "@/server/combinations";
-import { getCurvesByAssetType, getRiskFactorsByType } from "@/server/settings";
+import { getCurvesByAssetType, getRiskFactorsByType, getSizeCostByType } from "@/server/settings";
 import { modelledScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
@@ -97,6 +97,7 @@ export async function buildSimAssets(
 
   const measuresOf = await getMeasureCodes(organizationId);
   const riskFactorsOf = await getRiskFactorsByType(organizationId);
+  const sizeCostOf = await getSizeCostByType(organizationId);
   return assets.map((asset) => {
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const material = m.material;
@@ -110,6 +111,7 @@ export async function buildSimAssets(
       id: asset.id,
       assetTypeId: asset.assetTypeId,
       cofFactors: riskFactorsOf(asset.assetTypeId).cof,
+      sizeCostScale: sizeCostOf(asset.assetTypeId),
       assetCode: asset.assetCode,
       material,
       diameterInches: m.diameter,

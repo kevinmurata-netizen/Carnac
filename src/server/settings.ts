@@ -1,4 +1,4 @@
-import type { AttributeDataType } from "@prisma/client";
+import { Prisma, type AttributeDataType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { WCI_BANDS, type ConditionBand } from "@/domain/waterline/condition";
 import {
@@ -10,6 +10,7 @@ import {
   type RiskFactorDef,
 } from "@/domain/waterline/risk";
 import { MEASURE_ROLES as ROLES } from "@/lib/measure-roles";
+import { parseSizeCostScale, type SizeCostScale } from "@/domain/waterline/treatment";
 import {
   DEFAULT_CURVE,
   DEFAULT_TRANSITION_MATRIX,
@@ -249,6 +250,19 @@ export async function getRiskFactorsByType(
   }
   const builtIn = { pof: DEFAULT_POF_FACTORS, cof: DEFAULT_COF_FACTORS };
   return (assetTypeId) => (assetTypeId ? byType.get(assetTypeId) : undefined) ?? builtIn;
+}
+
+/** How each modelled type's prices grow with size, by type id: what every
+ * treatment context carries so pricing reads its own type's scale. */
+export async function getSizeCostByType(
+  organizationId: string
+): Promise<(assetTypeId: string | null | undefined) => SizeCostScale | null> {
+  const types = await prisma.assetType.findMany({
+    where: modelledType(organizationId),
+    select: { id: true, sizeCostScale: true },
+  });
+  const byType = new Map(types.map((t) => [t.id, parseSizeCostScale(t.sizeCostScale)]));
+  return (assetTypeId) => (assetTypeId ? (byType.get(assetTypeId) ?? null) : null);
 }
 
 /** A modelled type's whole-asset risk model — never one that only holds
@@ -641,6 +655,8 @@ export type AssetTypeDetail = {
   geometry: string;
   /** Which of its attributes holds each measure the engine reads. */
   measures: MeasureCodes;
+  /** How its treatment prices grow with its size; null when they do not. */
+  sizeCostScale: SizeCostScale | null;
   attributes: AttributeDetail[];
   templates: TemplateDetail[];
 };
@@ -696,6 +712,7 @@ export async function listAssetTypeDetails(organizationId: string): Promise<Asse
     isModelled: t.isModelled,
     geometry: t.geometry,
     measures: parseMeasureCodes(t.measures),
+    sizeCostScale: parseSizeCostScale(t.sizeCostScale),
     attributes: t.attributeDefinitions.map((d) => ({
       id: d.id,
       code: d.code,
@@ -752,7 +769,24 @@ export async function updateAssetTypeMeasures(
     measures[role.key] = code;
   }
 
-  await prisma.assetType.update({ where: { id: assetType.id }, data: { measures } });
+  // Whether a bigger asset costs more to treat, and how steeply. Only a type
+  // with a size measure can scale by it.
+  let sizeCostScale: SizeCostScale | null = null;
+  if (input.sizeCost === "on") {
+    if (!measures.diameter) throw new Error("Choose the attribute that holds its size before scaling cost by it");
+    const reference = Number(input.sizeCostReference);
+    const exponent = Number(input.sizeCostExponent);
+    if (!(reference > 0)) throw new Error("The reference size must be a number above zero — the size priced at the rate itself");
+    if (!Number.isFinite(exponent) || exponent <= 0 || exponent > 3) {
+      throw new Error("The exponent must be above 0 and at most 3 — 1 grows price in step with size, below 1 more gently");
+    }
+    sizeCostScale = { reference, exponent };
+  }
+
+  await prisma.assetType.update({
+    where: { id: assetType.id },
+    data: { measures, sizeCostScale: sizeCostScale ?? Prisma.DbNull },
+  });
   return assetType.name;
 }
 

@@ -142,6 +142,11 @@ model AssetType {
   /// left out reads as unknown. See src/server/measures.ts.
   measures Json?
 
+  /// How a treatment's price grows with the asset's size (its size measure):
+  /// {"reference": 8, "exponent": 0.7} prices at (size / reference) ^ exponent
+  /// times the rate. Null: size does not move price.
+  sizeCostScale Json?
+
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 

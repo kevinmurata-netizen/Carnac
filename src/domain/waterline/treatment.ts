@@ -456,10 +456,24 @@ export function rulesFromWindow(def: TreatmentDef): Rule[] {
   return rules;
 }
 
-/** Larger mains cost disproportionately more; normalized so 8" = 1.0. */
-export function diameterCostFactor(diameterInches: number | null): number {
-  if (!diameterInches) return 1;
-  return Math.round(Math.pow(diameterInches / 8, 0.7) * 100) / 100;
+/** How a treatment's price grows with an asset's size, set per asset type:
+ * (size / reference) ^ exponent times the rate. Water mains use 8 and 0.7 —
+ * larger mains cost disproportionately more, an 8" main pricing at the rate. */
+export type SizeCostScale = { reference: number; exponent: number };
+
+/** The multiplier a rate is priced at for an asset of this size: 1 where its
+ * type does not scale by size, or its size is unknown. */
+export function sizeCostFactor(size: number | null, scale: SizeCostScale | null | undefined): number {
+  if (!size || !scale || !(scale.reference > 0)) return 1;
+  return Math.round(Math.pow(size / scale.reference, scale.exponent) * 100) / 100;
+}
+
+/** A stored scale, or null when it is absent or unreadable. */
+export function parseSizeCostScale(value: unknown): SizeCostScale | null {
+  const v = value as { reference?: unknown; exponent?: unknown } | null;
+  const reference = Number(v?.reference);
+  const exponent = Number(v?.exponent);
+  return v && Number.isFinite(reference) && reference > 0 && Number.isFinite(exponent) ? { reference, exponent } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -523,9 +537,9 @@ function describeRate(rate: CostRate): string {
 
 export function priceWithRate(
   rate: CostRate,
-  asset: { lengthFt: number | null; diameterInches: number | null }
+  asset: { lengthFt: number | null; diameterInches: number | null; sizeCostScale?: SizeCostScale | null }
 ): number {
-  const factor = diameterCostFactor(asset.diameterInches);
+  const factor = sizeCostFactor(asset.diameterInches, asset.sizeCostScale);
   const base =
     rate.costUnit === "per LF" ? rate.unitCost * factor * (asset.lengthFt ?? 0) : rate.unitCost * factor;
   return Math.round(base + rate.mobilizationCost);
@@ -672,7 +686,7 @@ export function buildOption(
   // Cost: every member's unit component, but mobilization ONCE at its largest.
   // One crew, one traffic plan, one bypass — that saving is the reason to
   // bundle at all, and summing mobilization would mean no bundle ever won.
-  const factor = diameterCostFactor(ctx.diameterInches);
+  const factor = sizeCostFactor(ctx.diameterInches, ctx.sizeCostScale);
   const unitTotal = rates.reduce(
     (sum, r) => sum + (r.costUnit === "per LF" ? r.unitCost * factor * (ctx.lengthFt ?? 0) : r.unitCost * factor),
     0
@@ -781,7 +795,7 @@ export function enumerateOptions(
  * about which row absorbs a rounding penny.
  */
 export function splitOptionCost(option: TreatmentOption, ctx: AssetTreatmentContext): number[] {
-  const factor = diameterCostFactor(ctx.diameterInches);
+  const factor = sizeCostFactor(ctx.diameterInches, ctx.sizeCostScale);
   const units = option.rates.map((r) =>
     r.costUnit === "per LF" ? r.unitCost * factor * (ctx.lengthFt ?? 0) : r.unitCost * factor
   );
@@ -815,6 +829,8 @@ export type AssetTreatmentContext = {
    * reasons a recommendation gives. Wording only; absent, a reason quotes
    * the bare score. */
   conditionIndexShort?: string;
+  /** How its type's prices grow with size. Absent or null: they do not. */
+  sizeCostScale?: SizeCostScale | null;
   material: string | null;
   diameterInches: number | null;
   lengthFt: number | null;
