@@ -3,7 +3,7 @@ import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { auth } from "@/lib/auth";
 import { listAssets, flattenAttributes } from "@/server/assets";
 import { listSavedFilters } from "@/server/saved-filters";
-import { WATERLINE_ATTRIBUTES } from "@/domain/waterline/attributes";
+import { prisma } from "@/lib/prisma";
 import { ageInYears, formatStatus } from "@/lib/format";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { assetFiltersFromParams, paramsFromRequest, describeFilters } from "@/server/grid-params";
@@ -18,7 +18,8 @@ import { ASSET_LABEL } from "@/config/labels";
  *
  * The sheet carries more columns than the grid does. The grid is limited by
  * what fits across a screen; a spreadsheet is not, and the fields it adds are
- * the ones people would otherwise go and look up one segment at a time.
+ * the ones people would otherwise go and look up one segment at a time: each
+ * exported asset type's own attributes, beyond the measures already shown.
  */
 const COLUMNS: ExcelColumn[] = [
   { key: "assetCode", header: `${ASSET_LABEL.singular} ID`, type: "text" },
@@ -35,13 +36,8 @@ const COLUMNS: ExcelColumn[] = [
   { key: "criticality", header: "Criticality", type: "text" },
   { key: "customersServed", header: "Customers served", type: "integer" },
   { key: "customerType", header: "Customer type", type: "text" },
-  { key: "pressureClass", header: "Pressure class", type: "text" },
-  { key: "jointType", header: "Joint type", type: "text" },
-  { key: "liningType", header: "Lining type", type: "text" },
-  { key: "manufacturer", header: "Manufacturer", type: "text" },
-  { key: "owner", header: "Owner", type: "text" },
-  { key: "department", header: "Responsible department", type: "text" },
 ];
+const DEPARTMENT: ExcelColumn = { key: "department", header: "Responsible department", type: "text" };
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -52,13 +48,41 @@ export async function GET(request: Request) {
   const filters = await assetFiltersFromParams(organizationId, params);
   const [assets, measuresOf] = await Promise.all([listAssets(organizationId, filters), getMeasureCodes(organizationId)]);
 
+  // The other attributes of the asset types being exported, one column per
+  // label, in each type's own order. A measure is already a column above.
+  const typeIds = [...new Set(assets.map((a) => a.assetTypeId))];
+  const definitions = await prisma.assetAttributeDefinition.findMany({
+    where: { assetTypeId: { in: typeIds } },
+    select: { assetTypeId: true, code: true, label: true, dataType: true },
+    orderBy: [{ assetType: { name: "asc" } }, { sortOrder: "asc" }],
+  });
+  const extra: ExcelColumn[] = [];
+  const codeFor = new Map<string, string>(); // `${typeId}|${columnKey}` -> attribute code
+  for (const d of definitions) {
+    if (Object.values(measuresOf(d.assetTypeId)).includes(d.code)) continue;
+    let column = extra.find((c) => c.header === d.label);
+    if (!column) {
+      column = {
+        key: `attr_${extra.length}`,
+        header: d.label,
+        type: d.dataType === "NUMBER" ? "number" : d.dataType === "DATE" ? "date" : "text",
+      };
+      extra.push(column);
+    }
+    codeFor.set(`${d.assetTypeId}|${column.key}`, d.code);
+  }
+
   const savedFilterName = params.savedFilter
     ? (await listSavedFilters(organizationId)).find((f) => f.id === params.savedFilter)?.name
     : undefined;
 
   const rows = assets.map((asset) => {
     const attrs = flattenAttributes(asset);
-    const attr = (code: string) => attrs[code] ?? null;
+    const attr = (columnKey: string) => {
+      const code = codeFor.get(`${asset.assetTypeId}|${columnKey}`);
+      const value = code ? (attrs[code] ?? null) : null;
+      return typeof value === "boolean" ? (value ? "Yes" : "No") : value;
+    };
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
 
     return {
@@ -76,11 +100,7 @@ export async function GET(request: Request) {
       criticality: m.criticality,
       customersServed: m.customersServed,
       customerType: m.customerType,
-      pressureClass: attr(WATERLINE_ATTRIBUTES.PRESSURE_CLASS) as string | null,
-      jointType: attr(WATERLINE_ATTRIBUTES.JOINT_TYPE) as string | null,
-      liningType: attr(WATERLINE_ATTRIBUTES.LINING_TYPE) as string | null,
-      manufacturer: attr(WATERLINE_ATTRIBUTES.MANUFACTURER) as string | null,
-      owner: attr(WATERLINE_ATTRIBUTES.OWNER) as string | null,
+      ...Object.fromEntries(extra.map((c) => [c.key, attr(c.key)])),
       department: asset.ownerDepartment,
     };
   });
@@ -89,7 +109,7 @@ export async function GET(request: Request) {
     sheetName: ASSET_LABEL.plural,
     title: `${ASSET_LABEL.plural} Inventory — ${rows.length.toLocaleString()} segments`,
     note: describeFilters(params, savedFilterName),
-    columns: COLUMNS,
+    columns: [...COLUMNS, ...extra, DEPARTMENT],
     rows,
   });
 

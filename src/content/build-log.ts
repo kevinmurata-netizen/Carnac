@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-12",
+    title: "Import any asset type's inventory",
+    summary:
+      "Data Import now takes the chosen asset type's own columns rather than a fixed waterline layout, and the inventory spreadsheet lists each exported type's own attributes. Existing waterline files import exactly as before.",
+    changes: [
+      "Tabs for each asset type on Data Import. The columns are the type's attributes, required where the attribute is, checked as numbers, dates, yes/no or a list's own values, and headed by the attribute's label or its code.",
+      "Condition is checked against the type's own condition scale, and only offered where the type has one.",
+      "Optional Department and Expected Life columns. Imported assets no longer get the department \"Water Distribution\" whatever they are.",
+      "The inventory spreadsheet's extra columns are each exported type's own attributes, rather than five fixed waterline fields.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-12",
     title: "Treatment roles instead of fixed names",
     summary:
       "Each asset type marks which of its treatments is its replacement — the baseline every life-cycle cost comparison is measured against — and which is offered when an asset's condition is unknown. These were found by the names Replacement and Inspection. Nothing changes for water today.",

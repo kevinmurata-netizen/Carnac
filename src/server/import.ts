@@ -1,67 +1,167 @@
 import { prisma } from "@/lib/prisma";
-import { AssetStatus } from "@prisma/client";
-import {
-  WATERLINE_ATTRIBUTES,
-  MATERIAL_OPTIONS,
-  CRITICALITY_OPTIONS,
-} from "@/domain/waterline/attributes";
+import { AssetStatus, type AttributeDataType } from "@prisma/client";
 import { insertAssetLineLocation } from "@/server/geo";
-import { requireModelledAssetType } from "@/server/modelled-asset-type";
 import { wholeAssetConditionModel } from "@/server/components";
+import { parseMeasureCodes } from "@/server/measures";
 
 /**
- * CSV import for waterline inventory (SPEC §27). Validation is a separate,
- * side-effect-free pass so the user always sees the complete error report
- * BEFORE anything is written — a partially-imported file is worse than a
- * rejected one.
+ * CSV import of an asset type's inventory (SPEC §27). Validation is a
+ * separate, side-effect-free pass so the user always sees the complete error
+ * report BEFORE anything is written — a partially-imported file is worse than
+ * a rejected one.
+ *
+ * The columns are the chosen asset type's own: a few every asset has (its ID,
+ * when it was installed, where it is), then one per attribute of the type,
+ * required where the attribute is and checked against its data type. A
+ * reservoir imports capacity and overflow elevation; a waterline, material,
+ * diameter and length — and no code names either.
  */
 
-export const IMPORT_COLUMNS = [
-  { key: "assetCode", label: "Asset ID", required: true },
-  { key: "material", label: "Material", required: true },
-  { key: "diameter", label: "Diameter", required: true },
-  { key: "installationYear", label: "Installation Year", required: true },
-  { key: "length", label: "Length", required: true },
-  { key: "latitude", label: "Latitude", required: true },
-  { key: "longitude", label: "Longitude", required: true },
-  { key: "condition", label: "Condition", required: false },
-  { key: "criticality", label: "Criticality", required: false },
-  { key: "customersServed", label: "Customers Served", required: false },
-  { key: "serviceArea", label: "Service Area", required: false },
-] as const;
+/** Typical expected life when a row gives none — the same default the app
+ * uses wherever an asset's own is missing. */
+const DEFAULT_EXPECTED_LIFE = 75;
+/** Half-length of the stand-in line drawn for an asset whose type measures no
+ * length, in feet. Imported rows give a single point. */
+const STAND_IN_LENGTH_FT = 10;
 
-export const IMPORT_TEMPLATE_HEADER = IMPORT_COLUMNS.map((c) => c.label).join(",");
+export type ImportColumnKind = "text" | "number" | "integer" | "date" | "boolean" | "enum";
 
-export const IMPORT_SAMPLE_ROWS = [
-  "WL-9001,Ductile Iron,8,1998,1450,39.5205,-98.3512,72,Moderate,120,Downtown",
-  "WL-9002,PVC,12,2011,980,39.5064,-98.3702,88,Low,64,Riverside",
-];
+export type ImportColumn = {
+  key: string;
+  label: string;
+  required: boolean;
+  kind: ImportColumnKind;
+  /** A list attribute's allowed values. */
+  options?: string[];
+  /** What the column means and accepts, for the Expected Columns table. */
+  note: string;
+  /** Headers accepted besides the label: an attribute's code. */
+  aliases: string[];
+  /** The attribute it fills, for attribute columns. */
+  attributeCode?: string;
+  min?: number;
+  max?: number;
+};
+
+export type ImportSpec = {
+  assetTypeId: string;
+  assetTypeName: string;
+  columns: ImportColumn[];
+};
 
 export type RowError = { row: number; column: string; message: string };
+
+/** One attribute value as it will be written. Kept as plain values so the
+ * report can travel to the browser and back. */
+type ParsedValue = {
+  code: string;
+  textValue?: string;
+  numberValue?: number;
+  dateValue?: string;
+  booleanValue?: boolean;
+};
 
 export type ParsedRow = {
   rowNumber: number;
   assetCode: string;
-  material: string;
-  diameter: number;
   installationYear: number;
-  length: number;
   latitude: number;
   longitude: number;
   condition: number | null;
-  criticality: string | null;
-  customersServed: number | null;
   serviceArea: string | null;
+  department: string | null;
+  expectedLife: number | null;
+  values: ParsedValue[];
+  /** What the preview table shows, in `previewColumns` order. */
+  preview: string[];
 };
 
 export type ValidationReport = {
+  assetTypeName: string;
   totalRows: number;
   validRows: ParsedRow[];
   errors: RowError[];
   /** Header labels found in the file that we do not recognise. */
   unknownColumns: string[];
   missingColumns: string[];
+  previewColumns: string[];
 };
+
+const KIND_OF: Record<AttributeDataType, ImportColumnKind> = {
+  TEXT: "text",
+  NUMBER: "number",
+  DATE: "date",
+  BOOLEAN: "boolean",
+  ENUM: "enum",
+};
+
+/**
+ * The columns an import for this asset type takes. The type must be this
+ * organization's; any of its types can be imported, modelled or not.
+ */
+export async function getImportSpec(organizationId: string, assetTypeId: string): Promise<ImportSpec> {
+  const type = await prisma.assetType.findFirst({
+    where: { id: assetTypeId, organizationId },
+    include: { attributeDefinitions: { orderBy: { sortOrder: "asc" } } },
+  });
+  if (!type) throw new Error("Choose an asset type to import into");
+  const conditionModel = await wholeAssetConditionModel(type.id);
+  const currentYear = new Date().getFullYear();
+
+  const columns: ImportColumn[] = [
+    { key: "assetCode", label: "Asset ID", required: true, kind: "text", aliases: [], note: "Must be unique — checked against existing assets and the rest of the file." },
+    { key: "installationYear", label: "Installation Year", required: true, kind: "integer", min: 1850, max: currentYear, aliases: [], note: `Whole year, 1850 to ${currentYear}.` },
+    { key: "latitude", label: "Latitude", required: true, kind: "number", min: -90, max: 90, aliases: [], note: "Decimal degrees, -90 to 90." },
+    { key: "longitude", label: "Longitude", required: true, kind: "number", min: -180, max: 180, aliases: [], note: "Decimal degrees, -180 to 180." },
+  ];
+  for (const d of type.attributeDefinitions) {
+    const kind = KIND_OF[d.dataType];
+    const options = kind === "enum" ? ((d.config as { options?: string[] } | null)?.options ?? []) : undefined;
+    const unit = d.unit ? ` (${d.unit})` : "";
+    columns.push({
+      key: `attr:${d.code}`,
+      label: d.label,
+      required: d.isRequired,
+      kind,
+      options,
+      attributeCode: d.code,
+      aliases: [d.code],
+      note:
+        kind === "enum"
+          ? `One of: ${options!.join(", ")}.`
+          : kind === "number"
+            ? `A number${unit}.`
+            : kind === "date"
+              ? "A date, as YYYY-MM-DD."
+              : kind === "boolean"
+                ? "Yes or no (also true/false, 1/0)."
+                : "Free text.",
+    });
+  }
+  if (conditionModel) {
+    columns.push({
+      key: "condition",
+      label: "Condition",
+      required: false,
+      kind: "number",
+      min: conditionModel.scaleMin,
+      max: conditionModel.scaleMax,
+      aliases: [],
+      note: `Optional ${conditionModel.scaleMin}–${conditionModel.scaleMax} on ${conditionModel.name}; recorded as a manual condition measurement.`,
+    });
+  }
+  columns.push(
+    { key: "serviceArea", label: "Service Area", required: false, kind: "text", aliases: [], note: "Optional free text." },
+    { key: "department", label: "Department", required: false, kind: "text", aliases: ["Responsible department"], note: "Optional: the department responsible for it." },
+    { key: "expectedLife", label: "Expected Life", required: false, kind: "integer", min: 1, max: 500, aliases: [], note: `Optional, in years; ${DEFAULT_EXPECTED_LIFE} when left blank.` }
+  );
+  return { assetTypeId: type.id, assetTypeName: type.name, columns };
+}
+
+/** The header row a blank import file starts with. */
+export function templateHeader(spec: ImportSpec): string {
+  return spec.columns.map((c) => (/[",]/.test(c.label) ? `"${c.label.replace(/"/g, '""')}"` : c.label)).join(",");
+}
 
 /** Minimal RFC4180-aware splitter — handles quoted fields containing commas. */
 export function splitCsvLine(line: string): string[] {
@@ -98,34 +198,45 @@ function normalizeHeader(h: string): string {
   return h.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-export async function validateImport(organizationId: string, csv: string): Promise<ValidationReport> {
+const TRUE_WORDS = new Set(["yes", "y", "true", "t", "1"]);
+const FALSE_WORDS = new Set(["no", "n", "false", "f", "0"]);
+
+export async function validateImport(organizationId: string, assetTypeId: string, csv: string): Promise<ValidationReport> {
+  const spec = await getImportSpec(organizationId, assetTypeId);
   const errors: RowError[] = [];
   const lines = csv
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
+  const attributeColumns = spec.columns.filter((c) => c.attributeCode);
+  const previewColumns = ["Asset ID", "Installed", ...attributeColumns.slice(0, 4).map((c) => c.label), "Service Area"];
+  const empty = { assetTypeName: spec.assetTypeName, previewColumns };
+
   if (lines.length === 0) {
-    return { totalRows: 0, validRows: [], errors: [{ row: 0, column: "-", message: "File is empty." }], unknownColumns: [], missingColumns: [] };
+    return { ...empty, totalRows: 0, validRows: [], errors: [{ row: 0, column: "-", message: "File is empty." }], unknownColumns: [], missingColumns: [] };
   }
 
-  const headerCells = splitCsvLine(lines[0]).map(normalizeHeader);
-  const indexOf = (key: string) => {
-    const col = IMPORT_COLUMNS.find((c) => c.key === key)!;
-    return headerCells.indexOf(normalizeHeader(col.label));
+  const rawHeaders = splitCsvLine(lines[0]);
+  const headerCells = rawHeaders.map(normalizeHeader);
+  const indexOf = (column: ImportColumn) => {
+    for (const name of [column.label, ...column.aliases]) {
+      const i = headerCells.indexOf(normalizeHeader(name));
+      if (i !== -1) return i;
+    }
+    return -1;
   };
 
-  const missingColumns = IMPORT_COLUMNS.filter((c) => c.required && indexOf(c.key) === -1).map((c) => c.label);
-  const knownHeaders = IMPORT_COLUMNS.map((c) => normalizeHeader(c.label));
-  const unknownColumns = splitCsvLine(lines[0]).filter((h) => !knownHeaders.includes(normalizeHeader(h)));
+  const missingColumns = spec.columns.filter((c) => c.required && indexOf(c) === -1).map((c) => c.label);
+  const known = new Set(spec.columns.flatMap((c) => [c.label, ...c.aliases].map(normalizeHeader)));
+  const unknownColumns = rawHeaders.filter((h) => !known.has(normalizeHeader(h)));
 
   if (missingColumns.length > 0) {
     return {
+      ...empty,
       totalRows: lines.length - 1,
       validRows: [],
-      errors: [
-        { row: 1, column: "header", message: `Missing required column(s): ${missingColumns.join(", ")}.` },
-      ],
+      errors: [{ row: 1, column: "header", message: `Missing required column(s) for ${spec.assetTypeName}: ${missingColumns.join(", ")}.` }],
       unknownColumns,
       missingColumns,
     };
@@ -137,92 +248,83 @@ export async function validateImport(organizationId: string, csv: string): Promi
   });
   const existingCodes = new Set(existing.map((a) => a.assetCode.toLowerCase()));
   const seenInFile = new Set<string>();
-
   const validRows: ParsedRow[] = [];
-  const currentYear = new Date().getFullYear();
+  const column = (key: string) => spec.columns.find((c) => c.key === key);
 
   for (let i = 1; i < lines.length; i++) {
     const rowNumber = i + 1; // 1-based including header, matching a spreadsheet
     const cells = splitCsvLine(lines[i]);
-    const get = (key: string) => {
-      const idx = indexOf(key);
+    const rowErrors: RowError[] = [];
+    const raw = (c: ImportColumn) => {
+      const idx = indexOf(c);
       return idx >= 0 && idx < cells.length ? cells[idx] : "";
     };
-    const rowErrors: RowError[] = [];
-
-    const assetCode = get("assetCode");
-    if (!assetCode) {
-      rowErrors.push({ row: rowNumber, column: "Asset ID", message: "Asset ID is required." });
-    } else if (existingCodes.has(assetCode.toLowerCase())) {
-      rowErrors.push({ row: rowNumber, column: "Asset ID", message: `Asset ID "${assetCode}" already exists.` });
-    } else if (seenInFile.has(assetCode.toLowerCase())) {
-      rowErrors.push({ row: rowNumber, column: "Asset ID", message: `Asset ID "${assetCode}" is duplicated in this file.` });
-    }
-
-    const material = get("material");
-    if (!material) {
-      rowErrors.push({ row: rowNumber, column: "Material", message: "Material is required." });
-    } else if (!(MATERIAL_OPTIONS as readonly string[]).includes(material)) {
-      rowErrors.push({
-        row: rowNumber,
-        column: "Material",
-        message: `"${material}" is not a known material. Expected one of: ${MATERIAL_OPTIONS.join(", ")}.`,
-      });
-    }
-
-    const numeric = (key: string, label: string, opts: { min?: number; max?: number; integer?: boolean }) => {
-      const raw = get(key);
-      if (raw === "") {
-        rowErrors.push({ row: rowNumber, column: label, message: `${label} is required.` });
-        return null;
-      }
-      const n = Number(raw);
-      if (!Number.isFinite(n)) {
-        rowErrors.push({ row: rowNumber, column: label, message: `"${raw}" is not a number.` });
-        return null;
-      }
-      if (opts.integer && !Number.isInteger(n)) {
-        rowErrors.push({ row: rowNumber, column: label, message: `${label} must be a whole number.` });
-        return null;
-      }
-      if (opts.min != null && n < opts.min) {
-        rowErrors.push({ row: rowNumber, column: label, message: `${label} must be at least ${opts.min}.` });
-        return null;
-      }
-      if (opts.max != null && n > opts.max) {
-        rowErrors.push({ row: rowNumber, column: label, message: `${label} must be at most ${opts.max}.` });
-        return null;
-      }
-      return n;
+    const fail = (c: ImportColumn, message: string) => {
+      rowErrors.push({ row: rowNumber, column: c.label, message });
+      return null;
     };
 
-    const diameter = numeric("diameter", "Diameter", { min: 1, max: 120 });
-    const installationYear = numeric("installationYear", "Installation Year", {
-      min: 1850,
-      max: currentYear,
-      integer: true,
-    });
-    const length = numeric("length", "Length", { min: 1, max: 100000 });
-    const latitude = numeric("latitude", "Latitude", { min: -90, max: 90 });
-    const longitude = numeric("longitude", "Longitude", { min: -180, max: 180 });
+    /** The cell as its column's kind, null when blank (an error first if the
+     * column is required) or invalid (with the error recorded). */
+    const read = (c: ImportColumn): string | number | boolean | null => {
+      const value = raw(c);
+      if (value === "") return c.required ? fail(c, `${c.label} is required.`) : null;
+      switch (c.kind) {
+        case "text":
+          return value;
+        case "enum":
+          return c.options!.includes(value)
+            ? value
+            : fail(c, `"${value}" is not valid. Expected one of: ${c.options!.join(", ")}.`);
+        case "boolean": {
+          const word = value.toLowerCase();
+          if (TRUE_WORDS.has(word)) return true;
+          if (FALSE_WORDS.has(word)) return false;
+          return fail(c, `"${value}" isn't yes or no.`);
+        }
+        case "date": {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+            return fail(c, `"${value}" isn't a date written as YYYY-MM-DD.`);
+          }
+          return value;
+        }
+        default: {
+          const n = Number(value);
+          if (!Number.isFinite(n)) return fail(c, `"${value}" is not a number.`);
+          if (c.kind === "integer" && !Number.isInteger(n)) return fail(c, `${c.label} must be a whole number.`);
+          if (c.min != null && n < c.min) return fail(c, `${c.label} must be at least ${c.min}.`);
+          if (c.max != null && n > c.max) return fail(c, `${c.label} must be at most ${c.max}.`);
+          return n;
+        }
+      }
+    };
 
-    let condition: number | null = null;
-    if (get("condition") !== "") {
-      condition = numeric("condition", "Condition", { min: 0, max: 100 });
+    const idColumn = column("assetCode")!;
+    const assetCode = read(idColumn) as string | null;
+    if (assetCode && existingCodes.has(assetCode.toLowerCase())) {
+      fail(idColumn, `Asset ID "${assetCode}" already exists.`);
+    } else if (assetCode && seenInFile.has(assetCode.toLowerCase())) {
+      fail(idColumn, `Asset ID "${assetCode}" is duplicated in this file.`);
     }
+    const installationYear = read(column("installationYear")!) as number | null;
+    const latitude = read(column("latitude")!) as number | null;
+    const longitude = read(column("longitude")!) as number | null;
+    const condition = column("condition") ? (read(column("condition")!) as number | null) : null;
+    const serviceArea = read(column("serviceArea")!) as string | null;
+    const department = read(column("department")!) as string | null;
+    const expectedLife = read(column("expectedLife")!) as number | null;
 
-    let customersServed: number | null = null;
-    if (get("customersServed") !== "") {
-      customersServed = numeric("customersServed", "Customers Served", { min: 0, integer: true });
-    }
-
-    const criticality = get("criticality") || null;
-    if (criticality && !(CRITICALITY_OPTIONS as readonly string[]).includes(criticality)) {
-      rowErrors.push({
-        row: rowNumber,
-        column: "Criticality",
-        message: `"${criticality}" is not valid. Expected one of: ${CRITICALITY_OPTIONS.join(", ")}.`,
-      });
+    const values: ParsedValue[] = [];
+    const shown = new Map<string, string>();
+    for (const c of attributeColumns) {
+      const v = read(c);
+      if (v == null) continue;
+      shown.set(c.label, typeof v === "boolean" ? (v ? "Yes" : "No") : String(v));
+      const code = c.attributeCode!;
+      if (c.kind === "number") values.push({ code, numberValue: v as number });
+      else if (c.kind === "boolean") values.push({ code, booleanValue: v as boolean });
+      else if (c.kind === "date") values.push({ code, dateValue: v as string });
+      else values.push({ code, textValue: v as string });
     }
 
     if (rowErrors.length > 0) {
@@ -230,58 +332,62 @@ export async function validateImport(organizationId: string, csv: string): Promi
       continue;
     }
 
-    if (assetCode) seenInFile.add(assetCode.toLowerCase());
+    seenInFile.add(assetCode!.toLowerCase());
     validRows.push({
       rowNumber,
-      assetCode,
-      material,
-      diameter: diameter!,
+      assetCode: assetCode!,
       installationYear: installationYear!,
-      length: length!,
       latitude: latitude!,
       longitude: longitude!,
       condition,
-      criticality,
-      customersServed,
-      serviceArea: get("serviceArea") || null,
+      serviceArea,
+      department,
+      expectedLife,
+      values,
+      preview: [
+        assetCode!,
+        String(installationYear),
+        ...attributeColumns.slice(0, 4).map((c) => shown.get(c.label) ?? "—"),
+        serviceArea ?? "—",
+      ],
     });
   }
 
-  return { totalRows: lines.length - 1, validRows, errors, unknownColumns, missingColumns };
+  return { ...empty, totalRows: lines.length - 1, validRows, errors, unknownColumns, missingColumns };
 }
 
-export type ImportResult = { imported: number; skipped: number };
+export type ImportResult = { imported: number; skipped: number; assetTypeName: string };
 
 /** Commit validated rows. Re-validates first: the file could have been edited,
  * or another import could have claimed an asset code, between preview and
  * commit. */
-export async function commitImport(organizationId: string, csv: string): Promise<ImportResult> {
-  const report = await validateImport(organizationId, csv);
-  if (report.validRows.length === 0) return { imported: 0, skipped: report.totalRows };
+export async function commitImport(organizationId: string, assetTypeId: string, csv: string): Promise<ImportResult> {
+  const report = await validateImport(organizationId, assetTypeId, csv);
+  if (report.validRows.length === 0) {
+    return { imported: 0, skipped: report.totalRows, assetTypeName: report.assetTypeName };
+  }
 
-  const assetType = await requireModelledAssetType(organizationId);
-
-  const definitions = await prisma.assetAttributeDefinition.findMany({
-    where: { assetTypeId: assetType.id },
-    select: { id: true, code: true },
+  const assetType = await prisma.assetType.findFirstOrThrow({
+    where: { id: assetTypeId, organizationId },
+    select: { id: true, measures: true, attributeDefinitions: { select: { id: true, code: true } } },
   });
-  const defByCode = new Map(definitions.map((d) => [d.code, d.id]));
-
+  const defByCode = new Map(assetType.attributeDefinitions.map((d) => [d.code, d.id]));
+  const lengthCode = parseMeasureCodes(assetType.measures).length;
   const conditionModel = await wholeAssetConditionModel(assetType.id);
 
   for (const row of report.validRows) {
-    const attributeValues = [
-      { code: WATERLINE_ATTRIBUTES.MATERIAL, textValue: row.material },
-      { code: WATERLINE_ATTRIBUTES.DIAMETER, numberValue: row.diameter },
-      { code: WATERLINE_ATTRIBUTES.LENGTH, numberValue: row.length },
-      ...(row.criticality ? [{ code: WATERLINE_ATTRIBUTES.CRITICALITY, textValue: row.criticality }] : []),
-      ...(row.customersServed != null
-        ? [{ code: WATERLINE_ATTRIBUTES.CUSTOMERS_SERVED, numberValue: row.customersServed }]
-        : []),
-    ].flatMap((v) => {
+    const attributeValues = row.values.flatMap((v) => {
       const definitionId = defByCode.get(v.code);
       if (!definitionId) return [];
-      return [{ definitionId, textValue: "textValue" in v ? v.textValue : undefined, numberValue: "numberValue" in v ? v.numberValue : undefined }];
+      return [
+        {
+          definitionId,
+          textValue: v.textValue,
+          numberValue: v.numberValue,
+          dateValue: v.dateValue ? new Date(`${v.dateValue}T00:00:00Z`) : undefined,
+          booleanValue: v.booleanValue,
+        },
+      ];
     });
 
     const asset = await prisma.asset.create({
@@ -290,16 +396,18 @@ export async function commitImport(organizationId: string, csv: string): Promise
         assetTypeId: assetType.id,
         assetCode: row.assetCode,
         status: AssetStatus.ACTIVE,
-        ownerDepartment: "Water Distribution",
+        ownerDepartment: row.department,
         installationDate: new Date(Date.UTC(row.installationYear, 0, 1)),
-        expectedUsefulLife: 75,
+        expectedUsefulLife: row.expectedLife ?? DEFAULT_EXPECTED_LIFE,
         attributeValues: { create: attributeValues },
       },
     });
 
     // Imported rows give a single point; represent it as a minimal line so the
-    // geometry column stays consistent with the rest of the network.
-    const delta = row.length / 2 / 364_000;
+    // geometry column stays consistent with the rest of the network — as long
+    // as the asset's length, where its type measures one.
+    const length = (lengthCode && row.values.find((v) => v.code === lengthCode)?.numberValue) || STAND_IN_LENGTH_FT;
+    const delta = length / 2 / 364_000;
     await insertAssetLineLocation(
       asset.id,
       {
@@ -324,5 +432,9 @@ export async function commitImport(organizationId: string, csv: string): Promise
     }
   }
 
-  return { imported: report.validRows.length, skipped: report.totalRows - report.validRows.length };
+  return {
+    imported: report.validRows.length,
+    skipped: report.totalRows - report.validRows.length,
+    assetTypeName: report.assetTypeName,
+  };
 }
