@@ -326,6 +326,7 @@ export async function getNewAssetForm(organizationId: string, typeCode: string) 
       code: true,
       name: true,
       isModelled: true,
+      geometry: true,
       attributeDefinitions: { orderBy: { sortOrder: "asc" } },
       componentTypes: {
         orderBy: { sortOrder: "asc" },
@@ -345,7 +346,7 @@ export async function getNewAssetForm(organizationId: string, typeCode: string) 
   ]);
 
   return {
-    type: { id: type.id, code: type.code, name: type.name, isModelled: type.isModelled },
+    type: { id: type.id, code: type.code, name: type.name, isModelled: type.isModelled, geometry: type.geometry },
     attributes: type.attributeDefinitions.map((d) => ({
       code: d.code,
       label: d.label,
@@ -383,11 +384,10 @@ export type NewAsset = {
 /**
  * A new asset of a type other than the modelled one, entered by hand.
  *
- * The modelled type's assets are refused: each is a line segment with two
- * ends, a length and a place in the network, which is what the GIS import
- * supplies and a form cannot. A facility stands at one point, which a form can
- * take. (Until asset types say whether they are lines or points, the modelled
- * type is taken to be the line network.)
+ * A line type's assets are refused: each is a segment with two ends, a
+ * length and a place in the network, which is what an import supplies and a
+ * form cannot. A point type's asset stands at one position, which a form can
+ * take — modelled or not.
  */
 export async function createAsset(organizationId: string, input: NewAsset, createdBy?: string | null) {
   const type = await prisma.assetType.findFirst({
@@ -395,7 +395,7 @@ export async function createAsset(organizationId: string, input: NewAsset, creat
     include: { attributeDefinitions: true, componentTypes: { select: { componentTypeId: true } } },
   });
   if (!type) throw new Error("Asset type not found");
-  if (type.isModelled) {
+  if (type.geometry === "line") {
     throw new Error(`${type.name} assets come in through Data Import, which brings their geometry with them`);
   }
 

@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-13",
+    title: "Asset types drawn as lines or points",
+    summary:
+      "Each asset type now says whether its assets are lines or points. The map, imports and new assets follow it, rather than treating the waterline as the only line network. Nothing is drawn differently today.",
+    changes: [
+      "Settings › Asset Types shows how each type is drawn, with a Drawn as choice that is fixed once any of its assets has a position.",
+      "The map's facilities layer is every point type, and its hover card reads material, diameter, length, customers served and criticality through each asset type's own measures.",
+      "An import or a new asset is placed as its type says: a point, or for a line type a short line as long as the asset.",
+      "Line types come in through Data Import; a point type can be added one asset at a time whether it is modelled or not.",
+    ],
+    note: "One migration: the geometry setting, filled from how each type's assets are already drawn.",
+  },
+  {
     date: "2026-10-12",
     title: "Import any asset type's inventory",
     summary:

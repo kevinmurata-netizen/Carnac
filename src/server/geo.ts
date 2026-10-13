@@ -1,5 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import {
+  getMeasureCodes,
+  getMeasureDefinitionFilters,
+  type MeasureCodes,
+  type MeasureRole,
+} from "@/server/measures";
 import { getConditionBand, type ConditionBand } from "@/domain/waterline/condition";
 import { getRiskBand } from "@/domain/waterline/risk";
 import { getConditionBands } from "@/server/settings";
@@ -37,6 +43,36 @@ export async function insertAssetLineLocation(
   `;
 }
 
+/** Half a degree of latitude per foot, roughly: what a stand-in line's
+ * length is converted with. */
+const FEET_PER_DEGREE = 364_000;
+/** The stand-in line drawn for a line asset whose type measures no length. */
+export const STAND_IN_LENGTH_FT = 10;
+
+/**
+ * Where an asset placed from a single position goes, drawn as its type is:
+ * a point, or for a line type a short north-south line of its own length,
+ * so the geometry column stays consistent with the rest of that network.
+ */
+export async function insertAssetLocation(
+  assetId: string,
+  geometry: string,
+  point: { lat: number; lng: number },
+  lengthFt: number | null,
+  extra: { serviceArea?: string | null; pressureZone?: string | null; depth?: number | null } = {}
+) {
+  if (geometry !== "line") {
+    await insertAssetPointLocation(assetId, point, extra);
+    return;
+  }
+  const delta = (lengthFt || STAND_IN_LENGTH_FT) / 2 / FEET_PER_DEGREE;
+  await insertAssetLineLocation(
+    assetId,
+    { startLat: point.lat - delta, startLng: point.lng, endLat: point.lat + delta, endLng: point.lng },
+    { serviceArea: extra.serviceArea ?? null, pressureZone: extra.pressureZone ?? null, depth: extra.depth ?? null }
+  );
+}
+
 /**
  * A facility's position: the same table as the pipes, holding a Point rather
  * than a line. Raw SQL for the same reason as above — geometry is NOT NULL and
@@ -62,6 +98,15 @@ export async function insertAssetPointLocation(
   `;
 }
 
+/** The card fields that are measures, and the role each reads. */
+const POPUP_MEASURES: Array<{ field: string; role: MeasureRole }> = [
+  { field: "material", role: "material" },
+  { field: "diameter", role: "diameter" },
+  { field: "length", role: "length" },
+  { field: "customersServed", role: "customersServed" },
+  { field: "criticality", role: "criticality" },
+];
+
 export type NetworkFeature = {
   installationDate: Date | null;
   serviceArea: string | null;
@@ -71,6 +116,7 @@ export type NetworkFeature = {
   attributes: Record<string, string | null> | null;
   id: string;
   assetCode: string;
+  assetTypeId: string;
   status: string;
   geometry: GeoJSON.Geometry;
   /** What kind of asset this is. A network of pipes is one type and says
@@ -86,7 +132,7 @@ export type NetworkFeature = {
  *
  * A separate call rather than a flag on the one below, because the two ask
  * different questions. The network GeoJSON is "these segments, filtered the way
- * the page is filtered"; this is "everything that is not a pipe and has a
+ * the page is filtered"; this is "every asset of a point type that has a
  * position", which no pipe filter should narrow and no pipe filter should hide.
  */
 export async function getFacilityGeoJSON(
@@ -119,7 +165,7 @@ export async function getFacilityGeoJSON(
     FROM assets a
     JOIN asset_types t ON t.id = a."assetTypeId"
     JOIN asset_locations l ON l."assetId" = a.id
-    WHERE a."organizationId" = ${organizationId} AND a."deletedAt" IS NULL AND t.code <> 'WATERLINE' ${idFilter}
+    WHERE a."organizationId" = ${organizationId} AND a."deletedAt" IS NULL AND t."geometry" = 'point' ${idFilter}
   `);
 
   return {
@@ -185,16 +231,17 @@ export async function getNetworkGeoJSON(
   const bands = want.has("conditionBand") ? await getConditionBands(organizationId) : [];
   const needsCondition = want.has("condition") || want.has("conditionBand");
   const needsRisk = want.has("riskScore") || want.has("riskBand");
+  // The card's measures, through each asset's own type: the attribute codes
+  // every type uses for the roles the card shows.
+  const measuresOf = await getMeasureCodes(organizationId);
+  const definitionFilters = await getMeasureDefinitionFilters(organizationId);
+  const wantedRoles = POPUP_MEASURES.filter((m) => want.has(m.field)).map((m) => m.role);
   const attributeCodes = [
-    want.has("material") ? "MATERIAL" : null,
-    want.has("diameter") ? "DIAMETER" : null,
-    want.has("length") ? "LENGTH" : null,
-    want.has("customersServed") ? "CUSTOMERS_SERVED" : null,
-    want.has("criticality") ? "CRITICALITY" : null,
-  ].filter((c): c is string => c !== null);
+    ...new Set(wantedRoles.flatMap((role) => definitionFilters[role].OR.map((p) => p.code))),
+  ];
 
   const rows = await prisma.$queryRaw<NetworkFeature[]>(Prisma.sql`
-    SELECT a.id, a."assetCode", a.status::text AS status, ST_AsGeoJSON(l.geometry)::json AS geometry,
+    SELECT a.id, a."assetCode", a."assetTypeId", a.status::text AS status, ST_AsGeoJSON(l.geometry)::json AS geometry,
            a."installationDate" AS "installationDate",
            ${
              want.has("serviceArea") ? Prisma.sql`l."serviceArea"` : Prisma.sql`NULL::text`
@@ -234,7 +281,7 @@ export async function getNetworkGeoJSON(
     features: rows.map((row) => ({
       type: "Feature",
       geometry: row.geometry,
-      properties: buildProperties(row, want, bands),
+      properties: buildProperties(row, want, bands, measuresOf(row.assetTypeId)),
     })),
   };
 }
@@ -242,9 +289,14 @@ export async function getNetworkGeoJSON(
 function buildProperties(
   row: NetworkFeature,
   want: Set<string>,
-  bands: ConditionBand[]
+  bands: ConditionBand[],
+  codes: MeasureCodes
 ): Record<string, string | number | null> {
-  const attrs = (row.attributes ?? {}) as Record<string, string | null>;
+  const attributes = (row.attributes ?? {}) as Record<string, string | null>;
+  const measure = (role: MeasureRole) => {
+    const code = codes[role];
+    return code ? (attributes[code] ?? null) : null;
+  };
   const props: Record<string, string | number | null> = {
     id: row.id,
     assetCode: row.assetCode,
@@ -255,11 +307,11 @@ function buildProperties(
     if (want.has(key) && value != null && value !== "") props[key] = value;
   };
 
-  put("material", attrs.MATERIAL);
-  put("diameter", attrs.DIAMETER);
-  put("length", attrs.LENGTH ? Math.round(Number(attrs.LENGTH)) : null);
-  put("customersServed", attrs.CUSTOMERS_SERVED);
-  put("criticality", attrs.CRITICALITY);
+  put("material", measure("material"));
+  put("diameter", measure("diameter"));
+  put("length", measure("length") ? Math.round(Number(measure("length"))) : null);
+  put("customersServed", measure("customersServed"));
+  put("criticality", measure("criticality"));
   put("serviceArea", row.serviceArea);
   put("pressureZone", row.pressureZone);
 

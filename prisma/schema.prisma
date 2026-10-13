@@ -132,6 +132,11 @@ model AssetType {
   /// Several can be modelled side by side, each with its own models.
   isModelled  Boolean @default(false)
 
+  /// How its assets are drawn and placed: "line" (a pipe, a span of cable)
+  /// or "point" (a pole, a transformer, a reservoir). Decides the stand-in
+  /// geometry an import or a new asset is given and which map layer shows it.
+  geometry String @default("point")
+
   /// Which of this type's attributes holds each measure the engine reads,
   /// by role: {"material": "MATERIAL", "diameter": "DIAMETER", ...}. A role
   /// left out reads as unknown. See src/server/measures.ts.
