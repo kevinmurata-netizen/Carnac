@@ -358,7 +358,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     const code = cell(r, "asset");
     const asset = code ? assetByCode.get(code.toUpperCase()) : undefined;
     if (!code) fail("Asset ID", "No asset ID.");
-    else if (!asset) fail("Asset ID", `No ${words.lower} ${words.item} ${code}.`);
+    else if (!asset) fail("Asset ID", `No ${words.item} ${code}.`);
     else if (asset.status !== "ACTIVE") {
       fail(
         "Asset ID",

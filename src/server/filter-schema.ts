@@ -56,7 +56,7 @@ export async function getFilterSchema(organizationId: string): Promise<FilterTab
   return [
     {
       key: "asset",
-      label: `${words.singular} ${words.itemTitle}`,
+      label: words.itemTitle,
       description: `The ${words.item} itself`,
       fields: [
         { key: "asset.assetCode", label: `${words.itemTitle} Code`, type: "text" },

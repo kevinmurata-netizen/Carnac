@@ -79,7 +79,7 @@ function describeSchema(schema: FilterTable[]): string {
 
 const searchTool = (words: AssetWords): Anthropic.Tool => ({
   name: "search_segments",
-  description: `Find ${words.lower} ${words.items} matching a set of criteria. Use this whenever the question asks which, how many, or for a list of ${words.items}.`,
+  description: `Find ${words.items} matching a set of criteria. Use this whenever the question asks which, how many, or for a list of ${words.items}.`,
   input_schema: {
     type: "object",
     properties: {

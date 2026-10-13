@@ -36,7 +36,7 @@ export default async function ModelResultsPage({
     <div>
       <PageHeader
         title={pageTitle}
-        description={`Where a scenario actually leaves the network — every ${words.lower} ${words.item} traced from its starting condition band to its ending one`}
+        description={`Where a scenario actually leaves the network — every ${words.item} traced from its starting condition band to its ending one`}
       />
 
       {runnable.length === 0 ? (
