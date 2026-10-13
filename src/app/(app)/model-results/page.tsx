@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getWciFlow, listScenarioOptions } from "@/server/model-results";
 import { getPageName } from "@/server/navigation";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,7 @@ export default async function ModelResultsPage({
   const { scenario: requested } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/model-results", "Model Results");
 
   const options = await listScenarioOptions(organizationId);
@@ -31,7 +32,7 @@ export default async function ModelResultsPage({
     <div>
       <PageHeader
         title={pageTitle}
-        description={`Where a scenario actually leaves the network — every ${ASSET_LABEL.lower} segment traced from its starting condition band to its ending one`}
+        description={`Where a scenario actually leaves the network — every ${words.lower} segment traced from its starting condition band to its ending one`}
       />
 
       {runnable.length === 0 ? (

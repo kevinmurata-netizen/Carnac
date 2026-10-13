@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
+import type { AssetWords, Branding } from "@/lib/branding";
 import { UserMenu } from "@/components/layout/user-menu";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import { Menu, X } from "lucide-react";
@@ -61,12 +62,16 @@ function setSidebarOpen(next: boolean) {
  * navigation at all.
  */
 export function AppShell({
+  branding,
+  words,
   overrides,
   hidden,
   userName,
   roleName,
   children,
 }: {
+  branding: Pick<Branding, "productName" | "logo" | "tagline">;
+  words: AssetWords;
   overrides: Record<string, string>;
   hidden: string[];
   userName: string;
@@ -103,7 +108,7 @@ export function AppShell({
       {sidebarOpen && (
         <aside className="hidden w-64 shrink-0 md:block">
           <div className="sticky top-0 h-screen">
-            <SidebarNav overrides={overrides} hidden={hidden} />
+            <SidebarNav branding={branding} words={words} overrides={overrides} hidden={hidden} />
           </div>
         </aside>
       )}
@@ -118,7 +123,13 @@ export function AppShell({
             className="absolute inset-0 bg-black/50"
           />
           <div className="absolute inset-y-0 left-0 w-64 max-w-[85vw] shadow-xl">
-            <SidebarNav overrides={overrides} hidden={hidden} onNavigate={() => setDrawerOpen(false)} />
+            <SidebarNav
+              branding={branding}
+              words={words}
+              overrides={overrides}
+              hidden={hidden}
+              onNavigate={() => setDrawerOpen(false)}
+            />
             <button
               type="button"
               aria-label="Close navigation"

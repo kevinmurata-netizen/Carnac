@@ -20,13 +20,14 @@ import { ConditionDistributionChart } from "@/components/charts/condition-distri
 import { formatCurrency, formatFeetAsMiles, formatNumber, formatStatus } from "@/lib/format";
 import { Droplets, Gauge, Layers, ShieldAlert, Wallet } from "lucide-react";
 import Link from "next/link";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 
 export default async function DashboardPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/dashboard", "Executive Dashboard");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -80,7 +81,7 @@ export default async function DashboardPage() {
           icon={Gauge}
         />
         <KpiCard
-          label={`High Risk ${ASSET_LABEL.plural}`}
+          label={`High Risk ${words.plural}`}
           value={formatNumber(highRiskCount)}
           sublabel={`${risk.assessedAssets ? Math.round((highRiskCount / risk.assessedAssets) * 100) : 0}% of assessed network`}
           icon={Layers}

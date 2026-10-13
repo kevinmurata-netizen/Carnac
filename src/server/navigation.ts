@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { NAV_GROUPS } from "@/config/nav";
 import { SEGMENT_LABELS } from "@/config/breadcrumbs";
 import { groupKey } from "@/config/nav-groups";
+import { withAssetWords } from "@/lib/branding";
+import { getAssetWords } from "@/server/branding";
 
 export { groupKey };
 
@@ -74,10 +76,12 @@ export type RenameableSection = {
  * settings and administration sub-pages that are reachable but not in the
  * sidebar. */
 export async function listRenameablePages(organizationId: string): Promise<RenameableSection[]> {
-  const [overrides, hidden] = await Promise.all([
+  const [overrides, hidden, words] = await Promise.all([
     getNavOverrides(organizationId),
     getHiddenHrefs(organizationId),
+    getAssetWords(organizationId),
   ]);
+  const named = (label: string) => withAssetWords(label, words);
 
   const resolve = (href: string, defaultLabel: string) => ({
     href,
@@ -91,11 +95,11 @@ export async function listRenameablePages(organizationId: string): Promise<Renam
   const sections: RenameableSection[] = [
     {
       group: "Sidebar Sections",
-      items: NAV_GROUPS.map((g) => resolve(groupKey(g.label), g.label)),
+      items: NAV_GROUPS.map((g) => resolve(groupKey(g.key), named(g.label))),
     },
     ...NAV_GROUPS.map((g) => ({
-      group: overrides[groupKey(g.label)] ?? g.label,
-      items: g.items.map((i) => resolve(i.href, i.label)),
+      group: overrides[groupKey(g.key)] ?? named(g.label),
+      items: g.items.map((i) => resolve(i.href, named(i.label))),
     })),
   ];
 

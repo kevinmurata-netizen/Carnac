@@ -13,7 +13,7 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { getRiskBand } from "@/domain/waterline/risk";
 import { CheckCircle2, DollarSign, Hammer, Wrench } from "lucide-react";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 import { ExportButton } from "@/components/layout/export-button";
@@ -44,6 +44,7 @@ export default async function TreatmentPlanningPage({
   const params = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/treatment-planning", "Treatment Planning");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -157,7 +158,7 @@ export default async function TreatmentPlanningPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{ASSET_LABEL.singular}</TableHead>
+                <TableHead>{words.singular}</TableHead>
                 <TableHead>Condition</TableHead>
                 <TableHead>Risk</TableHead>
                 <TableHead>Recommended Treatment</TableHead>

@@ -11,12 +11,13 @@ import { MapLegend } from "@/components/map/map-legend";
 import { RiskMatrixExplorer } from "@/components/risk/risk-matrix-explorer";
 import { formatNumber } from "@/lib/format";
 import { AlertTriangle, Crosshair, Gauge, ShieldAlert } from "lucide-react";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { getPageName } from "@/server/navigation";
 
 export default async function RiskPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/risk", "Risk");
 
   const [summary, matrixAssets, riskByAsset, geojson] = await Promise.all([
@@ -106,7 +107,7 @@ export default async function RiskPage() {
           matrix={summary.matrix}
           assets={matrixAssets}
           bandFor={bandFor}
-          assetLabel={ASSET_LABEL.singular}
+          assetLabel={words.singular}
         />
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use server";
 
 import { setAssetTypeModelled } from "@/server/modelling";
+import { updateBranding } from "@/server/branding";
 
 import { revalidatePath } from "next/cache";
 import { AttributeDataType } from "@prisma/client";
@@ -260,6 +261,27 @@ export async function saveAssetTypeAction(
     });
     revalidateAll(ASSET_TYPES_CARD);
     return { status: "success", message: "Asset type updated." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function saveBrandingAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess("/settings/branding");
+    await updateBranding(session.user.organizationId, {
+      productName: String(formData.get("productName") ?? ""),
+      tagline: String(formData.get("tagline") ?? ""),
+      logo: String(formData.get("logo") ?? ""),
+      assetSingular: String(formData.get("assetSingular") ?? ""),
+      assetPlural: String(formData.get("assetPlural") ?? ""),
+    });
+    // The words and the name appear on nearly every page.
+    revalidatePath("/", "layout");
+    return { status: "success", message: "Branding saved." };
   } catch (e) {
     return fail(e);
   }

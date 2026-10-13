@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate, formatNumber } from "@/lib/format";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 import { listAssetTypes } from "@/server/assets";
@@ -28,6 +28,7 @@ export default async function InspectionsPage({
   const params = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/inspections", "Inspections");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -80,6 +81,7 @@ export default async function InspectionsPage({
       </div>
 
       <InspectionFilterBar
+        assetLabel={words.singular}
         assetTypes={assetTypes}
         inspectionTypes={INSPECTION_TYPES}
         inspectors={inspectors}
@@ -92,7 +94,7 @@ export default async function InspectionsPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <ColumnHeader label={ASSET_LABEL.singular} sortKey="assetCode" />
+                <ColumnHeader label={words.singular} sortKey="assetCode" />
                 <ColumnHeader label="Asset Type" sortKey="assetType" />
                 <ColumnHeader label="Date" sortKey="inspectionDate" />
                 <ColumnHeader

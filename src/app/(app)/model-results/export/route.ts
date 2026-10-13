@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getWciFlow, listScenarioOptions } from "@/server/model-results";
 import { buildWorkbookSheets, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
+import type { AssetWords } from "@/lib/branding";
 
 /**
  * A scenario's outcome as a two-sheet workbook.
@@ -20,8 +21,8 @@ const TRANSITION_COLUMNS: ExcelColumn[] = [
   { key: "direction", header: "Direction", type: "text" },
 ];
 
-const SEGMENT_COLUMNS: ExcelColumn[] = [
-  { key: "assetCode", header: ASSET_LABEL.singular, type: "text" },
+const segmentColumns = (words: AssetWords): ExcelColumn[] => [
+  { key: "assetCode", header: words.singular, type: "text" },
   { key: "material", header: "Material", type: "text" },
   { key: "fromBand", header: "Start band", type: "text" },
   { key: "toBand", header: "End band", type: "text" },
@@ -37,6 +38,7 @@ export async function GET(request: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const organizationId = session.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const search = new URL(request.url).searchParams;
   const requested = search.get("scenario") ?? undefined;
   // Present when the export came from an opened transition rather than the
@@ -68,7 +70,7 @@ export async function GET(request: Request) {
         sheetName: "Segments",
         title: `${link.fromBand} → ${link.toBand} — ${link.value.toLocaleString()} segments`,
         note,
-        columns: SEGMENT_COLUMNS,
+        columns: segmentColumns(words),
         rows: link.assets.map((asset) => ({
           assetCode: asset.assetCode,
           material: asset.material,
@@ -130,7 +132,7 @@ export async function GET(request: Request) {
       sheetName: "Segments",
       title: `Every segment traced — ${segments.length.toLocaleString()} rows`,
       note,
-      columns: SEGMENT_COLUMNS,
+      columns: segmentColumns(words),
       rows: segments,
     },
   ]);

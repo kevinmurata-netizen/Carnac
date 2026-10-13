@@ -10,13 +10,14 @@ import { ConditionDistributionChart } from "@/components/charts/condition-distri
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { formatDate, formatNumber } from "@/lib/format";
 import { Activity, Gauge, ShieldAlert, TrendingDown } from "lucide-react";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 
 export default async function ConditionPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/condition", "Condition");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -100,7 +101,7 @@ export default async function ConditionPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{ASSET_LABEL.singular}</TableHead>
+                <TableHead>{words.singular}</TableHead>
                 <TableHead>Condition</TableHead>
                 <TableHead>Band</TableHead>
                 <TableHead>Last Measured</TableHead>

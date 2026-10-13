@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { getMeasureCodes, readMeasures } from "@/server/measures";
 import Link from "next/link";
 import {
@@ -32,6 +33,7 @@ export default async function NetworkPage({
   const params = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/network", "Network");
 
   // A saved filter narrows the map to the segments it matches, on top of
@@ -148,6 +150,7 @@ export default async function NetworkPage({
           map showing only reservoirs they would narrow nothing and mislead. */}
       {showPipes && (
         <AssetFilterBar
+          assetLabel={words.singular}
           materials={materials}
           serviceAreas={serviceAreas}
           criticalities={criticalities}
