@@ -36,6 +36,7 @@ import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { NotBuiltYet } from "@/components/not-built-yet";
 import { ageInYears, formatDate, formatInches, formatNumber, formatStatus, toDateInputValue } from "@/lib/format";
 import { getAssetWords } from "@/server/branding";
+import { getIndexWords } from "@/server/condition-model";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
 
@@ -66,6 +67,7 @@ export default async function AssetDetailPage({
   const asset = await getAssetById(organizationId, id);
   if (!asset) notFound();
 
+  const index = await getIndexWords(organizationId, asset.assetTypeId);
   const measures = readMeasures(asset.attributeValues, (await getMeasureCodes(organizationId))(asset.assetTypeId));
   const material = measures.material ?? undefined;
   const diameter = measures.diameter ?? undefined;
@@ -241,7 +243,7 @@ export default async function AssetDetailPage({
         <SummaryStat label="Installed" value={formatDate(asset.installationDate)} />
         <SummaryStat label="Criticality" value={measures.criticality ?? "—"} />
         <SummaryStat
-          label="Condition (WCI)"
+          label={`Condition (${index.short})`}
           value={currentCondition ? `${currentCondition.score} · ${currentCondition.band.label}` : "Not inspected"}
           color={currentCondition?.band.color}
         />
@@ -324,7 +326,7 @@ export default async function AssetDetailPage({
                     <TableHead>Date</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Inspector</TableHead>
-                    <TableHead>WCI Score</TableHead>
+                    <TableHead>{index.short} Score</TableHead>
                     <TableHead>Follow-up</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -372,7 +374,7 @@ export default async function AssetDetailPage({
           <Card>
             <CardContent className="flex items-center gap-6 py-6">
               <div>
-                <div className="text-xs text-muted-foreground">Current Waterline Condition Index</div>
+                <div className="text-xs text-muted-foreground">Current {index.name}</div>
                 <div className="mt-1 text-4xl font-semibold" style={{ color: currentCondition?.band.color }}>
                   {currentCondition ? currentCondition.score : "—"}
                 </div>
@@ -500,8 +502,8 @@ export default async function AssetDetailPage({
                     ]}
                   />
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Forecast anchored to the latest observed WCI, then following the {forecast.modelName} curve.
-                    Remaining life is the projected time until WCI crosses 25 (Poor / Very Poor boundary).
+                    Forecast anchored to the latest observed {index.short}, then following the {forecast.modelName} curve.
+                    Remaining life is the projected time until {index.short} crosses 25 (Poor / Very Poor boundary).
                   </p>
                 </CardContent>
               </Card>

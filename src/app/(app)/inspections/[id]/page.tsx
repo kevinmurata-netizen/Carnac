@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
+import { getIndexWords } from "@/server/condition-model";
 import { getVisitComponents, getVisitParts } from "@/server/component-inspections";
 import { saveInspectionAction, saveComponentFindingAction, addComponentFindingAction } from "./actions";
 import { VisitParts } from "./visit-parts";
@@ -24,9 +25,10 @@ export default async function InspectionDetailPage({ params }: { params: Promise
   if (!inspection) notFound();
   // A component's findings are read as part of the visit they belong to.
   if (inspection.parentInspectionId) redirect(`/inspections/${inspection.parentInspectionId}`);
-  const [parts, components] = await Promise.all([
+  const [parts, components, index] = await Promise.all([
     getVisitParts(organizationId, inspection.id),
     getVisitComponents(organizationId, inspection.asset.id),
+    getIndexWords(organizationId, inspection.asset.assetTypeId),
   ]);
   // Parts of the asset this visit has nothing for: its form marked them not
   // inspected, or they were added to the asset since.
@@ -137,7 +139,7 @@ export default async function InspectionDetailPage({ params }: { params: Promise
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <SummaryStat label="Inspector" value={inspection.inspector.name ?? "—"} />
         <SummaryStat
-          label="Condition (WCI)"
+          label={`Condition (${index.short})`}
           value={condition ? `${condition.score} · ${condition.band.label}` : "—"}
           color={condition?.band.color}
         />

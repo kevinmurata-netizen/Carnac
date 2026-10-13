@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { getWciFlow, listScenarioOptions } from "@/server/model-results";
 import { getPageName } from "@/server/navigation";
 import { getAssetWords } from "@/server/branding";
+import { getIndexWords, getScenarioIndexWords } from "@/server/condition-model";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +28,9 @@ export default async function ModelResultsPage({
   const runnable = options.filter((o) => o.hasResults);
   const selectedId = runnable.find((o) => o.id === requested)?.id ?? runnable[0]?.id;
   const flow = selectedId ? await getWciFlow(organizationId, selectedId) : null;
+  const index = selectedId
+    ? await getScenarioIndexWords(organizationId, selectedId)
+    : await getIndexWords(organizationId);
 
   return (
     <div>
@@ -72,7 +76,7 @@ export default async function ModelResultsPage({
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <KpiCard
-                  label="Average WCI"
+                  label={`Average ${index.short}`}
                   value={`${flow.startAvg} → ${flow.endAvg}`}
                   sublabel={`Across ${formatNumber(flow.assetCount)} segments over ${flow.years} years`}
                   icon={Gauge}
@@ -137,7 +141,7 @@ export default async function ModelResultsPage({
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <FlowTable links={flow.links} total={flow.assetCount} />
+                  <FlowTable links={flow.links} total={flow.assetCount} index={index.short} />
                 </CardContent>
               </Card>
 

@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-13",
+    title: "The condition index names its own scores",
+    summary:
+      "Screens that said \"WCI\" now use the condition index's own name, set on Settings › Condition Index. A pole network scored by a \"Pole Condition Index (PCI)\" reads \"PCI 62\" everywhere. Nothing looks different for water.",
+    changes: [
+      "Settings › Condition Index has a Name box. The short form is whatever is in brackets — \"Waterline Condition Index (WCI)\" gives WCI — or else the name's initials.",
+      "The short form labels scores, columns, chart lines, filters, map pop-ups, reports and spreadsheet downloads, and the reasons a recommendation gives. An asset's or inspection's page uses its own type's index; a scenario's pages use the index of the types it runs over.",
+      "Where several indexes with different names are read together, the screens say \"CI\" rather than pick one.",
+      "Treatment rules now read \"Condition score is less than 45\", and the Condition Improvement weight is described in condition points.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-13",
     title: "Branding in Settings",
     summary:
       "A new Settings › Branding card sets the product's name, tagline and logo, and what the network's assets are called. The same platform can present itself as a water system, a power system or neither. Nothing looks different until it is changed.",

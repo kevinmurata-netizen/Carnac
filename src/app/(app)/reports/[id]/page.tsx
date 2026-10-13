@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getReport, type ReportColumn, type ReportRow } from "@/server/reports";
+import { getIndexWords } from "@/server/condition-model";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,10 +27,10 @@ function renderCell(value: string | number | null, column: ReportColumn) {
 
 export default async function ReportPreviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const report = getReport(id);
+  const session = await auth();
+  const report = getReport(id, await getIndexWords(session!.user.organizationId));
   if (!report) notFound();
 
-  const session = await auth();
   const rows: ReportRow[] = await report.run(session!.user.organizationId);
   const preview = rows.slice(0, PREVIEW_LIMIT);
 

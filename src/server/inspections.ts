@@ -93,7 +93,7 @@ const inspectionInclude = {
   // The type comes along so a page can call the asset what it is: an
   // inspection of a reservoir labelled "Segment" reads as the wrong record.
   asset: {
-    select: { id: true, assetCode: true, organizationId: true, assetType: { select: { name: true } } },
+    select: { id: true, assetCode: true, organizationId: true, assetTypeId: true, assetType: { select: { name: true } } },
   },
   inspector: { select: { id: true, name: true } },
   results: { include: { field: true } },

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { formatDate, formatNumber } from "@/lib/format";
 import { getAssetWords } from "@/server/branding";
+import { getIndexWords } from "@/server/condition-model";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 import { listAssetTypes } from "@/server/assets";
@@ -29,6 +30,7 @@ export default async function InspectionsPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
+  const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/inspections", "Inspections");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -104,7 +106,7 @@ export default async function InspectionsPage({
                   options={[...INSPECTION_TYPES]}
                 />
                 <ColumnHeader label="Inspector" sortKey="inspector" filterParam="inspector" options={inspectors} />
-                <ColumnHeader label="WCI Score" sortKey="wci" />
+                <ColumnHeader label={`${index.short} Score`} sortKey="wci" />
                 <ColumnHeader label="Quality" sortKey="qualityScore" />
                 <ColumnHeader label="Follow-up" sortKey="requiresFollowUp" />
               </TableRow>

@@ -35,6 +35,7 @@ import type { PriorityOptions } from "@/server/priority";
 import { categoryWeight } from "@/domain/waterline/category-weight";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { MODELLED, modelledType } from "@/server/modelled-asset-type";
+import { getIndexWords } from "@/server/condition-model";
 
 /**
  * Idempotently write the treatment library, and the rules that decide what
@@ -261,11 +262,12 @@ export async function getRecommendationForAsset(
 ): Promise<Recommendation | null> {
   const contexts = await buildContexts(organizationId, assetId);
   if (contexts.length === 0) return null;
-  const [library, combinations] = await Promise.all([
+  const [library, combinations, index] = await Promise.all([
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
+    getIndexWords(organizationId, contexts[0].ctx.assetTypeId),
   ]);
-  return recommendTreatment(contexts[0].ctx, library, combinations);
+  return recommendTreatment({ ...contexts[0].ctx, conditionIndexShort: index.short }, library, combinations);
 }
 
 export type NetworkRecommendationRow = {

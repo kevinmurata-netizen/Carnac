@@ -8,6 +8,7 @@ import { getAssetLcca } from "@/server/lcca";
 import { ageInYears } from "@/lib/format";
 import { getConditionBands } from "@/server/settings";
 import { MODELLED } from "@/server/modelled-asset-type";
+import { withIndex, type IndexWords } from "@/lib/index-words";
 
 /**
  * Report definitions are data, not bespoke endpoints: each one declares its
@@ -111,7 +112,7 @@ export const REPORTS: ReportDefinition[] = [
     columns: [
       { key: "assetCode", label: "Asset ID" },
       { key: "material", label: "Material" },
-      { key: "wci", label: "WCI", format: "number" },
+      { key: "wci", label: "{index}", format: "number" },
       { key: "band", label: "Condition Band" },
       { key: "measuredOn", label: "Last Measured", format: "date" },
       { key: "serviceArea", label: "Service Area" },
@@ -173,7 +174,7 @@ export const REPORTS: ReportDefinition[] = [
       { key: "inspectionDate", label: "Date", format: "date" },
       { key: "inspectionType", label: "Type" },
       { key: "inspector", label: "Inspector" },
-      { key: "wci", label: "Resulting WCI", format: "number" },
+      { key: "wci", label: "Resulting {index}", format: "number" },
       { key: "qualityScore", label: "Data Quality", format: "percent" },
       { key: "requiresFollowUp", label: "Follow-up Required" },
       { key: "notes", label: "Notes" },
@@ -242,7 +243,7 @@ export const REPORTS: ReportDefinition[] = [
       { key: "assetCode", label: "Asset ID" },
       { key: "model", label: "Model" },
       { key: "forecastYear", label: "Year", format: "number" },
-      { key: "predictedCondition", label: "Predicted WCI", format: "number" },
+      { key: "predictedCondition", label: "Predicted {index}", format: "number" },
     ],
     run: async (organizationId) => {
       const rows = await prisma.deteriorationPrediction.findMany({
@@ -265,7 +266,7 @@ export const REPORTS: ReportDefinition[] = [
     category: "Planning",
     columns: [
       { key: "assetCode", label: "Asset ID" },
-      { key: "condition", label: "WCI", format: "number" },
+      { key: "condition", label: "{index}", format: "number" },
       { key: "riskScore", label: "Risk", format: "number" },
       { key: "treatment", label: "Recommended Treatment" },
       { key: "category", label: "Category" },
@@ -360,7 +361,7 @@ export const REPORTS: ReportDefinition[] = [
       { key: "strategy", label: "Strategy" },
       { key: "annualBudget", label: "Annual Budget", format: "currency" },
       { key: "analysisPeriod", label: "Period (yr)", format: "number" },
-      { key: "finalCondition", label: "Final WCI", format: "number" },
+      { key: "finalCondition", label: "Final {index}", format: "number" },
       { key: "totalFailures", label: "Expected Failures", format: "number" },
       { key: "finalBacklog", label: "Backlog at End", format: "currency" },
       { key: "totalSpend", label: "Total Spend", format: "currency" },
@@ -424,8 +425,10 @@ export const REPORTS: ReportDefinition[] = [
   },
 ];
 
-export function getReport(id: string): ReportDefinition | undefined {
-  return REPORTS.find((r) => r.id === id);
+/** A report, its column headings in the condition index's words. */
+export function getReport(id: string, index: IndexWords): ReportDefinition | undefined {
+  const report = REPORTS.find((r) => r.id === id);
+  return report && { ...report, columns: report.columns.map((c) => ({ ...c, label: withIndex(c.label, index) })) };
 }
 
 // ---------------------------------------------------------------------------

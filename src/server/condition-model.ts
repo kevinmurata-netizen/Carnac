@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { isDerivedMetric } from "@/server/metrics-shared";
 import {
@@ -8,6 +9,7 @@ import {
 import { modelledType } from "@/server/modelled-asset-type";
 import { isComponentScoped } from "@/domain/components/scope";
 import type { ConditionModel } from "@prisma/client";
+import { indexWords, sharedIndexWords, type IndexWords } from "@/lib/index-words";
 
 /**
  * The Condition Index is configuration, not code: its components and their
@@ -116,6 +118,33 @@ export async function indexModelsByType(organizationId: string): Promise<Map<str
     if (isIndexModel(m) && !byType.has(m.assetTypeId)) byType.set(m.assetTypeId, m);
   }
   return byType;
+}
+
+/**
+ * What the screens call the condition index: one asset type's (an asset's
+ * page, an inspection), several types' read together (a scenario narrowed to
+ * them), or, with neither, every modelled type's — the network-wide pages.
+ * Cached per request, since a page and its charts both ask.
+ */
+export const getIndexWords = cache(
+  async (organizationId: string, assetTypeIds?: string | readonly string[] | null): Promise<IndexWords> => {
+    const ids = assetTypeIds == null ? null : typeof assetTypeIds === "string" ? [assetTypeIds] : [...assetTypeIds];
+    const byType = await indexModelsByType(organizationId);
+    // A type with no index of its own (a facility, read by its components)
+    // reads in the network's words.
+    const named = (ids ?? []).map((id) => byType.get(id)).filter((m) => !!m);
+    const models = named.length > 0 ? named : [...byType.values()];
+    return models.length === 1 ? indexWords(models[0].name) : sharedIndexWords(models.map((m) => m.name));
+  }
+);
+
+/** A scenario's: the types it is narrowed to, or every modelled type. */
+export async function getScenarioIndexWords(organizationId: string, scenarioId: string): Promise<IndexWords> {
+  const rows = await prisma.scenarioAssetType.findMany({
+    where: { scenarioId, scenario: { organizationId } },
+    select: { assetTypeId: true },
+  });
+  return getIndexWords(organizationId, rows.map((r) => r.assetTypeId));
 }
 
 /** The weights a condition model scores with. */
@@ -312,6 +341,20 @@ export async function removeComponent(organizationId: string, code: string, asse
   }
   delete weights[code];
   await writeWeights(organizationId, weights, assetTypeId);
+}
+
+/** Rename the index. The name heads the condition pages, and its short form
+ * — bracketed, or else the initials — sits beside every score. */
+export async function renameIndex(organizationId: string, name: string, assetTypeId?: string | null) {
+  const clean = name.trim().replace(/\s+/g, " ");
+  if (!clean) throw new Error("The index needs a name");
+  if (clean.length > 60) throw new Error("Keep the name under 60 characters");
+  const short = indexWords(clean).short;
+  if (short.length > 8) {
+    throw new Error(`"${short}" is too long to sit beside a score — add a short form in brackets, e.g. "Pole Condition Index (PCI)"`);
+  }
+  const model = await requireModel(organizationId, assetTypeId);
+  await prisma.conditionModel.update({ where: { id: model.id }, data: { name: clean } });
 }
 
 export async function updateBands(organizationId: string, bands: ConditionBand[], assetTypeId?: string | null) {

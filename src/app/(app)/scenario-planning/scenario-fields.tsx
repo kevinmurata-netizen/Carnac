@@ -1,6 +1,7 @@
 "use client";
 
 import { Label } from "@/components/ui/label";
+import { useIndexWords } from "@/components/layout/index-words";
 import { AFTER_TARGET, AFTER_TARGET_LABELS, STRATEGIES } from "@/domain/waterline/scenario";
 
 const input =
@@ -198,6 +199,7 @@ export function ScenarioFields({
   lockSet?: boolean;
 }) {
   const id = (name: string) => `${idPrefix}${name}`;
+  const index = useIndexWords();
   const mark = (key: keyof ScenarioValues) =>
     saved && values[key] !== saved[key] ? `${input} border-amber-500` : input;
   // Read from the selection rather than from what is stored, so choosing a set
@@ -386,7 +388,7 @@ export function ScenarioFields({
       {targeting ? (
         <>
           <div className="space-y-1.5">
-            <Label htmlFor={id("conditionTarget")}>Condition Target (WCI)</Label>
+            <Label htmlFor={id("conditionTarget")}>Condition Target ({index.short})</Label>
             <input
               id={id("conditionTarget")}
               name="conditionTarget"
@@ -490,7 +492,7 @@ export function ScenarioFields({
               reference: moving it moves a line, never the money. */}
           <div className="space-y-1.5 sm:col-span-2">
             <div className="flex items-center justify-between gap-2">
-              <Label htmlFor={id("conditionTarget")}>Condition Target (WCI)</Label>
+              <Label htmlFor={id("conditionTarget")}>Condition Target ({index.short})</Label>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <input
                   type="checkbox"

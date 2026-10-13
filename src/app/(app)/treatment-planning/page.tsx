@@ -14,6 +14,7 @@ import { getConditionBand } from "@/domain/waterline/condition";
 import { getRiskBand } from "@/domain/waterline/risk";
 import { CheckCircle2, DollarSign, Hammer, Wrench } from "lucide-react";
 import { getAssetWords } from "@/server/branding";
+import { getIndexWords } from "@/server/condition-model";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 import { ExportButton } from "@/components/layout/export-button";
@@ -45,6 +46,7 @@ export default async function TreatmentPlanningPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
+  const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/treatment-planning", "Treatment Planning");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -207,7 +209,7 @@ export default async function TreatmentPlanningPage({
                         more columns: the score is the number you scan, and the
                         decomposition is what you check when one surprises you. */}
                     <TableCell
-                      title={`Condition +${Math.round(row.benefitTerms.conditionImprovement)} WCI · Risk −${
+                      title={`Condition +${Math.round(row.benefitTerms.conditionImprovement)} ${index.short} · Risk −${
                         Math.round(row.benefitTerms.riskReduction * 10) / 10
                       } pts (criticality excluded) · Life-cycle saving ${formatCurrency(
                         row.benefitTerms.lifeCycleSaving
@@ -245,7 +247,7 @@ Priority = criticality ${row.criticalityScore} × scale ${
         </CardContent>
       </Card>
 
-      <RankedOptions ranking={ranking} exportQuery={exportQuery} />
+      <RankedOptions ranking={ranking} exportQuery={exportQuery} index={index.short} />
 
       <Card className="mt-4">
         <CardHeader>

@@ -11,6 +11,7 @@ import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { formatDate, formatNumber } from "@/lib/format";
 import { Activity, Gauge, ShieldAlert, TrendingDown } from "lucide-react";
 import { getAssetWords } from "@/server/branding";
+import { getIndexWords } from "@/server/condition-model";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 
@@ -18,6 +19,7 @@ export default async function ConditionPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
+  const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/condition", "Condition");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -38,7 +40,7 @@ export default async function ConditionPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description="Waterline Condition Index (WCI) — network-wide condition derived from field inspections"
+        description={`${index.name} (${index.short}) — network-wide condition derived from field inspections`}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

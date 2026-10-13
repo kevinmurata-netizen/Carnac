@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { listMaterials, listCriticalities, listServiceAreas, listPressureZones } from "@/server/assets";
 import { ageInYears } from "@/lib/format";
+import { getIndexWords } from "@/server/condition-model";
 import type { DecisionField, DecisionInput } from "@/domain/waterline/decision-tree";
 
 /** A real segment to try a rule against. */
@@ -39,6 +40,7 @@ export async function loadRuleSamples(organizationId: string): Promise<RuleSampl
     .filter((v, i, all) => all.indexOf(v) === i);
 
   const measuresOf = await getMeasureCodes(organizationId);
+  const { short } = await getIndexWords(organizationId);
   return picks.map((index) => {
     const measurement = measurements[index];
     const asset = measurement.asset;
@@ -66,7 +68,7 @@ export async function loadRuleSamples(organizationId: string): Promise<RuleSampl
 
     return {
       id: asset.id,
-      label: `${asset.assetCode} — WCI ${input.condition}, ${input.material ?? "unknown material"}, ${
+      label: `${asset.assetCode} — ${short} ${input.condition}, ${input.material ?? "unknown material"}, ${
         input.customersServed ?? 0
       } customers${input.serviceArea ? `, ${input.serviceArea}` : ""}`,
       input,

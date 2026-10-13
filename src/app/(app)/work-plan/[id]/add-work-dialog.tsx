@@ -9,6 +9,7 @@ import { EditorDialog } from "@/components/ui/editor-dialog";
 import { formatCurrency } from "@/lib/format";
 import { searchSegmentsAction, previewAdditionAction, addWorkPlanItemAction } from "../actions";
 import type { PlannedAddition } from "@/server/workplans";
+import { useIndexWords } from "@/components/layout/index-words";
 
 const control =
   "h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -37,6 +38,7 @@ export function AddWorkDialog({
   defaultYear: number;
 }) {
   const router = useRouter();
+  const index = useIndexWords();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -140,7 +142,7 @@ export function AddWorkDialog({
                     >
                       <span className="font-medium">{s.assetCode}</span>
                       <span className="text-xs text-muted-foreground">
-                        {s.serviceArea ?? "—"} · WCI {s.condition ?? "not inspected"}
+                        {s.serviceArea ?? "—"} · {index.short} {s.condition ?? "not inspected"}
                       </span>
                     </button>
                   </li>
@@ -152,7 +154,7 @@ export function AddWorkDialog({
               <p className="text-sm">
                 Chosen: <span className="font-medium">{segment.assetCode}</span>
                 {segment.serviceArea ? ` · ${segment.serviceArea}` : ""}
-                {segment.condition != null ? ` · WCI ${segment.condition}` : ""}
+                {segment.condition != null ? ` · ${index.short} ${segment.condition}` : ""}
               </p>
             )}
           </div>

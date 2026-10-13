@@ -5,6 +5,7 @@ import { ModelNotSetUp } from "@/components/settings/model-not-set-up";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { IndexEditor } from "./index-editor";
+import { IndexNameForm } from "./index-name-form";
 import { formatNumber } from "@/lib/format";
 import { Gauge, Layers, ListChecks } from "lucide-react";
 import { getPageName } from "@/server/navigation";
@@ -70,6 +71,8 @@ export default async function ConditionIndexPage({ searchParams }: { searchParam
           reweighting it moves every condition score in the system.
         </div>
       )}
+
+      <IndexNameForm name={config.name} assetTypeId={config.assetTypeId} canEdit={canEdit} />
 
       <IndexEditor config={config} canEdit={canEdit} />
     </div>

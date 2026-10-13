@@ -17,7 +17,16 @@ import type { WciFlowLink } from "@/server/model-results";
  * elsewhere. Clicking a row now answers it in place, with each segment linking
  * through to its own page.
  */
-export function FlowTable({ links, total }: { links: WciFlowLink[]; total: number }) {
+export function FlowTable({
+  links,
+  total,
+  index,
+}: {
+  links: WciFlowLink[];
+  total: number;
+  /** The scenario's condition index, short form. */
+  index: string;
+}) {
   const [openKey, setOpenKey] = useState<string | null>(null);
 
   return (
@@ -42,6 +51,7 @@ export function FlowTable({ links, total }: { links: WciFlowLink[]; total: numbe
                 key={key}
                 link={l}
                 total={total}
+                index={index}
                 open={open}
                 onToggle={() => setOpenKey(open ? null : key)}
               />
@@ -56,11 +66,13 @@ export function FlowTable({ links, total }: { links: WciFlowLink[]; total: numbe
 function FlowRows({
   link,
   total,
+  index,
   open,
   onToggle,
 }: {
   link: WciFlowLink;
   total: number;
+  index: string;
   open: boolean;
   onToggle: () => void;
 }) {
@@ -143,8 +155,8 @@ function FlowRows({
                     <TableRow>
                       <TableHead>Segment</TableHead>
                       <TableHead>Material</TableHead>
-                      <TableHead>Start WCI</TableHead>
-                      <TableHead>End WCI</TableHead>
+                      <TableHead>Start {index}</TableHead>
+                      <TableHead>End {index}</TableHead>
                       <TableHead>Change</TableHead>
                       <TableHead>Treatments</TableHead>
                     </TableRow>

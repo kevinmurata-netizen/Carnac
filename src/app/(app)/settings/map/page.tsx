@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { getNetworkGeoJSON } from "@/server/geo";
-import { MAP_FIELDS, getPopupFields } from "@/server/map-settings";
+import { MAP_FIELDS, getMapFields, getPopupFields } from "@/server/map-settings";
 import { PageHeader } from "@/components/layout/page-header";
 import { getPageName } from "@/server/navigation";
 import { MapPopupEditor } from "./editor";
@@ -41,7 +41,7 @@ export default async function MapSettingsPage() {
         </div>
       )}
 
-      <MapPopupEditor fields={MAP_FIELDS} selected={selected} sample={sample} canEdit={canEdit} />
+      <MapPopupEditor fields={await getMapFields(organizationId)} selected={selected} sample={sample} canEdit={canEdit} />
     </div>
   );
 }
