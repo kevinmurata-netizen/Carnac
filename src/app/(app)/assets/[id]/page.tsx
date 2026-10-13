@@ -34,8 +34,10 @@ import { forecastAssetComponents } from "@/server/component-deterioration";
 import { NetworkMap } from "@/components/map/network-map";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { NotBuiltYet } from "@/components/not-built-yet";
-import { ageInYears, formatDate, formatInches, formatNumber, formatStatus, toDateInputValue } from "@/lib/format";
+import { ageInYears, formatDate, formatNumber, formatStatus, toDateInputValue } from "@/lib/format";
+import { formatMeasure } from "@/lib/measure-labels";
 import { getAssetWords } from "@/server/branding";
+import { getMeasureLabels } from "@/server/measures";
 import { getIndexWords } from "@/server/condition-model";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
@@ -68,6 +70,7 @@ export default async function AssetDetailPage({
   if (!asset) notFound();
 
   const index = await getIndexWords(organizationId, asset.assetTypeId);
+  const measureLabels = await getMeasureLabels(organizationId, asset.assetTypeId);
   const measures = readMeasures(asset.attributeValues, (await getMeasureCodes(organizationId))(asset.assetTypeId));
   const material = measures.material ?? undefined;
   const diameter = measures.diameter ?? undefined;
@@ -224,7 +227,7 @@ export default async function AssetDetailPage({
       <SetBreadcrumb segment={id} label={asset.assetCode} />
       <PageHeader
         title={asset.assetCode}
-        description={[diameter ? `${diameter}"` : null, material, asset.assetType.name, asset.location?.serviceArea]
+        description={[diameter ? formatMeasure(diameter, measureLabels.diameter) : null, material, asset.assetType.name, asset.location?.serviceArea]
           .filter(Boolean)
           .join(" · ")}
         actions={<Badge variant={STATUS_VARIANT[asset.status]}>{formatStatus(asset.status)}</Badge>}
@@ -233,12 +236,12 @@ export default async function AssetDetailPage({
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
         <SummaryStat label="Age" value={age != null ? `${age} yr` : "—"} />
         <SummaryStat
-          label="Length"
+          label={measureLabels.length.name}
           value={
-            measures.length ? `${formatNumber(Math.round(measures.length))} ft` : "—"
+            measures.length ? formatMeasure(Math.round(measures.length), measureLabels.length, 0) : "—"
           }
         />
-        <SummaryStat label="Diameter" value={formatInches(diameter)} />
+        <SummaryStat label={measureLabels.diameter.name} value={formatMeasure(diameter, measureLabels.diameter)} />
         <SummaryStat label="Material" value={material ?? "—"} />
         <SummaryStat label="Installed" value={formatDate(asset.installationDate)} />
         <SummaryStat label="Criticality" value={measures.criticality ?? "—"} />

@@ -17,7 +17,9 @@ import { NetworkMap } from "@/components/map/network-map";
 import { StatusMapLegend } from "@/components/map/map-legend";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { ConditionDistributionChart } from "@/components/charts/condition-distribution-chart";
-import { formatCurrency, formatFeetAsMiles, formatNumber, formatStatus } from "@/lib/format";
+import { formatCurrency, formatNumber, formatStatus } from "@/lib/format";
+import { formatTotalLength } from "@/lib/measure-labels";
+import { getMeasureLabels } from "@/server/measures";
 import { Droplets, Gauge, Layers, ShieldAlert, Wallet } from "lucide-react";
 import Link from "next/link";
 import { getAssetWords } from "@/server/branding";
@@ -30,6 +32,7 @@ export default async function DashboardPage() {
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
+  const measures = await getMeasureLabels(organizationId);
   const pageTitle = await getPageName(organizationId, "/dashboard", "Executive Dashboard");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -72,7 +75,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard
           label={`${words.singular} Network`}
-          value={formatFeetAsMiles(summary.totalLengthFt)}
+          value={formatTotalLength(summary.totalLengthFt, measures.length)}
           sublabel={`${formatNumber(summary.totalSegments)} ${words.items}`}
           icon={Droplets}
         />

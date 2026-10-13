@@ -8,6 +8,8 @@ import { assetWords } from "@/lib/branding";
 import { getIndexWords } from "@/server/condition-model";
 import { IndexWordsProvider } from "@/components/layout/index-words";
 import { AssetWordsProvider } from "@/components/layout/asset-words";
+import { MeasureLabelsProvider } from "@/components/layout/measure-labels";
+import { getMeasureLabels } from "@/server/measures";
 
 /** The browser tab follows the organization's branding once someone is in. */
 export async function generateMetadata() {
@@ -23,12 +25,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // Loaded once here and shared with both the sidebar and the breadcrumb trail
   // so a renamed page reads the same in either place.
-  const [overrides, hidden, permissions, branding, index] = await Promise.all([
+  const [overrides, hidden, permissions, branding, index, measures] = await Promise.all([
     getNavOverrides(user.organizationId),
     getHiddenHrefs(user.organizationId),
     getPermissions(user.organizationId, user.roleId),
     getBranding(user.organizationId),
     getIndexWords(user.organizationId),
+    getMeasureLabels(user.organizationId),
   ]);
   const words = assetWords(branding);
 
@@ -57,7 +60,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         roleName={permissions.roleName}
       >
         <AssetWordsProvider words={words}>
-          <IndexWordsProvider words={index}>{children}</IndexWordsProvider>
+          <IndexWordsProvider words={index}>
+            <MeasureLabelsProvider labels={measures}>{children}</MeasureLabelsProvider>
+          </IndexWordsProvider>
         </AssetWordsProvider>
       </AppShell>
     </BreadcrumbProvider>

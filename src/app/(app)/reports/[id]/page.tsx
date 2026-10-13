@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getReport, type ReportColumn, type ReportRow } from "@/server/reports";
 import { getIndexWords } from "@/server/condition-model";
+import { getMeasureLabels } from "@/server/measures";
 import { getAssetWords } from "@/server/branding";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,7 +33,8 @@ export default async function ReportPreviewPage({ params }: { params: Promise<{ 
   const report = getReport(
     id,
     await getIndexWords(session!.user.organizationId),
-    await getAssetWords(session!.user.organizationId)
+    await getAssetWords(session!.user.organizationId),
+    await getMeasureLabels(session!.user.organizationId)
   );
   if (!report) notFound();
 

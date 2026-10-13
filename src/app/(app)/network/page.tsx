@@ -21,7 +21,9 @@ import { SavedFilterSelect } from "@/components/filters/saved-filter-select";
 import { Card, CardContent } from "@/components/ui/card";
 import { FACILITY_COLORS, NetworkMap } from "@/components/map/network-map";
 import { StatusMapLegend } from "@/components/map/map-legend";
-import { formatFeetAsMiles, formatNumber } from "@/lib/format";
+import { formatNumber } from "@/lib/format";
+import { formatTotalLength } from "@/lib/measure-labels";
+import { getMeasureLabels } from "@/server/measures";
 import { AssetStatus } from "@prisma/client";
 import { getPageName } from "@/server/navigation";
 
@@ -34,6 +36,7 @@ export default async function NetworkPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
+  const measures = await getMeasureLabels(organizationId);
   const pageTitle = await getPageName(organizationId, "/network", "Network");
 
   // A saved filter narrows the map to the segments it matches, on top of
@@ -132,7 +135,7 @@ export default async function NetworkPage({
         title={pageTitle}
         description={
           showPipes
-            ? `${formatNumber(assets.length)} ${words.items} · ${formatFeetAsMiles(totalLengthFt)}${
+            ? `${formatNumber(assets.length)} ${words.items} · ${formatTotalLength(totalLengthFt, measures.length)}${
                 facilities.features.length > 0 ? ` · ${formatNumber(facilities.features.length)} facilities` : ""
               } shown`
             : `${formatNumber(facilities.features.length)} shown`

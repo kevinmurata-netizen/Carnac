@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatStatus } from "@/lib/format";
 import { X } from "lucide-react";
+import { useMeasureLabels } from "@/components/layout/measure-labels";
 
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "ABANDONED", "PLANNED", "REMOVED"];
 
@@ -45,7 +46,7 @@ const OPTIONAL_FILTERS: OptionalFilter[] = [
   { key: "criticality", label: "Criticality", params: ["criticality"] },
   { key: "customerType", label: "Customer Type", params: ["customerType"] },
   { key: "pressureZone", label: "Pressure Zone", params: ["pressureZone"] },
-  { key: "diameter", label: "Diameter range", params: ["minDiameter", "maxDiameter"] },
+  { key: "diameter", label: "{diameterName} range", params: ["minDiameter", "maxDiameter"] },
   { key: "customers", label: "Customers served range", params: ["minCustomers", "maxCustomers"] },
   { key: "installed", label: "Installed between", params: ["installedAfter", "installedBefore"] },
 ];
@@ -78,6 +79,8 @@ export function AssetFilterBar({
   values: AssetFilterValues;
   action: string;
 }) {
+  const measures = useMeasureLabels();
+  const labelOf = (f: OptionalFilter) => f.label.replace("{diameterName}", measures.diameter.name);
   // A filter that already has a value in the URL stays open after submitting,
   // so the bar reflects the query you are actually looking at.
   const [shown, setShown] = useState<string[]>(() =>
@@ -192,7 +195,7 @@ export function AssetFilterBar({
         )}
 
         {shown.includes("diameter") && (
-          <Removable label="Diameter (in)" onRemove={() => setShown((s) => s.filter((k) => k !== "diameter"))}>
+          <Removable label={measures.diameter.heading} onRemove={() => setShown((s) => s.filter((k) => k !== "diameter"))}>
             <Range minName="minDiameter" maxName="maxDiameter" values={values} />
           </Removable>
         )}
@@ -223,7 +226,7 @@ export function AssetFilterBar({
               <option value="">＋ Add a filter…</option>
               {available.map((f) => (
                 <option key={f.key} value={f.key}>
-                  {f.label}
+                  {labelOf(f)}
                 </option>
               ))}
             </select>

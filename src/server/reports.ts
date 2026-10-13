@@ -10,6 +10,7 @@ import { getConditionBands } from "@/server/settings";
 import { MODELLED } from "@/server/modelled-asset-type";
 import { withIndex, type IndexWords } from "@/lib/index-words";
 import { withAssetWords, type AssetWords } from "@/lib/branding";
+import { withMeasures, type MeasureLabels } from "@/lib/measure-labels";
 
 /**
  * Report definitions are data, not bespoke endpoints: each one declares its
@@ -77,8 +78,8 @@ export const REPORTS: ReportDefinition[] = [
       { key: "assetCode", label: "Asset ID" },
       { key: "status", label: "Status" },
       { key: "material", label: "Material" },
-      { key: "diameterIn", label: "Diameter (in)", format: "number" },
-      { key: "lengthFt", label: "Length (ft)", format: "number" },
+      { key: "diameterIn", label: "{diameter}", format: "number" },
+      { key: "lengthFt", label: "{length}", format: "number" },
       { key: "installationDate", label: "Installation Date", format: "date" },
       { key: "ageYears", label: "Age (yr)", format: "number" },
       { key: "serviceArea", label: "Service Area" },
@@ -427,18 +428,23 @@ export const REPORTS: ReportDefinition[] = [
 ];
 
 /** A report, its description and column headings in the organization's words. */
-export function getReport(id: string, index: IndexWords, words: AssetWords): ReportDefinition | undefined {
+export function getReport(
+  id: string,
+  index: IndexWords,
+  words: AssetWords,
+  measures: MeasureLabels
+): ReportDefinition | undefined {
   const report = REPORTS.find((r) => r.id === id);
-  return report && inWords(report, index, words);
+  return report && inWords(report, index, words, measures);
 }
 
 /** Every report, described in the organization's words. */
-export function listReports(index: IndexWords, words: AssetWords): ReportDefinition[] {
-  return REPORTS.map((r) => inWords(r, index, words));
+export function listReports(index: IndexWords, words: AssetWords, measures: MeasureLabels): ReportDefinition[] {
+  return REPORTS.map((r) => inWords(r, index, words, measures));
 }
 
-function inWords(report: ReportDefinition, index: IndexWords, words: AssetWords): ReportDefinition {
-  const say = (text: string) => withAssetWords(withIndex(text, index), words);
+function inWords(report: ReportDefinition, index: IndexWords, words: AssetWords, measures: MeasureLabels): ReportDefinition {
+  const say = (text: string) => withMeasures(withAssetWords(withIndex(text, index), words), measures);
   return { ...report, description: say(report.description), columns: report.columns.map((c) => ({ ...c, label: say(c.label) })) };
 }
 

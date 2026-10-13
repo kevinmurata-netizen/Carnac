@@ -1,4 +1,6 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { GENERIC_MEASURE_LABELS, measureLabel, type MeasureLabel, type MeasureLabels } from "@/lib/measure-labels";
 import { MEASURE_ROLES, type MeasureCodes, type MeasureRole } from "@/lib/measure-roles";
 
 export { MEASURE_ROLES, type MeasureCodes, type MeasureRole };
@@ -92,6 +94,41 @@ export async function getMeasureDefinitionFilters(
   }
   return out;
 }
+
+/**
+ * What the screens call an asset's size and length, from the attributes that
+ * hold them: one asset type's (an asset's page), several read together, or,
+ * with none named, every modelled type's — the network-wide screens. Where
+ * the types disagree, or a type has no such attribute, the role's own name
+ * stands, with no unit. Cached per request.
+ */
+export const getMeasureLabels = cache(
+  async (organizationId: string, assetTypeIds?: string | readonly string[] | null): Promise<MeasureLabels> => {
+    const ids = assetTypeIds == null ? [] : typeof assetTypeIds === "string" ? [assetTypeIds] : [...assetTypeIds];
+    const select = { measures: true, attributeDefinitions: { select: { code: true, label: true, unit: true } } } as const;
+    let types = ids.length > 0 ? await prisma.assetType.findMany({ where: { organizationId, id: { in: ids } }, select }) : [];
+    // A type that measures neither (a facility) reads in the network's words.
+    const measuring = (t: (typeof types)[number]) => {
+      const codes = parseMeasureCodes(t.measures);
+      return !!codes.diameter || !!codes.length;
+    };
+    if (!types.some(measuring)) {
+      types = await prisma.assetType.findMany({ where: { organizationId, isModelled: true }, select });
+    }
+    const labelFor = (role: "diameter" | "length"): MeasureLabel => {
+      const found = types
+        .map((t) => {
+          const code = parseMeasureCodes(t.measures)[role];
+          const attribute = code ? t.attributeDefinitions.find((d) => d.code === code) : undefined;
+          return attribute ? measureLabel(attribute.label, attribute.unit) : null;
+        })
+        .filter((l): l is MeasureLabel => !!l);
+      const [first] = found;
+      return first && found.every((l) => l.heading === first.heading) ? first : GENERIC_MEASURE_LABELS[role];
+    };
+    return { diameter: labelFor("diameter"), length: labelFor("length") };
+  }
+);
 
 /** What the factor editor shows for each measure on one asset type. */
 export type MeasureInfo = {

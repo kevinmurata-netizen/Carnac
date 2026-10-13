@@ -1,6 +1,7 @@
 "use client";
 
 import { useAssetWords } from "@/components/layout/asset-words";
+import { useMeasureLabels } from "@/components/layout/measure-labels";
 // The condition builder: one group and everything under it, plus the trace
 // view that explains a verdict. Extracted from the old per-treatment builder
 // unchanged, because Phase 1 changes who owns a rule, not how one is written.
@@ -8,7 +9,7 @@ import { useAssetWords } from "@/components/layout/asset-words";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, FolderPlus } from "lucide-react";
 import {
-  FIELD_LABELS,
+  fieldLabelsFor,
   NUMERIC_FIELDS,
   TEXT_FIELDS,
   operatorsFor,
@@ -137,6 +138,7 @@ function ConditionRow({
   onPatch: (conditionId: string, patch: Partial<Condition>) => void;
   onRemove: (nodeId: string) => void;
 }) {
+  const fieldLabels = fieldLabelsFor(useMeasureLabels());
   const operators = operatorsFor(condition.field);
   const def = operatorDef(condition.operator);
   const valueCount = def?.values ?? 1;
@@ -167,14 +169,14 @@ function ConditionRow({
         <optgroup label="Numeric">
           {NUMERIC_FIELDS.map((f) => (
             <option key={f} value={f}>
-              {FIELD_LABELS[f]}
+              {fieldLabels[f]}
             </option>
           ))}
         </optgroup>
         <optgroup label="Text">
           {TEXT_FIELDS.map((f) => (
             <option key={f} value={f}>
-              {FIELD_LABELS[f]}
+              {fieldLabels[f]}
             </option>
           ))}
         </optgroup>

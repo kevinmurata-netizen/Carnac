@@ -234,18 +234,28 @@ function describeValue(condition: Condition): string {
   return condition.value ?? "";
 }
 
-export function describeCondition(condition: Condition): string {
-  const label = FIELD_LABELS[condition.field] ?? condition.field;
+export type FieldLabels = Record<DecisionField, string>;
+
+/** The field names, with size and length named as the network records them
+ * ("Diameter (in)", "Height (m)"). */
+export function fieldLabelsFor(measures: { diameter: { heading: string }; length: { heading: string } }): FieldLabels {
+  return { ...FIELD_LABELS, diameterInches: measures.diameter.heading, lengthFt: measures.length.heading };
+}
+
+export function describeCondition(condition: Condition, labels: FieldLabels = FIELD_LABELS): string {
+  const label = labels[condition.field] ?? condition.field;
   const op = operatorDef(condition.operator)?.label ?? condition.operator;
   const value = describeValue(condition);
   return value ? `${label} ${op} ${value}` : `${label} ${op}`;
 }
 
 /** Human-readable rendering of a whole tree, for summaries and traces. */
-export function describeNode(node: TreeNode): string {
-  if (node.kind === "condition") return describeCondition(node);
+export function describeNode(node: TreeNode, labels: FieldLabels = FIELD_LABELS): string {
+  if (node.kind === "condition") return describeCondition(node, labels);
   if (node.children.length === 0) return "no conditions";
-  const parts = node.children.map((c) => (c.kind === "group" && c.children.length > 1 ? `(${describeNode(c)})` : describeNode(c)));
+  const parts = node.children.map((c) =>
+    c.kind === "group" && c.children.length > 1 ? `(${describeNode(c, labels)})` : describeNode(c, labels)
+  );
   return parts.join(node.join === "AND" ? " and " : " or ");
 }
 
