@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { requireCard } from "@/server/guard";
 import { getNetworkGeoJSON } from "@/server/geo";
 import { MAP_FIELDS, getMapFields, getPopupFields } from "@/server/map-settings";
@@ -9,6 +10,7 @@ import { MapPopupEditor } from "./editor";
 export default async function MapSettingsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const { canWrite: canEdit } = await requireCard("/settings/map");
   const pageTitle = await getPageName(organizationId, "/settings/map", "Map");
 
@@ -32,7 +34,7 @@ export default async function MapSettingsPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description="What the map shows when someone hovers over a segment."
+        description={`What the map shows when someone hovers over a ${words.item}.`}
       />
 
       {!canEdit && (

@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -47,6 +48,7 @@ export function RuleDialog({
   onClose: () => void;
   onSaved?: (id: string, effect: RuleEffect, close: boolean) => void;
 }) {
+  const words = useAssetWords();
   const router = useRouter();
   const [loaded, setLoaded] = useState<{ for: RuleRequest; outcome: Awaited<ReturnType<typeof openRuleAction>> } | null>(
     null
@@ -82,7 +84,7 @@ export function RuleDialog({
       {!outcome ? (
         <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading the rule and sample segments…
+          Loading the rule and sample {words.items}…
         </p>
       ) : !outcome.ok ? (
         <p className="py-6 text-sm text-destructive">{outcome.message}</p>

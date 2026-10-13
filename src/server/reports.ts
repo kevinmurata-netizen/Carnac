@@ -9,6 +9,7 @@ import { ageInYears } from "@/lib/format";
 import { getConditionBands } from "@/server/settings";
 import { MODELLED } from "@/server/modelled-asset-type";
 import { withIndex, type IndexWords } from "@/lib/index-words";
+import { withAssetWords, type AssetWords } from "@/lib/branding";
 
 /**
  * Report definitions are data, not bespoke endpoints: each one declares its
@@ -70,7 +71,7 @@ export const REPORTS: ReportDefinition[] = [
   {
     id: "asset-inventory",
     name: "Asset Inventory",
-    description: "Full waterline inventory with physical and operational attributes.",
+    description: "Full {asset} inventory with physical and operational attributes.",
     category: "Inventory",
     columns: [
       { key: "assetCode", label: "Asset ID" },
@@ -107,7 +108,7 @@ export const REPORTS: ReportDefinition[] = [
   {
     id: "condition",
     name: "Condition",
-    description: "Latest Waterline Condition Index by segment, with band and measurement date.",
+    description: "Latest {indexName} by {item}, with band and measurement date.",
     category: "Condition & Risk",
     columns: [
       { key: "assetCode", label: "Asset ID" },
@@ -136,7 +137,7 @@ export const REPORTS: ReportDefinition[] = [
   {
     id: "risk",
     name: "Risk",
-    description: "Probability, consequence and resulting risk score per segment.",
+    description: "Probability, consequence and resulting risk score per {item}.",
     category: "Condition & Risk",
     columns: [
       { key: "assetCode", label: "Asset ID" },
@@ -262,7 +263,7 @@ export const REPORTS: ReportDefinition[] = [
   {
     id: "treatment-needs",
     name: "Treatment Needs",
-    description: "Recommended treatment per segment with cost and expected risk reduction.",
+    description: "Recommended treatment per {item} with cost and expected risk reduction.",
     category: "Planning",
     columns: [
       { key: "assetCode", label: "Asset ID" },
@@ -293,7 +294,7 @@ export const REPORTS: ReportDefinition[] = [
     category: "Financial",
     columns: [
       { key: "treatment", label: "Treatment" },
-      { key: "segments", label: "Segments", format: "number" },
+      { key: "segments", label: "{Items}", format: "number" },
       { key: "totalCost", label: "Total Cost", format: "currency" },
       { key: "averageCost", label: "Average Cost", format: "currency" },
     ],
@@ -384,7 +385,7 @@ export const REPORTS: ReportDefinition[] = [
     id: "life-cycle-cost",
     name: "Life Cycle Cost",
     description:
-      "Lowest life-cycle-cost option per segment versus doing nothing, for the highest-risk assets.",
+      "Lowest life-cycle-cost option per {item} versus doing nothing, for the highest-risk assets.",
     category: "Financial",
     columns: [
       { key: "assetCode", label: "Asset ID" },
@@ -425,10 +426,20 @@ export const REPORTS: ReportDefinition[] = [
   },
 ];
 
-/** A report, its column headings in the condition index's words. */
-export function getReport(id: string, index: IndexWords): ReportDefinition | undefined {
+/** A report, its description and column headings in the organization's words. */
+export function getReport(id: string, index: IndexWords, words: AssetWords): ReportDefinition | undefined {
   const report = REPORTS.find((r) => r.id === id);
-  return report && { ...report, columns: report.columns.map((c) => ({ ...c, label: withIndex(c.label, index) })) };
+  return report && inWords(report, index, words);
+}
+
+/** Every report, described in the organization's words. */
+export function listReports(index: IndexWords, words: AssetWords): ReportDefinition[] {
+  return REPORTS.map((r) => inWords(r, index, words));
+}
+
+function inWords(report: ReportDefinition, index: IndexWords, words: AssetWords): ReportDefinition {
+  const say = (text: string) => withAssetWords(withIndex(text, index), words);
+  return { ...report, description: say(report.description), columns: report.columns.map((c) => ({ ...c, label: say(c.label) })) };
 }
 
 // ---------------------------------------------------------------------------

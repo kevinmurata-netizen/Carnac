@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
+import { withAssetWords } from "@/lib/branding";
 import { getAllScenarioAlternatives, getScenarioAlternatives } from "@/server/scenario-alternatives";
 import { outcomeLegend } from "@/domain/waterline/alternative-reasons";
 import { getScenarioIndexWords } from "@/server/condition-model";
@@ -17,7 +19,7 @@ import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } fro
 
 const COLUMNS: ExcelColumn[] = [
   { key: "year", header: "Year", type: "integer", width: 8 },
-  { key: "assetCode", header: "Segment", width: 14 },
+  { key: "assetCode", header: "{Item}", width: 14 },
   { key: "conditionBefore", header: "{index} Before", type: "number", width: 12 },
   { key: "optionLabel", header: "Option", width: 26 },
   { key: "members", header: "Treatments", width: 30 },
@@ -45,6 +47,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const organizationId = session.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const search = new URL(request.url).searchParams;
   const yearParam = search.get("year");
   const assetParam = search.get("asset");
@@ -58,7 +61,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!data) return new NextResponse("Not found", { status: 404 });
 
   const index = await getScenarioIndexWords(organizationId, id);
-  const legend = outcomeLegend(new Set(data.rows.map((r) => r.reason)), index);
+  const legend = outcomeLegend(new Set(data.rows.map((r) => r.reason)), index, words);
   const rows = data.rows.map((r) => ({
     year: r.year,
     assetCode: r.assetCode,
@@ -92,13 +95,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const selected = rows.filter((r) => r.selected === "Yes").length;
   const buffer = await buildWorkbook({
     sheetName: "Alternatives",
-    columns: COLUMNS.map((c) => ({ ...c, header: withIndex(c.header, index) })),
+    columns: COLUMNS.map((c) => ({ ...c, header: withAssetWords(withIndex(c.header, index), words) })),
     rows,
     title: `Alternatives considered — ${data.scenarioName}`,
     note:
       `${rows.length.toLocaleString()} alternatives over ${scope}, ${selected.toLocaleString()} funded · ` +
       `Priority Score is Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost, computed against each year's condition; ` +
-      `work is bought by Incremental Score — the weighted benefit an option adds over the next cheaper option worth having on its segment, per extra dollar; ` +
+      `work is bought by Incremental Score — the weighted benefit an option adds over the next cheaper option worth having on its ${words.item}, per extra dollar; ` +
       `benefit is normalized within a year, so scores rank options inside their own year only · exported ${new Date()
         .toISOString()
         .slice(0, 10)}`,

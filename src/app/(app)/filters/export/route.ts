@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
+import { countItems } from "@/lib/branding";
 import { getFilterSchema, loadFilterRows, applyCriteria, fieldIndex, ROW_ASSET_ID } from "@/server/filter-schema";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 
@@ -24,6 +26,7 @@ export async function POST(request: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const organizationId = session.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const form = await request.formData();
 
   let definition: { name?: unknown; fields?: unknown; criteria?: unknown; matchAll?: unknown };
@@ -68,7 +71,7 @@ export async function POST(request: Request) {
 
   const described =
     criteria.length === 0
-      ? "no criteria — every segment"
+      ? `no criteria — every ${words.item}`
       : `${matchAll ? "all" : "any"} of ${criteria.length} criteri${criteria.length === 1 ? "on" : "a"}`;
 
   const exportRows = rows.map((row) => {
@@ -100,7 +103,7 @@ export async function POST(request: Request) {
 
   const buffer = await buildWorkbook({
     sheetName: name,
-    title: `${name} — ${rows.length.toLocaleString()} segment${rows.length === 1 ? "" : "s"}`,
+    title: `${name} — ${countItems(rows.length, words)}`,
     note: `Exported ${new Date().toISOString().slice(0, 10)} · matching ${described}`,
     columns,
     rows: exportRows,

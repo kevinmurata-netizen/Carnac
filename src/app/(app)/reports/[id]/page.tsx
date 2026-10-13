@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getReport, type ReportColumn, type ReportRow } from "@/server/reports";
 import { getIndexWords } from "@/server/condition-model";
+import { getAssetWords } from "@/server/branding";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,11 @@ function renderCell(value: string | number | null, column: ReportColumn) {
 export default async function ReportPreviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
-  const report = getReport(id, await getIndexWords(session!.user.organizationId));
+  const report = getReport(
+    id,
+    await getIndexWords(session!.user.organizationId),
+    await getAssetWords(session!.user.organizationId)
+  );
   if (!report) notFound();
 
   const rows: ReportRow[] = await report.run(session!.user.organizationId);

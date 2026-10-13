@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { requireCard } from "@/server/guard";
 import { listFailureTypes } from "@/server/settings";
 import { PageHeader } from "@/components/layout/page-header";
@@ -14,6 +15,7 @@ export default async function FailureTypesPage({ searchParams }: { searchParams:
   const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/settings/failure-types", "Failure Types");
   const { canWrite: canEdit } = await requireCard("/settings/failure-types");
 
@@ -25,7 +27,7 @@ export default async function FailureTypesPage({ searchParams }: { searchParams:
     <div>
       <PageHeader
         title={pageTitle}
-        description="Reference data for recording what went wrong when a segment fails"
+        description={`Reference data for recording what went wrong when a ${words.item} fails`}
       />
 
       <AssetTypePills

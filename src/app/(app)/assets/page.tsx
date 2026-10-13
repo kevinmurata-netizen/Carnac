@@ -26,6 +26,7 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components
 import { ageInYears, formatInches, formatNumber, formatStatus } from "@/lib/format";
 import { AssetStatus } from "@prisma/client";
 import { getAssetWords } from "@/server/branding";
+import { countItems } from "@/lib/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -88,7 +89,7 @@ export default async function AssetsPage({
     <div>
       <PageHeader
         title={`${words.singular} Inventory`}
-        description={`${formatNumber(assets.length)} waterline segment${assets.length === 1 ? "" : "s"} matching current filters`}
+        description={`${countItems(assets.length, words, formatNumber(assets.length))} matching current filters`}
         actions={<ExportButton href="/assets/export" count={assets.length} />}
       />
 
@@ -140,7 +141,7 @@ export default async function AssetsPage({
               {assets.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
-                    No waterline segments match the current filters.
+                    No {words.items} match the current filters.
                   </TableCell>
                 </TableRow>
               )}
@@ -388,8 +389,9 @@ function TypedAssets({
 
       <p className="mt-3 text-xs text-muted-foreground">
         Condition and risk here are rolled up from each asset&apos;s components, under the strategy named beside them —
-        change it under Settings › Component Roll-up. Treatment planning and scenarios are still built around
-        waterlines, so these assets take no part in them yet.
+        change it under Settings › Component Roll-up. Treatment planning and scenarios run over the modelled asset
+        types, which this is not, so these assets take no part in them yet — modelling is turned on under Settings ›
+        Asset Types.
       </p>
     </div>
   );

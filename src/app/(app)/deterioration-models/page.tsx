@@ -137,7 +137,7 @@ export default async function DeteriorationModelsPage() {
               ]}
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              Average {index.short} across inspected active segments with no intervention. Two independent model families
+              Average {index.short} across inspected active {words.items} with no intervention. Two independent model families
               forecasting the same network — divergence indicates model uncertainty worth calibrating.
             </p>
           </CardContent>

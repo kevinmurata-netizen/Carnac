@@ -1,5 +1,7 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
+import { countItems, withAssetWords } from "@/lib/branding";
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -18,8 +20,8 @@ const OPERATOR_LABELS = new Map<string, string>(OPERATORS.map((o) => [o.key, o.l
 const EXAMPLES = [
   'All 12" waterlines in Highland Park',
   "Cast iron mains in poor condition serving more than 200 customers",
-  "Segments older than 70 years that have failed at least twice",
-  "Which segments have never been inspected?",
+  "{Items} older than 70 years that have failed at least twice",
+  "Which {items} have never been inspected?",
 ];
 
 /**
@@ -46,6 +48,7 @@ export function AskPanel({
     translate: (columns: string[], criteria: Criterion[], matchAll: boolean) => Promise<TranslateResult>;
   };
 }) {
+  const words = useAssetWords();
   const [question, setQuestion] = useState("");
   const [asked, setAsked] = useState("");
   const [pending, setPending] = useState(false);
@@ -119,7 +122,7 @@ export function AskPanel({
 
           {configured && (
             <div className="flex flex-wrap gap-1.5">
-              {EXAMPLES.map((example) => (
+              {EXAMPLES.map((e) => withAssetWords(e, words)).map((example) => (
                 <button
                   key={example}
                   type="button"
@@ -176,8 +179,8 @@ export function AskPanel({
             <div className="flex flex-wrap items-start justify-between gap-2">
               <CardTitle className="text-base">
                 {result.total === 0
-                  ? "No segments match"
-                  : `${result.total.toLocaleString()} segment${result.total === 1 ? "" : "s"}`}
+                  ? `No ${words.items} match`
+                  : countItems(result.total, words)}
               </CardTitle>
               {sqlConsole && (
                 <Button
@@ -199,7 +202,7 @@ export function AskPanel({
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
               <span className="text-xs text-muted-foreground">
                 {result.criteria.length === 0
-                  ? "No filter — every segment"
+                  ? `No filter — every ${words.item}`
                   : `Matching ${result.matchAll ? "all" : "any"} of:`}
               </span>
               {result.criteria.map((c, i) => (

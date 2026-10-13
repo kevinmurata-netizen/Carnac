@@ -5,6 +5,7 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import type { PriorityRanking } from "@/server/priority";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 import { RankedGrid } from "./ranked-grid";
+import type { AssetWords } from "@/lib/branding";
 import { ExportButton } from "@/components/layout/export-button";
 
 const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -33,8 +34,10 @@ export function RankedOptions({
   ranking,
   exportQuery = "",
   index,
+  words,
 }: {
   ranking: PriorityRanking;
+  words: AssetWords;
   /** The condition index's short form, beside a score. */
   index: string;
   /** The parameters the ranking was computed with, so the download matches
@@ -73,7 +76,7 @@ export function RankedOptions({
           />
         </div>
         <p className="text-sm text-muted-foreground">
-          Every applicable treatment and combination on every segment, scored as criticality × scale × category ×
+          Every applicable treatment and combination on every {words.item}, scored as criticality × scale × category ×
           benefit ÷ total cost. {formatNumber(ranking.combinationsScored)} of them are combinations.
         </p>
         <p className="text-xs text-muted-foreground">
@@ -92,9 +95,9 @@ export function RankedOptions({
         </p>
         {ranking.belowFloor > 0 && (
           <p className="text-xs text-muted-foreground">
-            {formatNumber(ranking.belowFloor)} options are not shown: on a segment below {index}{" "}
+            {formatNumber(ranking.belowFloor)} options are not shown: on a {words.item} below {index}{" "}
             {ranking.floor.conditionBelow} they would cut risk by less than {ranking.floor.minRiskReductionPct}%, which
-            leaves a failing main failing whatever they score per dollar. They stay visible on the segment&apos;s own
+            leaves a failing main failing whatever they score per dollar. They stay visible on the {words.item}&apos;s own
             page as alternatives.
           </p>
         )}
@@ -159,7 +162,7 @@ export function RankedOptions({
         />
 
         <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-          Across {formatNumber(ranking.assetsWithOptions)} segments. Choosing which of these a scenario actually
+          Across {formatNumber(ranking.assetsWithOptions)} {words.items}. Choosing which of these a scenario actually
           considers, and fitting them to a budget, is what Scenario Planning does with them.
         </p>
       </CardContent>

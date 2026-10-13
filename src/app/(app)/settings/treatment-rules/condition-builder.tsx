@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 // The condition builder: one group and everything under it, plus the trace
 // view that explains a verdict. Extracted from the old per-treatment builder
 // unchanged, because Phase 1 changes who owns a rule, not how one is written.
@@ -251,10 +252,11 @@ function ConditionRow({
 /** The trace, indented to match the rule's shape. §32 requires a
  * recommendation be explainable; this is that explanation. */
 export function TraceView({ outcome }: { outcome: { pass: boolean; trace: Trace } }) {
+  const words = useAssetWords();
   return (
     <details className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
       <summary className="cursor-pointer font-medium">
-        {outcome.pass ? "Matches this segment" : "Does not match this segment"}
+        {outcome.pass ? `Matches this ${words.item}` : `Does not match this ${words.item}`}
       </summary>
       <div className="mt-2">
         <TraceLine trace={outcome.trace} />
@@ -264,11 +266,12 @@ export function TraceView({ outcome }: { outcome: { pass: boolean; trace: Trace 
 }
 
 function TraceLine({ trace }: { trace: Trace }) {
+  const words = useAssetWords();
   return (
     <div className="border-l-2 border-muted pl-3">
       <p className={trace.pass ? "text-emerald-600" : "text-muted-foreground"}>
         {trace.pass ? "✓" : "✗"} {trace.label}
-        {trace.observed != null && <span className="text-muted-foreground"> — segment has {trace.observed}</span>}
+        {trace.observed != null && <span className="text-muted-foreground"> — {words.item} has {trace.observed}</span>}
       </p>
       {trace.children?.map((child, i) => (
         <TraceLine key={i} trace={child} />

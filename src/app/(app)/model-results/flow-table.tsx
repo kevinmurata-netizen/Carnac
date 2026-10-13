@@ -1,5 +1,7 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
+import { countItems } from "@/lib/branding";
 import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +29,7 @@ export function FlowTable({
   /** The scenario's condition index, short form. */
   index: string;
 }) {
+  const words = useAssetWords();
   const [openKey, setOpenKey] = useState<string | null>(null);
 
   return (
@@ -37,7 +40,7 @@ export function FlowTable({
             <TableHead className="w-8" />
             <TableHead>From</TableHead>
             <TableHead>To</TableHead>
-            <TableHead>Segments</TableHead>
+            <TableHead>{words.itemsTitle}</TableHead>
             <TableHead>Share</TableHead>
             <TableHead>Direction</TableHead>
           </TableRow>
@@ -76,7 +79,8 @@ function FlowRows({
   open: boolean;
   onToggle: () => void;
 }) {
-  const label = `${link.fromBand} to ${link.toBand}, ${link.value} segments`;
+  const words = useAssetWords();
+  const label = `${link.fromBand} to ${link.toBand}, ${link.value} ${words.items}`;
 
   return (
     <>
@@ -94,7 +98,7 @@ function FlowRows({
               e.stopPropagation();
               onToggle();
             }}
-            aria-label={open ? `Hide segments for ${label}` : `Show segments for ${label}`}
+            aria-label={open ? `Hide ${words.items} for ${label}` : `Show ${words.items} for ${label}`}
             className="rounded p-0.5 hover:bg-muted"
           >
             <ChevronRight className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`} />
@@ -137,7 +141,7 @@ function FlowRows({
                   rows, not with the whole-scenario button up in the heading. */}
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
-                  {formatNumber(link.assets.length)} segment{link.assets.length === 1 ? "" : "s"} went from{" "}
+                  {countItems(link.assets.length, words, formatNumber(link.assets.length))} went from{" "}
                   <span className="font-medium text-foreground">{link.fromBand}</span> to{" "}
                   <span className="font-medium text-foreground">{link.toBand}</span>, worst final condition first.
                 </p>
@@ -146,14 +150,14 @@ function FlowRows({
                   count={link.assets.length}
                   params={{ from: link.fromBand, to: link.toBand }}
                   label="Export these"
-                  title={`Download just these ${link.assets.length.toLocaleString()} ${link.fromBand} → ${link.toBand} segments as an .xlsx file`}
+                  title={`Download just these ${link.assets.length.toLocaleString()} ${link.fromBand} → ${link.toBand} ${words.items} as an .xlsx file`}
                 />
               </div>
               <div className="overflow-x-auto rounded-md border bg-card">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Segment</TableHead>
+                      <TableHead>{words.itemTitle}</TableHead>
                       <TableHead>Material</TableHead>
                       <TableHead>Start {index}</TableHead>
                       <TableHead>End {index}</TableHead>

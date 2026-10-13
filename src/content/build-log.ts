@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-13",
+    title: "Say what one asset is called",
+    summary:
+      "Settings › Branding gains a word for one asset mid-sentence — \"segment\" for water, \"pole\" or \"asset\" elsewhere. The counts, headings, sentences and downloads that said \"segment\" or \"waterline\" now use it and the asset words. Water reads as before.",
+    changes: [
+      "Branding has two new boxes, one and several in a sentence, defaulting to segment and segments.",
+      "They fill the dashboard, condition, risk, network, inventory, model results, treatment planning, scenario, alternatives and work plan pages; the filter builder and AI assistant; treatment rule testing; map settings; reports; and the Excel downloads and import template.",
+      "Where a page said \"waterline\", it now uses the asset word: the dashboard's network tile reads \"Water Network\", the inventory count \"226 segments\".",
+      "The note on an unmodelled type's inventory now says that modelling is turned on under Settings › Asset Types.",
+    ],
+    note: "No migration. Units (\"Diameter (in)\", \"Length (ft)\") come next.",
+  },
+  {
+    date: "2026-10-13",
     title: "The condition index names its own scores",
     summary:
       "Screens that said \"WCI\" now use the condition index's own name, set on Settings › Condition Index. A pole network scored by a \"Pole Condition Index (PCI)\" reads \"PCI 62\" everywhere. Nothing looks different for water.",

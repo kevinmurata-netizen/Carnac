@@ -130,9 +130,41 @@ export function BrandingEditor({ branding, canEdit }: { branding: Branding; canE
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Used for the inventory page and its sidebar entry, the sidebar section above Inspections, column headings
-            such as &ldquo;{draft.assetSingular || "…"} ID&rdquo;, and wherever a sentence refers to one. A page or
-            section renamed under Settings › Navigation keeps its own name.
+            Used for the inventory page and its sidebar entry, the sidebar section above Inspections and column
+            headings such as &ldquo;{draft.assetSingular || "…"} ID&rdquo;. A page or section renamed under Settings ›
+            Navigation keeps its own name.
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="itemSingular">One, in a sentence</Label>
+              <input
+                id="itemSingular"
+                name="itemSingular"
+                value={draft.itemSingular}
+                onChange={(e) => set({ itemSingular: e.target.value })}
+                disabled={!canEdit}
+                placeholder="e.g. asset"
+                className={input}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="itemPlural">Several, in a sentence</Label>
+              <input
+                id="itemPlural"
+                name="itemPlural"
+                value={draft.itemPlural}
+                onChange={(e) => set({ itemPlural: e.target.value })}
+                disabled={!canEdit}
+                placeholder="e.g. assets"
+                className={input}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            How a sentence or a count refers to them: &ldquo;every {draft.itemSingular || "…"}&rdquo;, &ldquo;12{" "}
+            {draft.itemPlural || "…"} need work&rdquo;, and columns such as &ldquo;
+            {draft.itemSingular ? draft.itemSingular.charAt(0).toUpperCase() + draft.itemSingular.slice(1) : "…"}
+            &rdquo;.
           </p>
           {canEdit && <SaveBar state={state} label="Save branding" />}
         </CardContent>

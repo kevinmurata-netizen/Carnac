@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { Layer, Rectangle, ResponsiveContainer, Sankey, Tooltip } from "recharts";
 import type { WciFlowLink, WciFlowNode } from "@/server/model-results";
 
@@ -20,6 +21,7 @@ function SankeyNode({
   height,
   index,
   payload,
+  items,
 }: {
   x: number;
   y: number;
@@ -27,6 +29,8 @@ function SankeyNode({
   height: number;
   index: number;
   payload: NodeDatum & { value: number };
+  /** What the counted assets are called: "segments". */
+  items: string;
 }) {
   const isStart = payload.side === "start";
   // Empty bands still occupy a slot; drawing a label against a zero-height
@@ -54,7 +58,7 @@ function SankeyNode({
         fontSize={11}
         fill="var(--color-muted-foreground)"
       >
-        {payload.value} segments
+        {payload.value} {items}
       </text>
     </Layer>
   );
@@ -88,6 +92,7 @@ function SankeyLink(props: Record<string, unknown>) {
 }
 
 export function WciSankey({ nodes, links }: { nodes: WciFlowNode[]; links: WciFlowLink[] }) {
+  const words = useAssetWords();
   const data = {
     nodes: nodes.map((n) => ({ name: n.label, color: n.color, count: n.count, side: n.side })),
     links: links.map((l) => ({
@@ -114,7 +119,7 @@ export function WciSankey({ nodes, links }: { nodes: WciFlowNode[]; links: WciFl
         nodeWidth={14}
         margin={{ top: 10, right: 150, bottom: 10, left: 110 }}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        node={SankeyNode as any}
+        node={((props: Parameters<typeof SankeyNode>[0]) => <SankeyNode {...props} items={words.items} />) as any}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         link={SankeyLink as any}
       >

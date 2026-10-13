@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { Button } from "@/components/ui/button";
 import { OPERATORS, operatorsFor, type Criterion, type FilterField, type FilterTable } from "@/domain/filters";
 import { Plus, X } from "lucide-react";
@@ -22,6 +23,7 @@ export function CriteriaBuilder({
   onChange: (next: Criterion[]) => void;
   onMatchAllChange: (next: boolean) => void;
 }) {
+  const words = useAssetWords();
   const update = (i: number, patch: Partial<Criterion>) =>
     onChange(criteria.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
 
@@ -47,7 +49,7 @@ export function CriteriaBuilder({
 
       {criteria.length === 0 ? (
         <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
-          No criteria — every segment is included.
+          No criteria — every {words.item} is included.
         </div>
       ) : (
         <ul className="space-y-2">

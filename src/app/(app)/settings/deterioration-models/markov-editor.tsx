@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useActionState, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ const cell =
  * to parameters nothing read. This shows what the model actually contains.
  */
 export function MarkovEditor({ config }: { config: MarkovConfig }) {
+  const words = useAssetWords();
   const [state, action] = useActionState(saveMarkovModelAction, EMPTY_SETTINGS_STATE);
   const [matrix, setMatrix] = useState<number[][]>(config.matrix);
 
@@ -125,7 +127,7 @@ export function MarkovEditor({ config }: { config: MarkovConfig }) {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Each row is the chance a segment in that condition moves to each other condition over one year, so a row
+            Each row is the chance a {words.item} in that condition moves to each other condition over one year, so a row
             has to sum to 1 — it covers every outcome. The diagonal is the chance of staying put. Rows that do not sum
             to 1 leak or invent assets on every step, so saving is refused rather than letting the forecast drift for
             reasons no one could trace.

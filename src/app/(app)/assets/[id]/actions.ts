@@ -42,11 +42,11 @@ function date(formData: FormData, key: string): Date | null | undefined {
 export async function saveAssetAction(_prev: EditState, formData: FormData): Promise<EditState> {
   try {
     const session = await auth();
-    if (!session) throw new Error("Sign in to edit this segment");
-    if (!canRecordFieldData(session)) throw new Error("Your role cannot edit segment records");
+    if (!session) throw new Error("Sign in to edit this record");
+    if (!canRecordFieldData(session)) throw new Error("Your role cannot edit asset records");
 
     const id = String(formData.get("assetId") ?? "");
-    if (!id) throw new Error("Missing segment id");
+    if (!id) throw new Error("Missing asset id");
 
     // Attributes arrive as attr:CODE so they stay separate from the asset's
     // own columns without the form needing a second nested structure.

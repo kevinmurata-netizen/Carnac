@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/scenarios";
 import { listFormulaChoices } from "@/server/criticality";
@@ -18,6 +19,7 @@ import {
 import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 import { getScenarioIndexWords } from "@/server/condition-model";
 import type { IndexWords } from "@/lib/index-words";
+import { withAssetWords, type AssetWords } from "@/lib/branding";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { AFTER_TARGET_LABELS, STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
@@ -64,6 +66,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   const { id } = await params;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const conditionBands = await getConditionBands(organizationId);
 
   const [
@@ -207,7 +210,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
       <SetBreadcrumb segment={id} label={scenario.name} />
       <PageHeader
         title={scenario.name}
-        description={scenario.description ?? STRATEGY_DESCRIPTIONS[a.strategy as Strategy]}
+        description={scenario.description ?? withAssetWords(STRATEGY_DESCRIPTIONS[a.strategy as Strategy], words)}
         actions={
           <div className="flex items-center gap-2">
             {/* Offered to readers as well as editors: "why wasn't this one
@@ -482,7 +485,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
 
           {/* Above the settings form, because on a target run this is the
               answer: what each year costs. */}
-          {scenario.target && <TargetSpendCard scenario={scenario} index={index} />}
+          {scenario.target && <TargetSpendCard scenario={scenario} index={index} words={words} />}
 
           <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={assetTypeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
@@ -597,7 +600,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               {projects.length === 0 ? (
                 <p className="px-6 pb-6 text-sm text-muted-foreground">
                   This run funded no work — either the budget was exhausted before anything qualified, or no
-                  segment met the strategy&apos;s eligibility rule.
+                  {words.item} met the strategy&apos;s eligibility rule.
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -684,7 +687,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                     </TableBody>
                   </Table>
                   <p className="border-t px-4 py-3 text-xs text-muted-foreground">
-                    These are the individual segments the run actually funded, in the order the strategy selected
+                    These are the individual {words.items} the run actually funded, in the order the strategy selected
                     them. They are also stored as a work plan linked to this scenario.
                     {projectsHaveLeadTimes && (
                       <>
@@ -713,7 +716,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                       {hasProgrammed && <TableHead>Programmed</TableHead>}
                       {hasProgrammed && <TableHead>Allocation Spend</TableHead>}
                       <TableHead>{hasProgrammed ? "Total Spend" : "Spend"}</TableHead>
-                      <TableHead>Segments Treated</TableHead>
+                      <TableHead>{words.itemsTitle} Treated</TableHead>
                       <TableHead>Avg Condition</TableHead>
                       <TableHead>Avg Risk</TableHead>
                       <TableHead>Backlog</TableHead>
@@ -750,11 +753,11 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                 {scenario.ageing.years === 1 ? "" : "s"}, from {scenario.ageing.fromYear} to {first.year}, with nothing
                 funded in between — average condition {scenario.ageing.fromAvgCondition} falls to{" "}
                 {scenario.ageing.toAvgCondition} before the first year begins ({formatNumber(first.belowTargetCount)}{" "}
-                segments below {a.conditionTarget != null ? `the ${a.conditionTarget} target` : "70, the start of Good,"} by the end of {first.year}).
+                {words.items} below {a.conditionTarget != null ? `the ${a.conditionTarget} target` : "70, the start of Good,"} by the end of {first.year}).
               </>
             ) : (
               <>
-                Simulation starts from the current measured network ({formatNumber(first.belowTargetCount)} segments
+                Simulation starts from the current measured network ({formatNumber(first.belowTargetCount)} {words.items}
                 below {a.conditionTarget != null ? `the ${a.conditionTarget} target` : "70, the start of Good,"} in {first.year}).
               </>
             )}{" "}
@@ -888,7 +891,15 @@ function AssumptionsCard({
  * one the work cannot be built by, and the run aims for the earliest year it
  * can be reached instead; the split is then at that year.
  */
-function TargetSpendCard({ scenario, index }: { scenario: ScenarioDetail; index: IndexWords }) {
+function TargetSpendCard({
+  scenario,
+  index,
+  words,
+}: {
+  scenario: ScenarioDetail;
+  index: IndexWords;
+  words: AssetWords;
+}) {
   const target = scenario.target!;
   const years = scenario.years;
   const delivery = scenario.inFlightCount != null;
@@ -933,7 +944,7 @@ function TargetSpendCard({ scenario, index }: { scenario: ScenarioDetail; index:
         </CardTitle>
         <ExportButton
           href={`/scenario-planning/${scenario.id}/target-spend/export`}
-          title={`Each year of this run: its phase, spend, average condition and segments below ${target.value}`}
+          title={`Each year of this run: its phase, spend, average condition and ${words.items} below ${target.value}`}
         />
       </CardHeader>
       <CardContent className="space-y-4">

@@ -458,7 +458,7 @@ export default async function AssetDetailPage({
             <ComponentDeterioration forecast={componentForecast} />
           ) : !forecast ? (
             <div className="rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">
-              No deterioration forecast for this {words.lower} — forecasts are generated for active segments with a
+              No deterioration forecast for this {words.lower} — forecasts are generated for active {words.items} with a
               matching material curve model.
             </div>
           ) : (
@@ -558,7 +558,7 @@ export default async function AssetDetailPage({
         <TabsContent value="documents" className="mt-4">
           <NotBuiltYet
             feature="Document management"
-            note="Drawings, photos and reports will attach to a segment here. Nothing is stored against segments yet."
+            note={`Drawings, photos and reports will attach to a ${words.item} here. Nothing is stored against ${words.items} yet.`}
           />
         </TabsContent>
       </Tabs>

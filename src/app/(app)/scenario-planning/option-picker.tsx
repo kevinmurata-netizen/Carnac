@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ export function OptionPicker({
   saved?: OptionPickerValue;
   idPrefix?: string;
 }) {
+  const words = useAssetWords();
   const allTreatmentKeys = treatments.map((t) => t.key);
   // A disabled combination never enumerates, so "select all" must not tick it
   // — the run would silently not include it and the box would be a lie.
@@ -117,7 +119,7 @@ export function OptionPicker({
           <>
             {nothingSelected && (
               <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">
-                Nothing is selected, so this scenario can fund nothing at all. Every segment will sit in the backlog and
+                Nothing is selected, so this scenario can fund nothing at all. Every {words.item} will sit in the backlog and
                 the budget will go unspent.
               </p>
             )}

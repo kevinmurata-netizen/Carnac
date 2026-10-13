@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getAssetWords } from "@/server/branding";
 import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { Prisma, WorkPlanItemStatus } from "@prisma/client";
 import {
@@ -764,6 +765,7 @@ async function persistScenarioProgram(
   /** The plan locked projects came from, to say so on their rows. */
   lockedPlanName: string | null
 ) {
+  const words = await getAssetWords(organizationId);
   // Only this run's own mirror. An editable plan someone made from the same
   // scenario is theirs — moved years, statuses and all — and a re-run must not
   // silently throw that away.
@@ -855,14 +857,14 @@ async function persistScenarioProgram(
               ? `Locked from ${lockedPlanName ?? "the locked work plan"}` +
                 (isBundle ? ` as part of ${p.treatment}` : "") +
                 `: programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}. ` +
-                `The run left the segment alone from ${p.programmedYear} to ${p.buildYear}. ` +
+                `The run left the ${words.item} alone from ${p.programmedYear} to ${p.buildYear}. ` +
                 `Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`
               : `Selected by the ${scenarioName} run in ${year.year}` +
               (isBundle ? ` as part of ${p.treatment}` : "") +
               (p.buildYear !== p.programmedYear
                 ? `. Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}`
                 : "") +
-              (p.supersededTreatment ? `, replacing ${p.supersededTreatment} programmed earlier on this segment` : "") +
+              (p.supersededTreatment ? `, replacing ${p.supersededTreatment} programmed earlier on this ${words.item}` : "") +
               `. Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
             fundingSource: p.locked ? "Programmed (locked)" : "Scenario Budget",
             status: (p.locked?.status as WorkPlanItemStatus | undefined) ?? WorkPlanItemStatus.PLANNED,

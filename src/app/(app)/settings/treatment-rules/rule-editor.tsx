@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useMemo, useState } from "react";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { useRouter } from "next/navigation";
@@ -88,6 +89,7 @@ export function RuleEditor({
    * pop-up was opened from — which is what "Create & add" promises. */
   addsOnCreate?: boolean;
 }) {
+  const words = useAssetWords();
   const router = useRouter();
   const [draft, setDraft] = useState<RuleDraft>(initial);
   const [sampleId, setSampleId] = useState(samples[0]?.id ?? "");
@@ -302,7 +304,7 @@ export function RuleEditor({
       {samples.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Try it against a real segment</CardTitle>
+            <CardTitle className="text-base">Try it against a real {words.item}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               Live inventory, not an invented example — so a rule that looks right but matches nothing shows it here.
             </p>
@@ -311,7 +313,7 @@ export function RuleEditor({
             <select
               value={sampleId}
               onChange={(e) => setSampleId(e.target.value)}
-              aria-label="Segment to test against"
+              aria-label={`${words.itemTitle} to test against`}
               className={`${control} w-full max-w-lg`}
             >
               {samples.map((s) => (
@@ -332,14 +334,14 @@ export function RuleEditor({
                 >
                   {outcome.pass ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
                   {conditions === 0
-                    ? "No conditions yet, so this rule matches every segment."
+                    ? `No conditions yet, so this rule matches every ${words.item}.`
                     : outcome.pass
                       ? draft.effect === "block"
-                        ? "Matches — this segment would be refused."
-                        : "Matches — this segment is allowed through."
+                        ? `Matches — this ${words.item} would be refused.`
+                        : `Matches — this ${words.item} is allowed through.`
                       : draft.effect === "block"
-                        ? "No match — this rule would not refuse this segment."
-                        : "No match — this segment would not qualify."}
+                        ? `No match — this rule would not refuse this ${words.item}.`
+                        : `No match — this ${words.item} would not qualify.`}
                 </div>
                 <TraceView outcome={outcome} />
               </>

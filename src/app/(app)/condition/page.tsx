@@ -47,19 +47,19 @@ export default async function ConditionPage() {
         <KpiCard
           label="Network Condition Index"
           value={summary.averageScore != null ? String(summary.averageScore) : "—"}
-          sublabel={`Based on ${formatNumber(summary.inspectedAssets)} inspected segments`}
+          sublabel={`Based on ${formatNumber(summary.inspectedAssets)} inspected ${words.items}`}
           icon={Gauge}
         />
         <KpiCard
           label="Excellent / Good"
           value={summary.inspectedAssets ? `${Math.round((excellentOrGood / summary.inspectedAssets) * 100)}%` : "—"}
-          sublabel={`${formatNumber(excellentOrGood)} segments`}
+          sublabel={`${formatNumber(excellentOrGood)} ${words.items}`}
           icon={Activity}
         />
         <KpiCard
           label="Poor / Very Poor"
           value={summary.inspectedAssets ? `${Math.round((poorOrWorse / summary.inspectedAssets) * 100)}%` : "—"}
-          sublabel={`${formatNumber(poorOrWorse)} segments need attention`}
+          sublabel={`${formatNumber(poorOrWorse)} ${words.items} need attention`}
           icon={TrendingDown}
           tone={poorOrWorse > 0 ? "warning" : "default"}
         />
@@ -97,7 +97,7 @@ export default async function ConditionPage() {
 
       <Card className="mt-4">
         <CardHeader>
-          <CardTitle>Lowest-Condition Segments</CardTitle>
+          <CardTitle>Lowest-Condition {words.itemsTitle}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>

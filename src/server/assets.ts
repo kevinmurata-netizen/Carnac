@@ -1,5 +1,6 @@
 import { Prisma, AssetStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getAssetWords } from "@/server/branding";
 import { getMeasureCodes, getMeasureDefinitionFilters, readMeasures, type MeasureRole } from "@/server/measures";
 import { sameCalendarDay } from "@/lib/format";
 import { MODELLED } from "@/server/modelled-asset-type";
@@ -237,7 +238,7 @@ export async function updateAsset(
     where: { id, organizationId, deletedAt: null },
     select: { id: true, assetTypeId: true, installationDate: true },
   });
-  if (!asset) throw new Error("That segment no longer exists");
+  if (!asset) throw new Error(`That ${(await getAssetWords(organizationId)).item} no longer exists`);
 
   const data: Prisma.AssetUpdateInput = { updatedBy: updatedBy ?? null };
   if (edit.name !== undefined) data.name = edit.name;

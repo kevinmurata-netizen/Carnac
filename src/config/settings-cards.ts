@@ -138,7 +138,7 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     tab: "general",
     title: "Map",
     icon: MapIcon,
-    detail: "What the hover card shows on the Network Map, previewed against a real segment.",
+    detail: "What the hover card shows on the Network Map, previewed against a real {item}.",
   },
   {
     key: "activity",
@@ -199,7 +199,7 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     tab: "database",
     title: "Fields",
     icon: ListChecks,
-    detail: "What inspectors are asked, and what the inventory records against each segment.",
+    detail: "What inspectors are asked, and what the inventory records against each {item}.",
   },
   {
     key: "import",
@@ -348,7 +348,7 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     tab: "modeling",
     title: "Failure Types",
     icon: Activity,
-    detail: "Reference data for recording what went wrong when a segment fails.",
+    detail: "Reference data for recording what went wrong when a {item} fails.",
   },
 ];
 

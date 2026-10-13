@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { requireCard } from "@/server/guard";
 import { getPageName } from "@/server/navigation";
 import { getFormulaFields, listCriticalityModels } from "@/server/criticality";
@@ -44,6 +45,7 @@ export default async function CriticalityPage({
   const { type: requested } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const { canWrite: canEdit } = await requireCard("/settings/criticality");
 
   const [groups, title] = await Promise.all([
@@ -142,7 +144,7 @@ export default async function CriticalityPage({
       </p>
       <p className="mt-2 text-xs text-muted-foreground">
         Inside a scenario, criticality is worked out again each year from the network as that run has left it — so a
-        formula reading condition, age or risk follows the work the scenario funds, and a segment replaced in year
+        formula reading condition, age or risk follows the work the scenario funds, and a {words.item} replaced in year
         three stops scoring as the pipe that needed replacing.
       </p>
     </div>

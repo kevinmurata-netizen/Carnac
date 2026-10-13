@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { Label } from "@/components/ui/label";
 import { useIndexWords } from "@/components/layout/index-words";
 import { AFTER_TARGET, AFTER_TARGET_LABELS, STRATEGIES } from "@/domain/waterline/scenario";
@@ -198,6 +199,7 @@ export function ScenarioFields({
   /** Show the chosen set as fixed rather than as a choice. */
   lockSet?: boolean;
 }) {
+  const words = useAssetWords();
   const id = (name: string) => `${idPrefix}${name}`;
   const index = useIndexWords();
   const mark = (key: keyof ScenarioValues) =>
@@ -721,7 +723,7 @@ export function ScenarioFields({
           </select>
           <p className="text-xs text-muted-foreground">
             With lead times, work is programmed in one year, paid for in another and built in a third — and each
-            option is judged against the segment it will meet in the year it is built, so a renewal can be programmed
+            option is judged against the {words.item} it will meet in the year it is built, so a renewal can be programmed
             before the pipe needs it. Edit the sets under Settings &rsaquo; Delivery Lead Times.
           </p>
           {targeting && (

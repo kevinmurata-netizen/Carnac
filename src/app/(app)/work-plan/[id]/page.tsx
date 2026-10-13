@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { WorkPlanItemStatus } from "@prisma/client";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getWorkPlan, runWorkPlan, type WorkPlanYear } from "@/server/workplans";
 import { getAnnualBudget } from "@/server/scenarios";
@@ -54,6 +55,7 @@ export default async function WorkPlanDetailPage({
   const { run } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const conditionBands = await getConditionBands(organizationId);
 
   const [plan, orgBudget, treatments] = await Promise.all([
@@ -258,7 +260,7 @@ export default async function WorkPlanDetailPage({
                     <TableHead>Year</TableHead>
                     <TableHead className="text-right">Spend</TableHead>
                     <TableHead className="text-right">Budget</TableHead>
-                    <TableHead className="text-right">{plan.hasLeadTimes ? "Segments built" : "Segments treated"}</TableHead>
+                    <TableHead className="text-right">{plan.hasLeadTimes ? `${words.itemsTitle} built` : `${words.itemsTitle} treated`}</TableHead>
                     <TableHead className="text-right">Avg condition</TableHead>
                     <TableHead className="text-right">Scenario</TableHead>
                     <TableHead className="text-right">Expected failures</TableHead>

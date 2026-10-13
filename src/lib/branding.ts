@@ -28,6 +28,10 @@ export type Branding = {
   assetSingular: string;
   /** And several: "Water", "Assets". */
   assetPlural: string;
+  /** What one of them is called mid-sentence, lowercase: "segment", "pole". */
+  itemSingular: string;
+  /** And several: "segments", "poles". */
+  itemPlural: string;
 };
 
 export const DEFAULT_BRANDING: Branding = {
@@ -36,6 +40,8 @@ export const DEFAULT_BRANDING: Branding = {
   logo: "droplets",
   assetSingular: "Water",
   assetPlural: "Water",
+  itemSingular: "segment",
+  itemPlural: "segments",
 };
 
 /** The asset words in the four forms the screens use. */
@@ -48,7 +54,15 @@ export type AssetWords = {
   lower: string;
   /** Lowercase plural — mid-sentence prose. */
   lowerPlural: string;
+  /** One asset, mid-sentence: "this segment", "every segment". */
+  item: string;
+  items: string;
+  /** The same, title case, for headings and columns: "Segment". */
+  itemTitle: string;
+  itemsTitle: string;
 };
+
+const titleCase = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
 export function assetWords(branding: Branding): AssetWords {
   return {
@@ -56,20 +70,34 @@ export function assetWords(branding: Branding): AssetWords {
     plural: branding.assetPlural,
     lower: branding.assetSingular.toLowerCase(),
     lowerPlural: branding.assetPlural.toLowerCase(),
+    item: branding.itemSingular,
+    items: branding.itemPlural,
+    itemTitle: titleCase(branding.itemSingular),
+    itemsTitle: titleCase(branding.itemPlural),
   };
+}
+
+/** "1 segment", "3 segments". */
+export function countItems(count: number, words: AssetWords, formatted: string = count.toLocaleString()): string {
+  return `${formatted} ${count === 1 ? words.item : words.items}`;
 }
 
 /**
  * A label written with the asset words as placeholders — "{Assets}",
- * "{Asset} Management" — in the configured words. Lets the navigation and
- * breadcrumb defaults, which are code, follow the branding.
+ * "{Asset} Management", "every {item}" — in the configured words. Lets the
+ * navigation and breadcrumb defaults, and descriptions kept as constants,
+ * follow the branding.
  */
 export function withAssetWords(label: string, words: AssetWords): string {
   return label
     .replaceAll("{Assets}", words.plural)
     .replaceAll("{Asset}", words.singular)
     .replaceAll("{assets}", words.lowerPlural)
-    .replaceAll("{asset}", words.lower);
+    .replaceAll("{asset}", words.lower)
+    .replaceAll("{Items}", words.itemsTitle)
+    .replaceAll("{Item}", words.itemTitle)
+    .replaceAll("{items}", words.items)
+    .replaceAll("{item}", words.item);
 }
 
 const LOGO_KEYS = new Set<string>(BRAND_LOGOS.map((l) => l.key));
@@ -84,5 +112,7 @@ export function parseBranding(value: unknown): Branding {
     logo: typeof v.logo === "string" && LOGO_KEYS.has(v.logo) ? (v.logo as BrandLogo) : DEFAULT_BRANDING.logo,
     assetSingular: text("assetSingular"),
     assetPlural: text("assetPlural"),
+    itemSingular: text("itemSingular").toLowerCase(),
+    itemPlural: text("itemPlural").toLowerCase(),
   };
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getAssetWords } from "@/server/branding";
 import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { WorkPlanItemStatus } from "@prisma/client";
 import { DEFAULT_WEIGHTS, type ObjectiveWeights } from "@/domain/waterline/optimization";
@@ -101,6 +102,7 @@ export async function createWorkPlanFromScenario(
 ): Promise<{ workPlanId: string; planned: number; years: number }> {
   const run = await loadScenarioRun(organizationId, scenarioId);
   if (!run) throw new Error("That scenario no longer exists");
+  const words = await getAssetWords(organizationId);
 
   // Through the same engine the scenario itself runs on, lead times and all.
   // Running the immediate engine here would have produced a plan that
@@ -193,7 +195,7 @@ export async function createWorkPlanFromScenario(
               p.incremental != null
                 ? p.incrementalOver
                   ? `Chosen over ${p.incrementalOver}: ${p.incremental} more weighted benefit per dollar of the extra it costs.`
-                  : `The first step worth taking on this segment, at ${p.incremental} per dollar.`
+                  : `The first step worth taking on this ${words.item}, at ${p.incremental} per dollar.`
                 : "",
               `Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
             ]
@@ -454,6 +456,7 @@ function fundingPlanFromCaps(caps: CategoryCaps): FundingPlan {
 
 export async function generateWorkPlan(organizationId: string, input: GenerateWorkPlanInput) {
   const curvesFor = await getCurvesByAssetType(organizationId);
+  const words = await getAssetWords(organizationId);
   const categoryWeights = input.categoryWeights ?? NEUTRAL_CATEGORY_WEIGHTS;
   const caps = input.caps ?? UNCAPPED;
 
@@ -573,7 +576,7 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
             step
               ? step.over
                 ? `Chosen over ${step.over.option.label}: ${step.score} more weighted benefit per dollar of the extra it costs.`
-                : "The first step worth taking on this segment, measured against doing nothing."
+                : `The first step worth taking on this ${words.item}, measured against doing nothing.`
               : "",
             isBundle
               ? `Part of ${c.option.label}, applied together as ${c.option.members.map((m) => m.name).join(" + ")} at a combined $${Math.round(c.cost).toLocaleString("en-US")}.`
@@ -1086,7 +1089,7 @@ export async function previewWorkPlanAddition(
       select: { name: true },
     }),
   ]);
-  if (!found) throw new Error("That segment is not an active one the model runs, so work cannot be planned on it");
+  if (!found) throw new Error(`That ${(await getAssetWords(organizationId)).item} is not an active one the model runs, so work cannot be planned on it`);
   if (!treatment) throw new Error("That treatment no longer exists");
 
   const def = findTreatment(library, treatment.name, found.ctx.assetTypeId);
@@ -1095,7 +1098,7 @@ export async function previewWorkPlanAddition(
   const option = buildOption(`t:${def.name}`, def.name, [def], found.ctx);
   if (!option) {
     throw new Error(
-      `No price applies to ${found.assetCode} for ${def.name}. Add a rate that covers this segment under Treatment Costs.`
+      `No price applies to ${found.assetCode} for ${def.name}. Add a rate that covers this ${(await getAssetWords(organizationId)).item} under Treatment Costs.`
     );
   }
 
@@ -1170,7 +1173,7 @@ export async function addWorkPlanItem(
       reasonExplanation: [
         `Added by hand in ${input.year}.`,
         preview.qualifies
-          ? "The treatment's rules allow it on this segment."
+          ? `The treatment's rules allow it on this ${(await getAssetWords(organizationId)).item}.`
           : `The treatment's rules refuse it here — ${preview.refusedBy} — and it was added anyway.`,
         `Condition ${preview.conditionBefore ?? "unknown"} → ${preview.conditionAfter}, risk ${preview.riskBefore} → ${preview.riskAfter}.`,
       ].join(" "),
@@ -1250,7 +1253,7 @@ async function planItemsForCombining(workPlanId: string, itemIds: string[]) {
   if (items.length < 2) throw new Error("Choose at least two treatments to combine");
   const assetId = items[0].assetId;
   if (items.some((i) => i.assetId !== assetId)) {
-    throw new Error("Only work on the same segment can be combined — a project is on one segment");
+    throw new Error("Only work on the same asset can be combined — a project is on one asset");
   }
   const names = items.map((i) => i.treatment.name);
   if (new Set(names).size !== names.length) {
@@ -1278,7 +1281,7 @@ export async function previewCombine(
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
   ]);
-  if (!found) throw new Error("That segment is not an active one the model runs");
+  if (!found) throw new Error(`That ${(await getAssetWords(organizationId)).item} is not an active one the model runs`);
 
   const defs = items.map((i) => {
     const def = findTreatment(library, i.treatment.name, found.ctx.assetTypeId);
@@ -1299,7 +1302,7 @@ export async function previewCombine(
     matched?.mobilizationCost ?? null
   );
   if (!option) {
-    throw new Error("One of those treatments has no price for this segment, so the project cannot be costed");
+    throw new Error(`One of those treatments has no price for this ${(await getAssetWords(organizationId)).item}, so the project cannot be costed`);
   }
 
   const shares = splitOptionCost(option, found.ctx);
@@ -1416,7 +1419,7 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
     assetTreatmentContext(organizationId, items[0].assetId),
     loadTreatmentDefs(organizationId),
   ]);
-  if (!found) throw new Error("That segment is not an active one the model runs");
+  if (!found) throw new Error(`That ${(await getAssetWords(organizationId)).item} is not an active one the model runs`);
 
   await prisma.$transaction(
     items.map((item) => {

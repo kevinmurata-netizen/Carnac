@@ -62,7 +62,7 @@ export default async function RiskPage() {
         <KpiCard
           label="Average Risk Score"
           value={summary.averageRisk != null ? String(summary.averageRisk) : "—"}
-          sublabel={`Across ${formatNumber(summary.assessedAssets)} assessed segments (scale 1–25)`}
+          sublabel={`Across ${formatNumber(summary.assessedAssets)} assessed ${words.items} (scale 1–25)`}
           icon={Gauge}
         />
         <KpiCard
@@ -80,7 +80,7 @@ export default async function RiskPage() {
           tone={veryHigh > 0 ? "danger" : "default"}
         />
         <KpiCard
-          label="Assessed Segments"
+          label={`Assessed ${words.itemsTitle}`}
           value={formatNumber(summary.assessedAssets)}
           sublabel="Latest assessment run"
           icon={Crosshair}

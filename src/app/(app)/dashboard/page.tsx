@@ -66,20 +66,20 @@ export default async function DashboardPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description={`Waterline network overview${organization ? ` — ${organization.name}` : ""}`}
+        description={`${words.singular} network overview${organization ? ` — ${organization.name}` : ""}`}
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard
-          label="Waterline Network"
+          label={`${words.singular} Network`}
           value={formatFeetAsMiles(summary.totalLengthFt)}
-          sublabel={`${formatNumber(summary.totalSegments)} segments`}
+          sublabel={`${formatNumber(summary.totalSegments)} ${words.items}`}
           icon={Droplets}
         />
         <KpiCard
           label="Identified Need"
           value={formatCurrency(treatments.totalEstimatedCost, { compact: true })}
-          sublabel={`${formatNumber(treatments.rows.length)} segments need work`}
+          sublabel={`${formatNumber(treatments.rows.length)} ${words.items} need work`}
           icon={Gauge}
         />
         <KpiCard
@@ -132,7 +132,7 @@ export default async function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Segments by Status</CardTitle>
+            <CardTitle>{words.itemsTitle} by Status</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {summary.byStatus

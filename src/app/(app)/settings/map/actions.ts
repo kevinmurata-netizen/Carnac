@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
 import { setPopupFields } from "@/server/map-settings";
+import { getAssetWords } from "@/server/branding";
 import type { SettingsActionState } from "../state";
 
 export async function saveMapPopupAction(
@@ -15,6 +16,7 @@ export async function saveMapPopupAction(
     // Unchecked boxes do not submit, so what arrives is exactly the set to keep.
     const keys = formData.getAll("field").map((v) => String(v));
     await setPopupFields(session.user.organizationId, keys);
+    const words = await getAssetWords(session.user.organizationId);
 
     // The map reads these on the server to decide what to fetch, so both pages
     // that draw one have to re-render.
@@ -26,7 +28,7 @@ export async function saveMapPopupAction(
       status: "success",
       message:
         keys.length === 0
-          ? "Saved. The card now shows just the segment ID."
+          ? `Saved. The card now shows just the ${words.item} ID.`
           : `Saved. The card shows ${keys.length} field${keys.length === 1 ? "" : "s"}.`,
     };
   } catch (e) {

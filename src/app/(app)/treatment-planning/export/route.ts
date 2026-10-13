@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
+import { withAssetWords } from "@/lib/branding";
 import { getNetworkRecommendations } from "@/server/treatments";
 import { rankOptions } from "@/server/priority";
 import { getIndexWords } from "@/server/condition-model";
@@ -21,7 +23,7 @@ import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } fro
  */
 
 const RECOMMENDED: ExcelColumn[] = [
-  { key: "assetCode", header: "Segment", width: 14 },
+  { key: "assetCode", header: "{Item}", width: 14 },
   { key: "conditionScore", header: "Condition", type: "number", width: 11 },
   { key: "riskScore", header: "Risk", type: "number", width: 10 },
   { key: "treatment", header: "Recommended Treatment", width: 24 },
@@ -40,7 +42,7 @@ const RECOMMENDED: ExcelColumn[] = [
 
 const RANKED: ExcelColumn[] = [
   { key: "rank", header: "Rank", type: "integer", width: 8 },
-  { key: "assetCode", header: "Segment", width: 14 },
+  { key: "assetCode", header: "{Item}", width: 14 },
   { key: "conditionScore", header: "Condition", type: "number", width: 11 },
   { key: "riskScore", header: "Risk", type: "number", width: 10 },
   { key: "optionLabel", header: "Option", width: 24 },
@@ -63,6 +65,7 @@ export async function GET(request: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const organizationId = session.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
   const search = new URL(request.url).searchParams;
   const list = search.get("list") === "ranked" ? "ranked" : "recommended";
@@ -106,10 +109,10 @@ export async function GET(request: Request) {
 
     const buffer = await buildWorkbook({
       sheetName: "Ranked Options",
-      columns: RANKED.map((c) => ({ ...c, header: withIndex(c.header, index) })),
+      columns: RANKED.map((c) => ({ ...c, header: withAssetWords(withIndex(c.header, index), words) })),
       rows,
       title: "Ranked Options — Criticality × Scale × Category × Benefit ÷ Total Cost",
-      note: `${rows.length.toLocaleString()} options over ${ranking.assetsWithOptions.toLocaleString()} segments (${ranking.combinationsScored.toLocaleString()} combinations) · ${ranking.weightSetName} · ${ranking.categoryWeightSetName} · scale factor ${ranking.scaleFactorName ?? "none"} · criticality ${ranking.criticalityModelName ?? "stored scores"} · ${ranking.belowFloor.toLocaleString()} below the effectiveness floor · exported ${today}`,
+      note: `${rows.length.toLocaleString()} options over ${ranking.assetsWithOptions.toLocaleString()} ${words.items} (${ranking.combinationsScored.toLocaleString()} combinations) · ${ranking.weightSetName} · ${ranking.categoryWeightSetName} · scale factor ${ranking.scaleFactorName ?? "none"} · criticality ${ranking.criticalityModelName ?? "stored scores"} · ${ranking.belowFloor.toLocaleString()} below the effectiveness floor · exported ${today}`,
     });
 
     return file(buffer, "Ranked Options");
@@ -138,10 +141,10 @@ export async function GET(request: Request) {
 
   const buffer = await buildWorkbook({
     sheetName: "Recommended Treatments",
-    columns: RECOMMENDED,
+    columns: RECOMMENDED.map((c) => ({ ...c, header: withAssetWords(c.header, words) })),
     rows,
     title: "Recommended Treatments",
-    note: `${rows.length.toLocaleString()} segments with a recommendation, $${Math.round(
+    note: `${rows.length.toLocaleString()} ${words.items} with a recommendation, $${Math.round(
       recommendations.totalEstimatedCost
     ).toLocaleString("en-US")} identified need · ${recommendations.noActionCount.toLocaleString()} need no action · exported ${today}`,
   });

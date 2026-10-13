@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -325,6 +326,7 @@ function RemoveButton({
   action: (formData: FormData) => void;
   disabled: boolean;
 }) {
+  const words = useAssetWords();
   return (
     <form action={action}>
       <input type="hidden" name="assetTypeId" value={assetTypeId} />
@@ -333,7 +335,7 @@ function RemoveButton({
         size="xs"
         disabled={disabled}
         title={`Remove ${label} from the Condition Index?`}
-        description="It stops counting toward every segment's score, and the remaining components share its weight. Answers already recorded against it are kept, so it can be added back. Scores need recalculating afterwards."
+        description={`It stops counting toward every ${words.item}'s score, and the remaining components share its weight. Answers already recorded against it are kept, so it can be added back. Scores need recalculating afterwards.`}
         confirmLabel="Remove"
       >
         Remove

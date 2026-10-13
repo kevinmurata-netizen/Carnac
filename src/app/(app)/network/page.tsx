@@ -132,7 +132,7 @@ export default async function NetworkPage({
         title={pageTitle}
         description={
           showPipes
-            ? `${formatNumber(assets.length)} segments · ${formatFeetAsMiles(totalLengthFt)}${
+            ? `${formatNumber(assets.length)} ${words.items} · ${formatFeetAsMiles(totalLengthFt)}${
                 facilities.features.length > 0 ? ` · ${formatNumber(facilities.features.length)} facilities` : ""
               } shown`
             : `${formatNumber(facilities.features.length)} shown`

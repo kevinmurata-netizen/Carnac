@@ -10,6 +10,7 @@ import { ExportButton } from "@/components/layout/export-button";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { outcomeLegend } from "@/domain/waterline/alternative-reasons";
 import { getScenarioIndexWords } from "@/server/condition-model";
+import { getAssetWords } from "@/server/branding";
 import { AlternativesGrid } from "./alternatives-grid";
 
 /**
@@ -39,6 +40,7 @@ export default async function AlternativesPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const index = await getScenarioIndexWords(organizationId, id);
+  const words = await getAssetWords(organizationId);
 
   const data = await getScenarioAlternatives(organizationId, id, {
     year: yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : undefined,
@@ -103,7 +105,7 @@ export default async function AlternativesPage({
                   </span>
                 </>
               ) : needsSegment ? (
-                "Every year, one segment"
+                `Every year, one ${words.item}`
               ) : (
                 <>
                   {data.year}{" "}
@@ -125,7 +127,7 @@ export default async function AlternativesPage({
                     {formatNumber(summary.selected)} funded of {formatNumber(summary.considered)} considered ·{" "}
                     {formatCurrency(summary.spend, { compact: true })} of{" "}
                     {formatCurrency(summary.budget, { compact: true })} spent ·{" "}
-                    {formatNumber(summary.segmentsTreated)} of {formatNumber(summary.segments)} segments treated
+                    {formatNumber(summary.segmentsTreated)} of {formatNumber(summary.segments)} {words.items} treated
                   </>
                 )}
               </p>
@@ -159,14 +161,14 @@ export default async function AlternativesPage({
               href={segment ? `${base}?year=all&asset=${segment.id}` : `${base}?year=all`}
               scroll={false}
               aria-current={allYears || needsSegment ? "page" : undefined}
-              title="Every alternative on one segment, across every year"
+              title={`Every alternative on one ${words.item}, across every year`}
               className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${
                 allYears || needsSegment
                   ? "border-transparent bg-primary font-medium text-primary-foreground"
                   : "text-muted-foreground hover:border-primary/50 hover:text-foreground"
               }`}
             >
-              All years {segment ? `· ${segment.code}` : "· one segment"}
+              All years {segment ? `· ${segment.code}` : `· one ${words.item}`}
             </Link>
           </div>
 
@@ -176,7 +178,7 @@ export default async function AlternativesPage({
             <form action={base} method="get" className="flex flex-wrap items-center gap-2">
               <input type="hidden" name="year" value="all" />
               <label htmlFor="segment" className="text-sm font-medium">
-                Segment
+                {words.itemTitle}
               </label>
               <select
                 id="segment"
@@ -186,7 +188,7 @@ export default async function AlternativesPage({
                 className="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-56"
               >
                 <option value="" disabled>
-                  Choose a segment…
+                  Choose a {words.item}…
                 </option>
                 {data.segments.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -198,7 +200,7 @@ export default async function AlternativesPage({
                 Show every year
               </Button>
               <span className="text-xs text-muted-foreground">
-                {formatNumber(data.segments.length)} segments the run considered anything on
+                {formatNumber(data.segments.length)} {words.items} the run considered anything on
               </span>
             </form>
           )}
@@ -207,7 +209,7 @@ export default async function AlternativesPage({
         <CardContent className="border-t pt-4">
           {needsSegment ? (
             <p className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-              Choose a segment to see every alternative on it, year by year — when it was funded, when it was passed
+              Choose a {words.item} to see every alternative on it, year by year — when it was funded, when it was passed
               over, and what had changed by then. The whole run at once is over twenty thousand rows; that is what
               Export all years is for.
             </p>
@@ -221,7 +223,7 @@ export default async function AlternativesPage({
               key={allYears ? `all:${segment!.id}` : String(data.year)}
               showYear={allYears}
               allYearsBase={allYears ? undefined : `${base}?year=all&asset=`}
-              outcomes={outcomeLegend(new Set(["Selected", ...data.rows.map((r) => r.reason)]), index)}
+              outcomes={outcomeLegend(new Set(["Selected", ...data.rows.map((r) => r.reason)]), index, words)}
               rows={data.rows.map((r) => ({
                 year: r.year,
                 assetId: r.assetId,
@@ -250,14 +252,14 @@ export default async function AlternativesPage({
 
           <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
             Priority Score is Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost, computed
-            against that year&apos;s condition. The Incremental score is what decides what is bought: each option on a
-            segment is scored on the weighted benefit it adds over the next cheaper option worth having, per dollar
+            against that year&apos;s condition. The Incremental score is what decides what is bought: each option on a{" "}
+            {words.item} is scored on the weighted benefit it adds over the next cheaper option worth having, per dollar
             of the extra it costs, and the year buys the best next step anywhere on the network until the money — or
-            a category&apos;s share of it — runs out. The cheapest option on a segment scores the same both ways; larger
+            a category&apos;s share of it — runs out. The cheapest option on a {words.item} scores the same both ways; larger
             ones score lower, and are bought only when what they add is worth it. Expected Benefit is normalized
             across the options considered in a year, so both scores rank options within their own year and are not
             comparable across years. Options ruled out before scoring — locked out by a retreatment interval, or on a
-            segment the strategy passed over — have neither score.
+            {words.item} the strategy passed over — have neither score.
           </p>
         </CardContent>
       </Card>

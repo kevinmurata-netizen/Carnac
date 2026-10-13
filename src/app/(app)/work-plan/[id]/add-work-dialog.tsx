@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Plus, Search } from "lucide-react";
@@ -37,6 +38,7 @@ export function AddWorkDialog({
   years: number[];
   defaultYear: number;
 }) {
+  const words = useAssetWords();
   const router = useRouter();
   const index = useIndexWords();
   const [open, setOpen] = useState(false);
@@ -100,11 +102,11 @@ export function AddWorkDialog({
           reset();
         }}
         title="Add work to this plan"
-        description="For work already committed, or anything the model did not choose. It is priced from the treatment's own rates for that segment."
+        description={`For work already committed, or anything the model did not choose. It is priced from the treatment's own rates for that ${words.item}.`}
       >
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="segment-search">Segment</Label>
+            <Label htmlFor="segment-search">{words.itemTitle}</Label>
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -118,7 +120,7 @@ export function AddWorkDialog({
                       search();
                     }
                   }}
-                  placeholder="Segment code or district"
+                  placeholder={`${words.itemTitle} code or district`}
                   className={`${control} pl-8`}
                 />
               </div>
@@ -207,7 +209,7 @@ export function AddWorkDialog({
               {preview.qualifies ? (
                 <p className="flex items-start gap-2 text-emerald-700 dark:text-emerald-400">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                  The treatment&apos;s rules allow it on this segment.
+                  The treatment&apos;s rules allow it on this {words.item}.
                 </p>
               ) : (
                 <p className="flex items-start gap-2 text-amber-700 dark:text-amber-500">

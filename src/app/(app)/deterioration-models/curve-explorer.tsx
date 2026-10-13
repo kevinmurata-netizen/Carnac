@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function CurveExplorer({
   models: CurveModel[];
   conditionTarget: number;
 }) {
+  const words = useAssetWords();
   const [shown, setShown] = useState<Set<string>>(() => new Set(models.map((m) => m.id)));
 
   const allShown = models.length > 0 && shown.size === models.length;
@@ -77,7 +79,7 @@ export function CurveExplorer({
         <div>
           <CardTitle>Deterioration Curves</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            Condition against age for a new segment of each material, as currently configured.
+            Condition against age for a new {words.item} of each material, as currently configured.
           </p>
         </div>
         <Button

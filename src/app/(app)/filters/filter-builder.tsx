@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useMemo, useState, useTransition } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +27,7 @@ export function FilterBuilder({
   schema: FilterTable[];
   saved: SavedFilterRow[];
 }) {
+  const words = useAssetWords();
   const fieldsByKey = useMemo(() => {
     const m = new Map<string, FilterTable["fields"][number]>();
     for (const t of schema) for (const f of t.fields) m.set(f.key, f);
@@ -302,7 +304,7 @@ export function FilterBuilder({
               <CardTitle>
                 Results{" "}
                 <span className="text-sm font-normal text-muted-foreground">
-                  ({formatNumber(result.matched)} of {formatNumber(result.total)} segments)
+                  ({formatNumber(result.matched)} of {formatNumber(result.total)} {words.items})
                 </span>
               </CardTitle>
               {result.rows.length < result.matched && (
@@ -366,7 +368,7 @@ export function FilterBuilder({
           <Badge variant="secondary" className="mb-2">
             {selected.length} columns · {criteria.length} criteria
           </Badge>
-          <div>Press Run to see matching segments.</div>
+          <div>Press Run to see matching {words.items}.</div>
         </div>
       )}
     </>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +30,7 @@ export function MapPopupEditor({
   sample: Record<string, string> | null;
   canEdit: boolean;
 }) {
+  const words = useAssetWords();
   const [state, formAction] = useActionState(saveMapPopupAction, EMPTY_SETTINGS_STATE);
   const [chosen, setChosen] = useState<string[]>(selected);
   // The saved selection itself, so Discard can put it back.
@@ -56,7 +58,7 @@ export function MapPopupEditor({
           <CardHeader>
             <CardTitle>Fields on the hover card</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Tick what appears when someone hovers a segment on the map. Only ticked fields are fetched, so a
+              Tick what appears when someone hovers a {words.item} on the map. Only ticked fields are fetched, so a
               shorter card is also a smaller page.
             </p>
           </CardHeader>
@@ -93,7 +95,7 @@ export function MapPopupEditor({
               Preview
             </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              {sample ? "Using a real segment from your network." : "No segments with a location yet."}
+              {sample ? `Using a real ${words.item} from your network.` : `No ${words.items} with a location yet.`}
             </p>
           </CardHeader>
           <CardContent className="border-t pt-4">
@@ -113,7 +115,7 @@ export function MapPopupEditor({
             </div>
             {previewRows.length === 0 && (
               <p className="mt-3 text-xs text-muted-foreground">
-                With nothing ticked the card falls back to the segment ID and its status.
+                With nothing ticked the card falls back to the {words.item} ID and its status.
               </p>
             )}
           </CardContent>
