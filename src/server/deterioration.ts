@@ -11,6 +11,7 @@ import {
   stepStateVector,
   expectedCondition,
   remainingLifeYears,
+  curveProblem,
   type CurveParams,
 } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
@@ -18,6 +19,82 @@ import { MODELLED, chooseModelledAssetType, modelledType } from "@/server/modell
 
 export const CURVE_MODEL_PREFIX = "Curve — ";
 export const MARKOV_MODEL_NAME = "Markov State-Transition (network)";
+
+/**
+ * Give one modelled asset type a curve for a material, from Settings — how a
+ * new asset class gets its own ageing rather than the generic default curve.
+ * One curve per material per type: a second would leave which one applies to
+ * the order they were read in.
+ */
+export async function createMaterialCurve(
+  organizationId: string,
+  assetTypeId: string,
+  input: { material: string; curve: CurveParams }
+): Promise<string> {
+  const material = input.material.trim().replace(/\s+/g, " ");
+  if (!material) throw new Error("Say which material the curve is for");
+  if (material.length > 60) throw new Error("Keep the material under 60 characters");
+  const problem = curveProblem(input.curve);
+  if (problem) throw new Error(problem);
+
+  const type = await prisma.assetType.findFirst({
+    where: modelledType(organizationId, assetTypeId),
+    select: { id: true, name: true },
+  });
+  if (!type) throw new Error("Curves can only be added to a modelled asset type");
+
+  const existing = await prisma.deteriorationModel.findMany({
+    where: { assetTypeId: type.id, modelType: { not: "MARKOV" } },
+    select: { applicability: true },
+  });
+  const taken = existing.some((m) => {
+    const a = m.applicability as { material?: unknown; componentType?: unknown } | null;
+    return typeof a?.componentType !== "string" && typeof a?.material === "string" && a.material.toLowerCase() === material.toLowerCase();
+  });
+  if (taken) throw new Error(`${type.name} already has a curve for ${material} — edit that one instead`);
+
+  const created = await prisma.deteriorationModel.create({
+    data: {
+      assetTypeId: type.id,
+      name: `${CURVE_MODEL_PREFIX}${material}`,
+      modelType: "POLYNOMIAL",
+      applicability: { material },
+      parameters: {
+        create: (["initialCondition", "minCondition", "serviceLife", "shape"] as const).map((key) => ({
+          key,
+          value: input.curve[key],
+        })),
+      },
+    },
+  });
+  return created.id;
+}
+
+/**
+ * Remove a material's curve. Refused once it has produced predictions —
+ * those are kept with the curve that made them — and switching it off does
+ * the same job for the forecasts that follow.
+ */
+export async function deleteMaterialCurve(organizationId: string, id: string): Promise<string> {
+  const model = await prisma.deteriorationModel.findFirst({
+    where: { id, assetType: modelledType(organizationId), modelType: { not: "MARKOV" } },
+    select: { id: true, name: true, applicability: true, _count: { select: { predictions: true } } },
+  });
+  const a = model?.applicability as { material?: unknown; componentType?: unknown } | null | undefined;
+  if (!model || typeof a?.componentType === "string" || typeof a?.material !== "string") {
+    throw new Error("That curve no longer exists");
+  }
+  if (model._count.predictions > 0) {
+    throw new Error(
+      `${model.name} has ${model._count.predictions.toLocaleString()} stored predictions, so it is kept with them. Switch it off instead — what it covered then ages on the default curve.`
+    );
+  }
+  await prisma.$transaction([
+    prisma.deteriorationParameter.deleteMany({ where: { modelId: model.id } }),
+    prisma.deteriorationModel.delete({ where: { id: model.id } }),
+  ]);
+  return model.name;
+}
 
 /**
  * Seed data: give one asset type a set of material curves and the Markov

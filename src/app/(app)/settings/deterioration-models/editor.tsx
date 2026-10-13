@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useTransition } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,13 @@ import { Label } from "@/components/ui/label";
 import type { DeteriorationModelConfig } from "@/server/settings";
 import { evaluateCurve, type CurveParams } from "@/domain/waterline/deterioration";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
-import { saveDeteriorationModelAction, toggleDeteriorationActiveAction } from "../actions";
+import { deleteMaterialCurveAction, saveDeteriorationModelAction, toggleDeteriorationActiveAction } from "../actions";
+import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { ActiveToggle } from "@/components/settings/active-toggle";
 import { EMPTY_SETTINGS_STATE } from "../state";
 import { SaveBar } from "../save-bar";
 import { formatNumber } from "@/lib/format";
-import { LineChart, RotateCcw } from "lucide-react";
+import { LineChart, RotateCcw, Trash2 } from "lucide-react";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -25,6 +26,7 @@ export function DeteriorationModelEditor({
   model,
   showGraph,
   onShowGraphChange,
+  deletable = false,
   subtitle,
   fallsBackTo = "this material falls back to the default curve in every forecast and scenario run",
 }: {
@@ -33,6 +35,8 @@ export function DeteriorationModelEditor({
   subtitle?: string;
   /** What switching it off means, finishing "Click to deactivate — …". */
   fallsBackTo?: string;
+  /** A material's curve, which can be removed until it has made predictions. */
+  deletable?: boolean;
   /** Controlled by the list so one button can toggle every curve. */
   showGraph: boolean;
   onShowGraphChange: (next: boolean) => void;
@@ -40,6 +44,13 @@ export function DeteriorationModelEditor({
   const [state, action] = useActionState(saveDeteriorationModelAction, EMPTY_SETTINGS_STATE);
 
   const [draft, setDraft] = useState<CurveParams>(model.curve);
+  const [removing, startRemove] = useTransition();
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const remove = () =>
+    startRemove(async () => {
+      const result = await deleteMaterialCurveAction(model.id);
+      setRemoveError(result.ok ? null : result.message);
+    });
 
   const set = (patch: Partial<CurveParams>) => {
     setDraft((prev) => ({ ...prev, ...patch }));
@@ -108,8 +119,28 @@ export function DeteriorationModelEditor({
               <LineChart className="mr-1 h-3.5 w-3.5" />
               {showGraph ? "Hide curve" : "Show curve"}
             </Button>
+            {deletable && (
+              <ConfirmDelete
+                title={`Remove ${model.name}?`}
+                description={`${model.material ?? "What it covered"} goes back to the default curve in the next forecast or run.`}
+                onConfirm={remove}
+                confirmLabel="Remove"
+                size="icon-sm"
+                variant="ghost"
+                ariaLabel={`Remove ${model.name}`}
+                disabled={removing || model.predictionCount > 0}
+                triggerTitle={
+                  model.predictionCount > 0
+                    ? "It has stored predictions, so it is kept with them — switch it off instead"
+                    : "Remove this curve"
+                }
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </ConfirmDelete>
+            )}
           </div>
         </CardHeader>
+        {removeError && <p className="px-6 pb-2 text-sm text-destructive">{removeError}</p>}
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1.5 lg:col-span-2">
