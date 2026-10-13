@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { listInspectionFields, listInventoryFields } from "@/server/field-config";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { PageHeader } from "@/components/layout/page-header";
 import { InspectionFieldsEditor, InventoryFieldsEditor } from "./fields-editor";
 import { getPageName } from "@/server/navigation";
@@ -12,6 +12,7 @@ export default async function FieldsPage({ searchParams }: { searchParams: Promi
   const { type: requestedType } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/administration/fields", "Fields");
   const { canWrite: canEdit } = await requireCard("/administration/fields");
 
@@ -26,7 +27,7 @@ export default async function FieldsPage({ searchParams }: { searchParams: Promi
     <div>
       <PageHeader
         title={pageTitle}
-        description={`What inspectors are asked, and what the ${ASSET_LABEL.lower} inventory records`}
+        description={`What inspectors are asked, and what the ${words.lower} inventory records`}
       />
 
       {!canEdit && (

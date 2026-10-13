@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ASSET_LABEL } from "@/config/labels";
 import { X } from "lucide-react";
 
 const control =
@@ -32,12 +31,15 @@ const OPTIONAL_FILTERS: OptionalFilter[] = [
 ];
 
 export function InspectionFilterBar({
+  assetLabel,
   assetTypes,
   inspectionTypes,
   inspectors,
   values,
   action,
 }: {
+  /** What one of the network's assets is called (Settings › Branding). */
+  assetLabel: string;
   assetTypes: Array<{ code: string; name: string }>;
   inspectionTypes: readonly string[];
   inspectors: string[];
@@ -57,7 +59,7 @@ export function InspectionFilterBar({
   return (
     <form method="get" action={action} className="mb-4 rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-end gap-3">
-        <Field label={`${ASSET_LABEL.singular} ID`} htmlFor="search">
+        <Field label={`${assetLabel} ID`} htmlFor="search">
           <input
             id="search"
             name="search"

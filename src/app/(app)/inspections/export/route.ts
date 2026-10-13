@@ -5,7 +5,7 @@ import { listSavedFilters } from "@/server/saved-filters";
 import { getConditionBands } from "@/server/settings";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { inspectionFiltersFromParams, paramsFromRequest, describeFilters } from "@/server/grid-params";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { listAssetTypes } from "@/server/assets";
 
 /**
@@ -20,6 +20,7 @@ export async function GET(request: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const organizationId = session.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const params = paramsFromRequest(request);
 
   const [filters, bands] = await Promise.all([
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
   }
 
   const columns: ExcelColumn[] = [
-    { key: "assetCode", header: ASSET_LABEL.singular, type: "text" },
+    { key: "assetCode", header: words.singular, type: "text" },
     { key: "assetType", header: "Asset type", type: "text" },
     { key: "date", header: "Date", type: "date" },
     { key: "type", header: "Inspection type", type: "text" },

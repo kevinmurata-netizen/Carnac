@@ -25,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { ageInYears, formatInches, formatNumber, formatStatus } from "@/lib/format";
 import { AssetStatus } from "@prisma/client";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -48,6 +48,7 @@ export default async function AssetsPage({
   const params = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
 
   // Which kind of asset is being looked at. The modelled type by default,
   // because it is what this app plans; the other types are here to be read.
@@ -86,7 +87,7 @@ export default async function AssetsPage({
   return (
     <div>
       <PageHeader
-        title={`${ASSET_LABEL.plural} Inventory`}
+        title={`${words.singular} Inventory`}
         description={`${formatNumber(assets.length)} waterline segment${assets.length === 1 ? "" : "s"} matching current filters`}
         actions={<ExportButton href="/assets/export" count={assets.length} />}
       />
@@ -99,6 +100,7 @@ export default async function AssetsPage({
       </div>
 
       <AssetFilterBar
+        assetLabel={words.singular}
         materials={materials}
         serviceAreas={serviceAreas}
         criticalities={criticalities}
@@ -113,7 +115,7 @@ export default async function AssetsPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <ColumnHeader label={`${ASSET_LABEL.singular} ID`} sortKey="assetCode" />
+                <ColumnHeader label={`${words.singular} ID`} sortKey="assetCode" />
                 <ColumnHeader label="Material" sortKey="material" filterParam="material" options={materials} />
                 <ColumnHeader label="Diameter" sortKey="diameter" />
                 <ColumnHeader label="Length (ft)" sortKey="length" />

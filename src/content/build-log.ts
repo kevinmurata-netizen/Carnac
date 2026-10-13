@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-13",
+    title: "Branding in Settings",
+    summary:
+      "A new Settings › Branding card sets the product's name, tagline and logo, and what the network's assets are called. The same platform can present itself as a water system, a power system or neither. Nothing looks different until it is changed.",
+    changes: [
+      "The sidebar's name, logo and tagline, the browser tab and the login screen follow the branding. Before anyone signs in, a deployment with one organization shows that organization's.",
+      "The asset words name the inventory page and its sidebar entry, the sidebar section above Inspections, ID columns and search boxes, and sentences that refer to an asset.",
+      "A page or section renamed under Settings › Navigation keeps its own name whatever the branding says.",
+      "Recommendation reasons speak of \"this asset\" rather than \"this water\".",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-13",
     title: "Model any asset type from Settings",
     summary:
       "Settings › Asset Types can now turn the engine's modelling on and off for each type, with a checklist of what the type needs to be worth modelling. Any asset class can be brought into scenarios, planning, risk and forecasts beside the water network.",

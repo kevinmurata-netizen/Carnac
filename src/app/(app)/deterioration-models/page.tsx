@@ -13,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { formatNumber } from "@/lib/format";
 import { Gauge, LineChart, Target, TrendingDown } from "lucide-react";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { getPageName } from "@/server/navigation";
 import { ActiveToggle } from "@/components/settings/active-toggle";
 import { toggleDeteriorationActiveAction } from "@/app/(app)/settings/actions";
@@ -36,6 +36,7 @@ const FALLBACK_COLORS = ["#0ea5e9", "#8b5cf6", "#f59e0b", "#10b981", "#ef4444"];
 export default async function DeteriorationModelsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/deterioration-models", "Deterioration Models");
   const { canWrite: canEdit } = await requirePage("/deterioration-models");
 
@@ -85,7 +86,7 @@ export default async function DeteriorationModelsPage() {
         <KpiCard
           label="Network WCI Today"
           value={current != null ? String(current) : "—"}
-          sublabel={`Forecast baseline (inspected ${ASSET_LABEL.lowerPlural})`}
+          sublabel={`Forecast baseline (inspected ${words.lowerPlural})`}
           icon={Gauge}
         />
         <KpiCard
@@ -192,7 +193,7 @@ export default async function DeteriorationModelsPage() {
 
       <p className="mt-3 text-xs text-muted-foreground">
         <LineChart className="mr-1 inline h-3.5 w-3.5" />
-        Individual {ASSET_LABEL.lower} forecasts are anchored to the {ASSET_LABEL.lower}&apos;s latest observed condition — a pipe measuring worse
+        Individual {words.lower} forecasts are anchored to the {words.lower}&apos;s latest observed condition — a pipe measuring worse
         than its age suggests follows the curve from where it actually is, not where the calendar says it should be.
       </p>
     </div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { isRecordId, labelForSegment } from "@/config/breadcrumbs";
+import { DEFAULT_BRANDING, assetWords, withAssetWords, type AssetWords } from "@/lib/branding";
 import { GENERAL_TAB, TAB_FOR_PATH, tabForPath, tabHref, type SettingsTab } from "@/config/settings-tabs";
 
 /** Labels supplied by pages for dynamic segments, keyed by the segment itself
@@ -14,15 +15,19 @@ type LabelMap = Record<string, string>;
 const BreadcrumbContext = createContext<{
   labels: LabelMap;
   overrides: Record<string, string>;
+  words: AssetWords;
   register: (segment: string, label: string) => void;
-}>({ labels: {}, overrides: {}, register: () => {} });
+}>({ labels: {}, overrides: {}, words: assetWords(DEFAULT_BRANDING), register: () => {} });
 
 export function BreadcrumbProvider({
   children,
   overrides = {},
+  words = assetWords(DEFAULT_BRANDING),
 }: {
   children: React.ReactNode;
   overrides?: Record<string, string>;
+  /** What the network's assets are called, for the default segment names. */
+  words?: AssetWords;
 }) {
   const [labels, setLabels] = useState<LabelMap>({});
 
@@ -30,10 +35,11 @@ export function BreadcrumbProvider({
     () => ({
       labels,
       overrides,
+      words,
       register: (segment: string, label: string) =>
         setLabels((prev) => (prev[segment] === label ? prev : { ...prev, [segment]: label })),
     }),
-    [labels, overrides]
+    [labels, overrides, words]
   );
 
   return <BreadcrumbContext.Provider value={value}>{children}</BreadcrumbContext.Provider>;
@@ -61,13 +67,13 @@ type Crumb = { key: string; href: string; label: string; isLast: boolean };
 function useCrumbs(): Crumb[] {
   const pathname = usePathname();
   const search = useSearchParams();
-  const { labels, overrides } = useContext(BreadcrumbContext);
+  const { labels, overrides, words } = useContext(BreadcrumbContext);
 
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return [];
 
   const nameFor = (href: string, segment: string) =>
-    overrides[href] ?? (isRecordId(segment) ? (labels[segment] ?? "…") : labelForSegment(segment));
+    overrides[href] ?? (isRecordId(segment) ? (labels[segment] ?? "…") : withAssetWords(labelForSegment(segment), words));
 
   const settingsCrumb: Crumb = {
     key: "settings",

@@ -10,7 +10,6 @@
 // administrators can retune applicability/cost/effects without code changes.
 
 import type { RiskFactorDef } from "./risk";
-import { ASSET_LABEL } from "@/config/labels";
 import {
   qualifiesUnderRules,
   ruleTreeFromFlat,
@@ -1113,7 +1112,7 @@ export function recommendTreatment(
       noActionReason:
         ctx.conditionScore != null && ctx.conditionScore >= 85
           ? `Condition is ${bandLabel(ctx.conditionScore)} (WCI ${ctx.conditionScore}) — no intervention is warranted yet.`
-          : `No treatment in the library has a rule this ${ASSET_LABEL.lower} matches.`,
+          : `No treatment in the library has a rule this asset matches.`,
     };
   }
 
@@ -1127,7 +1126,7 @@ export function recommendTreatment(
     return {
       recommended: null,
       alternatives: [],
-      noActionReason: `No cost rate covers this ${ASSET_LABEL.lower}, so ${unpriced.join(", ")} could not be priced. Add a fallback rate on each of those treatments.`,
+      noActionReason: `No cost rate covers this asset, so ${unpriced.join(", ")} could not be priced. Add a fallback rate on each of those treatments.`,
     };
   }
 
@@ -1153,7 +1152,7 @@ export function recommendTreatment(
       const cheaper = physical[0];
       if (cheaper && !effective.includes(cheaper)) {
         overrideReasons.push(
-          `${cheaper.name} scores better per dollar but would cut risk only ${cheaper.riskReductionPct}% — too little for a ${ASSET_LABEL.lower} in this condition, so it is listed as an alternative instead.`
+          `${cheaper.name} scores better per dollar but would cut risk only ${cheaper.riskReductionPct}% — too little for a asset in this condition, so it is listed as an alternative instead.`
         );
       }
       eligible = effective;
@@ -1168,7 +1167,7 @@ export function recommendTreatment(
     const renewal = ranked.find((e) => e.category === "Renew" || e.name === "Relining");
     if (renewal) {
       overrideReasons.push(
-        `Repair was outranked on cost alone, but with ${ctx.failuresLast10Years} failures in 10 years and Very Poor condition, repeated repair does not reset the ${ASSET_LABEL.lower}'s condition.`
+        `Repair was outranked on cost alone, but with ${ctx.failuresLast10Years} failures in 10 years and Very Poor condition, repeated repair does not reset the asset's condition.`
       );
       chosen = renewal;
     }
@@ -1176,7 +1175,7 @@ export function recommendTreatment(
 
   if (unpriced.length > 0) {
     overrideReasons.push(
-      `${unpriced.join(", ")} could not be considered: no cost rate covers this ${ASSET_LABEL.lower}.`
+      `${unpriced.join(", ")} could not be considered: no cost rate covers this asset.`
     );
   }
 
@@ -1195,7 +1194,7 @@ function buildReasons(evaluation: TreatmentEvaluation, ctx: AssetTreatmentContex
   if (ctx.conditionScore != null) {
     reasons.push(`Condition is ${bandLabel(ctx.conditionScore)} (WCI ${ctx.conditionScore}).`);
   } else {
-    reasons.push(`${ASSET_LABEL.singular} has never been inspected — condition is unknown.`);
+    reasons.push(`Asset has never been inspected — condition is unknown.`);
   }
 
   if (ctx.ageYears != null) {

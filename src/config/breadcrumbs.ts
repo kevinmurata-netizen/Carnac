@@ -1,5 +1,3 @@
-import { ASSET_LABEL } from "@/config/labels";
-
 /**
  * Display labels for URL segments. The breadcrumb trail is derived from the
  * path, so every segment a user can reach needs an entry here — anything
@@ -12,7 +10,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
   ask: "AI Assistant",
   network: "Network",
-  assets: ASSET_LABEL.plural,
+  assets: "{Assets}",
   inspections: "Inspections",
   condition: "Condition",
   risk: "Risk",

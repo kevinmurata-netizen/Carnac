@@ -35,7 +35,7 @@ import { NetworkMap } from "@/components/map/network-map";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { NotBuiltYet } from "@/components/not-built-yet";
 import { ageInYears, formatDate, formatInches, formatNumber, formatStatus, toDateInputValue } from "@/lib/format";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
 import { getConditionBands } from "@/server/settings";
 
@@ -60,6 +60,7 @@ export default async function AssetDetailPage({
   const { tab } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const conditionBands = await getConditionBands(organizationId);
 
   const asset = await getAssetById(organizationId, id);
@@ -124,7 +125,7 @@ export default async function AssetDetailPage({
   const identification: EditableSection = {
     title: "Identification",
     fields: [
-      { name: "assetCode", label: `${ASSET_LABEL.singular} ID`, display: asset.assetCode, value: asset.assetCode, readOnly: true },
+      { name: "assetCode", label: `${words.singular} ID`, display: asset.assetCode, value: asset.assetCode, readOnly: true },
       { name: "ownerDepartment", label: "Responsible Department", display: asset.ownerDepartment ?? "—", value: asset.ownerDepartment ?? "" },
       {
         name: "status",
@@ -455,7 +456,7 @@ export default async function AssetDetailPage({
             <ComponentDeterioration forecast={componentForecast} />
           ) : !forecast ? (
             <div className="rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">
-              No deterioration forecast for this {ASSET_LABEL.lower} — forecasts are generated for active segments with a
+              No deterioration forecast for this {words.lower} — forecasts are generated for active segments with a
               matching material curve model.
             </div>
           ) : (
@@ -510,7 +511,7 @@ export default async function AssetDetailPage({
         <TabsContent value="risk" className="mt-4 space-y-4">
           {!risk ? (
             <div className="rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">
-              No risk assessment has been run for this {ASSET_LABEL.lower} yet.
+              No risk assessment has been run for this {words.lower} yet.
             </div>
           ) : (
             <>
@@ -541,7 +542,7 @@ export default async function AssetDetailPage({
             <RecommendationPanel recommendation={recommendation} />
           ) : (
             <div className="rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">
-              No treatment evaluation available for this {ASSET_LABEL.lower}.
+              No treatment evaluation available for this {words.lower}.
             </div>
           )}
         </TabsContent>

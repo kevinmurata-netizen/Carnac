@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { getDatabaseInfo } from "@/server/admin";
 import { getPageName } from "@/server/navigation";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ export default async function DatabasePage() {
 
   await requireCard("/settings/database");
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
 
   const [pageTitle, db] = await Promise.all([
     getPageName(organizationId, "/settings/database", "Database Connection"),
@@ -60,7 +61,7 @@ export default async function DatabasePage() {
           <p className="mt-4 text-xs text-muted-foreground">
             Read from the live connection, so a stale or wrong <span className="font-mono">DATABASE_URL</span> shows as
             unreachable rather than silently reporting health. Credentials are never read out of the connection string.
-            PostGIS is what stores {ASSET_LABEL.lower} geometry for the network map.
+            PostGIS is what stores {words.lower} geometry for the network map.
           </p>
           <p className="mt-2 text-xs text-muted-foreground">
             Deployments do not run migrations — a schema change is applied deliberately with{" "}

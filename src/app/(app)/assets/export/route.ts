@@ -7,7 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { ageInYears, formatStatus } from "@/lib/format";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { assetFiltersFromParams, paramsFromRequest, describeFilters } from "@/server/grid-params";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
+import type { AssetWords } from "@/lib/branding";
 
 /**
  * Water Inventory as a spreadsheet.
@@ -21,8 +22,8 @@ import { ASSET_LABEL } from "@/config/labels";
  * the ones people would otherwise go and look up one segment at a time: each
  * exported asset type's own attributes, beyond the measures already shown.
  */
-const COLUMNS: ExcelColumn[] = [
-  { key: "assetCode", header: `${ASSET_LABEL.singular} ID`, type: "text" },
+const columnsFor = (words: AssetWords): ExcelColumn[] => [
+  { key: "assetCode", header: `${words.singular} ID`, type: "text" },
   { key: "name", header: "Name", type: "text" },
   { key: "material", header: "Material", type: "text" },
   { key: "diameter", header: "Diameter (in)", type: "number" },
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const organizationId = session.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const params = paramsFromRequest(request);
   const filters = await assetFiltersFromParams(organizationId, params);
   const [assets, measuresOf] = await Promise.all([listAssets(organizationId, filters), getMeasureCodes(organizationId)]);
@@ -106,17 +108,17 @@ export async function GET(request: Request) {
   });
 
   const buffer = await buildWorkbook({
-    sheetName: ASSET_LABEL.plural,
-    title: `${ASSET_LABEL.plural} Inventory — ${rows.length.toLocaleString()} segments`,
+    sheetName: words.plural,
+    title: `${words.singular} Inventory — ${rows.length.toLocaleString()} segments`,
     note: describeFilters(params, savedFilterName),
-    columns: [...COLUMNS, ...extra, DEPARTMENT],
+    columns: [...columnsFor(words), ...extra, DEPARTMENT],
     rows,
   });
 
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type": XLSX_CONTENT_TYPE,
-      "Content-Disposition": `attachment; filename="${excelFileName(`${ASSET_LABEL.plural}-inventory`)}"`,
+      "Content-Disposition": `attachment; filename="${excelFileName(`${words.plural}-inventory`)}"`,
       "Cache-Control": "no-store",
     },
   });

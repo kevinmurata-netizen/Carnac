@@ -14,7 +14,7 @@ import { listScaleFactors } from "@/server/scale-factors";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets } from "@/server/category-weight-sets";
 import { ENTRIES, latestEntry } from "@/content/build-log";
-import { ASSET_LABEL } from "@/config/labels";
+import { getAssetWords } from "@/server/branding";
 import { SETTINGS_CARDS, SETTINGS_TABS, type SettingsTabKey } from "@/config/settings-cards";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +40,7 @@ export default async function SettingsPage({
   const { tab } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
 
   const active: SettingsTabKey = SETTINGS_TABS.some((t) => t.key === tab)
     ? (tab as SettingsTabKey)
@@ -228,7 +229,7 @@ export default async function SettingsPage({
       {active === "modeling" && cardsOnTab.length > 0 && (
         <p className="mt-4 text-xs text-muted-foreground">
           These definitions are stored in the database, not compiled into the application, which is what lets a new{" "}
-          {ASSET_LABEL.lower} class be added without schema changes. The seeded domain values act as a fallback for a
+          {words.lower} class be added without schema changes. The seeded domain values act as a fallback for a
           fresh install; once a row exists, what is configured here is what the system runs.
         </p>
       )}

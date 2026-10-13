@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { withAssetWords } from "@/lib/branding";
+import { getAssetWords } from "@/server/branding";
 import { NAV_GROUPS } from "@/config/nav";
 import { groupKey } from "@/config/nav-groups";
 import { PREVIOUS_CARD_HREF, SETTINGS_CARDS, SETTINGS_TABS } from "@/config/settings-cards";
@@ -224,10 +226,12 @@ export async function getRoleMatrix(
   navLabel: (href: string, fallback: string) => string
 ): Promise<RoleMatrix> {
   const isAdministrator = roleCode === ADMINISTRATOR_CODE;
-  const [role, overrides] = await Promise.all([
+  const [role, overrides, words] = await Promise.all([
     prisma.role.findUnique({ where: { id: roleId }, select: { name: true } }),
     storedOverrides(organizationId, roleId),
+    getAssetWords(organizationId),
   ]);
+  const named = (label: string) => withAssetWords(label, words);
 
   const resolve = (kind: ResourceKind, href: string, fallback: string): PermissionRow => {
     const resource = resourceKey(kind, href);
@@ -246,8 +250,8 @@ export async function getRoleMatrix(
   };
 
   const sections: PermissionSection[] = NAV_GROUPS.map((g) => ({
-    group: navLabel(groupKey(g.label), g.label),
-    rows: g.items.map((i) => resolve("page", i.href, i.label)),
+    group: navLabel(groupKey(g.key), named(g.label)),
+    rows: g.items.map((i) => resolve("page", i.href, named(i.label))),
   }));
 
   for (const tab of SETTINGS_TABS) {

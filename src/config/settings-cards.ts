@@ -98,6 +98,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     replaces: "/settings/configuration",
   },
   {
+    key: "branding",
+    href: "/settings/branding",
+    tab: "general",
+    title: "Branding",
+    icon: Sparkles,
+    detail:
+      "The product's name, tagline and logo, and what the network's assets are called — water, power or anything else.",
+  },
+  {
     key: "navigation",
     href: "/settings/navigation",
     tab: "general",

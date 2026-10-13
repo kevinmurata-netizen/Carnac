@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { NAV_GROUPS } from "@/config/nav";
 import { groupKey } from "@/config/nav-groups";
-import { PRODUCT_TAGLINE } from "@/config/labels";
-import { Droplets } from "lucide-react";
+import { withAssetWords, type AssetWords, type Branding } from "@/lib/branding";
+import { BrandLogo } from "@/components/layout/brand-logo";
 
 /**
  * The navigation itself, with no opinion about how it is displayed. The app
@@ -21,10 +21,16 @@ import { Droplets } from "lucide-react";
  * `onNavigate` lets the drawer close itself when a link is followed.
  */
 export function SidebarNav({
+  branding,
+  words,
   overrides = {},
   hidden = [],
   onNavigate,
 }: {
+  /** The product's name, logo and tagline, from Settings › Branding. */
+  branding: Pick<Branding, "productName" | "logo" | "tagline">;
+  /** What the network's assets are called, for the default labels. */
+  words: AssetWords;
   overrides?: Record<string, string>;
   hidden?: string[];
   onNavigate?: () => void;
@@ -36,21 +42,21 @@ export function SidebarNav({
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-5">
-        <Droplets className="h-6 w-6 text-sidebar-primary" />
-        <span className="text-lg font-semibold tracking-tight">CARNAC</span>
+        <BrandLogo logo={branding.logo} className="h-6 w-6 text-sidebar-primary" />
+        <span className="truncate text-lg font-semibold tracking-tight">{branding.productName}</span>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         {NAV_GROUPS.map((group) => {
           const items = group.items.filter((i) => !hiddenSet.has(i.href) || isOnPage(i.href));
           // A group whose every page is hidden has nothing left to head.
-          if (items.length === 0 || (hiddenSet.has(groupKey(group.label)) && !items.some((i) => isOnPage(i.href)))) {
+          if (items.length === 0 || (hiddenSet.has(groupKey(group.key)) && !items.some((i) => isOnPage(i.href)))) {
             return null;
           }
           return (
-          <div key={group.label} className="mb-5">
+          <div key={group.key} className="mb-5">
             <div className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
-              {overrides[groupKey(group.label)] ?? group.label}
+              {overrides[groupKey(group.key)] ?? withAssetWords(group.label, words)}
             </div>
             <ul className="ml-3 space-y-0.5 border-l border-sidebar-border/60 pl-2">
               {items.map((item) => {
@@ -67,7 +73,7 @@ export function SidebarNav({
                           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
                       )}
                     >
-                      <span>{overrides[item.href] ?? item.label}</span>
+                      <span>{overrides[item.href] ?? withAssetWords(item.label, words)}</span>
                     </Link>
                   </li>
                 );
@@ -79,7 +85,7 @@ export function SidebarNav({
       </nav>
 
       <div className="border-t border-sidebar-border px-5 py-3 text-[11px] text-sidebar-foreground/40">
-        {PRODUCT_TAGLINE}
+        {branding.tagline}
       </div>
     </div>
   );

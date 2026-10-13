@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatStatus } from "@/lib/format";
-import { ASSET_LABEL } from "@/config/labels";
 import { X } from "lucide-react";
 
 const STATUS_OPTIONS = ["ACTIVE", "INACTIVE", "ABANDONED", "PLANNED", "REMOVED"];
@@ -52,6 +51,7 @@ const OPTIONAL_FILTERS: OptionalFilter[] = [
 ];
 
 export function AssetFilterBar({
+  assetLabel,
   materials,
   serviceAreas,
   criticalities,
@@ -62,6 +62,8 @@ export function AssetFilterBar({
   values,
   action,
 }: {
+  /** What one of the network's assets is called (Settings › Branding). */
+  assetLabel: string;
   materials: string[];
   serviceAreas: string[];
   criticalities: string[];
@@ -129,7 +131,7 @@ export function AssetFilterBar({
             id="search"
             name="search"
             defaultValue={values.search}
-            placeholder={`${ASSET_LABEL.singular} ID or name`}
+            placeholder={`${assetLabel} ID or name`}
             className={`${control} w-48`}
           />
         </Field>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { PRODUCT_TAGLINE } from "@/config/labels";
+import { getDeploymentBranding } from "@/server/branding";
 import { ThemeScript } from "@/components/layout/theme-script";
 
 const geistSans = Geist({
@@ -14,10 +14,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: `CARNAC | ${PRODUCT_TAGLINE}`,
-  description: "Water management & decision support platform",
-};
+/** The browser tab before anyone has signed in; the app's own layout uses the
+ * signed-in organization's branding after that. */
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await getDeploymentBranding();
+  return {
+    title: `${branding.productName} | ${branding.tagline}`,
+    description: "Asset management and decision support",
+  };
+}
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   // ThemeScript sets the `dark` class before React hydrates, so the client's
