@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { AssetStatus, type AttributeDataType } from "@prisma/client";
-import { insertAssetLineLocation } from "@/server/geo";
+import { insertAssetLocation } from "@/server/geo";
 import { wholeAssetConditionModel } from "@/server/components";
 import { parseMeasureCodes } from "@/server/measures";
 
@@ -20,9 +20,6 @@ import { parseMeasureCodes } from "@/server/measures";
 /** Typical expected life when a row gives none — the same default the app
  * uses wherever an asset's own is missing. */
 const DEFAULT_EXPECTED_LIFE = 75;
-/** Half-length of the stand-in line drawn for an asset whose type measures no
- * length, in feet. Imported rows give a single point. */
-const STAND_IN_LENGTH_FT = 10;
 
 export type ImportColumnKind = "text" | "number" | "integer" | "date" | "boolean" | "enum";
 
@@ -369,7 +366,7 @@ export async function commitImport(organizationId: string, assetTypeId: string, 
 
   const assetType = await prisma.assetType.findFirstOrThrow({
     where: { id: assetTypeId, organizationId },
-    select: { id: true, measures: true, attributeDefinitions: { select: { id: true, code: true } } },
+    select: { id: true, geometry: true, measures: true, attributeDefinitions: { select: { id: true, code: true } } },
   });
   const defByCode = new Map(assetType.attributeDefinitions.map((d) => [d.code, d.id]));
   const lengthCode = parseMeasureCodes(assetType.measures).length;
@@ -403,20 +400,15 @@ export async function commitImport(organizationId: string, assetTypeId: string, 
       },
     });
 
-    // Imported rows give a single point; represent it as a minimal line so the
-    // geometry column stays consistent with the rest of the network — as long
-    // as the asset's length, where its type measures one.
-    const length = (lengthCode && row.values.find((v) => v.code === lengthCode)?.numberValue) || STAND_IN_LENGTH_FT;
-    const delta = length / 2 / 364_000;
-    await insertAssetLineLocation(
+    // Imported rows give a single position, drawn as the type is: a point,
+    // or a short line as long as the asset where its type measures length.
+    const length = (lengthCode && row.values.find((v) => v.code === lengthCode)?.numberValue) || null;
+    await insertAssetLocation(
       asset.id,
-      {
-        startLat: row.latitude - delta,
-        startLng: row.longitude,
-        endLat: row.latitude + delta,
-        endLng: row.longitude,
-      },
-      { serviceArea: row.serviceArea, pressureZone: null, depth: null }
+      assetType.geometry,
+      { lat: row.latitude, lng: row.longitude },
+      length,
+      { serviceArea: row.serviceArea }
     );
 
     if (row.condition != null && conditionModel) {

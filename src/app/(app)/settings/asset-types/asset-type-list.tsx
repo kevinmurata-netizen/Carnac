@@ -29,7 +29,7 @@ type Action = (prev: State, form: FormData) => Promise<State>;
  * Prisma into the browser bundle for the sake of five strings. */
 const DATA_TYPES = ["TEXT", "NUMBER", "DATE", "BOOLEAN", "ENUM"] as const;
 
-type TypeDraft = { id: string; code: string; name: string; description: string };
+type TypeDraft = { id: string; code: string; name: string; description: string; geometry: string };
 type AttributeDraft = {
   id: string;
   assetTypeId: string;
@@ -166,7 +166,7 @@ export function AssetTypeList({
           <Button
             type="button"
             size="sm"
-            onClick={() => setEditingType({ id: "", code: "", name: "", description: "" })}
+            onClick={() => setEditingType({ id: "", code: "", name: "", description: "", geometry: "point" })}
           >
             <Plus className="mr-1 h-4 w-4" />
             New asset type
@@ -184,7 +184,9 @@ export function AssetTypeList({
               <Badge variant="secondary" className="font-mono">
                 {type.code}
               </Badge>
-              <span className="text-xs text-muted-foreground">{formatNumber(type.assetCount)} records</span>
+              <span className="text-xs text-muted-foreground">
+                {formatNumber(type.assetCount)} records · drawn as {type.geometry === "line" ? "lines" : "points"}
+              </span>
             </div>
             {canEdit && (
               <Button
@@ -198,6 +200,7 @@ export function AssetTypeList({
                     code: type.code,
                     name: type.name,
                     description: type.description ?? "",
+                    geometry: type.geometry,
                   })
                 }
               >
@@ -587,6 +590,17 @@ function TypeForm({
             className={input}
           />
         </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="type-geometry">Drawn as</Label>
+        <select id="type-geometry" name="geometry" defaultValue={draft.geometry} className={input}>
+          <option value="point">Points — a pole, a transformer, a reservoir</option>
+          <option value="line">Lines — a main, a span of cable</option>
+        </select>
+        <p className="text-xs text-muted-foreground">
+          Where its assets sit on the map, and how an import or a new asset places them. Lines come in through Data
+          Import; points can also be added one at a time. Fixed once any of its assets has a position.
+        </p>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="type-description">Description</Label>

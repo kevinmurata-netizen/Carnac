@@ -24,9 +24,8 @@ export default async function NewAssetPage({ searchParams }: { searchParams: Pro
   const form = await getNewAssetForm(organizationId, type);
   if (!form) notFound();
 
-  // The modelled type's assets are line segments: until asset types say
-  // whether they are lines or points, that is what the modelled one is.
-  if (form.type.isModelled) {
+  // A line type's assets are segments, with more geometry than a form can take.
+  if (form.type.geometry === "line") {
     return (
       <div>
         <PageHeader title={`New ${form.type.name} segment`} />

@@ -254,6 +254,7 @@ export async function saveAssetTypeAction(
     await updateAssetType(session.user.organizationId, String(formData.get("id") ?? ""), {
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
+      geometry: String(formData.get("geometry") ?? "") || null,
     });
     revalidateAll(ASSET_TYPES_CARD);
     return { status: "success", message: "Asset type updated." };
@@ -292,6 +293,7 @@ export async function createAssetTypeAction(
       code: String(formData.get("code") ?? ""),
       name: String(formData.get("name") ?? ""),
       description: String(formData.get("description") ?? "") || null,
+      geometry: String(formData.get("geometry") ?? "") || null,
     });
     revalidateAll(ASSET_TYPES_CARD);
     return {

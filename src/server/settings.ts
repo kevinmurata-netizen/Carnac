@@ -641,6 +641,8 @@ export type AssetTypeDetail = {
   assetCount: number;
   /** Whether the engine models it, which is when its measures are read. */
   isModelled: boolean;
+  /** "line" or "point": how its assets are drawn and placed. */
+  geometry: string;
   /** Which of its attributes holds each measure the engine reads. */
   measures: MeasureCodes;
   attributes: AttributeDetail[];
@@ -696,6 +698,7 @@ export async function listAssetTypeDetails(organizationId: string): Promise<Asse
     description: t.description,
     assetCount: t._count.assets,
     isModelled: t.isModelled,
+    geometry: t.geometry,
     measures: parseMeasureCodes(t.measures),
     attributes: t.attributeDefinitions.map((d) => ({
       id: d.id,
@@ -853,27 +856,52 @@ export async function getConfigurationSettings(organizationId: string): Promise<
   };
 }
 
+/** "line" or "point" — anything else is refused rather than stored. */
+function parseGeometry(value: string | null | undefined): string | undefined {
+  if (value == null || value === "") return undefined;
+  if (value !== "line" && value !== "point") throw new Error("Choose whether this type's assets are lines or points");
+  return value;
+}
+
 export async function updateAssetType(
   organizationId: string,
   id: string,
-  input: { name: string; description: string | null }
+  input: { name: string; description: string | null; geometry?: string | null }
 ) {
   if (!input.name.trim()) throw new Error("Name is required");
   const existing = await prisma.assetType.findFirst({ where: { id, organizationId } });
   if (!existing) throw new Error("Asset type not found");
+
+  // Lines and points are drawn by different map layers, so a type whose
+  // assets are already placed keeps the kind they were placed as.
+  const geometry = parseGeometry(input.geometry);
+  if (geometry && geometry !== existing.geometry) {
+    const placed = await prisma.$queryRaw<Array<{ n: number }>>`
+      SELECT count(*)::int AS n FROM asset_locations l JOIN assets a ON a.id = l."assetId"
+      WHERE a."assetTypeId" = ${existing.id}`;
+    if ((placed[0]?.n ?? 0) > 0) {
+      throw new Error(
+        `${existing.name} already has ${placed[0].n} asset${placed[0].n === 1 ? "" : "s"} placed as ${existing.geometry}s, so it stays a ${existing.geometry} type`
+      );
+    }
+  }
 
   // `code` stays immutable on purpose: imports, links (`/assets?type=…`) and
   // the SQL loaders find a type by it, so renaming it would detach them. The
   // display name is what the UI shows.
   await prisma.assetType.update({
     where: { id },
-    data: { name: input.name.trim(), description: input.description?.trim() || null },
+    data: {
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      ...(geometry ? { geometry } : {}),
+    },
   });
 }
 
 export async function createAssetType(
   organizationId: string,
-  input: { code: string; name: string; description: string | null }
+  input: { code: string; name: string; description: string | null; geometry?: string | null }
 ) {
   const code = input.code.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
   if (!code) throw new Error("Code is required");
@@ -883,7 +911,13 @@ export async function createAssetType(
   if (clash) throw new Error(`An asset type with code "${code}" already exists`);
 
   await prisma.assetType.create({
-    data: { organizationId, code, name: input.name.trim(), description: input.description?.trim() || null },
+    data: {
+      organizationId,
+      code,
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      geometry: parseGeometry(input.geometry) ?? "point",
+    },
   });
 }
 
