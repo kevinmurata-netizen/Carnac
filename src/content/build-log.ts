@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-13",
+    title: "Model any asset type from Settings",
+    summary:
+      "Settings › Asset Types can now turn the engine's modelling on and off for each type, with a checklist of what the type needs to be worth modelling. Any asset class can be brought into scenarios, planning, risk and forecasts beside the water network.",
+    changes: [
+      "Each type shows whether it is modelled and how ready it is: its measures, condition index components, risk model, deterioration curves, a replacement treatment and an inspection form, each with a link to where it is set up.",
+      "Modelling a type creates what its settings need where it has none: a condition index with no components yet, and a starter risk model rating condition, age, recent failures and criticality — nothing particular to water.",
+      "Turning a type off is refused for the last modelled type, and for a type a scenario is narrowed to.",
+      "A type first scored without a risk model gets the starter, never the waterline's; the waterline's own is seed data.",
+    ],
+    note: "No migration. This completes phase 2 of the asset-agnostic plan.",
+  },
+  {
+    date: "2026-10-13",
     title: "Asset types drawn as lines or points",
     summary:
       "Each asset type now says whether its assets are lines or points. The map, imports and new assets follow it, rather than treating the waterline as the only line network. Nothing is drawn differently today.",

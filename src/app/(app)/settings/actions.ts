@@ -1,5 +1,7 @@
 "use server";
 
+import { setAssetTypeModelled } from "@/server/modelling";
+
 import { revalidatePath } from "next/cache";
 import { AttributeDataType } from "@prisma/client";
 import { requireCardWrite, requireAnyCardWrite } from "@/server/guard";
@@ -258,6 +260,31 @@ export async function saveAssetTypeAction(
     });
     revalidateAll(ASSET_TYPES_CARD);
     return { status: "success", message: "Asset type updated." };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function setModelledAction(
+  _prev: SettingsActionState,
+  formData: FormData
+): Promise<SettingsActionState> {
+  try {
+    const session = await requireWriteAccess("/settings/asset-types");
+    const modelled = formData.get("modelled") === "on";
+    const { name, created } = await setAssetTypeModelled(
+      session.user.organizationId,
+      String(formData.get("id") ?? ""),
+      modelled
+    );
+    // Which assets scenarios, planning, risk and forecasts cover has changed.
+    revalidateAll("/settings/asset-types");
+    return {
+      status: "success",
+      message: modelled
+        ? `${name} is now modelled.${created.length ? ` Created ${created.join(" and ")}.` : ""} Its assets join the next risk recompute, forecast, plan and scenario run.`
+        : `${name} is no longer modelled. Its assets leave scenarios, planning, risk and forecasts from the next run.`,
+    };
   } catch (e) {
     return fail(e);
   }

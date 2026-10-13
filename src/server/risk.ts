@@ -6,10 +6,12 @@ import { evaluate, fieldsUsed, toCriticalityScore } from "@/domain/waterline/cri
 import { getConditionBand } from "@/domain/waterline/condition";
 import {
   RISK_MODEL_NAME,
-  POF_WEIGHTS,
-  COF_WEIGHTS,
   DEFAULT_POF_FACTORS,
   DEFAULT_COF_FACTORS,
+  STARTER_POF_FACTORS,
+  STARTER_COF_FACTORS,
+  defaultWeights,
+  type RiskFactorDef,
   computePofFactors,
   computeCofFactors,
   combineFactors,
@@ -41,20 +43,39 @@ async function getRiskModelIds(organizationId: string): Promise<string[]> {
   return ids;
 }
 
-/** One asset type's active risk model, created with the built-in weights
- * the first time the type is scored. */
+/**
+ * One asset type's active risk model, created the first time the type is
+ * scored if it has none: the starter, which names no asset class — never
+ * the waterline's model, which is that type's seed data.
+ */
 export async function ensureRiskModel(assetTypeId: string) {
   const models = await prisma.riskModel.findMany({ where: { assetTypeId, isActive: true }, orderBy: { id: "asc" } });
   const existing = models.find(isWholeAsset);
   if (existing) return existing;
+  const type = await prisma.assetType.findUniqueOrThrow({ where: { id: assetTypeId }, select: { name: true } });
+  return createRiskModel(assetTypeId, `${type.name} Risk Model`, STARTER_POF_FACTORS, STARTER_COF_FACTORS);
+}
+
+/** A risk model with these factors at their built-in weights. */
+export async function createRiskModel(
+  assetTypeId: string,
+  name: string,
+  pofFactors: RiskFactorDef[],
+  cofFactors: RiskFactorDef[]
+) {
   return prisma.riskModel.create({
     data: {
       assetTypeId,
-      name: RISK_MODEL_NAME,
-      probabilityConfig: { weights: POF_WEIGHTS, scale: "1-5", factors: DEFAULT_POF_FACTORS },
-      consequenceConfig: { weights: COF_WEIGHTS, scale: "1-5", factors: DEFAULT_COF_FACTORS },
+      name,
+      probabilityConfig: { weights: defaultWeights(pofFactors), scale: "1-5", factors: pofFactors },
+      consequenceConfig: { weights: defaultWeights(cofFactors), scale: "1-5", factors: cofFactors },
     },
   });
+}
+
+/** Seed data: the waterline's risk model, as it has always been. */
+export async function seedWaterlineRiskModel(assetTypeId: string) {
+  return createRiskModel(assetTypeId, RISK_MODEL_NAME, DEFAULT_POF_FACTORS, DEFAULT_COF_FACTORS);
 }
 
 /** Recompute POF/COF/risk + criticality for every modelled asset in the org
