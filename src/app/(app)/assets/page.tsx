@@ -23,7 +23,9 @@ import { ExportButton } from "@/components/grid/export-button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
-import { ageInYears, formatInches, formatNumber, formatStatus } from "@/lib/format";
+import { ageInYears, formatNumber, formatStatus } from "@/lib/format";
+import { formatMeasure } from "@/lib/measure-labels";
+import { getMeasureLabels } from "@/server/measures";
 import { AssetStatus } from "@prisma/client";
 import { getAssetWords } from "@/server/branding";
 import { countItems } from "@/lib/branding";
@@ -50,6 +52,7 @@ export default async function AssetsPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
+  const measures = await getMeasureLabels(organizationId);
 
   // Which kind of asset is being looked at. The modelled type by default,
   // because it is what this app plans; the other types are here to be read.
@@ -118,8 +121,8 @@ export default async function AssetsPage({
               <TableRow>
                 <ColumnHeader label={`${words.singular} ID`} sortKey="assetCode" />
                 <ColumnHeader label="Material" sortKey="material" filterParam="material" options={materials} />
-                <ColumnHeader label="Diameter" sortKey="diameter" />
-                <ColumnHeader label="Length (ft)" sortKey="length" />
+                <ColumnHeader label={measures.diameter.name} sortKey="diameter" />
+                <ColumnHeader label={measures.length.heading} sortKey="length" />
                 <ColumnHeader label="Install Year" sortKey="installationDate" />
                 <ColumnHeader label="Age" sortKey="age" />
                 <ColumnHeader
@@ -156,7 +159,7 @@ export default async function AssetsPage({
                       </Link>
                     </TableCell>
                     <TableCell>{m.material ?? "—"}</TableCell>
-                    <TableCell>{formatInches(m.diameter)}</TableCell>
+                    <TableCell>{formatMeasure(m.diameter, measures.diameter)}</TableCell>
                     <TableCell>{formatNumber(Math.round(m.length ?? 0))}</TableCell>
                     <TableCell>{asset.installationDate ? asset.installationDate.getFullYear() : "—"}</TableCell>
                     <TableCell>{age ?? "—"}</TableCell>

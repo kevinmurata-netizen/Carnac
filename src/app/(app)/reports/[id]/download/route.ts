@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getReport, toCsv, reportFileName } from "@/server/reports";
 import { getIndexWords } from "@/server/condition-model";
+import { getMeasureLabels } from "@/server/measures";
 import { getAssetWords } from "@/server/branding";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,7 +13,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const report = getReport(
     id,
     await getIndexWords(session.user.organizationId),
-    await getAssetWords(session.user.organizationId)
+    await getAssetWords(session.user.organizationId),
+    await getMeasureLabels(session.user.organizationId)
   );
   if (!report) return new NextResponse("Report not found", { status: 404 });
 

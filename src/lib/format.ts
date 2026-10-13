@@ -1,7 +1,3 @@
-export function formatFeetAsMiles(feet: number, fractionDigits = 1): string {
-  return `${(feet / 5280).toFixed(fractionDigits)} mi`;
-}
-
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
 }
@@ -15,10 +11,6 @@ export function formatCurrency(value: number, opts: { compact?: boolean } = {}):
   return `$${Math.round(value).toLocaleString("en-US")}`;
 }
 
-export function formatInches(value: number | null | undefined): string {
-  if (value == null) return "—";
-  return `${value}"`;
-}
 
 export function ageInYears(installationDate: Date | null | undefined): number | null {
   if (!installationDate) return null;

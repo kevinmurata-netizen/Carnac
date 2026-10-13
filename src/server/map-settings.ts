@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getIndexWords } from "@/server/condition-model";
 import { withIndex } from "@/lib/index-words";
+import { withMeasures } from "@/lib/measure-labels";
+import { withAssetWords } from "@/lib/branding";
+import { getAssetWords } from "@/server/branding";
+import { getMeasureLabels } from "@/server/measures";
 
 /**
  * What the map's hover card shows.
@@ -29,8 +33,8 @@ export type MapField = {
 export const MAP_FIELDS: MapField[] = [
   { key: "status", label: "Status", hint: "Active, Abandoned, Planned…" },
   { key: "material", label: "Material", hint: "Cast Iron, PVC, and so on" },
-  { key: "diameter", label: "Diameter (in)", hint: "Nominal bore" },
-  { key: "length", label: "Length (ft)", hint: "Segment length" },
+  { key: "diameter", label: "{diameter}", hint: "Nominal size" },
+  { key: "length", label: "{length}", hint: "{Item} length" },
   { key: "installYear", label: "Install year", hint: "Year it went in" },
   { key: "age", label: "Age (years)", hint: "Today minus the install date" },
   { key: "condition", label: "Condition ({index})", hint: "Latest score, worst is 0" },
@@ -68,8 +72,16 @@ export async function getPopupFields(organizationId: string): Promise<string[]> 
 
 /** The fields, labelled in the organization's condition index's words. */
 export async function getMapFields(organizationId: string): Promise<MapField[]> {
-  const index = await getIndexWords(organizationId);
-  return MAP_FIELDS.map((f) => ({ ...f, label: withIndex(f.label, index) }));
+  const [index, measures, words] = await Promise.all([
+    getIndexWords(organizationId),
+    getMeasureLabels(organizationId),
+    getAssetWords(organizationId),
+  ]);
+  return MAP_FIELDS.map((f) => ({
+    ...f,
+    label: withMeasures(withIndex(f.label, index), measures),
+    hint: withAssetWords(f.hint, words),
+  }));
 }
 
 /** Resolved to labels, in the order MAP_FIELDS declares, so the card reads the

@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-13",
+    title: "Sizes and lengths in the network's own units",
+    summary:
+      "Size and length headings and values come from the attributes that hold them, with those attributes' own labels and units — \"Diameter (in)\" for water, \"Height (m)\" for a network recorded that way. Nothing looks different for water.",
+    changes: [
+      "The inventory, its download, the asset page, the filter bar, map pop-ups, reports and treatment rule wording all name the size and length from the attribute the asset type uses for them (Settings › Asset Types).",
+      "Values carry their unit: inches keep the inch mark, other units are written out. The network's total length shows feet as miles and metres as kilometres.",
+      "The AI assistant is told the units the network is recorded in, instead of assuming inches and feet.",
+      "Where modelled types record size or length differently, network-wide screens say \"Size\" and \"Length\" without a unit.",
+    ],
+    note: "No migration. This completes phase 3 of the asset-agnostic plan.",
+  },
+  {
+    date: "2026-10-13",
     title: "Say what one asset is called",
     summary:
       "Settings › Branding gains a word for one asset mid-sentence — \"segment\" for water, \"pole\" or \"asset\" elsewhere. The counts, headings, sentences and downloads that said \"segment\" or \"waterline\" now use it and the asset words. Water reads as before.",

@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getBranding } from "@/server/branding";
+import { getMeasureLabels } from "@/server/measures";
+import type { MeasureLabels } from "@/lib/measure-labels";
 import { assetWords, type AssetWords, type Branding } from "@/lib/branding";
 import {
   getFilterSchema,
@@ -124,15 +126,25 @@ const searchTool = (words: AssetWords): Anthropic.Tool => ({
   strict: true,
 });
 
-function systemPrompt(schema: FilterTable[], today: string, branding: Branding): string {
+/** "inches" for in, "feet" for ft — how a unit is said in a sentence. */
+const UNIT_WORDS: Record<string, string> = { in: "inches", ft: "feet", m: "metres", mm: "millimetres", km: "kilometres", mi: "miles" };
+const unitWord = (unit: string | null) => (unit ? (UNIT_WORDS[unit] ?? unit) : "the units recorded");
+
+function systemPrompt(schema: FilterTable[], today: string, branding: Branding, measures: MeasureLabels): string {
   const words = assetWords(branding);
+  const sizes =
+    `${measures.diameter.name} is in ${unitWord(measures.diameter.unit)}, ` +
+    `${measures.length.name.toLowerCase()} in ${unitWord(measures.length.unit)}, ages in years.` +
+    (measures.diameter.unit === "in"
+      ? ` A question about 12" ${words.items} means the ${measures.diameter.name.toLowerCase()} equals 12.`
+      : "");
   return `You help staff at a ${words.lower} utility ask questions about their ${words.lower} network in ${branding.productName}, an asset management system.
 
 When the question asks which ${words.items}, how many, or for a list, call search_segments. Translate the question into criteria over the schema below.
 
 Rules that matter:
 - Use only field keys that appear in the schema, spelled exactly as shown. Never invent one.
-- Diameters are in inches, lengths in feet, ages in years. A question about 12" pipe means attribute.DIAMETER equals 12.
+- ${sizes}
 - Where a field lists its allowed values, match one of them. If the user's wording is close but not exact ("cast iron"), use the schema's spelling ("Cast Iron").
 - "Old", "aging" or "near end of life" is asset.ageYears or asset.agePercentOfLife, not a guess at an install year.
 - "Poor condition" or "bad" is condition.score, where lower is worse.
@@ -229,7 +241,11 @@ export async function askAssistant(organizationId: string, question: string): Pr
   // guess, and a wrong date range looks exactly like a right one.
   const today = new Date().toISOString().slice(0, 10);
 
-  const [schema, branding] = await Promise.all([getFilterSchema(organizationId), getBranding(organizationId)]);
+  const [schema, branding, measures] = await Promise.all([
+    getFilterSchema(organizationId),
+    getBranding(organizationId),
+    getMeasureLabels(organizationId),
+  ]);
   const byKey = fieldIndex(schema);
 
   const client = new Anthropic();
@@ -247,7 +263,7 @@ export async function askAssistant(organizationId: string, question: string): Pr
     // cached block: a prompt cache lasts minutes, so a once-a-day change costs
     // nothing, and splitting them would complicate the prefix for no gain.
     system: [
-      { type: "text", text: systemPrompt(schema, today, branding), cache_control: { type: "ephemeral" } },
+      { type: "text", text: systemPrompt(schema, today, branding, measures), cache_control: { type: "ephemeral" } },
     ],
       // Left on auto rather than forced: a question that is not about segment
       // data should come back as words, not a contorted search.

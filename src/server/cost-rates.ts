@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { copyName, takenNames } from "@/lib/copy-name";
-import { describeNode } from "@/domain/waterline/decision-tree";
+import { describeNode, fieldLabelsFor } from "@/domain/waterline/decision-tree";
+import { getMeasureLabels } from "@/server/measures";
 import { parseRules } from "@/server/rules";
 import { modelledType } from "@/server/modelled-asset-type";
 
@@ -42,6 +43,7 @@ export async function getTreatmentCosts(
     include: { costRates: { include: { rule: true }, orderBy: { sortOrder: "asc" } } },
   });
   if (!treatment) return null;
+  const labels = fieldLabelsFor(await getMeasureLabels(organizationId, treatment.assetTypeId));
 
   return {
     treatmentId: treatment.id,
@@ -54,7 +56,7 @@ export async function getTreatmentCosts(
         sortOrder: r.sortOrder,
         ruleId: r.ruleId,
         ruleName: r.rule?.name ?? null,
-        ruleSummary: rule ? describeNode(rule.root) : null,
+        ruleSummary: rule ? describeNode(rule.root, labels) : null,
         unitCost: r.unitCost,
         costUnit: r.costUnit === "per LF" ? "per LF" : "per each",
         mobilizationCost: r.mobilizationCost,

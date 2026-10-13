@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listReports, type ReportCategory } from "@/server/reports";
 import { getIndexWords } from "@/server/condition-model";
+import { getMeasureLabels } from "@/server/measures";
 import { getAssetWords } from "@/server/branding";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +18,8 @@ export default async function ReportsPage() {
   const pageTitle = await getPageName(session!.user.organizationId, "/reports", "Reports");
   const reportList = listReports(
     await getIndexWords(session!.user.organizationId),
-    await getAssetWords(session!.user.organizationId)
+    await getAssetWords(session!.user.organizationId),
+    await getMeasureLabels(session!.user.organizationId)
   );
 
   return (

@@ -1,9 +1,12 @@
 import { prisma } from "@/lib/prisma";
+import { getMeasureLabels } from "@/server/measures";
 import { copyName, takenNames } from "@/lib/copy-name";
 import {
   isValidNode,
   countConditions,
   describeNode,
+  fieldLabelsFor,
+  type FieldLabels,
   emptyGroup,
   isValidRuleNode,
   ruleIdsIn,
@@ -118,7 +121,7 @@ function blockerFor(row: RuleWithUsage): string | null {
   return parts.length ? `still ${parts.join("; ")}` : null;
 }
 
-function toSummary(row: RuleWithUsage): RuleSummary {
+function toSummary(row: RuleWithUsage, labels: FieldLabels): RuleSummary {
   const parsed = parseRules([row])[0];
   return {
     id: row.id,
@@ -128,7 +131,7 @@ function toSummary(row: RuleWithUsage): RuleSummary {
     enabled: row.enabled,
     isGenerated: row.isGenerated,
     conditionCount: parsed ? countConditions(parsed.root) : 0,
-    summary: parsed ? describeNode(parsed.root) : "This rule could not be read and is being ignored.",
+    summary: parsed ? describeNode(parsed.root, labels) : "This rule could not be read and is being ignored.",
     usedBy: row.treatments.map((t) => t.treatment.name).sort(),
     usedByRates: row.costRates.map((r) => `${r.treatment.name}: ${r.name}`).sort(),
     usedByCombinations: row.combinations.map((c) => c.combination.name).sort(),
@@ -142,7 +145,8 @@ export async function listRules(organizationId: string): Promise<RuleSummary[]> 
     include: withUsage,
     orderBy: { name: "asc" },
   });
-  return rows.map(toSummary);
+  const labels = fieldLabelsFor(await getMeasureLabels(organizationId));
+  return rows.map((row) => toSummary(row, labels));
 }
 
 export async function getRule(organizationId: string, id: string): Promise<RuleSummary | null> {
@@ -150,7 +154,7 @@ export async function getRule(organizationId: string, id: string): Promise<RuleS
     where: { id, organizationId },
     include: withUsage,
   });
-  return row ? toSummary(row) : null;
+  return row ? toSummary(row, fieldLabelsFor(await getMeasureLabels(organizationId))) : null;
 }
 
 /** The rule itself, in the shape the builder edits. */
@@ -327,8 +331,9 @@ export async function getTreatmentRules(
   });
   if (!treatment) return null;
 
+  const labels = fieldLabelsFor(await getMeasureLabels(organizationId, treatment.assetTypeId));
   const attached = treatment.ruleLinks
-    .map((l) => toSummary(l.rule))
+    .map((l) => toSummary(l.rule, labels))
     .sort((a, b) => a.name.localeCompare(b.name));
   // Every stored treatment carries a tree — the Phase 5 migration backfilled
   // them and both writers set one — so the flat reading is a floor for a row

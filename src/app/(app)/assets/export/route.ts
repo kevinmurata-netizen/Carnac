@@ -8,6 +8,8 @@ import { ageInYears, formatStatus } from "@/lib/format";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { assetFiltersFromParams, paramsFromRequest, describeFilters } from "@/server/grid-params";
 import { getAssetWords } from "@/server/branding";
+import type { MeasureLabels } from "@/lib/measure-labels";
+import { getMeasureLabels } from "@/server/measures";
 import type { AssetWords } from "@/lib/branding";
 
 /**
@@ -22,12 +24,12 @@ import type { AssetWords } from "@/lib/branding";
  * the ones people would otherwise go and look up one segment at a time: each
  * exported asset type's own attributes, beyond the measures already shown.
  */
-const columnsFor = (words: AssetWords): ExcelColumn[] => [
+const columnsFor = (words: AssetWords, measures: MeasureLabels): ExcelColumn[] => [
   { key: "assetCode", header: `${words.singular} ID`, type: "text" },
   { key: "name", header: "Name", type: "text" },
   { key: "material", header: "Material", type: "text" },
-  { key: "diameter", header: "Diameter (in)", type: "number" },
-  { key: "length", header: "Length (ft)", type: "integer" },
+  { key: "diameter", header: measures.diameter.heading, type: "number" },
+  { key: "length", header: measures.length.heading, type: "integer" },
   { key: "installDate", header: "Installed", type: "date" },
   { key: "age", header: "Age (years)", type: "integer" },
   { key: "expectedLife", header: "Expected life (years)", type: "integer" },
@@ -111,7 +113,7 @@ export async function GET(request: Request) {
     sheetName: words.plural,
     title: `${words.singular} Inventory — ${rows.length.toLocaleString()} ${words.items}`,
     note: describeFilters(params, savedFilterName),
-    columns: [...columnsFor(words), ...extra, DEPARTMENT],
+    columns: [...columnsFor(words, await getMeasureLabels(organizationId)), ...extra, DEPARTMENT],
     rows,
   });
 

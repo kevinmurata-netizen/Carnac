@@ -1,6 +1,7 @@
 "use client";
 
 import { useAssetWords } from "@/components/layout/asset-words";
+import { useMeasureLabels } from "@/components/layout/measure-labels";
 import { useMemo, useState } from "react";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
 import { useRouter } from "next/navigation";
@@ -12,6 +13,7 @@ import { Check, CircleDot, X, Trash2 } from "lucide-react";
 import {
   evaluateTree,
   describeNode,
+  fieldLabelsFor,
   countConditions,
   addToGroup,
   removeNode,
@@ -90,6 +92,7 @@ export function RuleEditor({
   addsOnCreate?: boolean;
 }) {
   const words = useAssetWords();
+  const measures = useMeasureLabels();
   const router = useRouter();
   const [draft, setDraft] = useState<RuleDraft>(initial);
   const [sampleId, setSampleId] = useState(samples[0]?.id ?? "");
@@ -266,7 +269,7 @@ export function RuleEditor({
 
           {conditions > 0 && (
             <p className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-              Reads as: <span className="font-medium">{describeNode(draft.root)}</span>.
+              Reads as: <span className="font-medium">{describeNode(draft.root, fieldLabelsFor(measures))}</span>.
             </p>
           )}
 
