@@ -32,8 +32,11 @@ const MIX_WINDOW = 100;
 export function RankedOptions({
   ranking,
   exportQuery = "",
+  index,
 }: {
   ranking: PriorityRanking;
+  /** The condition index's short form, beside a score. */
+  index: string;
   /** The parameters the ranking was computed with, so the download matches
    * what is on screen. */
   exportQuery?: string;
@@ -89,7 +92,7 @@ export function RankedOptions({
         </p>
         {ranking.belowFloor > 0 && (
           <p className="text-xs text-muted-foreground">
-            {formatNumber(ranking.belowFloor)} options are not shown: on a segment below WCI{" "}
+            {formatNumber(ranking.belowFloor)} options are not shown: on a segment below {index}{" "}
             {ranking.floor.conditionBelow} they would cut risk by less than {ranking.floor.minRiskReductionPct}%, which
             leaves a failing main failing whatever they score per dollar. They stay visible on the segment&apos;s own
             page as alternatives.
@@ -132,6 +135,7 @@ export function RankedOptions({
             It receives the fundable rows in a trimmed shape — see
             ranked-grid.tsx for what that costs and where it stops scaling. */}
         <RankedGrid
+          indexShort={index}
           rows={fundable.map((r) => ({
             assetId: r.assetId,
             assetCode: r.assetCode,

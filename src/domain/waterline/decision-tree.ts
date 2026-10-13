@@ -47,7 +47,7 @@ export const NUMERIC_FIELDS: DecisionField[] = [
 export const TEXT_FIELDS: DecisionField[] = ["material", "criticality", "serviceArea", "pressureZone"];
 
 export const FIELD_LABELS: Record<DecisionField, string> = {
-  condition: "Condition (WCI)",
+  condition: "Condition score",
   ageYears: "Age (years)",
   ageRatio: "Age ÷ expected life",
   diameterInches: "Diameter (in)",

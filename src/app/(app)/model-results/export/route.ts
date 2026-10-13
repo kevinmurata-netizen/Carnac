@@ -4,6 +4,8 @@ import { getWciFlow, listScenarioOptions } from "@/server/model-results";
 import { buildWorkbookSheets, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { getAssetWords } from "@/server/branding";
 import type { AssetWords } from "@/lib/branding";
+import { getScenarioIndexWords } from "@/server/condition-model";
+import type { IndexWords } from "@/lib/index-words";
 
 /**
  * A scenario's outcome as a two-sheet workbook.
@@ -21,13 +23,13 @@ const TRANSITION_COLUMNS: ExcelColumn[] = [
   { key: "direction", header: "Direction", type: "text" },
 ];
 
-const segmentColumns = (words: AssetWords): ExcelColumn[] => [
+const segmentColumns = (words: AssetWords, index: IndexWords): ExcelColumn[] => [
   { key: "assetCode", header: words.singular, type: "text" },
   { key: "material", header: "Material", type: "text" },
   { key: "fromBand", header: "Start band", type: "text" },
   { key: "toBand", header: "End band", type: "text" },
-  { key: "startCondition", header: "Start WCI", type: "number" },
-  { key: "endCondition", header: "End WCI", type: "number" },
+  { key: "startCondition", header: `Start ${index.short}`, type: "number" },
+  { key: "endCondition", header: `End ${index.short}`, type: "number" },
   { key: "change", header: "Change", type: "number" },
   { key: "treatments", header: "Treatments applied", type: "integer" },
   { key: "direction", header: "Direction", type: "text" },
@@ -54,10 +56,11 @@ export async function GET(request: Request) {
 
   const flow = await getWciFlow(organizationId, selectedId);
   if (!flow) return new NextResponse("Scenario has no results", { status: 404 });
+  const index = await getScenarioIndexWords(organizationId, selectedId);
 
   const note =
     `Exported ${new Date().toISOString().slice(0, 10)} · ${flow.scenarioName} · ` +
-    `${flow.strategy} over ${flow.years} years · average WCI ${flow.startAvg} → ${flow.endAvg}`;
+    `${flow.strategy} over ${flow.years} years · average ${index.short} ${flow.startAvg} → ${flow.endAvg}`;
 
   // One transition asked for on its own: a single sheet of just its segments.
   // Named for the path so the file is identifiable once it has left the app.
@@ -70,7 +73,7 @@ export async function GET(request: Request) {
         sheetName: "Segments",
         title: `${link.fromBand} → ${link.toBand} — ${link.value.toLocaleString()} segments`,
         note,
-        columns: segmentColumns(words),
+        columns: segmentColumns(words, index),
         rows: link.assets.map((asset) => ({
           assetCode: asset.assetCode,
           material: asset.material,
@@ -132,7 +135,7 @@ export async function GET(request: Request) {
       sheetName: "Segments",
       title: `Every segment traced — ${segments.length.toLocaleString()} rows`,
       note,
-      columns: segmentColumns(words),
+      columns: segmentColumns(words, index),
       rows: segments,
     },
   ]);

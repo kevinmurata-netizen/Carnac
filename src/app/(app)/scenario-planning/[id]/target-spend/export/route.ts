@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getScenario } from "@/server/scenarios";
+import { getScenarioIndexWords } from "@/server/condition-model";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { targetPhases } from "@/lib/target-phases";
 
@@ -21,6 +22,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const target = scenario.target;
   if (!target) return new NextResponse("This scenario is not a target run, or has not run since it became one", { status: 404 });
 
+  const index = await getScenarioIndexWords(session.user.organizationId, id);
   const { aim, phaseOf } = targetPhases(target, scenario.assumptions.afterTarget);
   const years = scenario.years;
   const askedYear = years[target.inYears - 1]?.year;
@@ -44,11 +46,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       avgCondition: y.avgCondition,
       belowTarget: y.belowTargetCount,
     })),
-    title: `${scenario.name} — Annual Spend to Reach WCI ${target.value}`,
+    title: `${scenario.name} — Annual Spend to Reach ${index.short} ${target.value}`,
     // What the run answered, and when it ran: results are stored, so a file
     // exported today from a run made last week should say last week.
     note: [
-      `Target WCI ${target.value} by ${askedYear ?? `year ${target.inYears}`}`,
+      `Target ${index.short} ${target.value} by ${askedYear ?? `year ${target.inYears}`}`,
       target.aimedFor != null ? `not reachable then; aimed for ${aimYear}` : target.reachable ? "reached" : "not reachable",
       `$${Math.round(target.annualBudget).toLocaleString("en-US")} a year`,
       scenario.assumptions.afterTarget === "none" ? "nothing new after the target year" : "held after the target year",

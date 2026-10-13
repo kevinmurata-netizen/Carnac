@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getNetworkRecommendations } from "@/server/treatments";
 import { rankOptions } from "@/server/priority";
+import { getIndexWords } from "@/server/condition-model";
+import { withIndex } from "@/lib/index-words";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 
 /**
@@ -31,7 +33,7 @@ const RECOMMENDED: ExcelColumn[] = [
   { key: "scaleFactor", header: "Scale Factor", type: "number", width: 13 },
   { key: "categoryWeight", header: "Category Weight", type: "number", width: 16 },
   { key: "value", header: "Priority Score", type: "number", width: 15 },
-  { key: "conditionImprovement", header: "Condition Gain (WCI)", type: "number", width: 19 },
+  { key: "conditionImprovement", header: "Condition Gain ({index})", type: "number", width: 19 },
   { key: "riskReduction", header: "Risk Points Removed", type: "number", width: 19 },
   { key: "lifeCycleSaving", header: "Life-Cycle Saving", type: "money", width: 18 },
 ];
@@ -61,6 +63,7 @@ export async function GET(request: Request) {
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const organizationId = session.user.organizationId;
+  const index = await getIndexWords(organizationId);
   const search = new URL(request.url).searchParams;
   const list = search.get("list") === "ranked" ? "ranked" : "recommended";
 
@@ -103,7 +106,7 @@ export async function GET(request: Request) {
 
     const buffer = await buildWorkbook({
       sheetName: "Ranked Options",
-      columns: RANKED,
+      columns: RANKED.map((c) => ({ ...c, header: withIndex(c.header, index) })),
       rows,
       title: "Ranked Options — Criticality × Scale × Category × Benefit ÷ Total Cost",
       note: `${rows.length.toLocaleString()} options over ${ranking.assetsWithOptions.toLocaleString()} segments (${ranking.combinationsScored.toLocaleString()} combinations) · ${ranking.weightSetName} · ${ranking.categoryWeightSetName} · scale factor ${ranking.scaleFactorName ?? "none"} · criticality ${ranking.criticalityModelName ?? "stored scores"} · ${ranking.belowFloor.toLocaleString()} below the effectiveness floor · exported ${today}`,

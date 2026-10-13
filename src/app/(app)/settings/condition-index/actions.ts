@@ -8,6 +8,7 @@ import {
   addExistingFieldAsComponent,
   removeComponent,
   recalculateConditionScores,
+  renameIndex,
 } from "@/server/condition-model";
 import type { IndexActionState } from "./state";
 
@@ -103,6 +104,18 @@ export async function removeComponentAction(_prev: IndexActionState, formData: F
     };
   } catch (err) {
     return { status: "error", message: err instanceof Error ? err.message : "Could not remove component" };
+  }
+}
+
+export async function renameIndexAction(_prev: IndexActionState, formData: FormData): Promise<IndexActionState> {
+  try {
+    const session = await requireWriteAccess();
+    await renameIndex(session.user.organizationId, String(formData.get("name") ?? ""), assetTypeOf(formData));
+    // The name and its short form label scores on every screen.
+    revalidatePath("/", "layout");
+    return { status: "success", message: "Index renamed." };
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : "Could not rename the index" };
   }
 }
 

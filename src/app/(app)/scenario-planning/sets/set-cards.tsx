@@ -23,10 +23,13 @@ export function ScenarioSetCards({
   sets,
   scenarios,
   canEdit,
+  index,
 }: {
   sets: ScenarioSetSummary[];
   scenarios: ScenarioSummary[];
   canEdit: boolean;
+  /** The condition index's short form, beside a score. */
+  index: string;
 }) {
   const active = sets.filter((s) => s.status !== "ARCHIVED");
   const archived = sets.filter((s) => s.status === "ARCHIVED");
@@ -40,6 +43,7 @@ export function ScenarioSetCards({
             set={set}
             members={scenarios.filter((s) => s.scenarioSet?.id === set.id)}
             canEdit={canEdit}
+            index={index}
           />
         ))}
       </div>
@@ -72,10 +76,12 @@ function SetCard({
   set,
   members,
   canEdit,
+  index,
 }: {
   set: ScenarioSetSummary;
   members: ScenarioSummary[];
   canEdit: boolean;
+  index: string;
 }) {
   const current = members.filter((s) => s.hasResults && !s.resultsOutOfWindow && s.finalAvgCondition != null);
   const best = current.reduce<ScenarioSummary | null>(
@@ -118,7 +124,7 @@ function SetCard({
                       ? "not run"
                       : s.resultsOutOfWindow
                         ? "out of window"
-                        : `WCI ${s.finalAvgCondition}`}
+                        : `${index} ${s.finalAvgCondition}`}
                   </span>
                 </li>
               ))}

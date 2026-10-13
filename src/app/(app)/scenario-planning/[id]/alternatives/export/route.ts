@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getAllScenarioAlternatives, getScenarioAlternatives } from "@/server/scenario-alternatives";
 import { outcomeLegend } from "@/domain/waterline/alternative-reasons";
+import { getScenarioIndexWords } from "@/server/condition-model";
+import { withIndex } from "@/lib/index-words";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 
 /**
@@ -16,7 +18,7 @@ import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } fro
 const COLUMNS: ExcelColumn[] = [
   { key: "year", header: "Year", type: "integer", width: 8 },
   { key: "assetCode", header: "Segment", width: 14 },
-  { key: "conditionBefore", header: "WCI Before", type: "number", width: 12 },
+  { key: "conditionBefore", header: "{index} Before", type: "number", width: 12 },
   { key: "optionLabel", header: "Option", width: 26 },
   { key: "members", header: "Treatments", width: 30 },
   { key: "isCombination", header: "Combination", width: 13 },
@@ -29,7 +31,7 @@ const COLUMNS: ExcelColumn[] = [
   { key: "priority", header: "Priority Score", type: "number", width: 15 },
   { key: "incremental", header: "Incremental Score", type: "number", width: 17 },
   { key: "incrementalOver", header: "Incremental Over", width: 24 },
-  { key: "conditionAfter", header: "WCI After", type: "number", width: 11 },
+  { key: "conditionAfter", header: "{index} After", type: "number", width: 11 },
   { key: "riskBefore", header: "Risk Before", type: "number", width: 12 },
   { key: "riskAfter", header: "Risk After", type: "number", width: 11 },
   { key: "selected", header: "Selected", width: 10 },
@@ -55,7 +57,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     : await getScenarioAlternatives(organizationId, id, { year });
   if (!data) return new NextResponse("Not found", { status: 404 });
 
-  const legend = outcomeLegend(new Set(data.rows.map((r) => r.reason)));
+  const index = await getScenarioIndexWords(organizationId, id);
+  const legend = outcomeLegend(new Set(data.rows.map((r) => r.reason)), index);
   const rows = data.rows.map((r) => ({
     year: r.year,
     assetCode: r.assetCode,
@@ -89,7 +92,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const selected = rows.filter((r) => r.selected === "Yes").length;
   const buffer = await buildWorkbook({
     sheetName: "Alternatives",
-    columns: COLUMNS,
+    columns: COLUMNS.map((c) => ({ ...c, header: withIndex(c.header, index) })),
     rows,
     title: `Alternatives considered — ${data.scenarioName}`,
     note:

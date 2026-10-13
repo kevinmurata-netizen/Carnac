@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getConditionBand } from "@/domain/waterline/condition";
 import { getRiskBand } from "@/domain/waterline/risk";
 import { getConditionBands } from "@/server/settings";
+import { getIndexWords } from "@/server/condition-model";
 import { ageInYears } from "@/lib/format";
 
 /**
@@ -25,7 +26,7 @@ import { ageInYears } from "@/lib/format";
 export * from "@/domain/filters";
 import { ROW_ASSET_ID, type FieldType, type FilterField, type FilterTable, type FilterRow, type Criterion } from "@/domain/filters";
 export async function getFilterSchema(organizationId: string): Promise<FilterTable[]> {
-  const [attributes, inspectionFields, areas, materials] = await Promise.all([
+  const [attributes, inspectionFields, areas, materials, index] = await Promise.all([
     prisma.assetAttributeDefinition.findMany({
       where: { assetType: { organizationId } },
       orderBy: { sortOrder: "asc" },
@@ -44,6 +45,7 @@ export async function getFilterSchema(organizationId: string): Promise<FilterTab
       select: { textValue: true },
       distinct: ["textValue"],
     }),
+    getIndexWords(organizationId),
   ]);
 
   const attrType = (dataType: string): FieldType =>
@@ -103,7 +105,7 @@ export async function getFilterSchema(organizationId: string): Promise<FilterTab
       label: "Condition",
       description: "Most recent condition measurement",
       fields: [
-        { key: "condition.score", label: "WCI Score", type: "number" },
+        { key: "condition.score", label: `${index.short} Score`, type: "number" },
         { key: "condition.band", label: "Condition Band", type: "text" },
         { key: "condition.measuredOn", label: "Last Measured", type: "date" },
       ],

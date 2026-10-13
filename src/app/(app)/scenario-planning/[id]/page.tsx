@@ -16,6 +16,8 @@ import {
   type ScenarioOptionCatalogue,
 } from "@/server/scenario-options";
 import { listModelledAssetTypes } from "@/server/modelled-asset-type";
+import { getScenarioIndexWords } from "@/server/condition-model";
+import type { IndexWords } from "@/lib/index-words";
 import { normalizeWeights } from "@/domain/waterline/optimization";
 import { AFTER_TARGET_LABELS, STRATEGY_DESCRIPTIONS, type Strategy } from "@/domain/waterline/scenario";
 import { getConditionBand } from "@/domain/waterline/condition";
@@ -78,6 +80,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     estimate,
     sets,
     assetTypeChoices,
+    index,
   ] = await Promise.all([
     getScenario(organizationId, id),
     getScenarioProjects(organizationId, id),
@@ -92,6 +95,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     estimateRunMs(organizationId, id),
     listScenarioSets(organizationId),
     listModelledAssetTypes(organizationId),
+    getScenarioIndexWords(organizationId, id),
     ]);
   if (!scenario) notFound();
 
@@ -294,7 +298,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           {scenario.ageing && (
             <>
               Network aged {scenario.ageing.years} year{scenario.ageing.years === 1 ? "" : "s"} with no work from{" "}
-              {scenario.ageing.fromYear} to reach the base year (WCI {scenario.ageing.fromAvgCondition} →{" "}
+              {scenario.ageing.fromYear} to reach the base year ({index.short} {scenario.ageing.fromAvgCondition} →{" "}
               {scenario.ageing.toAvgCondition})
               {scenario.lastRunAt && " · "}
             </>
@@ -319,7 +323,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               <span className="font-medium">
                 {formatCurrency(scenario.target.annualBudget, { compact: true })} a year
               </span>{" "}
-              {scenario.inFlightCount != null ? " committed" : ""} reaches WCI {scenario.target.value} by{" "}
+              {scenario.inFlightCount != null ? " committed" : ""} reaches {index.short} {scenario.target.value} by{" "}
               {years[scenario.target.inYears - 1]?.year ?? "the target year"} — year {scenario.target.inYears} of the
               run.{" "}
               {scenario.assumptions.afterTarget === "none"
@@ -330,7 +334,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             </>
           ) : scenario.target.aimedFor != null ? (
             <>
-              WCI {scenario.target.value} cannot be reached by year {scenario.target.inYears}: with these lead times,
+              {index.short} {scenario.target.value} cannot be reached by year {scenario.target.inYears}: with these lead times,
               work decided in time would not be built in time. The earliest it can be reached is year{" "}
               {scenario.target.aimedFor} — {years[scenario.target.aimedFor - 1]?.year ?? ""} — so the run aims for that,
               with{" "}
@@ -343,7 +347,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             </>
           ) : (
             <>
-              WCI {scenario.target.value} cannot be reached by year {scenario.target.inYears}, whatever is spent. The
+              {index.short} {scenario.target.value} cannot be reached by year {scenario.target.inYears}, whatever is spent. The
               best this scenario&apos;s rules and delivery allow by then is {scenario.target.achieved}, and that takes{" "}
               {formatCurrency(scenario.target.annualBudget, { compact: true })} in its heaviest year.{" "}
               {scenario.target.metInYear
@@ -478,7 +482,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
 
           {/* Above the settings form, because on a target run this is the
               answer: what each year costs. */}
-          {scenario.target && <TargetSpendCard scenario={scenario} />}
+          {scenario.target && <TargetSpendCard scenario={scenario} index={index} />}
 
           <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={assetTypeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
@@ -500,7 +504,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                       ? `Target ${scenario.target?.value ?? a.conditionTarget}`
                       : undefined
                   }
-                  series={[{ key: "avgCondition", label: "Network WCI", color: "var(--color-chart-1)" }]}
+                  series={[{ key: "avgCondition", label: `Network ${index.short}`, color: "var(--color-chart-1)" }]}
                 />
               </CardContent>
             </Card>
@@ -884,7 +888,7 @@ function AssumptionsCard({
  * one the work cannot be built by, and the run aims for the earliest year it
  * can be reached instead; the split is then at that year.
  */
-function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
+function TargetSpendCard({ scenario, index }: { scenario: ScenarioDetail; index: IndexWords }) {
   const target = scenario.target!;
   const years = scenario.years;
   const delivery = scenario.inFlightCount != null;
@@ -924,7 +928,9 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
   return (
     <Card className="mt-4">
       <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle>Annual Spend to Reach WCI {target.value}</CardTitle>
+        <CardTitle>
+          Annual Spend to Reach {index.short} {target.value}
+        </CardTitle>
         <ExportButton
           href={`/scenario-planning/${scenario.id}/target-spend/export`}
           title={`Each year of this run: its phase, spend, average condition and segments below ${target.value}`}
@@ -934,7 +940,7 @@ function TargetSpendCard({ scenario }: { scenario: ScenarioDetail }) {
         <p className="text-sm text-muted-foreground">
           {target.aimedFor != null ? (
             <>
-              WCI {target.value} cannot be reached by {targetYear ?? `year ${target.inYears}`}: work decided in time would
+              {index.short} {target.value} cannot be reached by {targetYear ?? `year ${target.inYears}`}: work decided in time would
               not be built in time. The earliest it can be reached is {aimYear}, so the run aims for that —{" "}
               <span className="font-medium text-foreground">{money(target.annualBudget)} committed a year</span> gets
               there

@@ -21,6 +21,7 @@ import { formatCurrency, formatFeetAsMiles, formatNumber, formatStatus } from "@
 import { Droplets, Gauge, Layers, ShieldAlert, Wallet } from "lucide-react";
 import Link from "next/link";
 import { getAssetWords } from "@/server/branding";
+import { getIndexWords } from "@/server/condition-model";
 import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
+  const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/dashboard", "Executive Dashboard");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -157,7 +159,7 @@ export default async function DashboardPage() {
             yDomain={[0, 100]}
             referenceY={NETWORK_CONDITION_TARGET}
             referenceLabel={`Target ${NETWORK_CONDITION_TARGET}`}
-            series={[{ key: "avgCondition", label: "Network WCI", color: "var(--color-chart-1)" }]}
+            series={[{ key: "avgCondition", label: `Network ${index.short}`, color: "var(--color-chart-1)" }]}
           />
         </CardContent>
       </Card>

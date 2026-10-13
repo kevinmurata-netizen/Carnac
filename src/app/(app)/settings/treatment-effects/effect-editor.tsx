@@ -9,6 +9,7 @@ import { CancelOrDiscard } from "@/components/layout/save-actions";
 import { describeEffect, type EffectConditionMode } from "@/domain/waterline/effect";
 import type { EffectSummary } from "@/server/effects";
 import type { EffectPayload } from "./actions";
+import { useIndexWords } from "@/components/layout/index-words";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -100,6 +101,7 @@ export function EffectEditor({
   inDialog?: boolean;
   forTreatment?: string;
 }) {
+  const index = useIndexWords();
   const [draft, setDraft] = useState<EffectDraft>(initial);
   const [saved, setSaved] = useState<EffectDraft>(initial);
   const [busy, setBusy] = useState(false);
@@ -181,7 +183,7 @@ export function EffectEditor({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="effect-value">
-            {draft.conditionMode === "reset" ? "New WCI" : draft.conditionMode === "gain" ? "Points added" : "—"}
+            {draft.conditionMode === "reset" ? `New ${index.short}` : draft.conditionMode === "gain" ? "Points added" : "—"}
           </Label>
           <input
             id="effect-value"

@@ -14,6 +14,7 @@ import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { formatNumber } from "@/lib/format";
 import { Gauge, LineChart, Target, TrendingDown } from "lucide-react";
 import { getAssetWords } from "@/server/branding";
+import { getIndexWords } from "@/server/condition-model";
 import { getPageName } from "@/server/navigation";
 import { ActiveToggle } from "@/components/settings/active-toggle";
 import { toggleDeteriorationActiveAction } from "@/app/(app)/settings/actions";
@@ -37,6 +38,7 @@ export default async function DeteriorationModelsPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
+  const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/deterioration-models", "Deterioration Models");
   const { canWrite: canEdit } = await requirePage("/deterioration-models");
 
@@ -84,7 +86,7 @@ export default async function DeteriorationModelsPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
-          label="Network WCI Today"
+          label={`Network ${index.short} Today`}
           value={current != null ? String(current) : "—"}
           sublabel={`Forecast baseline (inspected ${words.lowerPlural})`}
           icon={Gauge}
@@ -135,7 +137,7 @@ export default async function DeteriorationModelsPage() {
               ]}
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              Average WCI across inspected active segments with no intervention. Two independent model families
+              Average {index.short} across inspected active segments with no intervention. Two independent model families
               forecasting the same network — divergence indicates model uncertainty worth calibrating.
             </p>
           </CardContent>

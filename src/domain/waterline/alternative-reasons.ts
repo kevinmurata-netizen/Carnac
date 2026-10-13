@@ -1,6 +1,7 @@
 import { NOT_RANKED } from "./scenario";
 import { NOT_SELECTED, SELECTED } from "./selection";
 import { MATERIAL_INTERVENTION_CONDITION, MIN_RISK_REDUCTION_PCT } from "./treatment";
+import { withIndex, type IndexWords } from "@/lib/index-words";
 
 /**
  * What each outcome on the alternatives page means, in a sentence or two.
@@ -63,7 +64,7 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
   },
   [NOT_RANKED.belowFloor]: {
     stage: "screened",
-    description: `The segment is below WCI ${MATERIAL_INTERVENTION_CONDITION}, where an option has to cut risk by at least ${MIN_RISK_REDUCTION_PCT}% to be funded. A patch that scores well per dollar but leaves a failing main failing is not bought.`,
+    description: `The segment is below {index} ${MATERIAL_INTERVENTION_CONDITION}, where an option has to cut risk by at least ${MIN_RISK_REDUCTION_PCT}% to be funded. A patch that scores well per dollar but leaves a failing main failing is not bought.`,
   },
 
   // ---- Ranked, then not bought ----
@@ -123,13 +124,16 @@ export const STAGE_LABEL: Record<OutcomeStage, string> = {
  * component can hand it over without the grid importing the engine. */
 export type OutcomeLegendEntry = OutcomeInfo & { stageLabel: string };
 
-/** Descriptions for the outcomes that actually occur, keyed by outcome. One
- * written by an older version of the engine simply has none. */
-export function outcomeLegend(reasons: Iterable<string>): Record<string, OutcomeLegendEntry> {
+/** Descriptions for the outcomes that actually occur, keyed by outcome, in
+ * the scenario's condition index's words. One written by an older version of
+ * the engine simply has none. */
+export function outcomeLegend(reasons: Iterable<string>, index: IndexWords): Record<string, OutcomeLegendEntry> {
   const legend: Record<string, OutcomeLegendEntry> = {};
   for (const reason of reasons) {
     const info = (OUTCOME_INFO as Record<string, OutcomeInfo>)[reason];
-    if (info) legend[reason] = { ...info, stageLabel: STAGE_LABEL[info.stage] };
+    if (info) {
+      legend[reason] = { ...info, description: withIndex(info.description, index), stageLabel: STAGE_LABEL[info.stage] };
+    }
   }
   return legend;
 }

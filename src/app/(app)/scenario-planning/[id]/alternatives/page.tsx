@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ExportButton } from "@/components/layout/export-button";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { outcomeLegend } from "@/domain/waterline/alternative-reasons";
+import { getScenarioIndexWords } from "@/server/condition-model";
 import { AlternativesGrid } from "./alternatives-grid";
 
 /**
@@ -37,6 +38,7 @@ export default async function AlternativesPage({
   const { year: yearParam, asset: assetParam } = await searchParams;
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const index = await getScenarioIndexWords(organizationId, id);
 
   const data = await getScenarioAlternatives(organizationId, id, {
     year: yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : undefined,
@@ -219,7 +221,7 @@ export default async function AlternativesPage({
               key={allYears ? `all:${segment!.id}` : String(data.year)}
               showYear={allYears}
               allYearsBase={allYears ? undefined : `${base}?year=all&asset=`}
-              outcomes={outcomeLegend(new Set(["Selected", ...data.rows.map((r) => r.reason)]))}
+              outcomes={outcomeLegend(new Set(["Selected", ...data.rows.map((r) => r.reason)]), index)}
               rows={data.rows.map((r) => ({
                 year: r.year,
                 assetId: r.assetId,

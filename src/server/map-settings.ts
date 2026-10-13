@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/prisma";
+import { getIndexWords } from "@/server/condition-model";
+import { withIndex } from "@/lib/index-words";
 
 /**
  * What the map's hover card shows.
@@ -31,7 +33,7 @@ export const MAP_FIELDS: MapField[] = [
   { key: "length", label: "Length (ft)", hint: "Segment length" },
   { key: "installYear", label: "Install year", hint: "Year it went in" },
   { key: "age", label: "Age (years)", hint: "Today minus the install date" },
-  { key: "condition", label: "Condition (WCI)", hint: "Latest score, worst is 0" },
+  { key: "condition", label: "Condition ({index})", hint: "Latest score, worst is 0" },
   { key: "conditionBand", label: "Condition band", hint: "Excellent through Very Poor" },
   { key: "riskScore", label: "Risk score", hint: "Latest assessment, 1–25" },
   { key: "riskBand", label: "Risk band", hint: "Low through Very High" },
@@ -64,13 +66,19 @@ export async function getPopupFields(organizationId: string): Promise<string[]> 
   return keys;
 }
 
+/** The fields, labelled in the organization's condition index's words. */
+export async function getMapFields(organizationId: string): Promise<MapField[]> {
+  const index = await getIndexWords(organizationId);
+  return MAP_FIELDS.map((f) => ({ ...f, label: withIndex(f.label, index) }));
+}
+
 /** Resolved to labels, in the order MAP_FIELDS declares, so the card reads the
  * same way regardless of the order they were ticked. */
 export async function getPopupFieldsWithLabels(
   organizationId: string
 ): Promise<Array<{ key: string; label: string }>> {
-  const keys = new Set(await getPopupFields(organizationId));
-  return MAP_FIELDS.filter((f) => keys.has(f.key)).map((f) => ({ key: f.key, label: f.label }));
+  const [keys, fields] = await Promise.all([getPopupFields(organizationId).then((k) => new Set(k)), getMapFields(organizationId)]);
+  return fields.filter((f) => keys.has(f.key)).map((f) => ({ key: f.key, label: f.label }));
 }
 
 export async function setPopupFields(organizationId: string, keys: string[]) {

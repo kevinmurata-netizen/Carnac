@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { ScenarioComparison } from "./scenario-comparison";
 import { ScenarioSetCards } from "./sets/set-cards";
+import { getIndexWords } from "@/server/condition-model";
 import { CopyScenarioSetDialog } from "./sets/copy-set-dialog";
 import { copyScenarioSetAction } from "./sets/actions";
 import { DollarSign, FolderKanban, GitCompare, TrendingUp, Wallet } from "lucide-react";
@@ -27,6 +28,7 @@ import { getPageName } from "@/server/navigation";
 export default async function ScenarioPlanningPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/scenario-planning", "Scenario Planning");
   const conditionBands = await getConditionBands(organizationId);
 
@@ -120,7 +122,7 @@ export default async function ScenarioPlanningPage() {
             </CardContent>
           </Card>
         ) : (
-          <ScenarioSetCards sets={sets} scenarios={scenarios} canEdit={canEdit} />
+          <ScenarioSetCards sets={sets} scenarios={scenarios} canEdit={canEdit} index={index.short} />
         )}
       </section>
 

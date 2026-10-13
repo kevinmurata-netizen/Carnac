@@ -811,6 +811,10 @@ export type AssetTreatmentContext = {
    * criticality. Absent rates the built-in (waterline) factors. */
   cofFactors?: RiskFactorDef[];
   conditionScore: number | null;
+  /** What the asset's condition index calls a score ("WCI"), for the
+   * reasons a recommendation gives. Wording only; absent, a reason quotes
+   * the bare score. */
+  conditionIndexShort?: string;
   material: string | null;
   diameterInches: number | null;
   lengthFt: number | null;
@@ -1007,6 +1011,11 @@ export type Recommendation = {
   noActionReason: string | null;
 };
 
+/** A score as a reason quotes it: "WCI 62", or "62" with no index named. */
+function scoreLabel(ctx: AssetTreatmentContext, score: number): string {
+  return ctx.conditionIndexShort ? `${ctx.conditionIndexShort} ${score}` : String(score);
+}
+
 function bandLabel(condition: number): string {
   if (condition >= 85) return "Excellent";
   if (condition >= 70) return "Good";
@@ -1111,7 +1120,7 @@ export function recommendTreatment(
       alternatives: [],
       noActionReason:
         ctx.conditionScore != null && ctx.conditionScore >= 85
-          ? `Condition is ${bandLabel(ctx.conditionScore)} (WCI ${ctx.conditionScore}) — no intervention is warranted yet.`
+          ? `Condition is ${bandLabel(ctx.conditionScore)} (${scoreLabel(ctx, ctx.conditionScore)}) — no intervention is warranted yet.`
           : `No treatment in the library has a rule this asset matches.`,
     };
   }
@@ -1192,7 +1201,7 @@ function buildReasons(evaluation: TreatmentEvaluation, ctx: AssetTreatmentContex
   const reasons: string[] = [];
 
   if (ctx.conditionScore != null) {
-    reasons.push(`Condition is ${bandLabel(ctx.conditionScore)} (WCI ${ctx.conditionScore}).`);
+    reasons.push(`Condition is ${bandLabel(ctx.conditionScore)} (${scoreLabel(ctx, ctx.conditionScore)}).`);
   } else {
     reasons.push(`Asset has never been inspected — condition is unknown.`);
   }

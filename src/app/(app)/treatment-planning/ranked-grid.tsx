@@ -70,7 +70,14 @@ const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
  * scrolls. The count line always says how many actually matched. */
 const SHOWN = 50;
 
-export function RankedGrid({ rows }: { rows: RankedRow[] }) {
+export function RankedGrid({
+  rows,
+  indexShort,
+}: {
+  rows: RankedRow[];
+  /** The condition index's short form, beside a score. */
+  indexShort: string;
+}) {
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<TreatmentCategory[]>([]);
   const [combinationsOnly, setCombinationsOnly] = useState(false);
@@ -249,7 +256,9 @@ export function RankedGrid({ rows }: { rows: RankedRow[] }) {
                       {row.assetCode}
                     </Link>
                     {row.conditionScore != null && (
-                      <span className="ml-1.5 text-xs text-muted-foreground">WCI {row.conditionScore}</span>
+                      <span className="ml-1.5 text-xs text-muted-foreground">
+                        {indexShort} {row.conditionScore}
+                      </span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -272,7 +281,7 @@ export function RankedGrid({ rows }: { rows: RankedRow[] }) {
                   <TableCell className="text-right tabular-nums">{formatCurrency(row.totalCost)}</TableCell>
                   <TableCell
                     className="text-right tabular-nums"
-                    title={`Condition +${row.conditionGain} WCI · Risk −${row.riskPointsRemoved} pts (criticality excluded) · Life-cycle saving ${formatCurrency(row.lifeCycleSaving)}`}
+                    title={`Condition +${row.conditionGain} ${indexShort} · Risk −${row.riskPointsRemoved} pts (criticality excluded) · Life-cycle saving ${formatCurrency(row.lifeCycleSaving)}`}
                   >
                     {row.expectedBenefit}
                   </TableCell>

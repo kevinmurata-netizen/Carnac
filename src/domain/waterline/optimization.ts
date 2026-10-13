@@ -32,7 +32,7 @@ export const OBJECTIVE_LABELS: Record<ObjectiveKey, string> = {
 };
 
 export const OBJECTIVE_DESCRIPTIONS: Record<ObjectiveKey, string> = {
-  conditionImprovement: "How many WCI points the treatment restores.",
+  conditionImprovement: "How many condition points the treatment restores.",
   riskReduction: "How many risk points (probability × consequence) it removes.",
   lifeCycleCost: "Life-cycle cost avoided versus leaving the asset alone.",
   criticality: "How much the asset matters — customers served, critical facilities, redundancy.",

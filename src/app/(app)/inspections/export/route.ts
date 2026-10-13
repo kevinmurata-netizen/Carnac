@@ -6,6 +6,7 @@ import { getConditionBands } from "@/server/settings";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { inspectionFiltersFromParams, paramsFromRequest, describeFilters } from "@/server/grid-params";
 import { getAssetWords } from "@/server/branding";
+import { getIndexWords } from "@/server/condition-model";
 import { listAssetTypes } from "@/server/assets";
 
 /**
@@ -21,6 +22,7 @@ export async function GET(request: Request) {
 
   const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
+  const index = await getIndexWords(organizationId);
   const params = paramsFromRequest(request);
 
   const [filters, bands] = await Promise.all([
@@ -58,7 +60,7 @@ export async function GET(request: Request) {
     { key: "date", header: "Date", type: "date" },
     { key: "type", header: "Inspection type", type: "text" },
     { key: "inspector", header: "Inspector", type: "text" },
-    { key: "wci", header: "WCI score", type: "number" },
+    { key: "wci", header: `${index.short} score`, type: "number" },
     { key: "band", header: "Condition band", type: "text" },
     { key: "quality", header: "Data quality (%)", type: "integer" },
     { key: "followUp", header: "Follow-up", type: "text" },

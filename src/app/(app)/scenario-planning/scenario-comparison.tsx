@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { SimpleLineChart, type LineSeries } from "@/components/charts/simple-line-chart";
 import { formatCurrency, formatDateTime, formatDuration, formatNumber } from "@/lib/format";
 import { describeWindow } from "@/lib/scenario-sets";
+import { useIndexWords } from "@/components/layout/index-words";
 
 /** Colors are assigned by position in the full list, not by position among the
  * checked ones, so a scenario keeps the same line color as others are toggled. */
@@ -32,6 +33,7 @@ export function ScenarioComparison({
    * read them itself, and the seeded defaults would ignore any edit. */
   bands: ConditionBand[];
 }) {
+  const index = useIndexWords();
   const runnable = useMemo(() => scenarios.filter((s) => s.conditionSeries.length > 0), [scenarios]);
   const [checked, setChecked] = useState<Set<string>>(() => new Set(runnable.map((s) => s.id)));
 
@@ -117,13 +119,13 @@ export function ScenarioComparison({
                 {spread != null ? (
                   <>
                     By {rows.at(-1)?.year}, <span className="font-medium">{finals[0].name}</span> ends highest at{" "}
-                    {finals[0].value} WCI and{" "}
+                    {finals[0].value} {index.short} and{" "}
                     <span className="font-medium">{finals.at(-1)!.name}</span> lowest at {finals.at(-1)!.value} — a
                     spread of {spread} points.
                   </>
                 ) : (
                   <>
-                    {finals[0].name} ends at {finals[0].value} WCI. Check another scenario to compare against it.
+                    {finals[0].name} ends at {finals[0].value} {index.short}. Check another scenario to compare against it.
                   </>
                 )}
                 {sharedTarget == null && selected.length > 1 && (

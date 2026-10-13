@@ -9,6 +9,8 @@ import { ArrowDown, ArrowUp, CalendarRange, Check, Info, Search, X } from "lucid
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 import type { OutcomeLegendEntry } from "@/domain/waterline/alternative-reasons";
+import { useIndexWords } from "@/components/layout/index-words";
+import { withIndex } from "@/lib/index-words";
 
 /** The stages in the order a year's run applies them. Written out rather than
  * imported, so the grid does not pull the engine into the browser; an unknown
@@ -65,7 +67,7 @@ type SortKey =
 
 const COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = [
   { key: "assetCode", label: "Segment" },
-  { key: "conditionBefore", label: "WCI", numeric: true },
+  { key: "conditionBefore", label: "{index}", numeric: true },
   { key: "optionLabel", label: "Option" },
   { key: "category", label: "Category" },
   { key: "cost", label: "Cost", numeric: true },
@@ -116,7 +118,9 @@ export function AlternativesGrid({
   const [sort, setSort] = useState<SortKey>(showYear ? "year" : "priority");
   const [descending, setDescending] = useState(!showYear);
 
-  const columns = showYear ? [{ key: "year" as const, label: "Year", numeric: true }, ...COLUMNS] : COLUMNS;
+  const index = useIndexWords();
+  const indexed = COLUMNS.map((c) => ({ ...c, label: withIndex(c.label, index) }));
+  const columns = showYear ? [{ key: "year" as const, label: "Year", numeric: true }, ...indexed] : indexed;
 
   const presentCategories = useMemo(() => [...new Set(rows.map((r) => r.category))].sort(), [rows]);
   // Commonest first: the reasons that explain most of a year are the ones
