@@ -305,8 +305,8 @@ Priority = criticality ${row.criticalityScore} × scale ${
       </Card>
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Costs scale with diameter (normalized so 8&quot; = 1.0) and, for per-linear-foot treatments, with {words.item}
-        length. Estimates here are initial construction cost only — life-cycle cost including maintenance, failure
+        Costs scale with size where an asset type says they do (Settings › Asset Types, under its measures) and, for
+        per-length treatments, with the {words.item}&apos;s length. Estimates here are initial construction cost only — life-cycle cost including maintenance, failure
         and residual value arrives in Phase 6.
       </p>
       <p className="mt-2 text-xs text-muted-foreground">

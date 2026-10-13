@@ -18,7 +18,7 @@ import { effectiveAgeForCondition, evaluateCurve } from "@/domain/waterline/dete
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { loadCombinations } from "@/server/combinations";
-import { getCurvesByAssetType, getRiskFactorsByType } from "@/server/settings";
+import { getCurvesByAssetType, getRiskFactorsByType, getSizeCostByType } from "@/server/settings";
 import { modelledScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
@@ -319,6 +319,7 @@ async function buildCandidates(
 
   const measuresOf = await getMeasureCodes(organizationId);
   const riskFactorsOf = await getRiskFactorsByType(organizationId);
+  const sizeCostOf = await getSizeCostByType(organizationId);
   for (const asset of assets) {
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const risk = asset.riskAssessments[0];
@@ -347,6 +348,7 @@ async function buildCandidates(
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       assetTypeId: asset.assetTypeId,
       cofFactors: riskFactorsOf(asset.assetTypeId).cof,
+      sizeCostScale: sizeCostOf(asset.assetTypeId),
       criticality: criticalityRating,
       customerType,
       serviceArea: asset.location?.serviceArea ?? null,
@@ -983,6 +985,7 @@ export async function assetTreatmentContext(
 
   const measuresOf = await getMeasureCodes(organizationId);
   const riskFactorsOf = await getRiskFactorsByType(organizationId);
+  const sizeCostOf = await getSizeCostByType(organizationId);
   const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
   const risk = asset.riskAssessments[0];
   const pof = risk?.probabilityScore ?? 3;
@@ -1004,6 +1007,7 @@ export async function assetTreatmentContext(
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       assetTypeId: asset.assetTypeId,
       cofFactors: riskFactorsOf(asset.assetTypeId).cof,
+      sizeCostScale: sizeCostOf(asset.assetTypeId),
       criticality: m.criticality,
       customerType: m.customerType,
       serviceArea: asset.location?.serviceArea ?? null,

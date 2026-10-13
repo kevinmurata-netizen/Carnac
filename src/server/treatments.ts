@@ -26,7 +26,7 @@ import { parseRules } from "@/server/rules";
 import { createStandardRate } from "@/server/cost-rates";
 import { loadCombinations } from "@/server/combinations";
 import { buildLccaEvaluator } from "@/domain/waterline/lcca-evaluator";
-import { getCurvesByAssetType, getRiskFactorsByType } from "@/server/settings";
+import { getCurvesByAssetType, getRiskFactorsByType, getSizeCostByType } from "@/server/settings";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
 import { modelledScaleFactors } from "@/server/scale-factors";
@@ -223,6 +223,7 @@ export async function buildContexts(organizationId: string, assetId?: string) {
 
   const measuresOf = await getMeasureCodes(organizationId);
   const riskFactorsOf = await getRiskFactorsByType(organizationId);
+  const sizeCostOf = await getSizeCostByType(organizationId);
   return assets.map((asset) => {
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const risk = asset.riskAssessments[0];
@@ -240,6 +241,7 @@ export async function buildContexts(organizationId: string, assetId?: string) {
       expectedUsefulLife: asset.expectedUsefulLife ?? 75,
       assetTypeId: asset.assetTypeId,
       cofFactors: riskFactorsOf(asset.assetTypeId).cof,
+      sizeCostScale: sizeCostOf(asset.assetTypeId),
       criticality: m.criticality,
       customerType: m.customerType,
       serviceArea: asset.location?.serviceArea ?? null,

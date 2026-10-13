@@ -274,6 +274,9 @@ async function main() {
       // The demo network is water lines, so they are what the engine models.
       isModelled: true,
       measures: WATERLINE_MEASURES,
+      geometry: "line",
+      // Larger mains cost disproportionately more, normalized to an 8" main.
+      sizeCostScale: { reference: 8, exponent: 0.7 },
     },
   });
 
