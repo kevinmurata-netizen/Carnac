@@ -10,6 +10,7 @@ import {
   createAssetTypeAction,
   saveAssetTypeAction,
   saveMeasuresAction,
+  setModelledAction,
   createAttributeAction,
   saveAttributeAction,
   deleteAttributeAction,
@@ -21,6 +22,7 @@ import {
   moveComponentAction,
 } from "../actions";
 import { listComponentComposition } from "@/server/component-types";
+import { getModellingReadiness } from "@/server/modelling";
 
 /**
  * The kinds of asset this utility holds, each with what it records and what is
@@ -43,9 +45,10 @@ export default async function AssetTypesPage() {
   const permissions = await getSessionPermissions(session!);
   const canEditTemplates = permissions.canWrite(resourceKey("card", "/settings/inspection-templates"));
 
-  const [types, composition] = await Promise.all([
+  const [types, composition, readiness] = await Promise.all([
     listAssetTypeDetails(organizationId),
     listComponentComposition(organizationId),
+    getModellingReadiness(organizationId),
   ]);
 
   return (
@@ -67,6 +70,8 @@ export default async function AssetTypesPage() {
         canEditTemplates={canEditTemplates}
         onSaveType={saveAssetTypeAction}
         onSaveMeasures={saveMeasuresAction}
+        onSetModelled={setModelledAction}
+        readiness={Object.fromEntries(readiness)}
         onCreateType={createAssetTypeAction}
         onCreateAttribute={createAttributeAction}
         onSaveAttribute={saveAttributeAction}

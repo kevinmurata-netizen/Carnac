@@ -6,10 +6,9 @@ import { prisma } from "@/lib/prisma";
  * risk and deterioration models the settings pages edit.
  *
  * Chosen by a flag on the asset type rather than by its code, so no code
- * names an asset class. Until the engine can model several asset types side
- * by side — each with its own library — an organization models exactly one,
- * and `findModelledAssetType` refuses a second rather than letting the engine
- * run one asset class through another's arithmetic.
+ * names an asset class. Several can be modelled side by side, each with its
+ * own library and models; a caller that needs one in particular names it, and
+ * `findModelledAssetType` refuses to guess between several.
  */
 
 /** An asset type filter: the modelled type in this organization — or, given
@@ -87,7 +86,7 @@ export async function findModelledAssetType(organizationId: string): Promise<Mod
   });
   if (types.length > 1) {
     throw new Error(
-      `${types.map((t) => t.name).join(" and ")} are both set to be modelled. Modelling more than one asset type at once isn't supported yet.`
+      `${types.map((t) => t.name).join(" and ")} are both modelled — choose which asset type this is for.`
     );
   }
   return types[0] ?? null;

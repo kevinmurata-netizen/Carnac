@@ -14,7 +14,7 @@ import { WCI_MODEL_NAME, WCI_BANDS, WCI_COMPONENT_WEIGHTS, computeWCI } from "..
 import { WATERLINE_FAILURE_TYPES, FAILURE_SEVERITIES } from "../src/domain/waterline/failure";
 import { insertAssetLineLocation } from "../src/server/geo";
 import { buildNetworkLayout, type NetworkEdge } from "../src/domain/waterline/network-layout";
-import { recomputeRiskForOrganization } from "../src/server/risk";
+import { recomputeRiskForOrganization, seedWaterlineRiskModel } from "../src/server/risk";
 import { generatePredictions, seedDeteriorationModels } from "../src/server/deterioration";
 import { seedTreatmentLibrary } from "../src/server/treatments";
 import { MATERIAL_CURVES } from "../src/domain/waterline/deterioration";
@@ -386,6 +386,7 @@ async function main() {
   console.log(`  ${facilityVisits.visits} site visits, ${facilityVisits.findings} component findings`);
 
   console.log("Computing risk assessments…");
+  await seedWaterlineRiskModel(assetType.id);
   const assessed = await recomputeRiskForOrganization(org.id);
   console.log(`  assessed ${assessed} assets`);
 

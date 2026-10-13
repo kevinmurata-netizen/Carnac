@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, ClipboardList, Gauge, Pencil, Plus, Tags, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CircleDashed, ClipboardList, Cpu, Gauge, Pencil, Plus, Tags, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import type { AssetTypeDetail, AttributeDetail } from "@/server/settings";
 import type { ComponentComposition } from "@/server/component-types";
 import { ComponentsSection } from "./components-section";
 import { MEASURE_ROLES } from "@/lib/measure-roles";
+import type { ReadinessItem } from "@/server/modelling";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -88,6 +89,8 @@ export function AssetTypeList({
   canEditTemplates,
   onSaveType,
   onSaveMeasures,
+  onSetModelled,
+  readiness,
   onCreateType,
   onCreateAttribute,
   onSaveAttribute,
@@ -107,6 +110,9 @@ export function AssetTypeList({
   canEditTemplates: boolean;
   onSaveType: Action;
   onSaveMeasures: Action;
+  onSetModelled: Action;
+  /** Each type's modelling checklist, by type id. */
+  readiness: Record<string, ReadinessItem[]>;
   onCreateType: Action;
   onCreateAttribute: Action;
   onSaveAttribute: Action;
@@ -126,6 +132,7 @@ export function AssetTypeList({
   const [editingAttribute, setEditingAttributeDraft] = useState<AttributeDraft | null>(null);
   const [editingTemplate, setEditingTemplateDraft] = useState<TemplateDraft | null>(null);
   const [editingMeasures, setEditingMeasuresDraft] = useState<MeasuresDraft | null>(null);
+  const [modelling, setModellingDraft] = useState<AssetTypeDetail | null>(null);
 
   // Opening a dialog clears the last message, so an old error can't greet a
   // new dialog as if it were about it.
@@ -139,6 +146,13 @@ export function AssetTypeList({
   const setEditingAttribute = opening(setEditingAttributeDraft);
   const setEditingTemplate = opening(setEditingTemplateDraft);
   const setEditingMeasures = opening(setEditingMeasuresDraft);
+  const setModelling = opening(setModellingDraft);
+  const switchModelled = (type: AssetTypeDetail, on: boolean, close: () => void) => {
+    const formData = new FormData();
+    formData.set("id", type.id);
+    formData.set("modelled", on ? "on" : "off");
+    submit(onSetModelled, formData, close);
+  };
 
   /** A refused save leaves its dialog open, over the page-level message, so
    * the refusal is repeated inside the dialog where it can be read. */
@@ -187,6 +201,7 @@ export function AssetTypeList({
               <span className="text-xs text-muted-foreground">
                 {formatNumber(type.assetCount)} records · drawn as {type.geometry === "line" ? "lines" : "points"}
               </span>
+              {type.isModelled && <Badge>Modelled</Badge>}
             </div>
             {canEdit && (
               <Button
@@ -295,6 +310,16 @@ export function AssetTypeList({
                 </div>
               )}
             </section>
+
+            {/* Modelling ----------------------------------------------- */}
+            <ModellingSection
+              type={type}
+              items={readiness[type.id] ?? []}
+              canEdit={canEdit}
+              pending={pending}
+              onModel={() => setModelling(type)}
+              onStop={() => switchModelled(type, false, () => {})}
+            />
 
             {/* Measures ------------------------------------------------ */}
             <MeasuresSection type={type} canEdit={canEdit} onEdit={() => setEditingMeasures({ type })} />
@@ -438,6 +463,36 @@ export function AssetTypeList({
               }
               onCancel={() => setEditingAttribute(null)}
             />
+          )}
+        </EditorDialog>
+      )}
+
+      {/* Modelling a type ------------------------------------------------ */}
+      {canEdit && (
+        <EditorDialog
+          open={modelling != null}
+          onClose={() => setModelling(null)}
+          title={`Model ${modelling?.name ?? ""}`}
+          description="Its assets join scenarios, Treatment Planning, work plans, risk and forecasts from the next run, each on its own type's models and treatments."
+        >
+          {dialogError}
+          {modelling && (
+            <div className="space-y-4">
+              <ReadinessList items={readiness[modelling.id] ?? []} linked={false} />
+              <p className="text-xs text-muted-foreground">
+                Anything not ready reads as unknown rather than stopping the type from being modelled. Where it has
+                none, a condition index (with no components yet) and a starter risk model — condition, age, failures
+                and criticality — are created, so each can be set up under Settings.
+              </p>
+              <div data-dialog-actions className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setModelling(null)}>
+                  Cancel
+                </Button>
+                <Button type="button" disabled={pending} onClick={() => switchModelled(modelling, true, () => setModelling(null))}>
+                  {pending ? "Modelling…" : `Model ${modelling.name}`}
+                </Button>
+              </div>
+            </div>
           )}
         </EditorDialog>
       )}
@@ -939,5 +994,90 @@ function MeasuresForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Whether the engine models this type, the switch, and what it needs to be
+ * worth modelling. The links go to each setting's tab for the type, which
+ * those screens only offer once it is modelled.
+ */
+function ModellingSection({
+  type,
+  items,
+  canEdit,
+  pending,
+  onModel,
+  onStop,
+}: {
+  type: AssetTypeDetail;
+  items: ReadinessItem[];
+  canEdit: boolean;
+  pending: boolean;
+  onModel: () => void;
+  onStop: () => void;
+}) {
+  const ready = items.filter((i) => i.ok).length;
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-medium">
+          <Cpu className="h-4 w-4 text-muted-foreground" />
+          Modelling{" "}
+          <span className="text-muted-foreground">
+            ({type.isModelled ? "on" : "off"} · {ready} of {items.length} ready)
+          </span>
+        </h3>
+        {canEdit &&
+          (type.isModelled ? (
+            <ConfirmDelete
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              title={`Stop modelling ${type.name}?`}
+              description="Its assets leave scenarios, Treatment Planning, work plans, risk and forecasts from the next run. Its models, treatments and past results are kept, so it can be modelled again."
+              confirmLabel="Stop modelling"
+              onConfirm={onStop}
+            >
+              Stop modelling
+            </ConfirmDelete>
+          ) : (
+            <Button type="button" size="sm" variant="outline" onClick={onModel}>
+              Model this type
+            </Button>
+          ))}
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        {type.isModelled
+          ? "Its assets are in scenarios, Treatment Planning, work plans, risk and forecasts, on its own models and treatments."
+          : "Not modelled: its assets are recorded and inspected, but not planned for."}
+      </p>
+      <ReadinessList items={items} linked={type.isModelled} />
+    </section>
+  );
+}
+
+function ReadinessList({ items, linked }: { items: ReadinessItem[]; linked: boolean }) {
+  return (
+    <ul className="divide-y rounded-md border">
+      {items.map((item) => (
+        <li key={item.key} className="flex items-start gap-2 px-3 py-2 text-sm">
+          {item.ok ? (
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+          ) : (
+            <CircleDashed className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          )}
+          <div className="min-w-0 flex-1">
+            <span className="font-medium">{item.label}</span>
+            <span className="text-muted-foreground"> — {item.detail}</span>
+          </div>
+          {linked && (
+            <Link href={item.href} className="shrink-0 text-xs text-primary hover:underline">
+              Set up →
+            </Link>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

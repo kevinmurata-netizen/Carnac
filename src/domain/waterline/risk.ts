@@ -103,6 +103,26 @@ export const DEFAULT_COF_FACTORS: RiskFactorDef[] = [
   },
 ];
 
+/**
+ * What a newly modelled asset type's risk model starts with: the factors any
+ * asset has — its condition, its age against expected life, its recent
+ * failures — and, for consequence, its criticality rating. Nothing a water
+ * main alone has. Each is edited from Settings › Risk Models.
+ */
+export const STARTER_POF_FACTORS: RiskFactorDef[] = DEFAULT_POF_FACTORS.filter((f) =>
+  ["condition", "ageRatio", "failures"].includes(f.source)
+).map((f) => ({ ...f, label: f.source === "condition" ? "Condition" : f.label, prefix: undefined }));
+
+export const STARTER_COF_FACTORS: RiskFactorDef[] = [
+  {
+    key: "CRITICALITY",
+    name: "Criticality",
+    source: "criticality",
+    ratings: { Critical: 5, High: 4, Moderate: 3, Low: 1 },
+    defaultWeight: 1,
+  },
+];
+
 /** The built-in weighting of a set of factors, by key. */
 export function defaultWeights(defs: RiskFactorDef[]): Record<string, number> {
   return Object.fromEntries(defs.map((d) => [d.key, d.defaultWeight]));
