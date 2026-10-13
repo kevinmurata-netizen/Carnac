@@ -15,6 +15,7 @@ import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets } from "@/server/category-weight-sets";
 import { ENTRIES, latestEntry } from "@/content/build-log";
 import { getAssetWords } from "@/server/branding";
+import { withAssetWords } from "@/lib/branding";
 import { SETTINGS_CARDS, SETTINGS_TABS, type SettingsTabKey } from "@/config/settings-cards";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -213,7 +214,7 @@ export default async function SettingsPage({
             icon={<card.icon className="h-5 w-5" />}
             title={name(card.href, card.title)}
             summary={summaries[card.key] ?? ""}
-            detail={card.detail}
+            detail={withAssetWords(card.detail, words)}
             readOnly={!permissions.canWrite(resourceKey("card", card.href))}
             swatches={card.key === "condition-models" ? conditionModel.bands.map((b) => b.color) : undefined}
           />

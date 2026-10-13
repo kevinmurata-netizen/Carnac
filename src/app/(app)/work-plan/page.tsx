@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { listWorkPlans } from "@/server/workplans";
 import { getAnnualBudget } from "@/server/scenarios";
@@ -24,6 +25,7 @@ const inputClass =
 export default async function WorkPlanPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/work-plan", "Work Plan");
 
   const [plans, annualBudget, weightSets, categorySets, scenarios] = await Promise.all([
@@ -43,7 +45,7 @@ export default async function WorkPlanPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description="Multi-year capital program: every option on every segment scored, then the best next step up bought anywhere on the network until each year's budget runs out"
+        description={`Multi-year capital program: every option on every ${words.item} scored, then the best next step up bought anywhere on the network until each year's budget runs out`}
       />
 
       <Card>
@@ -162,7 +164,7 @@ export default async function WorkPlanPage() {
           <CardHeader>
             <CardTitle>Generate a Work Plan</CardTitle>
             <p className="text-sm font-normal text-muted-foreground">
-              A plan with no scenario behind it: every option on every segment scored, then bought year by year against
+              A plan with no scenario behind it: every option on every {words.item} scored, then bought year by year against
               the budget below.
             </p>
           </CardHeader>
@@ -212,7 +214,7 @@ export default async function WorkPlanPage() {
               <div>
                 <div className="mb-2 text-sm font-medium text-foreground">How the work is ranked</div>
                 <p className="mb-3 text-xs text-muted-foreground">
-                  Every option on every segment is scored as criticality × scale × category weight × expected benefit
+                  Every option on every {words.item} is scored as criticality × scale × category weight × expected benefit
                   ÷ cost — the same published formula Treatment Planning ranks by and scenarios buy by. The plan then
                   buys the best next step up anywhere on the network until each year&apos;s money runs out.{" "}
                   <Link href="/settings/scenario-weights" className="text-primary hover:underline">

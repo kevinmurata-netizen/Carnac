@@ -36,7 +36,7 @@ export default async function ModelResultsPage({
     <div>
       <PageHeader
         title={pageTitle}
-        description={`Where a scenario actually leaves the network — every ${words.lower} segment traced from its starting condition band to its ending one`}
+        description={`Where a scenario actually leaves the network — every ${words.item} traced from its starting condition band to its ending one`}
       />
 
       {runnable.length === 0 ? (
@@ -78,7 +78,7 @@ export default async function ModelResultsPage({
                 <KpiCard
                   label={`Average ${index.short}`}
                   value={`${flow.startAvg} → ${flow.endAvg}`}
-                  sublabel={`Across ${formatNumber(flow.assetCount)} segments over ${flow.years} years`}
+                  sublabel={`Across ${formatNumber(flow.assetCount)} ${words.items} over ${flow.years} years`}
                   icon={Gauge}
                 />
                 <KpiCard
@@ -111,8 +111,8 @@ export default async function ModelResultsPage({
                     </span>
                   </CardTitle>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Each band on the left is where segments started; each on the right is where they finished. Ribbon
-                    thickness is the number of segments taking that path — green gained a band, red lost one, grey
+                    Each band on the left is where {words.items} started; each on the right is where they finished. Ribbon
+                    thickness is the number of {words.items} taking that path — green gained a band, red lost one, grey
                     stayed put.
                   </p>
                 </CardHeader>
@@ -130,12 +130,12 @@ export default async function ModelResultsPage({
                     <ExportButton
                       href="/model-results/export"
                       count={flow.assetCount}
-                      title={`Download all ${flow.links.length} transitions and every segment behind them as an .xlsx file`}
+                      title={`Download all ${flow.links.length} transitions and every ${words.item} behind them as an .xlsx file`}
                     />
                     <CardTitle>
                       Transitions{" "}
                       <span className="text-sm font-normal text-muted-foreground">
-                        ({flow.links.length}) — click a row for the segments behind it
+                        ({flow.links.length}) — click a row for the {words.items} behind it
                       </span>
                     </CardTitle>
                   </div>
@@ -146,7 +146,7 @@ export default async function ModelResultsPage({
               </Card>
 
               <p className="mt-3 text-xs text-muted-foreground">
-                {formatNumber(flow.treatedCount)} segments were treated at least once and{" "}
+                {formatNumber(flow.treatedCount)} {words.items} were treated at least once and{" "}
                 {formatNumber(flow.untreatedCount)} were never funded. This is computed by re-running the simulation
                 against the treatment library, deterioration curves and condition bands as they are configured right
                 now — so it reflects current settings rather than whatever was stored when the scenario was last run.

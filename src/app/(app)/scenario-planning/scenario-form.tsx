@@ -1,5 +1,7 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
+import { withAssetWords } from "@/lib/branding";
 import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -26,13 +28,14 @@ import type { RunEstimate } from "@/server/run-estimate";
 import type { OptionChoice } from "@/server/scenario-options";
 
 function Strategies() {
+  const words = useAssetWords();
   return (
     <div className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
       <div className="mb-1 font-medium text-foreground">Strategies</div>
       <ul className="space-y-0.5">
         {STRATEGIES.map((s) => (
           <li key={s}>
-            <span className="font-medium">{s}</span> — {STRATEGY_DESCRIPTIONS[s]}
+            <span className="font-medium">{s}</span> — {withAssetWords(STRATEGY_DESCRIPTIONS[s], words)}
           </li>
         ))}
       </ul>

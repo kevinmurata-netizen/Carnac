@@ -1,5 +1,7 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
+import { withAssetWords } from "@/lib/branding";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -66,7 +68,7 @@ type SortKey =
   | "reason";
 
 const COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = [
-  { key: "assetCode", label: "Segment" },
+  { key: "assetCode", label: "{Item}" },
   { key: "conditionBefore", label: "{index}", numeric: true },
   { key: "optionLabel", label: "Option" },
   { key: "category", label: "Category" },
@@ -109,6 +111,7 @@ export function AlternativesGrid({
    * already. */
   allYearsBase?: string;
 }) {
+  const words = useAssetWords();
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<TreatmentCategory[]>([]);
   const [reasons, setReasons] = useState<string[]>([]);
@@ -119,7 +122,7 @@ export function AlternativesGrid({
   const [descending, setDescending] = useState(!showYear);
 
   const index = useIndexWords();
-  const indexed = COLUMNS.map((c) => ({ ...c, label: withIndex(c.label, index) }));
+  const indexed = COLUMNS.map((c) => ({ ...c, label: withAssetWords(withIndex(c.label, index), words) }));
   const columns = showYear ? [{ key: "year" as const, label: "Year", numeric: true }, ...indexed] : indexed;
 
   const presentCategories = useMemo(() => [...new Set(rows.map((r) => r.category))].sort(), [rows]);
@@ -247,7 +250,7 @@ export function AlternativesGrid({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search segment, option or outcome"
+          placeholder={`Search ${words.item}, option or outcome`}
           aria-label="Search alternatives"
           className="h-9 w-full rounded-md border border-input bg-background pr-2 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
@@ -457,10 +460,10 @@ export function AlternativesGrid({
                       row.incremental == null
                         ? row.priority == null
                           ? "Ruled out before scoring."
-                          : "Never worth buying on this segment — another option gives more for the money."
+                          : `Never worth buying on this ${words.item} — another option gives more for the money.`
                         : row.incrementalOver
                           ? `What it adds over ${row.incrementalOver}, per dollar of the extra it costs`
-                          : "The cheapest option worth having on this segment, so measured against doing nothing"
+                          : `The cheapest option worth having on this ${words.item}, so measured against doing nothing`
                     }
                   >
                     {row.incremental ?? "—"}

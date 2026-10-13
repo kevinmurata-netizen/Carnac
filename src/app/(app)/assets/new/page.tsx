@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getNewAssetForm } from "@/server/assets";
 import { PageHeader } from "@/components/layout/page-header";
@@ -19,6 +20,7 @@ export default async function NewAssetPage({ searchParams }: { searchParams: Pro
   const session = await auth();
   if (!canRecordFieldData(session)) redirect("/assets");
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
 
   if (!type) redirect("/assets");
   const form = await getNewAssetForm(organizationId, type);
@@ -28,12 +30,13 @@ export default async function NewAssetPage({ searchParams }: { searchParams: Pro
   if (form.type.geometry === "line") {
     return (
       <div>
-        <PageHeader title={`New ${form.type.name} segment`} />
+        <PageHeader title={`New ${form.type.name} ${words.item}`} />
         <Card>
           <CardContent className="space-y-2 py-10 text-center text-sm text-muted-foreground">
-            <p>A segment is a line with two ends, a length and a place in the network — more than a form can supply.</p>
             <p>
-              {form.type.name} segments come in through{" "}
+              A {words.item} is a line with two ends, a length and a place in the network — more than a form can supply.</p>
+            <p>
+              {form.type.name} {words.items} come in through{" "}
               <Link href="/administration/import" className="text-primary hover:underline">
                 Data Import
               </Link>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { requireCard } from "@/server/guard";
 import { getPageName } from "@/server/navigation";
 import { listLeadTimeSets } from "@/server/lead-times";
@@ -28,6 +29,7 @@ import {
 export default async function LeadTimesPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const [pageTitle, sets, treatments] = await Promise.all([
     getPageName(organizationId, "/settings/lead-times", "Delivery Lead Times"),
     listLeadTimeSets(organizationId),
@@ -68,7 +70,7 @@ export default async function LeadTimesPage() {
       <div className="mt-4 space-y-2 text-xs text-muted-foreground">
         <p>
           A scenario runs by the set chosen on it: it programs work in one year, draws the money in another and
-          improves the network in a third, judging each option against the segment it will meet in the year it would
+          improves the network in a third, judging each option against the {words.item} it will meet in the year it would
           be built. A scenario with none chosen decides, pays for and builds in the same year, as every scenario did
           before these existed.
         </p>

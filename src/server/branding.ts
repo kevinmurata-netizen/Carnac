@@ -35,6 +35,8 @@ export async function updateBranding(organizationId: string, input: Record<strin
     logo: input.logo as Branding["logo"],
     assetSingular: input.assetSingular?.trim() ?? "",
     assetPlural: input.assetPlural?.trim() ?? "",
+    itemSingular: input.itemSingular?.trim().toLowerCase() ?? "",
+    itemPlural: input.itemPlural?.trim().toLowerCase() ?? "",
   };
   if (!value.productName) throw new Error("The product needs a name");
   if (value.productName.length > 30) throw new Error("Keep the product name under 30 characters — it sits in the sidebar");
@@ -42,6 +44,10 @@ export async function updateBranding(organizationId: string, input: Record<strin
   if (!value.assetSingular || !value.assetPlural) throw new Error("Say what one asset is called, and several");
   if (value.assetSingular.length > 24 || value.assetPlural.length > 24) {
     throw new Error("Keep the asset words under 24 characters — they head columns and pages");
+  }
+  if (!value.itemSingular || !value.itemPlural) throw new Error("Say what one asset is called in a sentence, and several");
+  if (value.itemSingular.length > 24 || value.itemPlural.length > 24) {
+    throw new Error("Keep the in-sentence words under 24 characters");
   }
   if (!BRAND_LOGOS.some((l) => l.key === value.logo)) throw new Error("Choose a logo");
 

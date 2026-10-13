@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getBranding } from "@/server/branding";
+import { assetWords, type AssetWords, type Branding } from "@/lib/branding";
 import {
   getFilterSchema,
   loadFilterRows,
@@ -75,10 +77,9 @@ function describeSchema(schema: FilterTable[]): string {
     .join("\n\n");
 }
 
-const SEARCH_TOOL: Anthropic.Tool = {
+const searchTool = (words: AssetWords): Anthropic.Tool => ({
   name: "search_segments",
-  description:
-    "Find waterline segments matching a set of criteria. Use this whenever the question asks which, how many, or for a list of segments.",
+  description: `Find ${words.items} matching a set of criteria. Use this whenever the question asks which, how many, or for a list of ${words.items}.`,
   input_schema: {
     type: "object",
     properties: {
@@ -93,7 +94,7 @@ const SEARCH_TOOL: Anthropic.Tool = {
       },
       criteria: {
         type: "array",
-        description: "The criteria. An empty array means every segment.",
+        description: `The criteria. An empty array means every ${words.item}.`,
         items: {
           type: "object",
           properties: {
@@ -121,12 +122,13 @@ const SEARCH_TOOL: Anthropic.Tool = {
     additionalProperties: false,
   },
   strict: true,
-};
+});
 
-function systemPrompt(schema: FilterTable[], today: string): string {
-  return `You help staff at a water utility ask questions about their waterline network in CARNAC, an asset management system.
+function systemPrompt(schema: FilterTable[], today: string, branding: Branding): string {
+  const words = assetWords(branding);
+  return `You help staff at a ${words.lower} utility ask questions about their ${words.lower} network in ${branding.productName}, an asset management system.
 
-When the question asks which segments, how many, or for a list, call search_segments. Translate the question into criteria over the schema below.
+When the question asks which ${words.items}, how many, or for a list, call search_segments. Translate the question into criteria over the schema below.
 
 Rules that matter:
 - Use only field keys that appear in the schema, spelled exactly as shown. Never invent one.
@@ -227,7 +229,7 @@ export async function askAssistant(organizationId: string, question: string): Pr
   // guess, and a wrong date range looks exactly like a right one.
   const today = new Date().toISOString().slice(0, 10);
 
-  const schema = await getFilterSchema(organizationId);
+  const [schema, branding] = await Promise.all([getFilterSchema(organizationId), getBranding(organizationId)]);
   const byKey = fieldIndex(schema);
 
   const client = new Anthropic();
@@ -245,11 +247,11 @@ export async function askAssistant(organizationId: string, question: string): Pr
     // cached block: a prompt cache lasts minutes, so a once-a-day change costs
     // nothing, and splitting them would complicate the prefix for no gain.
     system: [
-      { type: "text", text: systemPrompt(schema, today), cache_control: { type: "ephemeral" } },
+      { type: "text", text: systemPrompt(schema, today, branding), cache_control: { type: "ephemeral" } },
     ],
       // Left on auto rather than forced: a question that is not about segment
       // data should come back as words, not a contorted search.
-      tools: [SEARCH_TOOL],
+      tools: [searchTool(assetWords(branding))],
       output_config: { effort: "low" },
       messages: [{ role: "user", content: trimmed }],
     });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
@@ -49,6 +50,7 @@ export function CombineDialog({
   year: number;
   years: number[];
 }) {
+  const words = useAssetWords();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -111,7 +113,7 @@ export function CombineDialog({
         description={`Everything you pick becomes one project with ${treatment}. Mobilization is charged once, so the project costs less than the same treatments done apart.`}
       >
         <div className="space-y-4">
-          {busy && !rows && <p className="py-6 text-sm text-muted-foreground">Looking for other work on this segment…</p>}
+          {busy && !rows && <p className="py-6 text-sm text-muted-foreground">Looking for other work on this {words.item}…</p>}
 
           {rows && others.length === 0 && (
             <p className="rounded-md border border-dashed px-3 py-4 text-sm text-muted-foreground">
@@ -211,7 +213,7 @@ export function CombineDialog({
                 <p className="flex items-start gap-2 text-amber-700 dark:text-amber-500">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    {preview.refused.join(", ")} {preview.refused.length === 1 ? "is" : "are"} refused on this segment
+                    {preview.refused.join(", ")} {preview.refused.length === 1 ? "is" : "are"} refused on this {words.item}
                     by {preview.refused.length === 1 ? "its" : "their"} own rules. The project can still be made, and the
                     rows will say so.
                   </span>

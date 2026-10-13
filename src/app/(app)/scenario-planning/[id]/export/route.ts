@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
+import { withAssetWords } from "@/lib/branding";
 import { getScenario, getScenarioProjects } from "@/server/scenarios";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 
@@ -22,7 +24,7 @@ const COLUMNS: ExcelColumn[] = [
   { key: "year", header: "Paid Year", type: "integer", width: 11 },
   { key: "programmedYear", header: "Decided Year", type: "integer", width: 13 },
   { key: "buildYear", header: "Built Year", type: "integer", width: 11 },
-  { key: "assetCode", header: "Segment", width: 14 },
+  { key: "assetCode", header: "{Item}", width: 14 },
   { key: "serviceArea", header: "Service Area", width: 18 },
   { key: "treatment", header: "Treatment", width: 22 },
   // Rows sharing a bundle are one visit, with the cost divided between them
@@ -42,6 +44,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const { id } = await params;
   const organizationId = session.user.organizationId;
+  const words = await getAssetWords(organizationId);
 
   const [scenario, projects] = await Promise.all([
     getScenario(organizationId, id),
@@ -54,7 +57,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const buffer = await buildWorkbook({
     sheetName: "Funded Projects",
-    columns: COLUMNS,
+    columns: COLUMNS.map((c) => ({ ...c, header: withAssetWords(c.header, words) })),
     rows: projects.map((p) => ({ ...p })),
     title: `${scenario.name} — Funded Projects`,
     // The run date rather than today's, because a scenario's results are

@@ -59,11 +59,11 @@ export const STRATEGIES = [
 export type Strategy = (typeof STRATEGIES)[number];
 
 export const STRATEGY_DESCRIPTIONS: Record<Strategy, string> = {
-  "risk-based": "Fund the highest-risk segments first (risk = probability × consequence).",
-  "condition-based": "Fund the worst-condition segments first, regardless of consequence.",
+  "risk-based": "Fund the highest-risk {items} first (risk = probability × consequence).",
+  "condition-based": "Fund the worst-condition {items} first, regardless of consequence.",
   "lowest-lifecycle-cost": "Fund the work that removes the most risk per dollar spent.",
   "replacement-only": "Renewal only — no interim repair or rehabilitation.",
-  preventive: "Treat segments while still in Fair condition, before they fail.",
+  preventive: "Treat {items} while still in Fair condition, before they fail.",
 };
 
 /**

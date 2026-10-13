@@ -1,5 +1,7 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
+import { withAssetWords } from "@/lib/branding";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -50,7 +52,7 @@ export type RankedRow = {
 type SortKey = "priority" | "assetCode" | "optionLabel" | "category" | "totalCost" | "expectedBenefit";
 
 const COLUMNS: Array<{ key: SortKey; label: string; numeric?: boolean }> = [
-  { key: "assetCode", label: "Segment" },
+  { key: "assetCode", label: "{Item}" },
   { key: "optionLabel", label: "Option" },
   { key: "category", label: "Category" },
   { key: "totalCost", label: "Total Cost", numeric: true },
@@ -78,6 +80,7 @@ export function RankedGrid({
   /** The condition index's short form, beside a score. */
   indexShort: string;
 }) {
+  const words = useAssetWords();
   const [query, setQuery] = useState("");
   const [categories, setCategories] = useState<TreatmentCategory[]>([]);
   const [combinationsOnly, setCombinationsOnly] = useState(false);
@@ -151,7 +154,7 @@ export function RankedGrid({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search segment, option or treatment"
+            placeholder={`Search ${words.item}, option or treatment`}
             aria-label="Search ranked options"
             className="h-9 w-full rounded-md border border-input bg-background pr-2 pl-8 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
@@ -226,7 +229,7 @@ export function RankedGrid({
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12">#</TableHead>
-                {COLUMNS.map((column) => (
+                {COLUMNS.map((c) => ({ ...c, label: withAssetWords(c.label, words) })).map((column) => (
                   <TableHead key={column.key} className={column.numeric ? "text-right" : undefined}>
                     <button
                       type="button"
@@ -269,7 +272,7 @@ export function RankedGrid({
                     {row.isRecommended && (
                       <span
                         className="ml-1.5 text-xs text-muted-foreground"
-                        title="Also what this segment's own recommendation picks, on its separate risk-reduction-per-dollar basis with the professional overrides applied."
+                        title={`Also what this ${words.item}'s own recommendation picks, on its separate risk-reduction-per-dollar basis with the professional overrides applied.`}
                       >
                         · recommended
                       </span>

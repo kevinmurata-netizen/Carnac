@@ -1,4 +1,5 @@
 import { auth } from "@/lib/auth";
+import { getAssetWords } from "@/server/branding";
 import { getSessionPermissions } from "@/server/permissions";
 import { assistantConfigured } from "@/server/assistant";
 import { getConsoleSchema } from "@/server/sql-console";
@@ -11,6 +12,7 @@ import { runSqlAction, translateToSqlAction } from "./sql-actions";
 export default async function AskPage() {
   const session = await auth();
   const organizationId = session!.user.organizationId;
+  const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/ask", "AI Assistant");
   const configured = assistantConfigured();
   const isAdmin = (await getSessionPermissions(session!)).isAdministrator;
@@ -23,7 +25,7 @@ export default async function AskPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description="Ask about the network in plain English and get the segments back."
+        description={`Ask about the network in plain English and get the ${words.items} back.`}
       />
 
       {!configured && (

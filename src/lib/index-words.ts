@@ -47,8 +47,9 @@ export function sharedIndexWords(modelNames: string[]): IndexWords {
   return all.every((w) => w.short === first.short && w.name === first.name) ? first : GENERIC_INDEX_WORDS;
 }
 
-/** Text written with "{index}" where the short form goes — a column heading
- * kept as a constant, a description written once for every index. */
+/** Text written with "{index}" where the short form goes, or "{indexName}"
+ * for the full name — a column heading kept as a constant, a description
+ * written once for every index. */
 export function withIndex(text: string, words: IndexWords): string {
-  return text.replaceAll("{index}", words.short);
+  return text.replaceAll("{indexName}", words.name).replaceAll("{index}", words.short);
 }

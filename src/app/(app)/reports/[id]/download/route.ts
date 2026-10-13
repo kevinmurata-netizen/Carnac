@@ -2,13 +2,18 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getReport, toCsv, reportFileName } from "@/server/reports";
 import { getIndexWords } from "@/server/condition-model";
+import { getAssetWords } from "@/server/branding";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
   if (!session) return new NextResponse("Unauthorized", { status: 401 });
 
   const { id } = await params;
-  const report = getReport(id, await getIndexWords(session.user.organizationId));
+  const report = getReport(
+    id,
+    await getIndexWords(session.user.organizationId),
+    await getAssetWords(session.user.organizationId)
+  );
   if (!report) return new NextResponse("Report not found", { status: 404 });
 
   const rows = await report.run(session.user.organizationId);

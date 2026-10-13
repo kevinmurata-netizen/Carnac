@@ -7,6 +7,7 @@ import { getBranding } from "@/server/branding";
 import { assetWords } from "@/lib/branding";
 import { getIndexWords } from "@/server/condition-model";
 import { IndexWordsProvider } from "@/components/layout/index-words";
+import { AssetWordsProvider } from "@/components/layout/asset-words";
 
 /** The browser tab follows the organization's branding once someone is in. */
 export async function generateMetadata() {
@@ -55,7 +56,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
            again. */
         roleName={permissions.roleName}
       >
-        <IndexWordsProvider words={index}>{children}</IndexWordsProvider>
+        <AssetWordsProvider words={words}>
+          <IndexWordsProvider words={index}>{children}</IndexWordsProvider>
+        </AssetWordsProvider>
       </AppShell>
     </BreadcrumbProvider>
   );

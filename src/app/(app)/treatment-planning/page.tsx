@@ -99,7 +99,7 @@ export default async function TreatmentPlanningPage({
     <div>
       <PageHeader
         title={pageTitle}
-        description="Applicable treatments, effects and cost for every segment — each recommendation carries its reasoning"
+        description={`Applicable treatments, effects and cost for every ${words.item} — each recommendation carries its reasoning`}
       />
 
       {/* Keyed on the applied values so browser Back, which changes them
@@ -114,7 +114,7 @@ export default async function TreatmentPlanningPage({
           icon={DollarSign}
         />
         <KpiCard
-          label="Segments Needing Work"
+          label={`${words.itemsTitle} Needing Work`}
           value={formatNumber(recommendations.rows.length)}
           sublabel="Have a recommended treatment"
           icon={Wrench}
@@ -153,7 +153,7 @@ export default async function TreatmentPlanningPage({
           <CardTitle>Recommended Treatments — Highest Risk First</CardTitle>
           <ExportButton
             href={`/treatment-planning/export${exportQuery ? `?${exportQuery}` : ""}`}
-            title={`All ${formatNumber(recommendations.rows.length)} segments with a recommendation, not the 25 shown`}
+            title={`All ${formatNumber(recommendations.rows.length)} ${words.items} with a recommendation, not the 25 shown`}
           />
         </CardHeader>
         <CardContent className="p-0">
@@ -239,7 +239,7 @@ Priority = criticality ${row.criticalityScore} × scale ${
           </Table>
           {recommendations.rows.length > topRows.length && (
             <div className="border-t px-4 py-3 text-xs text-muted-foreground">
-              Showing the {topRows.length} highest-risk of {formatNumber(recommendations.rows.length)} segments with a
+              Showing the {topRows.length} highest-risk of {formatNumber(recommendations.rows.length)} {words.items} with a
               recommended treatment. Budget-constrained prioritization across the full list arrives with Scenario
               Planning (Phase 6) and the Work Plan (Phase 7).
             </div>
@@ -247,7 +247,7 @@ Priority = criticality ${row.criticalityScore} × scale ${
         </CardContent>
       </Card>
 
-      <RankedOptions ranking={ranking} exportQuery={exportQuery} index={index.short} />
+      <RankedOptions ranking={ranking} exportQuery={exportQuery} index={index.short} words={words} />
 
       <Card className="mt-4">
         <CardHeader>
@@ -305,7 +305,7 @@ Priority = criticality ${row.criticalityScore} × scale ${
       </Card>
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Costs scale with diameter (normalized so 8&quot; = 1.0) and, for per-linear-foot treatments, with segment
+        Costs scale with diameter (normalized so 8&quot; = 1.0) and, for per-linear-foot treatments, with {words.item}
         length. Estimates here are initial construction cost only — life-cycle cost including maintenance, failure
         and residual value arrives in Phase 6.
       </p>

@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { WorkPlanItemStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getAssetWords } from "@/server/branding";
 import { qualifiesUnderRules, ruleTreeFromFlat } from "@/domain/waterline/decision-tree";
 import {
   buildOption,
@@ -268,6 +269,7 @@ async function planForImport(target: ImportTarget, yearsInFile: number[]): Promi
 }
 
 async function checkImport(organizationId: string, target: ImportTarget, file: ImportFile) {
+  const words = await getAssetWords(organizationId);
   const sheet = await readSheet(file);
   const header = findHeader(sheet.rows);
   const dataRows = header
@@ -356,11 +358,11 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     const code = cell(r, "asset");
     const asset = code ? assetByCode.get(code.toUpperCase()) : undefined;
     if (!code) fail("Asset ID", "No asset ID.");
-    else if (!asset) fail("Asset ID", `No waterline segment ${code}.`);
+    else if (!asset) fail("Asset ID", `No ${words.item} ${code}.`);
     else if (asset.status !== "ACTIVE") {
       fail(
         "Asset ID",
-        `${asset.assetCode} is marked ${asset.status.toLowerCase().replace("_", " ")}. Only active segments are run by the model, so work cannot be planned on it.`
+        `${asset.assetCode} is marked ${asset.status.toLowerCase().replace("_", " ")}. Only active ${words.items} are run by the model, so work cannot be planned on it.`
       );
     }
 
@@ -449,7 +451,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
     if (problems.length === 0 && !option && fileCost == null) {
       fail(
         "Cost",
-        `No rate prices ${name} on ${asset!.assetCode}. Give a cost in the file, or add a rate that covers this segment under Treatment Costs.`
+        `No rate prices ${name} on ${asset!.assetCode}. Give a cost in the file, or add a rate that covers this ${words.item} under Treatment Costs.`
       );
     }
 
@@ -672,6 +674,7 @@ export async function workPlanImportTemplate(
    * template itself. */
   rows: Array<Partial<Record<Column, string | number>>> = []
 ) {
+  const words = await getAssetWords(organizationId);
   const [library, combinations] = await Promise.all([
     loadTreatmentDefs(organizationId),
     loadCombinations(organizationId),
@@ -704,7 +707,7 @@ export async function workPlanImportTemplate(
         {
           column: "Asset ID",
           required: "Yes",
-          how: "The segment's asset ID. It must be an active segment.",
+          how: `The ${words.item}'s asset ID. It must be an active ${words.item}.`,
           example: "WL-0058",
         },
         {
@@ -722,13 +725,13 @@ export async function workPlanImportTemplate(
         {
           column: "Programmed Year",
           required: "No",
-          how: "The year the work was decided or committed — no later than Year. Blank means the same as Year. A scenario that locks this plan's work leaves the segment alone from this year until the Build Year.",
+          how: `The year the work was decided or committed — no later than Year. Blank means the same as Year. A scenario that locks this plan's work leaves the ${words.item} alone from this year until the Build Year.`,
           example: "2026",
         },
         {
           column: "Build Year",
           required: "No",
-          how: "The year the work is built and the segment's condition changes — no earlier than Year. Blank means the same as Year.",
+          how: `The year the work is built and the ${words.item}'s condition changes — no earlier than Year. Blank means the same as Year.`,
           example: "2028",
         },
         {
@@ -753,7 +756,7 @@ export async function workPlanImportTemplate(
         {
           column: "",
           required: "",
-          how: "Two rows on the same segment in the same year stay two projects — use a combination to make them one. Work already in the plan is kept; an exact repeat (same work, segment and year) is skipped.",
+          how: `Two rows on the same ${words.item} in the same year stay two projects — use a combination to make them one. Work already in the plan is kept; an exact repeat (same work, segment and year) is skipped.`,
           example: "",
         },
       ],

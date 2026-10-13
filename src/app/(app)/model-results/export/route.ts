@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { getWciFlow, listScenarioOptions } from "@/server/model-results";
 import { buildWorkbookSheets, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
 import { getAssetWords } from "@/server/branding";
-import type { AssetWords } from "@/lib/branding";
+import { withAssetWords, type AssetWords } from "@/lib/branding";
 import { getScenarioIndexWords } from "@/server/condition-model";
 import type { IndexWords } from "@/lib/index-words";
 
@@ -18,7 +18,7 @@ import type { IndexWords } from "@/lib/index-words";
 const TRANSITION_COLUMNS: ExcelColumn[] = [
   { key: "fromBand", header: "From", type: "text" },
   { key: "toBand", header: "To", type: "text" },
-  { key: "segments", header: "Segments", type: "integer" },
+  { key: "segments", header: "{Items}", type: "integer" },
   { key: "share", header: "Share (%)", type: "number" },
   { key: "direction", header: "Direction", type: "text" },
 ];
@@ -70,8 +70,8 @@ export async function GET(request: Request) {
 
     const buffer = await buildWorkbookSheets([
       {
-        sheetName: "Segments",
-        title: `${link.fromBand} → ${link.toBand} — ${link.value.toLocaleString()} segments`,
+        sheetName: words.itemsTitle,
+        title: `${link.fromBand} → ${link.toBand} — ${link.value.toLocaleString()} ${words.items}`,
         note,
         columns: segmentColumns(words, index),
         rows: link.assets.map((asset) => ({
@@ -128,12 +128,12 @@ export async function GET(request: Request) {
       sheetName: "Transitions",
       title: `Condition flow — ${flow.scenarioName}`,
       note,
-      columns: TRANSITION_COLUMNS,
+      columns: TRANSITION_COLUMNS.map((c) => ({ ...c, header: withAssetWords(c.header, words) })),
       rows: transitions,
     },
     {
-      sheetName: "Segments",
-      title: `Every segment traced — ${segments.length.toLocaleString()} rows`,
+      sheetName: words.itemsTitle,
+      title: `Every ${words.item} traced — ${segments.length.toLocaleString()} rows`,
       note,
       columns: segmentColumns(words, index),
       rows: segments,

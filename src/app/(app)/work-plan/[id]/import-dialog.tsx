@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Upload } from "lucide-react";
@@ -31,6 +32,7 @@ type Target = { workPlanId: string; startYear: number; endYear: number } | { new
  * behind.
  */
 export function ImportDialog(target: Target) {
+  const words = useAssetWords();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
@@ -120,14 +122,14 @@ export function ImportDialog(target: Target) {
           isNew ? (
             <>
               A plan holding the spreadsheet&apos;s projects and nothing else: one row per project, with the
-              segment&apos;s <strong>Asset ID</strong>, the <strong>Treatment</strong> or combination by its library
+              {words.item}&apos;s <strong>Asset ID</strong>, the <strong>Treatment</strong> or combination by its library
               name, and the <strong>Year</strong> the money is spent. Programmed Year, Build Year, Cost, Status, Funding
               and Notes are optional. The plan is created when you import, and not before.
             </>
           ) : (
             <>
               Bring in work that is already committed, from an Excel or CSV file: one row per project, with the
-              segment&apos;s <strong>Asset ID</strong>, the <strong>Treatment</strong> or combination by its library
+              {words.item}&apos;s <strong>Asset ID</strong>, the <strong>Treatment</strong> or combination by its library
               name, and the <strong>Year</strong> the money is spent ({target.startYear}–{target.endYear}). Programmed
               Year, Build Year, Cost, Status, Funding and Notes are optional. Work already in the plan stays; nothing is
               written until you import.

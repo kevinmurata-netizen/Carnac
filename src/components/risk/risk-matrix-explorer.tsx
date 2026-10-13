@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssetWords } from "@/components/layout/asset-words";
 import { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +39,7 @@ export function RiskMatrixExplorer({
   assetLabel: string;
   topCount?: number;
 }) {
+  const words = useAssetWords();
   const [selected, setSelected] = useState<Cell | null>(null);
 
   const inCell = selected ? assets.filter((a) => a.cellP === selected.p && a.cellC === selected.c) : [];
@@ -45,7 +47,7 @@ export function RiskMatrixExplorer({
 
   const heading = selected
     ? `Probability ${selected.p + 1} × Consequence ${selected.c + 1}`
-    : `Highest-Risk Segments`;
+    : `Highest-Risk ${words.itemsTitle}`;
 
   return (
     <>
@@ -53,7 +55,7 @@ export function RiskMatrixExplorer({
         <CardHeader>
           <CardTitle>Risk Matrix</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">
-            Click any cell to list the segments it counts.
+            Click any cell to list the {words.items} it counts.
           </p>
         </CardHeader>
         <CardContent>
@@ -80,11 +82,11 @@ export function RiskMatrixExplorer({
                             disabled={empty}
                             onClick={() => setSelected(isSelected ? null : { p, c })}
                             aria-pressed={isSelected}
-                            aria-label={`Probability ${pof} by consequence ${cof}: ${count} segments`}
+                            aria-label={`Probability ${pof} by consequence ${cof}: ${count} ${words.items}`}
                             title={
                               empty
-                                ? `POF ${pof} × COF ${cof} = ${pof * cof} (${band.label}) — no segments`
-                                : `POF ${pof} × COF ${cof} = ${pof * cof} (${band.label}) — ${count} segments`
+                                ? `POF ${pof} × COF ${cof} = ${pof * cof} (${band.label}) — no ${words.items}`
+                                : `POF ${pof} × COF ${cof} = ${pof * cof} (${band.label}) — ${count} ${words.items}`
                             }
                             className={`h-12 w-16 rounded-md font-semibold transition-all ${
                               empty ? "cursor-default" : "cursor-pointer hover:brightness-110"
@@ -131,7 +133,7 @@ export function RiskMatrixExplorer({
             </CardTitle>
             {selected && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Every segment counted in that cell, highest risk first.
+                Every {words.item} counted in that cell, highest risk first.
               </p>
             )}
           </div>
@@ -198,7 +200,7 @@ export function RiskMatrixExplorer({
           </div>
           {!selected && assets.length > rows.length && (
             <p className="border-t px-4 py-3 text-xs text-muted-foreground">
-              Showing the {rows.length} highest-risk of {formatNumber(assets.length)} assessed segments. Click a
+              Showing the {rows.length} highest-risk of {formatNumber(assets.length)} assessed {words.items}. Click a
               matrix cell above to see a specific probability and consequence combination instead.
             </p>
           )}

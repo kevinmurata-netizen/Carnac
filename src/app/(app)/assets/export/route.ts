@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 
   const buffer = await buildWorkbook({
     sheetName: words.plural,
-    title: `${words.singular} Inventory — ${rows.length.toLocaleString()} segments`,
+    title: `${words.singular} Inventory — ${rows.length.toLocaleString()} ${words.items}`,
     note: describeFilters(params, savedFilterName),
     columns: [...columnsFor(words), ...extra, DEPARTMENT],
     rows,

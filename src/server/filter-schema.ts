@@ -3,6 +3,7 @@ import { getConditionBand } from "@/domain/waterline/condition";
 import { getRiskBand } from "@/domain/waterline/risk";
 import { getConditionBands } from "@/server/settings";
 import { getIndexWords } from "@/server/condition-model";
+import { getAssetWords } from "@/server/branding";
 import { ageInYears } from "@/lib/format";
 
 /**
@@ -26,7 +27,7 @@ import { ageInYears } from "@/lib/format";
 export * from "@/domain/filters";
 import { ROW_ASSET_ID, type FieldType, type FilterField, type FilterTable, type FilterRow, type Criterion } from "@/domain/filters";
 export async function getFilterSchema(organizationId: string): Promise<FilterTable[]> {
-  const [attributes, inspectionFields, areas, materials, index] = await Promise.all([
+  const [attributes, inspectionFields, areas, materials, index, words] = await Promise.all([
     prisma.assetAttributeDefinition.findMany({
       where: { assetType: { organizationId } },
       orderBy: { sortOrder: "asc" },
@@ -46,6 +47,7 @@ export async function getFilterSchema(organizationId: string): Promise<FilterTab
       distinct: ["textValue"],
     }),
     getIndexWords(organizationId),
+    getAssetWords(organizationId),
   ]);
 
   const attrType = (dataType: string): FieldType =>
@@ -54,10 +56,10 @@ export async function getFilterSchema(organizationId: string): Promise<FilterTab
   return [
     {
       key: "asset",
-      label: "Water Segment",
-      description: "The segment itself",
+      label: words.itemTitle,
+      description: `The ${words.item} itself`,
       fields: [
-        { key: "asset.assetCode", label: "Segment Code", type: "text" },
+        { key: "asset.assetCode", label: `${words.itemTitle} Code`, type: "text" },
         { key: "asset.name", label: "Name", type: "text" },
         { key: "asset.status", label: "Status", type: "text", options: ["ACTIVE", "INACTIVE", "ABANDONED", "PLANNED", "REMOVED"] },
         { key: "asset.installationDate", label: "Installation Date", type: "date" },
@@ -74,7 +76,7 @@ export async function getFilterSchema(organizationId: string): Promise<FilterTab
     {
       key: "location",
       label: "Location",
-      description: "Where the segment is",
+      description: `Where the ${words.item} is`,
       fields: [
         {
           key: "location.serviceArea",
@@ -89,7 +91,7 @@ export async function getFilterSchema(organizationId: string): Promise<FilterTab
     {
       key: "attribute",
       label: "Inventory Attributes",
-      description: "Recorded against each segment — edited under Administration → Fields",
+      description: `Recorded against each ${words.item} — edited under Administration → Fields`,
       fields: attributes.map((a) => ({
         key: `attribute.${a.code}`,
         label: a.unit ? `${a.label} (${a.unit})` : a.label,
@@ -124,7 +126,7 @@ export async function getFilterSchema(organizationId: string): Promise<FilterTab
     {
       key: "inspection",
       label: "Latest Inspection",
-      description: "Answers from the most recent inspection of each segment",
+      description: `Answers from the most recent inspection of each ${words.item}`,
       fields: [
         { key: "inspection.count", label: "Inspection Count", type: "number" },
         { key: "inspection.lastDate", label: "Last Inspected", type: "date" },

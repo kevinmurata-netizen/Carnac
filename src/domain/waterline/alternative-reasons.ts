@@ -2,6 +2,7 @@ import { NOT_RANKED } from "./scenario";
 import { NOT_SELECTED, SELECTED } from "./selection";
 import { MATERIAL_INTERVENTION_CONDITION, MIN_RISK_REDUCTION_PCT } from "./treatment";
 import { withIndex, type IndexWords } from "@/lib/index-words";
+import { withAssetWords, type AssetWords } from "@/lib/branding";
 
 /**
  * What each outcome on the alternatives page means, in a sentence or two.
@@ -28,14 +29,14 @@ type Reason =
 export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
   [SELECTED]: {
     stage: "selected",
-    description: "Funded this year. The segment's condition and risk in later years start from what this option did.",
+    description: "Funded this year. The {item}'s condition and risk in later years start from what this option did.",
   },
 
   // ---- Ruled out before scoring: no Priority Score ----
   [NOT_RANKED.ineligible]: {
     stage: "before-scoring",
     description:
-      "The scenario's strategy was not looking at this segment this year — for example, it was already above the condition target, or outside the condition band the strategy acts on — so none of its options were scored.",
+      "The scenario's strategy was not looking at this {item} this year — for example, it was already above the condition target, or outside the condition band the strategy acts on — so none of its options were scored.",
   },
   [NOT_RANKED.notConsidered]: {
     stage: "before-scoring",
@@ -54,34 +55,34 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
   [NOT_RANKED.retreatment]: {
     stage: "before-scoring",
     description:
-      "The same treatment was done on this segment too recently. It becomes available again once its retreatment interval has passed.",
+      "The same treatment was done on this {item} too recently. It becomes available again once its retreatment interval has passed.",
   },
 
   // ---- Scored, then screened out on what it would achieve ----
   [NOT_RANKED.tooLittle]: {
     stage: "screened",
-    description: `Would neither lift the segment to the scenario's condition target nor cut its risk by at least ${MIN_RISK_REDUCTION_PCT}%. Scored so you can see its value, but not fundable — otherwise cheap, small improvements get bought on the same segment year after year.`,
+    description: `Would neither lift the {item} to the scenario's condition target nor cut its risk by at least ${MIN_RISK_REDUCTION_PCT}%. Scored so you can see its value, but not fundable — otherwise cheap, small improvements get bought on the same {item} year after year.`,
   },
   [NOT_RANKED.belowFloor]: {
     stage: "screened",
-    description: `The segment is below {index} ${MATERIAL_INTERVENTION_CONDITION}, where an option has to cut risk by at least ${MIN_RISK_REDUCTION_PCT}% to be funded. A patch that scores well per dollar but leaves a failing main failing is not bought.`,
+    description: `The {item} is below {index} ${MATERIAL_INTERVENTION_CONDITION}, where an option has to cut risk by at least ${MIN_RISK_REDUCTION_PCT}% to be funded. A patch that scores well per dollar but leaves a failing main failing is not bought.`,
   },
 
   // ---- Ranked, then not bought ----
   [NOT_SELECTED.betterOption]: {
     stage: "not-funded",
     description:
-      "A larger option on the same segment was funded instead. A segment gets one option a year, and the step up to the larger one added enough for its extra cost to be bought.",
+      "A larger option on the same {item} was funded instead. A {item} gets one option a year, and the step up to the larger one added enough for its extra cost to be bought.",
   },
   [NOT_SELECTED.notEfficient]: {
     stage: "not-funded",
     description:
-      "Never worth buying on this segment: another option costs no more for more benefit, or stepping straight past this one to a larger option adds more per extra dollar. It has a Priority Score but no incremental score.",
+      "Never worth buying on this {item}: another option costs no more for more benefit, or stepping straight past this one to a larger option adds more per extra dollar. It has a Priority Score but no incremental score.",
   },
   [NOT_SELECTED.budgetSpent]: {
     stage: "not-funded",
     description:
-      "Its step — from nothing, or from the smaller option funded on the segment — did not fit what was left of the year's budget by the time better steps elsewhere had been bought.",
+      "Its step — from nothing, or from the smaller option funded on the {item} — did not fit what was left of the year's budget by the time better steps elsewhere had been bought.",
   },
   [NOT_SELECTED.categoryFull]: {
     stage: "not-funded",
@@ -90,7 +91,7 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
   },
   [NOT_SELECTED.unpriced]: {
     stage: "not-funded",
-    description: "No price matched this segment, so there is no cost to rank it by. Check the treatment's prices.",
+    description: "No price matched this {item}, so there is no cost to rank it by. Check the treatment's prices.",
   },
   [NOT_SELECTED.categoryUnfunded]: {
     stage: "not-funded",
@@ -125,14 +126,18 @@ export const STAGE_LABEL: Record<OutcomeStage, string> = {
 export type OutcomeLegendEntry = OutcomeInfo & { stageLabel: string };
 
 /** Descriptions for the outcomes that actually occur, keyed by outcome, in
- * the scenario's condition index's words. One written by an older version of
+ * the scenario's condition index's words and the organization's asset words. One written by an older version of
  * the engine simply has none. */
-export function outcomeLegend(reasons: Iterable<string>, index: IndexWords): Record<string, OutcomeLegendEntry> {
+export function outcomeLegend(
+  reasons: Iterable<string>,
+  index: IndexWords,
+  words: AssetWords
+): Record<string, OutcomeLegendEntry> {
   const legend: Record<string, OutcomeLegendEntry> = {};
   for (const reason of reasons) {
     const info = (OUTCOME_INFO as Record<string, OutcomeInfo>)[reason];
     if (info) {
-      legend[reason] = { ...info, description: withIndex(info.description, index), stageLabel: STAGE_LABEL[info.stage] };
+      legend[reason] = { ...info, description: withAssetWords(withIndex(info.description, index), words), stageLabel: STAGE_LABEL[info.stage] };
     }
   }
   return legend;
