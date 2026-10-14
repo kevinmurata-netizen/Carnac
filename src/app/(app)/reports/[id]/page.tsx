@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getReport, type ReportColumn, type ReportRow } from "@/server/reports";
 import { getIndexWords } from "@/server/condition-model";
 import { getMeasureLabels } from "@/server/measures";
@@ -29,16 +29,16 @@ function renderCell(value: string | number | null, column: ReportColumn) {
 
 export default async function ReportPreviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
+  const session = await requireSession();
   const report = getReport(
     id,
-    await getIndexWords(session!.user.organizationId),
-    await getAssetWords(session!.user.organizationId),
-    await getMeasureLabels(session!.user.organizationId)
+    await getIndexWords(session.user.organizationId),
+    await getAssetWords(session.user.organizationId),
+    await getMeasureLabels(session.user.organizationId)
   );
   if (!report) notFound();
 
-  const rows: ReportRow[] = await report.run(session!.user.organizationId);
+  const rows: ReportRow[] = await report.run(session.user.organizationId);
   const preview = rows.slice(0, PREVIEW_LIMIT);
 
   return (

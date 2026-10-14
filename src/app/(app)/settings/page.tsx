@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getConfigSummary } from "@/server/admin";
 import { listUsers, listRoles } from "@/server/admin";
 import { getConditionModelConfig, getRiskModelConfig, listDeteriorationModels } from "@/server/settings";
@@ -39,8 +39,8 @@ export default async function SettingsPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { tab } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
 
   const active: SettingsTabKey = SETTINGS_TABS.some((t) => t.key === tab)
@@ -81,7 +81,7 @@ export default async function SettingsPage({
     listScaleFactors(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),
-    getSessionPermissions(session!),
+    getSessionPermissions(session),
     getRollupSettings(organizationId),
   ]);
 
@@ -201,7 +201,7 @@ export default async function SettingsPage({
 
       {!permissions.isAdministrator && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. What you can open and change here is set by your role — an
+          You are signed in as {session.user.roleName}. What you can open and change here is set by your role — an
           Administrator can adjust it under Roles &amp; Permissions.
         </div>
       )}

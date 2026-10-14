@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getConditionModelConfig } from "@/server/settings";
 import { listMetrics, listMetricSources } from "@/server/metrics";
 import { findIndexModel } from "@/server/condition-model";
@@ -15,8 +14,8 @@ import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
 export default async function MetricsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/condition-models", "Metrics");
   const { canWrite: canEdit } = await requireCard("/settings/condition-models");
 
@@ -72,7 +71,7 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         <Card>
           <CardContent className="space-y-4 py-6">
             <div className="text-sm text-muted-foreground">
-              You are signed in as {session!.user.roleName}. Metrics are read-only for your role.
+              You are signed in as {session.user.roleName}. Metrics are read-only for your role.
             </div>
             <div className="text-sm">
               <div className="font-medium text-foreground">{config.name}</div>

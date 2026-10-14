@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getInspectionSubject } from "@/server/inspections";
 import { listAssetOptions } from "@/server/assets";
@@ -32,8 +32,8 @@ export default async function NewInspectionPage({
   searchParams: Promise<{ assetId?: string }>;
 }) {
   const { assetId } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
 
   if (!canRecordFieldData(session)) {
     redirect("/inspections");

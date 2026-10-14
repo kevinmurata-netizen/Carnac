@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { listInspections, listInspectors, summarizeInspectionScore } from "@/server/inspections";
 import { listSavedFilters } from "@/server/saved-filters";
@@ -27,8 +27,8 @@ export default async function InspectionsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/inspections", "Inspections");

@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { prisma } from "@/lib/prisma";
 import { getNetworkSummary } from "@/server/assets";
 import { getFacilityGeoJSON, getNetworkGeoJSON } from "@/server/geo";
@@ -28,8 +28,8 @@ import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 
 export default async function DashboardPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
   const measures = await getMeasureLabels(organizationId);

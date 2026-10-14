@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listEffects } from "@/server/effects";
 import { getPageName } from "@/server/navigation";
 import { PageHeader } from "@/components/layout/page-header";
@@ -17,8 +16,8 @@ export default async function TreatmentEffectsPage({
   searchParams: Promise<{ effect?: string }>;
 }) {
   const { effect: requested } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatment-effects");
   const pageTitle = await getPageName(organizationId, "/settings/treatment-effects", "Treatment Effects");
 
@@ -33,7 +32,7 @@ export default async function TreatmentEffectsPage({
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Treatment effects are read-only for your role.
+          You are signed in as {session.user.roleName}. Treatment effects are read-only for your role.
         </div>
       )}
 

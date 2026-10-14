@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requirePage } from "@/server/guard";
+import { requirePage, requireSession } from "@/server/guard";
 import {
   getNetworkForecast,
   listDeteriorationModels,
@@ -35,8 +34,8 @@ const MATERIAL_COLORS: Record<string, string> = {
 const FALLBACK_COLORS = ["#0ea5e9", "#8b5cf6", "#f59e0b", "#10b981", "#ef4444"];
 
 export default async function DeteriorationModelsPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/deterioration-models", "Deterioration Models");

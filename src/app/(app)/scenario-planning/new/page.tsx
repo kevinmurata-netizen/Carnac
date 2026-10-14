@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getAnnualBudget } from "@/server/scenarios";
 import { listFormulaChoices } from "@/server/criticality";
@@ -34,8 +34,8 @@ import { STATUS_LABELS } from "@/lib/scenario-sets";
  */
 export default async function NewScenarioPage({ searchParams }: { searchParams: Promise<{ set?: string }> }) {
   const { set: requestedSet } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
   // Archived sets are kept for the record, not for new work.

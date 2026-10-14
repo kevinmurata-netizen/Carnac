@@ -1,6 +1,5 @@
-import { auth } from "@/lib/auth";
 import { getAssetWords } from "@/server/branding";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listFailureTypes } from "@/server/settings";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,8 +12,8 @@ import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
 export default async function FailureTypesPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/settings/failure-types", "Failure Types");
   const { canWrite: canEdit } = await requireCard("/settings/failure-types");

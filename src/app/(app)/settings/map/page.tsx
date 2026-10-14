@@ -1,6 +1,5 @@
-import { auth } from "@/lib/auth";
 import { getAssetWords } from "@/server/branding";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getNetworkGeoJSON } from "@/server/geo";
 import { MAP_FIELDS, getMapFields, getPopupFields } from "@/server/map-settings";
 import { PageHeader } from "@/components/layout/page-header";
@@ -8,8 +7,8 @@ import { getPageName } from "@/server/navigation";
 import { MapPopupEditor } from "./editor";
 
 export default async function MapSettingsPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const { canWrite: canEdit } = await requireCard("/settings/map");
   const pageTitle = await getPageName(organizationId, "/settings/map", "Map");
@@ -39,7 +38,7 @@ export default async function MapSettingsPage() {
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Map settings are read-only for your role.
+          You are signed in as {session.user.roleName}. Map settings are read-only for your role.
         </div>
       )}
 

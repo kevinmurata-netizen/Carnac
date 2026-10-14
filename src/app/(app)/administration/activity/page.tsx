@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getRecentActivity } from "@/server/admin";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,10 +7,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getPageName } from "@/server/navigation";
 
 export default async function ActivityPage() {
-  const session = await auth();
+  const session = await requireSession();
   await requireCard("/administration/activity");
-  const pageTitle = await getPageName(session!.user.organizationId, "/administration/activity", "Activity & Audit");
-  const activity = await getRecentActivity(session!.user.organizationId, 100);
+  const pageTitle = await getPageName(session.user.organizationId, "/administration/activity", "Activity & Audit");
+  const activity = await getRecentActivity(session.user.organizationId, 100);
 
   return (
     <div>

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listUsers, listRoles } from "@/server/admin";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +12,8 @@ import { getPageName } from "@/server/navigation";
 import { AddUserForm, ResetPasswordForm } from "./user-forms";
 
 export default async function UsersPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/administration/users", "Users");
   const { canWrite: canEdit } = await requireCard("/administration/users");
 
@@ -30,7 +29,7 @@ export default async function UsersPage() {
       {!canEdit && (
         <Card className="mb-4 border-dashed bg-muted/40">
           <CardContent className="py-3 text-sm text-muted-foreground">
-            You are signed in as {session!.user.roleName}. Only an Administrator can change roles or deactivate
+            You are signed in as {session.user.roleName}. Only an Administrator can change roles or deactivate
             accounts.
           </CardContent>
         </Card>
@@ -56,7 +55,7 @@ export default async function UsersPage() {
             </TableHeader>
             <TableBody>
               {users.map((u) => {
-                const isSelf = u.id === session!.user.id;
+                const isSelf = u.id === session.user.id;
                 return (
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">

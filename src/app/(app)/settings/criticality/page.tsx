@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
 import { getAssetWords } from "@/server/branding";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getPageName } from "@/server/navigation";
 import { getFormulaFields, listCriticalityModels } from "@/server/criticality";
 import { PageHeader } from "@/components/layout/page-header";
@@ -43,8 +42,8 @@ export default async function CriticalityPage({
   searchParams: Promise<{ type?: string }>;
 }) {
   const { type: requested } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const { canWrite: canEdit } = await requireCard("/settings/criticality");
 
@@ -66,7 +65,7 @@ export default async function CriticalityPage({
       {!canEdit && (
         <Card className="mb-4 border-dashed bg-muted/40">
           <CardContent className="py-3 text-sm text-muted-foreground">
-            You are signed in as {session!.user.roleName}. Criticality formulas are read-only for your role — you can
+            You are signed in as {session.user.roleName}. Criticality formulas are read-only for your role — you can
             still try one out to see what it would produce.
           </CardContent>
         </Card>

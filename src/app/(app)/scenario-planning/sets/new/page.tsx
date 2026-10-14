@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { PageHeader } from "@/components/layout/page-header";
@@ -8,7 +8,7 @@ import { ScenarioSetForm } from "../set-form";
 import { createScenarioSetAction } from "../actions";
 
 export default async function NewScenarioSetPage() {
-  const session = await auth();
+  const session = await requireSession();
   if (!canRecordFieldData(session)) redirect("/scenario-planning");
 
   return (

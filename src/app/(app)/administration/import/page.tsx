@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import Link from "next/link";
 import { getImportSpec, templateHeader } from "@/server/import";
@@ -23,9 +22,9 @@ export default async function ImportPage({
 }) {
   const { type: requestedType, kind: requestedKind } = await searchParams;
   const kind: ImportKind = requestedKind === "inspections" ? "inspections" : "assets";
-  const session = await auth();
+  const session = await requireSession();
   await requireCard("/administration/import");
-  const organizationId = session!.user.organizationId;
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/administration/import", "Data Import");
   if (!canRecordFieldData(session)) redirect("/administration");
 

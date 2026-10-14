@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { WorkPlanItemStatus } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getAssetWords } from "@/server/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getWorkPlan, runWorkPlan, type WorkPlanYear } from "@/server/workplans";
@@ -53,8 +53,8 @@ export default async function WorkPlanDetailPage({
 }) {
   const { id } = await params;
   const { run } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const conditionBands = await getConditionBands(organizationId);
 

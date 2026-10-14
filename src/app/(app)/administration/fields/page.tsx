@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listInspectionFields, listInventoryFields } from "@/server/field-config";
 import { getAssetWords } from "@/server/branding";
 import { PageHeader } from "@/components/layout/page-header";
@@ -10,8 +9,8 @@ import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
 export default async function FieldsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/administration/fields", "Fields");
   const { canWrite: canEdit } = await requireCard("/administration/fields");
@@ -32,7 +31,7 @@ export default async function FieldsPage({ searchParams }: { searchParams: Promi
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Field definitions are read-only for your role.
+          You are signed in as {session.user.roleName}. Field definitions are read-only for your role.
         </div>
       )}
 

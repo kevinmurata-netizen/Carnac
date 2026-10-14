@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getPageName } from "@/server/navigation";
 import { listFundingPlans } from "@/server/category-funding";
 import { PageHeader } from "@/components/layout/page-header";
@@ -17,8 +16,8 @@ import { saveFundingPlanAction, setDefaultFundingPlanAction, deleteFundingPlanAc
  * scores and limits what gets bought.
  */
 export default async function CategoryFundingPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const [pageTitle, plans] = await Promise.all([
     getPageName(organizationId, "/settings/category-funding", "Category Funding"),
     listFundingPlans(organizationId),
@@ -34,7 +33,7 @@ export default async function CategoryFundingPage() {
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Category funding is read-only for your role.
+          You are signed in as {session.user.roleName}. Category funding is read-only for your role.
         </div>
       )}
 
