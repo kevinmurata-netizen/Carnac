@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-14",
+    title: "Import inspection history",
+    summary:
+      "Data Import can now load inspections as well as assets: one row per inspection, a column per question on the asset type's inspection form. Each is scored by the type's condition index, exactly as if it had been typed in, so a new asset class can arrive with its condition history.",
+    changes: [
+      "Data Import has an Assets / Inspections choice. The Inspections columns are the asset ID, date, type, inspector, follow-up, notes and the questions on the type's form, headed by label or code.",
+      "Every row is checked before anything is written: an asset ID that doesn't exist, a future date, an unknown inspector, a score outside 0–10 or an unlisted answer are each named by row and column, and the import waits until there are none.",
+      "Rows are recorded oldest first, so each asset's current condition is its latest inspection's. A blank inspector is whoever imports the file.",
+    ],
+    note: "No migration. Risk scores follow on the next recompute (Settings › Risk Models), as for an inspection typed in.",
+  },
+  {
+    date: "2026-10-14",
     title: "Each modelled type has its own inventory tab",
     summary:
       "With two modelled asset types, the inventory showed both in one grid and their tabs led to the same mixed list. Each modelled type now has its own tab, filters and download; the main network opens by default.",

@@ -192,12 +192,46 @@ export function splitCsvLine(line: string): string[] {
   return out.map((s) => s.trim());
 }
 
-function normalizeHeader(h: string): string {
+/** A header as matched: case, spaces and punctuation ignored. */
+export function normalizeHeader(h: string): string {
   return h.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 const TRUE_WORDS = new Set(["yes", "y", "true", "t", "1"]);
 const FALSE_WORDS = new Set(["no", "n", "false", "f", "0"]);
+
+/** A filled-in cell read as its column's kind, or why it can't be — shared by
+ * every CSV import so they accept and refuse the same things. */
+export function parseCell(c: ImportColumn, value: string): { value: string | number | boolean } | { error: string } {
+  switch (c.kind) {
+    case "text":
+      return { value };
+    case "enum":
+      return c.options!.includes(value)
+        ? { value }
+        : { error: `"${value}" is not valid. Expected one of: ${c.options!.join(", ")}.` };
+    case "boolean": {
+      const word = value.toLowerCase();
+      if (TRUE_WORDS.has(word)) return { value: true };
+      if (FALSE_WORDS.has(word)) return { value: false };
+      return { error: `"${value}" isn't yes or no.` };
+    }
+    case "date": {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+        return { error: `"${value}" isn't a date written as YYYY-MM-DD.` };
+      }
+      return { value };
+    }
+    default: {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return { error: `"${value}" is not a number.` };
+      if (c.kind === "integer" && !Number.isInteger(n)) return { error: `${c.label} must be a whole number.` };
+      if (c.min != null && n < c.min) return { error: `${c.label} must be at least ${c.min}.` };
+      if (c.max != null && n > c.max) return { error: `${c.label} must be at most ${c.max}.` };
+      return { value: n };
+    }
+  }
+}
 
 export async function validateImport(organizationId: string, assetTypeId: string, csv: string): Promise<ValidationReport> {
   const spec = await getImportSpec(organizationId, assetTypeId);
@@ -267,34 +301,8 @@ export async function validateImport(organizationId: string, assetTypeId: string
     const read = (c: ImportColumn): string | number | boolean | null => {
       const value = raw(c);
       if (value === "") return c.required ? fail(c, `${c.label} is required.`) : null;
-      switch (c.kind) {
-        case "text":
-          return value;
-        case "enum":
-          return c.options!.includes(value)
-            ? value
-            : fail(c, `"${value}" is not valid. Expected one of: ${c.options!.join(", ")}.`);
-        case "boolean": {
-          const word = value.toLowerCase();
-          if (TRUE_WORDS.has(word)) return true;
-          if (FALSE_WORDS.has(word)) return false;
-          return fail(c, `"${value}" isn't yes or no.`);
-        }
-        case "date": {
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
-            return fail(c, `"${value}" isn't a date written as YYYY-MM-DD.`);
-          }
-          return value;
-        }
-        default: {
-          const n = Number(value);
-          if (!Number.isFinite(n)) return fail(c, `"${value}" is not a number.`);
-          if (c.kind === "integer" && !Number.isInteger(n)) return fail(c, `${c.label} must be a whole number.`);
-          if (c.min != null && n < c.min) return fail(c, `${c.label} must be at least ${c.min}.`);
-          if (c.max != null && n > c.max) return fail(c, `${c.label} must be at most ${c.max}.`);
-          return n;
-        }
-      }
+      const parsed = parseCell(c, value);
+      return "error" in parsed ? fail(c, parsed.error) : parsed.value;
     };
 
     const idColumn = column("assetCode")!;
