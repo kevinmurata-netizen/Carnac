@@ -239,10 +239,10 @@ export type ImportTarget =
 
 type TargetPlan = { id: string | null; name: string; startYear: number; endYear: number };
 
-async function planForImport(target: ImportTarget, yearsInFile: number[]): Promise<TargetPlan> {
+async function planForImport(organizationId: string, target: ImportTarget, yearsInFile: number[]): Promise<TargetPlan> {
   if ("workPlanId" in target) {
-    const plan = await prisma.workPlan.findUnique({
-      where: { id: target.workPlanId },
+    const plan = await prisma.workPlan.findFirst({
+      where: { id: target.workPlanId, organizationId },
       select: { id: true, name: true, startYear: true, endYear: true, isScenarioMirror: true },
     });
     if (!plan) throw new Error("That work plan no longer exists");
@@ -278,7 +278,7 @@ async function checkImport(organizationId: string, target: ImportTarget, file: I
   const cell = (r: { cells: string[] }, key: Column) =>
     header && header.at[key] >= 0 ? (r.cells[header.at[key]] ?? "").trim() : "";
   const yearsInFile = dataRows.map((r) => Number(cell(r, "year"))).filter((y) => Number.isInteger(y) && y >= 1900 && y <= 2200);
-  const plan = await planForImport(target, yearsInFile);
+  const plan = await planForImport(organizationId, target, yearsInFile);
 
   const empty = { plan, rows: [] as CheckedRow[], errors: [] as ImportProblem[], unknownColumns: [] as string[] };
   if (!header) {
@@ -649,6 +649,7 @@ export async function commitWorkPlanImport(
   const workPlanId = await prisma.$transaction(async (tx) => {
     const plan = await tx.workPlan.create({
       data: {
+        organizationId,
         name: checked.plan.name,
         startYear: checked.plan.startYear,
         endYear: checked.plan.endYear,

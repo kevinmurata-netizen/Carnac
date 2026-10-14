@@ -29,7 +29,7 @@ export default async function WorkPlanPage() {
   const pageTitle = await getPageName(organizationId, "/work-plan", "Work Plan");
 
   const [plans, annualBudget, weightSets, categorySets, scenarios] = await Promise.all([
-    listWorkPlans(),
+    listWorkPlans(organizationId),
     getAnnualBudget(organizationId),
     listWeightSets(organizationId),
     listCategoryWeightSets(organizationId),

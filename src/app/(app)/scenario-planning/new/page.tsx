@@ -62,7 +62,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
     listSavedFilters(organizationId),
-    lockablePlanChoices(),
+    lockablePlanChoices(organizationId),
     getScenarioOptionCatalogue(organizationId),
     // The set's period, since that is what the run will cover. The first run
     // then measures itself and every later estimate comes from that.

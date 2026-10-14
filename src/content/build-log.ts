@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-15",
+    title: "Work plans belong to their organization",
+    summary:
+      "A work plan carried no organization, so a second organization on the same site saw — and could open, change and delete — the first's plans. Each plan now belongs to one, and every list and action is limited to it. Nothing changes for a site with one organization.",
+    changes: [
+      "The work plan list, a plan's page, running it, adding, combining, splitting, moving and re-statusing its work, importing into it and deleting it all keep to the signed-in organization.",
+      "A scenario can lock only its own organization's plans, and the activity log lists only them.",
+      "Plans made from a scenario run, by Generate, or by an import record their organization.",
+    ],
+    note: "Migration: 20261015120000_work_plan_organization — run it, then merge straight away: until the new code is live, running a scenario or making a plan fails.",
+  },
+  {
     date: "2026-10-14",
     title: "Start a new customer from nothing",
     summary:

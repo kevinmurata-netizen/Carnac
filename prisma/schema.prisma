@@ -31,6 +31,7 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   users            User[]
+  workPlans        WorkPlan[]
   assetTypes       AssetType[]
   assets           Asset[]
   componentTypes   ComponentType[]
@@ -1579,6 +1580,12 @@ model ScenarioResult {
 
 model WorkPlan {
   id         String    @id @default(cuid())
+
+  /// Whose plan it is. Every list and lookup is scoped by it: a plan made
+  /// without a scenario reaches its organization no other way.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
   scenarioId String?
   scenario   Scenario? @relation("ScenarioWorkPlans", fields: [scenarioId], references: [id])
   name       String
@@ -1626,6 +1633,7 @@ model WorkPlan {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([organizationId])
   @@map("work_plans")
 }
 

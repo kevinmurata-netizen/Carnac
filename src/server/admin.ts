@@ -258,7 +258,7 @@ export async function getRecentActivity(organizationId: string, limit = 40): Pro
       take: limit,
       include: { asset: { select: { assetCode: true } }, failureType: { select: { label: true } } },
     }),
-    prisma.workPlan.findMany({ orderBy: { updatedAt: "desc" }, take: limit }),
+    prisma.workPlan.findMany({ where: { organizationId }, orderBy: { updatedAt: "desc" }, take: limit }),
     prisma.scenario.findMany({ where: { organizationId }, orderBy: { updatedAt: "desc" }, take: limit }),
   ]);
 

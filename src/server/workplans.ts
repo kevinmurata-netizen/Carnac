@@ -132,6 +132,7 @@ export async function createWorkPlanFromScenario(
 
   const workPlan = await prisma.workPlan.create({
     data: {
+      organizationId,
       scenarioId,
       name: name?.trim() || `${run.name} — Work Plan`,
       // The span of the money: a row sits in the year it is paid for, which
@@ -477,6 +478,7 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
 
   const workPlan = await prisma.workPlan.create({
     data: {
+      organizationId,
       name: input.name,
       startYear: input.startYear,
       endYear: input.startYear + input.years - 1,
@@ -633,14 +635,15 @@ const workPlanItemInclude = {
 
 /** The plans a scenario may lock: every editable plan, never a scenario
  * run's own programme, which is rewritten each time its scenario runs. */
-export async function lockablePlanChoices() {
-  return (await listWorkPlans())
+export async function lockablePlanChoices(organizationId: string) {
+  return (await listWorkPlans(organizationId))
     .filter((p) => !p.isScenarioMirror)
     .map((p) => ({ id: p.id, name: p.name, startYear: p.startYear, endYear: p.endYear, projectCount: p.itemCount }));
 }
 
-export async function listWorkPlans() {
+export async function listWorkPlans(organizationId: string) {
   const plans = await prisma.workPlan.findMany({
+    where: { organizationId },
     include: {
       items: { select: { id: true, bundleId: true, estimatedCost: true, year: true, status: true } },
       scenario: { select: { name: true } },
@@ -729,9 +732,9 @@ function shareOf(
   return cash.map((c, i) => ({ year: c.year, amount: amounts[i] }));
 }
 
-export async function getWorkPlan(id: string) {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id },
+export async function getWorkPlan(organizationId: string, id: string) {
+  const plan = await prisma.workPlan.findFirst({
+    where: { id, organizationId },
     include: { items: { include: workPlanItemInclude, orderBy: { estimatedCost: "desc" } }, scenario: true },
   });
   if (!plan) return null;
@@ -849,8 +852,8 @@ export async function getWorkPlan(id: string) {
  * a number without a reference.
  */
 export async function runWorkPlan(organizationId: string, workPlanId: string) {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id: workPlanId },
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: workPlanId, organizationId },
     include: {
       items: {
         select: {
@@ -1136,8 +1139,8 @@ export async function addWorkPlanItem(
   organizationId: string,
   input: { workPlanId: string; assetId: string; treatmentId: string; year: number }
 ): Promise<{ added: PlannedAddition }> {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id: input.workPlanId },
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: input.workPlanId, organizationId },
     select: { id: true, startYear: true, endYear: true, isScenarioMirror: true, name: true },
   });
   if (!plan) throw new Error("That work plan no longer exists");
@@ -1196,9 +1199,9 @@ export async function addWorkPlanItem(
 /** Everything this plan holds for one segment, so a row can be combined with
  * its neighbours — including the ones in other years, which is usually the
  * point: a repair in 2027 and a lining in 2031 become one visit. */
-export async function segmentRowsInPlan(workPlanId: string, assetId: string) {
+export async function segmentRowsInPlan(organizationId: string, workPlanId: string, assetId: string) {
   const rows = await prisma.workPlanItem.findMany({
-    where: { workPlanId, assetId },
+    where: { workPlanId, assetId, workPlan: { organizationId } },
     select: {
       id: true,
       year: true,
@@ -1242,9 +1245,9 @@ export type CombinePreview = {
   refused: string[];
 };
 
-async function planItemsForCombining(workPlanId: string, itemIds: string[]) {
+async function planItemsForCombining(organizationId: string, workPlanId: string, itemIds: string[]) {
   const items = await prisma.workPlanItem.findMany({
-    where: { id: { in: itemIds }, workPlanId },
+    where: { id: { in: itemIds }, workPlanId, workPlan: { organizationId } },
     select: {
       id: true,
       assetId: true,
@@ -1279,7 +1282,7 @@ export async function previewCombine(
   organizationId: string,
   input: { workPlanId: string; itemIds: string[]; year: number }
 ): Promise<CombinePreview> {
-  const { items, assetId } = await planItemsForCombining(input.workPlanId, input.itemIds);
+  const { items, assetId } = await planItemsForCombining(organizationId, input.workPlanId, input.itemIds);
   const [found, library, combinations] = await Promise.all([
     assetTreatmentContext(organizationId, assetId),
     loadTreatmentDefs(organizationId),
@@ -1346,8 +1349,8 @@ export async function combineWorkPlanItems(
   organizationId: string,
   input: { workPlanId: string; itemIds: string[]; year: number }
 ): Promise<CombinePreview> {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id: input.workPlanId },
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: input.workPlanId, organizationId },
     select: { id: true, name: true, startYear: true, endYear: true, isScenarioMirror: true },
   });
   if (!plan) throw new Error("That work plan no longer exists");
@@ -1361,7 +1364,7 @@ export async function combineWorkPlanItems(
   }
 
   const preview = await previewCombine(organizationId, input);
-  const { items } = await planItemsForCombining(input.workPlanId, input.itemIds);
+  const { items } = await planItemsForCombining(organizationId, input.workPlanId, input.itemIds);
   const bundleId = `${plan.id}:${items[0].assetId}:${input.year}:${preview.name}`;
 
   await prisma.$transaction(
@@ -1414,7 +1417,7 @@ export async function combineWorkPlanItems(
  */
 export async function splitWorkPlanVisit(organizationId: string, workPlanId: string, bundleId: string) {
   const items = await prisma.workPlanItem.findMany({
-    where: { workPlanId, bundleId },
+    where: { workPlanId, bundleId, workPlan: { organizationId } },
     select: { id: true, assetId: true, year: true, expectedBenefit: true, treatment: { select: { name: true } } },
   });
   if (items.length === 0) throw new Error("That project no longer exists");
@@ -1456,9 +1459,9 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
  * one job, so moving, removing or setting the status of one of its treatments
  * without the others would quietly break it apart; Split is how to do that.
  */
-async function projectRows(itemId: string) {
-  const item = await prisma.workPlanItem.findUnique({
-    where: { id: itemId },
+async function projectRows(organizationId: string, itemId: string) {
+  const item = await prisma.workPlanItem.findFirst({
+    where: { id: itemId, workPlan: { organizationId } },
     select: {
       id: true,
       workPlanId: true,
@@ -1474,8 +1477,8 @@ async function projectRows(itemId: string) {
 
 /** Take a row — or a whole combined project — out of a plan. The plan is a
  * schedule, and removing from it changes no scenario. */
-export async function removeWorkPlanItem(itemId: string) {
-  const { item, where } = await projectRows(itemId);
+export async function removeWorkPlanItem(organizationId: string, itemId: string) {
+  const { item, where } = await projectRows(organizationId, itemId);
   await prisma.workPlanItem.deleteMany({ where });
   return item.workPlanId;
 }
@@ -1483,8 +1486,8 @@ export async function removeWorkPlanItem(itemId: string) {
 /** Move a row, or a whole combined project, to a different year (SPEC §17).
  * Year totals are recomputed on read, so the caller sees the budget impact
  * immediately. */
-export async function moveWorkPlanItem(itemId: string, targetYear: number) {
-  const { item, where } = await projectRows(itemId);
+export async function moveWorkPlanItem(organizationId: string, itemId: string, targetYear: number) {
+  const { item, where } = await projectRows(organizationId, itemId);
   if (targetYear < item.workPlan.startYear || targetYear > item.workPlan.endYear) {
     throw new Error(`Year must be between ${item.workPlan.startYear} and ${item.workPlan.endYear}`);
   }
@@ -1512,8 +1515,8 @@ export async function moveWorkPlanItem(itemId: string, targetYear: number) {
   return item.workPlanId;
 }
 
-export async function updateWorkPlanItemStatus(itemId: string, status: WorkPlanItemStatus) {
-  const { item, where } = await projectRows(itemId);
+export async function updateWorkPlanItemStatus(organizationId: string, itemId: string, status: WorkPlanItemStatus) {
+  const { item, where } = await projectRows(organizationId, itemId);
   await prisma.workPlanItem.updateMany({ where, data: { status } });
   return item.workPlanId;
 }
@@ -1535,7 +1538,9 @@ function deleteBlocker(lockingScenarios: Array<{ name: string }>) {
   );
 }
 
-export async function deleteWorkPlan(id: string) {
+export async function deleteWorkPlan(organizationId: string, id: string) {
+  const plan = await prisma.workPlan.findFirst({ where: { id, organizationId }, select: { id: true } });
+  if (!plan) throw new Error("That work plan no longer exists");
   const locking = await prisma.scenario.findMany({ where: { lockedWorkPlanId: id }, select: { name: true } });
   const blocker = deleteBlocker(locking);
   if (blocker) throw new Error(blocker);
@@ -1549,9 +1554,9 @@ export async function deleteWorkPlan(id: string) {
  * Delete the plans ticked on the list, with their projects. A plan a scenario
  * locks is kept, and said why, rather than refusing the whole lot.
  */
-export async function deleteWorkPlans(ids: string[]) {
+export async function deleteWorkPlans(organizationId: string, ids: string[]) {
   const plans = await prisma.workPlan.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, organizationId },
     select: { id: true, name: true, lockingScenarios: { select: { name: true } } },
   });
   const deleted: string[] = [];
@@ -1587,13 +1592,10 @@ export async function deleteWorkPlans(ids: string[]) {
  * years a utility would take to a board, and the only kind of plan whose Move
  * and Status controls mean anything, because nothing regenerates over them.
  *
- * Not scoped to the organization, because a work plan does not belong to one:
- * the model has no organizationId and `listWorkPlans` above reads them all.
- * Reaching an organization from here would mean joining through the items,
- * which would also mean an empty plan never counted as existing.
+ * Looks only at this organization's plans.
  */
 export async function ensureBaselineWorkPlan(organizationId: string): Promise<boolean> {
-  const existing = await prisma.workPlan.findFirst({ where: { scenarioId: null } });
+  const existing = await prisma.workPlan.findFirst({ where: { scenarioId: null, organizationId } });
   if (existing) return false;
 
   const budget = await prisma.budget.findFirst({ where: { organizationId }, orderBy: { fiscalYear: "desc" } });

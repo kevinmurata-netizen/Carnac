@@ -59,7 +59,7 @@ export default async function WorkPlanDetailPage({
   const conditionBands = await getConditionBands(organizationId);
 
   const [plan, orgBudget, treatments] = await Promise.all([
-    getWorkPlan(id),
+    getWorkPlan(organizationId, id),
     getAnnualBudget(organizationId),
     listTreatments(organizationId),
   ]);
