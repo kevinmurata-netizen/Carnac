@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getSessionPermissions, resourceKey } from "@/server/permissions";
 import { listAssetTypeDetails } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
@@ -35,14 +34,14 @@ import { getModellingReadiness } from "@/server/modelling";
  * the two are read together.
  */
 export default async function AssetTypesPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/asset-types", "Asset Types");
   const { canWrite: canEdit } = await requireCard("/settings/asset-types");
 
   // Inspection templates are a card of their own, so adding a form here is
   // governed by that card rather than by this one.
-  const permissions = await getSessionPermissions(session!);
+  const permissions = await getSessionPermissions(session);
   const canEditTemplates = permissions.canWrite(resourceKey("card", "/settings/inspection-templates"));
 
   const [types, composition, readiness] = await Promise.all([
@@ -60,7 +59,7 @@ export default async function AssetTypesPage() {
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Asset types are read-only for your role.
+          You are signed in as {session.user.roleName}. Asset types are read-only for your role.
         </div>
       )}
 

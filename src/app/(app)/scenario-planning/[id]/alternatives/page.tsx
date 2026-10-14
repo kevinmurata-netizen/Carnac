@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getScenarioAlternatives } from "@/server/scenario-alternatives";
 import { PageHeader } from "@/components/layout/page-header";
 import { SetBreadcrumb } from "@/components/layout/breadcrumbs";
@@ -37,8 +37,8 @@ export default async function AlternativesPage({
 }) {
   const { id } = await params;
   const { year: yearParam, asset: assetParam } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const index = await getScenarioIndexWords(organizationId, id);
   const words = await getAssetWords(organizationId);
 

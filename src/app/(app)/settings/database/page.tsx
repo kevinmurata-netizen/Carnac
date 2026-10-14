@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getDatabaseInfo } from "@/server/admin";
 import { getPageName } from "@/server/navigation";
 import { getAssetWords } from "@/server/branding";
@@ -10,10 +9,10 @@ import { formatNumber } from "@/lib/format";
 import { Database } from "lucide-react";
 
 export default async function DatabasePage() {
-  const session = await auth();
+  const session = await requireSession();
 
   await requireCard("/settings/database");
-  const organizationId = session!.user.organizationId;
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
 
   const [pageTitle, db] = await Promise.all([

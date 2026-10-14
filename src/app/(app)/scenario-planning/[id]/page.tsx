@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getAssetWords } from "@/server/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getScenario, getScenarioProjects, type ScenarioDetail } from "@/server/scenarios";
@@ -64,8 +64,8 @@ import { STATUS_LABELS, describeWindow } from "@/lib/scenario-sets";
 
 export default async function ScenarioDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const conditionBands = await getConditionBands(organizationId);
 

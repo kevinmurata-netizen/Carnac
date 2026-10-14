@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
 import { getAssetWords } from "@/server/branding";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getPageName } from "@/server/navigation";
 import { listLeadTimeSets } from "@/server/lead-times";
 import { listTreatments } from "@/server/treatments";
@@ -27,8 +26,8 @@ import {
  * for what the offsets mean and delivery-scenario.ts for what spends by them.
  */
 export default async function LeadTimesPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const [pageTitle, sets, treatments] = await Promise.all([
     getPageName(organizationId, "/settings/lead-times", "Delivery Lead Times"),
@@ -46,7 +45,7 @@ export default async function LeadTimesPage() {
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Delivery lead times are read-only for your role.
+          You are signed in as {session.user.roleName}. Delivery lead times are read-only for your role.
         </div>
       )}
 

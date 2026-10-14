@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getInspectionById, summarizeInspectionScore } from "@/server/inspections";
 import { INSPECTION_TYPES } from "@/domain/waterline/inspection";
@@ -17,8 +17,8 @@ import { VisitParts } from "./visit-parts";
 
 export default async function InspectionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const conditionBands = await getConditionBands(organizationId);
 
   const inspection = await getInspectionById(organizationId, id);

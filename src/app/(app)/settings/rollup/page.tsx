@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getRollupSettings } from "@/server/rollup";
 import { getPageName } from "@/server/navigation";
 import { PageHeader } from "@/components/layout/page-header";
@@ -14,8 +13,8 @@ import { RollupEditor } from "./rollup-editor";
  * the assets it would move, before and after — and applied only on request.
  */
 export default async function RollupPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/rollup", "Component Roll-up");
   const { canWrite } = await requireCard("/settings/rollup");
   const settings = await getRollupSettings(organizationId);
@@ -28,7 +27,7 @@ export default async function RollupPage() {
       />
       {!canWrite && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. You can preview a change, but not apply it.
+          You are signed in as {session.user.roleName}. You can preview a change, but not apply it.
         </div>
       )}
       <RollupEditor settings={settings} canWrite={canWrite} />

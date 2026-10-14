@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getConditionSummary, getWorstConditionAssets } from "@/server/condition";
 import { PageHeader } from "@/components/layout/page-header";
 import { KpiCard } from "@/components/dashboard/kpi-card";
@@ -16,8 +16,8 @@ import { getConditionBands } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 
 export default async function ConditionPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/condition", "Condition");

@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getRiskSummary, getRiskMatrixAssets, getLatestRiskByAsset } from "@/server/risk";
 import { getRiskBand } from "@/domain/waterline/risk";
 import { getNetworkGeoJSON } from "@/server/geo";
@@ -15,8 +15,8 @@ import { getAssetWords } from "@/server/branding";
 import { getPageName } from "@/server/navigation";
 
 export default async function RiskPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/risk", "Risk");
 

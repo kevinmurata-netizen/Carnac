@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getNetworkRecommendations, listTreatments } from "@/server/treatments";
 import { rankOptions } from "@/server/priority";
 import { RankedOptions } from "./ranked-options";
@@ -43,8 +43,8 @@ export default async function TreatmentPlanningPage({
   searchParams: Promise<Partial<Record<keyof AppliedParameters, string>>>;
 }) {
   const params = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/treatment-planning", "Treatment Planning");

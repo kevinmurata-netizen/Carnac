@@ -30,6 +30,17 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-14",
+    title: "Ended sessions leave without an error",
+    summary:
+      "When a deactivated user's session ended, the page they were opening hit an error before the sign-out redirect took over. Each page now checks for the session itself and goes straight to the sign-in page.",
+    changes: [
+      "Every page and the app layout ask for the signed-in session through one guard, which sends an ended session to be signed out instead of carrying on without one.",
+      "Nothing changes for anyone still signed in.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-14",
     title: "Deactivated users are signed out",
     summary:
       "Deactivating or deleting a user now ends their session on their next click, instead of leaving them signed in for up to 30 days. A change to someone's role reaches them the same way, without signing out.",

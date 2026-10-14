@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets } from "@/server/category-weight-sets";
 import { getPageName } from "@/server/navigation";
@@ -30,8 +29,8 @@ import {
  * discover.
  */
 export default async function ScenarioWeightsPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/scenario-weights", "Scenario Weights");
   const { canWrite: canEdit } = await requireCard("/settings/scenario-weights");
 
@@ -49,7 +48,7 @@ export default async function ScenarioWeightsPage() {
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Scenario weights are read-only for your role.
+          You are signed in as {session.user.roleName}. Scenario weights are read-only for your role.
         </div>
       )}
 
