@@ -30,6 +30,17 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Asset type codes are each organization's own",
+    summary:
+      "An asset type's code was unique across the whole site, so a second organization could not add a POLE type once the first had one. Codes are now unique within each organization.",
+    changes: [
+      "Settings › Asset Types refuses a code only when your own organization already uses it.",
+      "The facility seed and its SQL loader find and add types within their own organization.",
+    ],
+    note: "Migration: 20261015130000_asset_type_code_per_organization — swaps the unique index; no data changes.",
+  },
+  {
+    date: "2026-10-15",
     title: "The SQL console reads only your organization",
     summary:
       "The Administrators' SQL console read the whole database, every organization's rows. Every query now sees only the signed-in organization's, however it is written. Nothing changes for a site with one organization.",

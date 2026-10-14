@@ -937,7 +937,7 @@ export async function createAssetType(
   if (!code) throw new Error("Code is required");
   if (!input.name.trim()) throw new Error("Name is required");
 
-  const clash = await prisma.assetType.findFirst({ where: { code } });
+  const clash = await prisma.assetType.findFirst({ where: { code, organizationId } });
   if (clash) throw new Error(`An asset type with code "${code}" already exists`);
 
   await prisma.assetType.create({
