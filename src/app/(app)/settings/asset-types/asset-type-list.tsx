@@ -952,11 +952,18 @@ function MeasuresSection({
           </>
         ) : (
           "Treatment prices do not change with size."
-        )}
+        )}{" "}
+        {type.failureCost
+          ? `A failure costs ${money(type.failureCost.repairCost)} to repair${
+              type.sizeCostScale ? `, growing with ${sizeLabel?.toLowerCase() ?? "size"} the same way,` : ""
+            } plus ${money(type.failureCost.perCustomer)} for each customer it affects.`
+          : "Failures are not costed, so life-cycle savings count no failures avoided."}
       </p>
     </section>
   );
 }
+
+const money = (n: number) => `$${n.toLocaleString("en-US")}`;
 
 function MeasuresForm({
   type,
@@ -1000,6 +1007,7 @@ function MeasuresForm({
         })}
       </div>
       <SizeCostFields scale={type.sizeCostScale} />
+      <FailureCostFields cost={type.failureCost} />
       <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
@@ -1009,6 +1017,47 @@ function MeasuresForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** What one failure of this type costs — what life-cycle costs and the
+ * failures a treatment avoids are valued at. */
+function FailureCostFields({ cost }: { cost: AssetTypeDetail["failureCost"] }) {
+  return (
+    <fieldset className="space-y-2 rounded-md border p-3">
+      <legend className="px-1 text-sm font-medium">Cost of a failure</legend>
+      <p className="text-xs text-muted-foreground">
+        The emergency repair, which grows with size as treatment prices do when that is on, plus the service
+        interruption for each customer affected. Water mains use $18,000 and $145. Leave both blank and failures are
+        not costed.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="failureRepairCost">Repair ($)</Label>
+          <input
+            id="failureRepairCost"
+            name="failureRepairCost"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={cost?.repairCost ?? ""}
+            className={input}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="failurePerCustomer">Per customer affected ($)</Label>
+          <input
+            id="failurePerCustomer"
+            name="failurePerCustomer"
+            type="number"
+            min={0}
+            step="any"
+            defaultValue={cost?.perCustomer ?? ""}
+            className={input}
+          />
+        </div>
+      </div>
+    </fieldset>
   );
 }
 

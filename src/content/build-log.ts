@@ -29,7 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
-    date: "2026-10-15",
+    date: "2026-10-14",
+    title: "Each asset type says what a failure costs",
+    summary:
+      "Every failure was costed as a water main's — $18,000 repair scaled by pipe size, plus $145 per customer — whatever the asset was, so a 35 ft pole's failure cost about $55,000 and its life-cycle savings were inflated. Each asset type now sets its own. Water's costs are unchanged.",
+    changes: [
+      "Settings › Asset Types: \"Cost of a failure\" under a type's measures — the repair, and the cost per customer affected. The repair grows with size as the type's treatment prices do. The measures section states the figures.",
+      "Life-cycle costs, recommendations, scenarios and work plans cost each asset's failures on its own type's figures.",
+      "The modelling checklist shows whether a type's failure cost is set; without it, life-cycle savings count no failures avoided.",
+      "The waterline keeps $18,000 and $145.",
+    ],
+    fixes: ["Three build log entries from earlier today were dated tomorrow."],
+    note: "Migration: 20261014140000_failure_cost — adds the setting and fills it with today's figures for every modelled type.",
+  },
+  {
+    date: "2026-10-14",
     title: "Asset type codes are each organization's own",
     summary:
       "An asset type's code was unique across the whole site, so a second organization could not add a POLE type once the first had one. Codes are now unique within each organization.",
@@ -40,7 +54,7 @@ export const ENTRIES: BuildEntry[] = [
     note: "Migration: 20261015130000_asset_type_code_per_organization — swaps the unique index; no data changes.",
   },
   {
-    date: "2026-10-15",
+    date: "2026-10-14",
     title: "The SQL console reads only your organization",
     summary:
       "The Administrators' SQL console read the whole database, every organization's rows. Every query now sees only the signed-in organization's, however it is written. Nothing changes for a site with one organization.",
@@ -52,7 +66,7 @@ export const ENTRIES: BuildEntry[] = [
     note: "No migration.",
   },
   {
-    date: "2026-10-15",
+    date: "2026-10-14",
     title: "Work plans belong to their organization",
     summary:
       "A work plan carried no organization, so a second organization on the same site saw — and could open, change and delete — the first's plans. Each plan now belongs to one, and every list and action is limited to it. Nothing changes for a site with one organization.",

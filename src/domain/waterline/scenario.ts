@@ -18,7 +18,7 @@ import {
 } from "./deterioration";
 
 export { curveFor };
-import { annualFailureProbability, failureEventCost, presentValue } from "./lcca";
+import { annualFailureProbability, failureEventCost, presentValue, type FailureCost } from "./lcca";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
@@ -197,6 +197,8 @@ export type SimAsset = {
   cofFactors?: RiskFactorDef[];
   /** How its type's prices grow with size. Absent: they do not. */
   sizeCostScale?: SizeCostScale | null;
+  /** What one failure of its type costs. Absent: not costed. */
+  failureCost?: FailureCost | null;
   assetCode: string;
   material: string | null;
   diameterInches: number | null;
@@ -517,6 +519,7 @@ function buildContext(asset: SimAsset): AssetTreatmentContext {
   return {
     assetTypeId: asset.assetTypeId,
     sizeCostScale: asset.sizeCostScale,
+    failureCost: asset.failureCost,
     conditionScore: asset.condition,
     material: asset.material,
     diameterInches: asset.diameterInches,

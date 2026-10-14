@@ -362,6 +362,8 @@ export async function saveMeasuresAction(
     codes.sizeCost = String(formData.get("sizeCost") ?? "");
     codes.sizeCostReference = String(formData.get("sizeCostReference") ?? "");
     codes.sizeCostExponent = String(formData.get("sizeCostExponent") ?? "");
+    codes.failureRepairCost = String(formData.get("failureRepairCost") ?? "");
+    codes.failurePerCustomer = String(formData.get("failurePerCustomer") ?? "");
     const name = await updateAssetTypeMeasures(session.user.organizationId, String(formData.get("id") ?? ""), codes);
     // Measures feed every forecast, risk score and plan, so everything that
     // shows one is stale.
