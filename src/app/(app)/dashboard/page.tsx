@@ -1,3 +1,5 @@
+import { NothingModelled } from "@/components/layout/nothing-modelled";
+import { hasModelledAssetType } from "@/server/modelled-asset-type";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getNetworkSummary } from "@/server/assets";
@@ -34,6 +36,9 @@ export default async function DashboardPage() {
   const index = await getIndexWords(organizationId);
   const measures = await getMeasureLabels(organizationId);
   const pageTitle = await getPageName(organizationId, "/dashboard", "Executive Dashboard");
+  if (!(await hasModelledAssetType(organizationId))) {
+    return <NothingModelled title={pageTitle} about="The network at a glance: condition, risk, identified need and the plan" />;
+  }
   const conditionBands = await getConditionBands(organizationId);
 
   // The hover card is configured once under Settings › Map and should read the

@@ -23,6 +23,7 @@
     "vercel-build": "prisma generate && next build",
     "db:seed:prod": "tsx prisma/seed.ts",
     "user:password": "tsx scripts/set-password.ts",
+    "org:new": "tsx scripts/new-organization.ts",
     "db:deploy": "prisma migrate deploy",
     "vercel:prune": "tsx scripts/prune-deployments.ts",
     "qa:matrix": "tsx scripts/qualification-matrix.ts",

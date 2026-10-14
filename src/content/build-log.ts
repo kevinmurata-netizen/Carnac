@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-14",
+    title: "Start a new customer from nothing",
+    summary:
+      "A new customer — a power utility, say — can now be given their own site and database starting empty: one command creates their organization, branding and first Administrator, with none of the water demo. Until they model something, the pages built on the models say what to do first instead of failing.",
+    changes: [
+      "npm run org:new creates an organization, its branding (a neutral \"Asset\" platform unless told otherwise) and one Administrator whose password it prints once. It refuses a database that already has an organization unless told --alongside.",
+      "DEPLOYMENT.md has \"A new customer\": a Neon database and Vercel project each, the schema, the first login, and the order to set up their network in.",
+      "The dashboard, Condition, Risk, Deterioration Models and the Condition Index, Risk Models and Metrics settings show \"Nothing is modelled yet\" with the steps to take, and the Settings overview marks those cards \"Not set up\".",
+      "The four system roles are defined once, for the demo seed and new customers alike.",
+    ],
+    note: "No migration. Every migration from now on runs on each customer's database too.",
+  },
+  {
+    date: "2026-10-14",
     title: "Import inspection history",
     summary:
       "Data Import can now load inspections as well as assets: one row per inspection, a column per question on the asset type's inspection form. Each is scored by the type's condition index, exactly as if it had been typed in, so a new asset class can arrive with its condition history.",

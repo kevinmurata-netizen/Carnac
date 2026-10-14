@@ -23,6 +23,7 @@ import { ensureBaselineWorkPlan } from "../src/server/workplans";
 import { WATERLINE_TREATMENTS } from "../src/domain/waterline/treatment";
 import { seedSampleFacilities } from "./facilities";
 import { seedSampleComponents, seedSampleInspections } from "./components";
+import { ensureSystemRoles } from "../src/server/system-roles";
 
 // The shared client, so the seed uses the same driver adapter the app does.
 // Constructing one here would fail outright: with engineType "client" there is
@@ -179,48 +180,9 @@ async function main() {
     data: { name: "Meridian Falls Water Utility" },
   });
 
-  const roles = await Promise.all([
-    prisma.role.create({
-      data: {
-        code: "ADMINISTRATOR",
-        name: "Administrator",
-        isSystem: true,
-        permissions: ["*"],
-      },
-    }),
-    prisma.role.create({
-      data: {
-        code: "ASSET_MANAGER",
-        name: "Asset Manager",
-        isSystem: true,
-        permissions: [
-          "assets:read",
-          "assets:write",
-          "inspections:write",
-          "models:write",
-          "treatments:write",
-          "scenarios:write",
-          "work-plans:write",
-        ],
-      },
-    }),
-    prisma.role.create({
-      data: {
-        code: "INSPECTOR",
-        name: "Inspector",
-        isSystem: true,
-        permissions: ["assets:read", "inspections:read", "inspections:write"],
-      },
-    }),
-    prisma.role.create({
-      data: {
-        code: "EXECUTIVE",
-        name: "Executive",
-        isSystem: true,
-        permissions: ["assets:read", "dashboards:read", "reports:read", "scenarios:read", "work-plans:read"],
-      },
-    }),
-  ]);
+  // The same four roles a new customer's site starts with.
+  const roleIds = await ensureSystemRoles();
+  const roles = [roleIds.ADMINISTRATOR, roleIds.ASSET_MANAGER, roleIds.INSPECTOR, roleIds.EXECUTIVE].map((id) => ({ id }));
 
   const passwordHash = await bcrypt.hash("Carnac#2026", 10);
 
