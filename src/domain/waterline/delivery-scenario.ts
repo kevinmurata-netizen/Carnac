@@ -73,6 +73,8 @@ import {
   type ScenarioYearResult,
   type SimAsset,
   type YearAlternative,
+  breakdownByType,
+  withByType,
 } from "./scenario";
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -704,6 +706,7 @@ function walk(
         (a) => pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold
       ).length,
       selected: programmed,
+      ...withByType(breakdownByType(state, programmed, backlogBest)),
       byCategory: money.byCategoryIn(year).map((r) => ({
         category: r.category,
         spent: Math.round(r.spent),

@@ -338,7 +338,70 @@ export type ScenarioYearResult = {
   /** Cost of work skipped this year because its category was full, though the
    * budget was not. Zero when nothing is capped. */
   cappedOut: number;
+  /** The same year for each asset type, present only when the run covers
+   * more than one: their condition is on different indexes, so the network
+   * average above mixes them and each type's own figures are what mean
+   * anything. */
+  byType?: TypeYearResult[];
 };
+
+/** The key only when there is something under it. */
+export function withByType(byType: TypeYearResult[] | undefined): { byType?: TypeYearResult[] } {
+  return byType ? { byType } : {};
+}
+
+/** One asset type's share of a year. */
+export type TypeYearResult = {
+  assetTypeId: string;
+  assets: number;
+  /** Average condition on the type's own index. */
+  avgCondition: number;
+  expectedFailures: number;
+  failureCost: number;
+  backlog: number;
+  backlogCount: number;
+  /** Cost of the work chosen for the type's assets this year. */
+  workFunded: number;
+  projects: number;
+};
+
+/**
+ * A year split by asset type, or undefined when the run covers one type —
+ * the run's own figures already are that type's, and leaving it out keeps a
+ * single-type run's results exactly as they were.
+ */
+export function breakdownByType(
+  state: SimAsset[],
+  chosen: ScenarioProject[],
+  backlogBest: Map<string, number>
+): TypeYearResult[] | undefined {
+  const typeOf = new Map(state.map((a) => [a.id, a.assetTypeId ?? ""]));
+  const types = [...new Set(typeOf.values())].filter(Boolean);
+  if (types.length < 2) return undefined;
+  return types.sort().map((assetTypeId) => {
+    const assets = state.filter((a) => a.assetTypeId === assetTypeId);
+    let expectedFailures = 0;
+    let failureCost = 0;
+    for (const asset of assets) {
+      const rate = annualFailureProbability(pofFromCondition(asset.condition));
+      expectedFailures += rate;
+      failureCost += rate * failureEventCost(asset).total;
+    }
+    const backlogged = [...backlogBest.entries()].filter(([assetId]) => typeOf.get(assetId) === assetTypeId);
+    const work = chosen.filter((p) => typeOf.get(p.assetId) === assetTypeId);
+    return {
+      assetTypeId,
+      assets: assets.length,
+      avgCondition: Math.round((assets.reduce((s, a) => s + a.condition, 0) / (assets.length || 1)) * 10) / 10,
+      expectedFailures: Math.round(expectedFailures * 10) / 10,
+      failureCost: Math.round(failureCost),
+      backlog: Math.round(backlogged.reduce((s, [, cost]) => s + cost, 0)),
+      backlogCount: backlogged.length,
+      workFunded: Math.round(work.reduce((s, p) => s + p.cost, 0)),
+      projects: work.length,
+    };
+  });
+}
 
 export type ScenarioRunResult = {
   years: ScenarioYearResult[];
@@ -1218,6 +1281,7 @@ export function runScenario(
         cap: Math.round(r.cap),
       })),
       cappedOut: Math.round(outcome.cappedOut),
+      ...withByType(breakdownByType(state, selected, backlogBest)),
     });
   }
 
