@@ -239,6 +239,8 @@ async function main() {
       geometry: "line",
       // Larger mains cost disproportionately more, normalized to an 8" main.
       sizeCostScale: { reference: 8, exponent: 0.7 },
+      // Emergency repair, plus service interruption per customer affected.
+      failureCost: { repairCost: 18000, perCustomer: 145 },
     },
   });
 

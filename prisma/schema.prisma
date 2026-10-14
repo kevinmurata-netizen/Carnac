@@ -148,6 +148,11 @@ model AssetType {
   /// times the rate. Null: size does not move price.
   sizeCostScale Json?
 
+  /// What one failure costs: {"repairCost": 18000, "perCustomer": 145}. The
+  /// repair grows with size by sizeCostScale, as treatment prices do. Null:
+  /// failures are not costed, so life-cycle savings count no failures avoided.
+  failureCost Json?
+
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 

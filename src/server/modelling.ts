@@ -1,3 +1,4 @@
+import { parseFailureCost } from "@/domain/waterline/lcca";
 import { prisma } from "@/lib/prisma";
 import { WCI_BANDS } from "@/domain/waterline/condition";
 import { isComponentScoped } from "@/domain/components/scope";
@@ -18,7 +19,7 @@ import { MEASURE_ROLES } from "@/lib/measure-roles";
  */
 
 export type ReadinessItem = {
-  key: "measures" | "conditionIndex" | "riskModel" | "curves" | "treatments" | "inspectionForm";
+  key: "measures" | "conditionIndex" | "riskModel" | "curves" | "treatments" | "inspectionForm" | "failureCost";
   label: string;
   ok: boolean;
   detail: string;
@@ -33,6 +34,7 @@ export async function getModellingReadiness(organizationId: string): Promise<Map
     select: {
       id: true,
       measures: true,
+      failureCost: true,
       conditionModels: { select: { formula: true } },
       riskModels: { where: { isActive: true }, select: { probabilityConfig: true, consequenceConfig: true } },
       deteriorationModels: { where: { isActive: true, modelType: { not: "MARKOV" } }, select: { applicability: true } },
@@ -103,6 +105,15 @@ export async function getModellingReadiness(organizationId: string): Promise<Map
               ? `${t.treatments.length} treatment${t.treatments.length === 1 ? "" : "s"}, with a replacement baseline${hasInspection ? " and an inspection" : ""}`
               : `${t.treatments.length} treatment${t.treatments.length === 1 ? "" : "s"}, but none is its replacement, so no life-cycle comparison — and no work — can be proposed`,
         href: `/settings/treatments${tab}`,
+      },
+      {
+        key: "failureCost",
+        label: "Cost of a failure",
+        ok: parseFailureCost(t.failureCost) != null,
+        detail: parseFailureCost(t.failureCost)
+          ? "Set — failures avoided count in life-cycle savings"
+          : "Not set — life-cycle savings count no failures avoided",
+        href: "/settings/asset-types",
       },
       {
         key: "inspectionForm",

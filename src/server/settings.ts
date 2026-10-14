@@ -11,6 +11,7 @@ import {
 } from "@/domain/waterline/risk";
 import { MEASURE_ROLES as ROLES } from "@/lib/measure-roles";
 import { parseSizeCostScale, type SizeCostScale } from "@/domain/waterline/treatment";
+import { parseFailureCost, type FailureCost } from "@/domain/waterline/lcca";
 import {
   DEFAULT_CURVE,
   DEFAULT_TRANSITION_MATRIX,
@@ -262,6 +263,19 @@ export async function getSizeCostByType(
     select: { id: true, sizeCostScale: true },
   });
   const byType = new Map(types.map((t) => [t.id, parseSizeCostScale(t.sizeCostScale)]));
+  return (assetTypeId) => (assetTypeId ? (byType.get(assetTypeId) ?? null) : null);
+}
+
+/** What one failure costs for each modelled type, by type id: carried on
+ * every treatment context so life-cycle costs read their own type's. */
+export async function getFailureCostByType(
+  organizationId: string
+): Promise<(assetTypeId: string | null | undefined) => FailureCost | null> {
+  const types = await prisma.assetType.findMany({
+    where: modelledType(organizationId),
+    select: { id: true, failureCost: true },
+  });
+  const byType = new Map(types.map((t) => [t.id, parseFailureCost(t.failureCost)]));
   return (assetTypeId) => (assetTypeId ? (byType.get(assetTypeId) ?? null) : null);
 }
 
@@ -657,6 +671,8 @@ export type AssetTypeDetail = {
   measures: MeasureCodes;
   /** How its treatment prices grow with its size; null when they do not. */
   sizeCostScale: SizeCostScale | null;
+  /** What one of its failures costs; null when not set. */
+  failureCost: FailureCost | null;
   attributes: AttributeDetail[];
   templates: TemplateDetail[];
 };
@@ -713,6 +729,7 @@ export async function listAssetTypeDetails(organizationId: string): Promise<Asse
     geometry: t.geometry,
     measures: parseMeasureCodes(t.measures),
     sizeCostScale: parseSizeCostScale(t.sizeCostScale),
+    failureCost: parseFailureCost(t.failureCost),
     attributes: t.attributeDefinitions.map((d) => ({
       id: d.id,
       code: d.code,
@@ -783,9 +800,25 @@ export async function updateAssetTypeMeasures(
     sizeCostScale = { reference, exponent };
   }
 
+  // What one failure costs: blank leaves failures uncosted.
+  let failureCost: FailureCost | null = null;
+  const repairText = input.failureRepairCost?.trim() ?? "";
+  const perCustomerText = input.failurePerCustomer?.trim() ?? "";
+  if (repairText || perCustomerText) {
+    const repairCost = Number(repairText || 0);
+    const perCustomer = Number(perCustomerText || 0);
+    if (!Number.isFinite(repairCost) || repairCost < 0) throw new Error("The repair cost of a failure must be a dollar amount of zero or more");
+    if (!Number.isFinite(perCustomer) || perCustomer < 0) throw new Error("The cost per customer affected must be a dollar amount of zero or more");
+    failureCost = { repairCost, perCustomer };
+  }
+
   await prisma.assetType.update({
     where: { id: assetType.id },
-    data: { measures, sizeCostScale: sizeCostScale ?? Prisma.DbNull },
+    data: {
+      measures,
+      sizeCostScale: sizeCostScale ?? Prisma.DbNull,
+      failureCost: failureCost ?? Prisma.DbNull,
+    },
   });
   return assetType.name;
 }
