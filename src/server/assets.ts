@@ -34,6 +34,8 @@ export function flattenAttributes(asset: AssetWithAttributes): Record<string, st
 }
 
 export type AssetFilters = {
+  /** One modelled type's assets; absent is every modelled type's. */
+  assetTypeId?: string;
   search?: string;
   material?: string;
   status?: AssetStatus;
@@ -65,6 +67,7 @@ export async function listAssets(organizationId: string, filters: AssetFilters =
     deletedAt: null,
   };
 
+  if (filters.assetTypeId) where.assetTypeId = filters.assetTypeId;
   if (filters.status) where.status = filters.status;
 
   // An empty list means a saved filter matched nothing, which must show no

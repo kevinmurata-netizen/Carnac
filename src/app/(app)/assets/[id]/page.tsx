@@ -235,13 +235,15 @@ export default async function AssetDetailPage({
 
       <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
         <SummaryStat label="Age" value={age != null ? `${age} yr` : "—"} />
-        <SummaryStat
-          label={measureLabels.length.name}
-          value={
-            measures.length ? formatMeasure(Math.round(measures.length), measureLabels.length, 0) : "—"
-          }
-        />
-        <SummaryStat label={measureLabels.diameter.name} value={formatMeasure(diameter, measureLabels.diameter)} />
+        {measureLabels.length.recorded && (
+          <SummaryStat
+            label={measureLabels.length.name}
+            value={measures.length ? formatMeasure(Math.round(measures.length), measureLabels.length, 0) : "—"}
+          />
+        )}
+        {measureLabels.diameter.recorded && (
+          <SummaryStat label={measureLabels.diameter.name} value={formatMeasure(diameter, measureLabels.diameter)} />
+        )}
         <SummaryStat label="Material" value={material ?? "—"} />
         <SummaryStat label="Installed" value={formatDate(asset.installationDate)} />
         <SummaryStat label="Criticality" value={measures.criticality ?? "—"} />

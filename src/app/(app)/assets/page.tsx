@@ -14,7 +14,7 @@ import {
 } from "@/server/assets";
 import { listSavedFilters } from "@/server/saved-filters";
 import { rollUpAssets, type AssetRollup } from "@/server/rollup";
-import { assetFiltersFromParams } from "@/server/grid-params";
+import { assetFiltersFromParams, inventoryTypeFromParams } from "@/server/grid-params";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetFilterBar } from "@/components/filters/asset-filter-bar";
 import { SavedFilterSelect } from "@/components/filters/saved-filter-select";
@@ -52,16 +52,17 @@ export default async function AssetsPage({
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
-  const measures = await getMeasureLabels(organizationId);
 
-  // Which kind of asset is being looked at. The modelled type by default,
-  // because it is what this app plans; the other types are here to be read.
-  const assetTypes = await listAssetTypes(organizationId);
-  const modelledCode = assetTypes.find((t) => t.isModelled)?.code ?? null;
-  const selectedType =
-    params.type && assetTypes.some((t) => t.code === params.type) ? params.type : (modelledCode ?? assetTypes[0]?.code);
-  if (selectedType && selectedType !== modelledCode) {
-    const typed = await listTypedAssets(organizationId, selectedType);
+  // Which kind of asset is being looked at. A modelled type by default — the
+  // main network — because it is what this app plans; each modelled type has
+  // its own tab, and the other types are here to be read in their own terms.
+  const [assetTypes, inventoryType] = await Promise.all([
+    listAssetTypes(organizationId),
+    inventoryTypeFromParams(organizationId, params),
+  ]);
+  const typedCode = inventoryType ? null : (params.type ?? assetTypes[0]?.code);
+  if (typedCode) {
+    const typed = await listTypedAssets(organizationId, typedCode);
     if (typed) {
       // Each asset's score, rolled up from its components under the strategy
       // that governs its type — and which strategy that was, beside it.
@@ -74,7 +75,8 @@ export default async function AssetsPage({
 
   // Parsed by the same code the export route uses, so the spreadsheet can
   // never disagree with the screen.
-  const filters = await assetFiltersFromParams(organizationId, params);
+  const filters = { ...(await assetFiltersFromParams(organizationId, params)), assetTypeId: inventoryType?.id };
+  const measures = await getMeasureLabels(organizationId, inventoryType?.id);
 
   const [assets, materials, serviceAreas, criticalities, customerTypes, pressureZones, savedFilters, measuresOf] =
     await Promise.all([
@@ -97,7 +99,7 @@ export default async function AssetsPage({
       />
 
       <div className="mb-4 flex flex-wrap items-end gap-4">
-        <AssetTypeTabs types={assetTypes} selected={modelledCode ?? ""} />
+        <AssetTypeTabs types={assetTypes} selected={inventoryType?.code ?? ""} />
         <SavedFilterSelect
           filters={savedFilters.map((f) => ({ id: f.id, name: f.name, criteriaCount: f.criteria.length }))}
         />
@@ -121,8 +123,8 @@ export default async function AssetsPage({
               <TableRow>
                 <ColumnHeader label={`${words.singular} ID`} sortKey="assetCode" />
                 <ColumnHeader label="Material" sortKey="material" filterParam="material" options={materials} />
-                <ColumnHeader label={measures.diameter.name} sortKey="diameter" />
-                <ColumnHeader label={measures.length.heading} sortKey="length" />
+                {measures.diameter.recorded && <ColumnHeader label={measures.diameter.name} sortKey="diameter" />}
+                {measures.length.recorded && <ColumnHeader label={measures.length.heading} sortKey="length" />}
                 <ColumnHeader label="Install Year" sortKey="installationDate" />
                 <ColumnHeader label="Age" sortKey="age" />
                 <ColumnHeader
@@ -159,8 +161,8 @@ export default async function AssetsPage({
                       </Link>
                     </TableCell>
                     <TableCell>{m.material ?? "—"}</TableCell>
-                    <TableCell>{formatMeasure(m.diameter, measures.diameter)}</TableCell>
-                    <TableCell>{formatNumber(Math.round(m.length ?? 0))}</TableCell>
+                    {measures.diameter.recorded && <TableCell>{formatMeasure(m.diameter, measures.diameter)}</TableCell>}
+                    {measures.length.recorded && <TableCell>{formatNumber(Math.round(m.length ?? 0))}</TableCell>}
                     <TableCell>{asset.installationDate ? asset.installationDate.getFullYear() : "—"}</TableCell>
                     <TableCell>{age ?? "—"}</TableCell>
                     <TableCell>
@@ -201,7 +203,7 @@ function AssetTypeTabs({
         return (
           <Link
             key={type.code}
-            href={type.isModelled ? "/assets" : `/assets?type=${type.code}`}
+            href={`/assets?type=${type.code}`}
             className={`rounded-md border px-2.5 py-1 text-sm ${
               active ? "border-primary bg-primary/10 font-medium text-foreground" : "text-muted-foreground hover:bg-muted"
             }`}

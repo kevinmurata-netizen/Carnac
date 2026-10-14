@@ -3,6 +3,7 @@ import { AssetStatus, type AttributeDataType } from "@prisma/client";
 import { insertAssetLocation } from "@/server/geo";
 import { wholeAssetConditionModel } from "@/server/components";
 import { parseMeasureCodes } from "@/server/measures";
+import { getCurvesByAssetType } from "@/server/settings";
 
 /**
  * CSV import of an asset type's inventory (SPEC §27). Validation is a
@@ -150,7 +151,7 @@ export async function getImportSpec(organizationId: string, assetTypeId: string)
   columns.push(
     { key: "serviceArea", label: "Service Area", required: false, kind: "text", aliases: [], note: "Optional free text." },
     { key: "department", label: "Department", required: false, kind: "text", aliases: ["Responsible department"], note: "Optional: the department responsible for it." },
-    { key: "expectedLife", label: "Expected Life", required: false, kind: "integer", min: 1, max: 500, aliases: [], note: `Optional, in years; ${DEFAULT_EXPECTED_LIFE} when left blank.` }
+    { key: "expectedLife", label: "Expected Life", required: false, kind: "integer", min: 1, max: 500, aliases: [], note: `Optional, in years. Left blank, the service life of its material's curve, or ${DEFAULT_EXPECTED_LIFE} where it has none.` }
   );
   return { assetTypeId: type.id, assetTypeName: type.name, columns };
 }
@@ -370,7 +371,14 @@ export async function commitImport(organizationId: string, assetTypeId: string, 
   });
   const defByCode = new Map(assetType.attributeDefinitions.map((d) => [d.code, d.id]));
   const lengthCode = parseMeasureCodes(assetType.measures).length;
+  const materialCode = parseMeasureCodes(assetType.measures).material;
   const conditionModel = await wholeAssetConditionModel(assetType.id);
+  // An expected life left blank is its material's: the curve it will age on.
+  const curves = (await getCurvesByAssetType(organizationId))(assetType.id);
+  const lifeOf = (row: (typeof report.validRows)[number]) => {
+    const material = row.values.find((v) => v.code === materialCode)?.textValue;
+    return row.expectedLife ?? (material ? curves[material]?.serviceLife : undefined) ?? DEFAULT_EXPECTED_LIFE;
+  };
 
   for (const row of report.validRows) {
     const attributeValues = row.values.flatMap((v) => {
@@ -395,7 +403,7 @@ export async function commitImport(organizationId: string, assetTypeId: string, 
         status: AssetStatus.ACTIVE,
         ownerDepartment: row.department,
         installationDate: new Date(Date.UTC(row.installationYear, 0, 1)),
-        expectedUsefulLife: row.expectedLife ?? DEFAULT_EXPECTED_LIFE,
+        expectedUsefulLife: lifeOf(row),
         attributeValues: { create: attributeValues },
       },
     });
