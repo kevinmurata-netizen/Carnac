@@ -431,10 +431,10 @@ export async function ensureFacilityTypes(prisma: PrismaClient, organizationId: 
   const byCode = new Map<string, { id: string; definitions: Map<string, string> }>();
 
   for (const spec of FACILITY_ASSET_TYPES) {
-    const existing = await prisma.assetType.findUnique({ where: { code: spec.code }, select: { id: true } });
+    const existing = await prisma.assetType.findFirst({ where: { code: spec.code, organizationId }, select: { id: true } });
     const assetType = existing
       ? await prisma.assetType.update({
-          where: { code: spec.code },
+          where: { id: existing.id },
           data: { name: spec.name, description: spec.description },
           select: { id: true },
         })
