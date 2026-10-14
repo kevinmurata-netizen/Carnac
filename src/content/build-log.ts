@@ -30,6 +30,17 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-14",
+    title: "Scenario results for each asset type",
+    summary:
+      "A scenario over several asset types reported one network condition, averaging indexes that measure different things. It now also shows each type on its own: condition on its own index, work funded, backlog and failure cost. A single-type scenario is unchanged.",
+    changes: [
+      "A \"By Asset Type\" section on a scenario covering several types: each type's assets, its condition at the start and end on its own index, the work funded for it, its backlog and its failure cost, with a chart of each type's condition by year.",
+      "Each year's figures are stored per type alongside the totals, for both scenario modes. A run over one type stores exactly what it did.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-14",
     title: "Each asset type says what a failure costs",
     summary:
       "Every failure was costed as a water main's — $18,000 repair scaled by pipe size, plus $145 per customer — whatever the asset was, so a 35 ft pole's failure cost about $55,000 and its life-cycle savings were inflated. Each asset type now sets its own. Water's costs are unchanged.",

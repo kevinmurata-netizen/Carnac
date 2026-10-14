@@ -17,6 +17,7 @@ import {
   type SimAsset,
   type Strategy,
   type ScenarioRunResult,
+  type TypeYearResult,
   type ScenarioRunOptions,
 } from "@/domain/waterline/scenario";
 import { runDeliveryScenario, type DeliveryRunResult } from "@/domain/waterline/delivery-scenario";
@@ -661,6 +662,17 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       { scenarioId, year: y.year, metricKey: "expectedFailures", metricValue: y.expectedFailures },
       { scenarioId, year: y.year, metricKey: "failureCost", metricValue: y.failureCost },
       { scenarioId, year: y.year, metricKey: "belowTargetCount", metricValue: y.belowTargetCount },
+      // Each asset type's share, when the run covers several: stored as
+      // "type:<id>:<metric>" beside the totals, so a single-type run stores
+      // exactly what it always did.
+      ...(y.byType ?? []).flatMap((t) =>
+        TYPE_METRICS.map((metric) => ({
+          scenarioId,
+          year: y.year,
+          metricKey: `${TYPE_METRIC_PREFIX}${t.assetTypeId}:${metric}`,
+          metricValue: t[metric],
+        }))
+      ),
     ]),
   });
   // How the run got to its first year, stored against that year so no extra
@@ -1183,8 +1195,54 @@ export type ScenarioDetail = ScenarioSummary & {
     expectedFailures: number;
     failureCost: number;
     belowTargetCount: number;
+    /** Each asset type's share, when the run covered several; empty otherwise. */
+    byType: Array<
+      Omit<TypeYearResult, "assetTypeId"> & { assetTypeId: string; assetTypeName: string }
+    >;
   }>;
 };
+
+const TYPE_METRIC_PREFIX = "type:";
+const TYPE_METRICS = [
+  "assets",
+  "avgCondition",
+  "expectedFailures",
+  "failureCost",
+  "backlog",
+  "backlogCount",
+  "workFunded",
+  "projects",
+] as const satisfies ReadonlyArray<keyof TypeYearResult>;
+
+/** A year's per-type rows read back, ordered by type name. */
+function typeYears(
+  metrics: Record<string, number>,
+  names: Map<string, string>
+): ScenarioDetail["years"][number]["byType"] {
+  const byId = new Map<string, Partial<Record<(typeof TYPE_METRICS)[number], number>>>();
+  for (const [key, value] of Object.entries(metrics)) {
+    if (!key.startsWith(TYPE_METRIC_PREFIX)) continue;
+    const rest = key.slice(TYPE_METRIC_PREFIX.length);
+    const cut = rest.lastIndexOf(":");
+    const id = rest.slice(0, cut);
+    const metric = rest.slice(cut + 1) as (typeof TYPE_METRICS)[number];
+    byId.set(id, { ...(byId.get(id) ?? {}), [metric]: value });
+  }
+  return [...byId.entries()]
+    .map(([assetTypeId, m]) => ({
+      assetTypeId,
+      assetTypeName: names.get(assetTypeId) ?? "Removed type",
+      assets: m.assets ?? 0,
+      avgCondition: m.avgCondition ?? 0,
+      expectedFailures: m.expectedFailures ?? 0,
+      failureCost: m.failureCost ?? 0,
+      backlog: m.backlog ?? 0,
+      backlogCount: m.backlogCount ?? 0,
+      workFunded: m.workFunded ?? 0,
+      projects: m.projects ?? 0,
+    }))
+    .sort((a, b) => a.assetTypeName.localeCompare(b.assetTypeName));
+}
 
 export async function getScenario(organizationId: string, scenarioId: string): Promise<ScenarioDetail | null> {
   const s = await prisma.scenario.findFirst({
@@ -1202,6 +1260,9 @@ export async function getScenario(organizationId: string, scenarioId: string): P
 
   const summaries = await listScenarios(organizationId);
   const summary = summaries.find((x) => x.id === scenarioId)!;
+  const typeNames = new Map(
+    (await prisma.assetType.findMany({ where: { organizationId }, select: { id: true, name: true } })).map((t) => [t.id, t.name])
+  );
 
   return {
     ...summary,
@@ -1220,6 +1281,7 @@ export async function getScenario(organizationId: string, scenarioId: string): P
         expectedFailures: m.expectedFailures ?? 0,
         failureCost: m.failureCost ?? 0,
         belowTargetCount: m.belowTargetCount ?? 0,
+        byType: typeYears(m, typeNames),
       })),
   };
 }

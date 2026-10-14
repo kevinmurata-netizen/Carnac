@@ -17,7 +17,7 @@ import {
   type ScenarioOptionCatalogue,
 } from "@/server/scenario-options";
 import { listModelledAssetTypes } from "@/server/modelled-asset-type";
-import { getScenarioIndexWords } from "@/server/condition-model";
+import { getIndexWords, getScenarioIndexWords } from "@/server/condition-model";
 import type { IndexWords } from "@/lib/index-words";
 import { withAssetWords, type AssetWords } from "@/lib/branding";
 import { normalizeWeights } from "@/domain/waterline/optimization";
@@ -191,6 +191,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     combinations: catalogue.selectedCombinations,
   };
   const years = scenario.years;
+  // Each asset type the run covered, with its own index's words — the network
+  // figures mix their indexes when there is more than one.
+  const typeIds = [...new Set(years.flatMap((y) => y.byType.map((t) => t.assetTypeId)))];
+  const typeIndex = new Map(
+    await Promise.all(typeIds.map(async (id) => [id, await getIndexWords(organizationId, id)] as const))
+  );
   // Whether the stored run spent anything on locked projects — what decides
   // whether spending is shown in two parts.
   const programmedTotal = years.reduce((sum, y) => sum + y.programmedSpend, 0);
@@ -582,6 +588,8 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               </CardContent>
             </Card>
           </div>
+
+          {typeIndex.size > 1 && <ByTypeCard years={years} indexOf={(id) => typeIndex.get(id)} />}
 
           <Card className="mt-4">
             <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -1083,6 +1091,94 @@ function TargetSpendCard({
             </TableBody>
           </Table>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const TYPE_COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
+
+/**
+ * The run split by asset type. Each type's condition is on its own index, so
+ * the network average in the charts above mixes them; these are the figures
+ * that mean something per type. Shown only when the run covers several.
+ */
+function ByTypeCard({
+  years,
+  indexOf,
+}: {
+  years: ScenarioDetail["years"];
+  indexOf: (assetTypeId: string) => IndexWords | undefined;
+}) {
+  const first = years[0];
+  const last = years[years.length - 1];
+  const types = last.byType;
+  const across = (id: string, pick: (t: ScenarioDetail["years"][number]["byType"][number]) => number) =>
+    years.reduce((sum, y) => sum + (y.byType.find((t) => t.assetTypeId === id) ? pick(y.byType.find((t) => t.assetTypeId === id)!) : 0), 0);
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle>By Asset Type</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Each type&apos;s condition is on its own index, so the network figures above average different scales together.
+          These are each type&apos;s own.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Asset type</TableHead>
+                <TableHead className="text-right">Assets</TableHead>
+                <TableHead className="text-right">
+                  Condition {first.year} → {last.year}
+                </TableHead>
+                <TableHead className="text-right">Work funded</TableHead>
+                <TableHead className="text-right">Backlog at end</TableHead>
+                <TableHead className="text-right">Failure cost</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {types.map((t) => {
+                const start = first.byType.find((x) => x.assetTypeId === t.assetTypeId)?.avgCondition;
+                return (
+                  <TableRow key={t.assetTypeId}>
+                    <TableCell className="font-medium">{t.assetTypeName}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatNumber(t.assets)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {indexOf(t.assetTypeId)?.short} {start ?? "—"} → {t.avgCondition}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(across(t.assetTypeId, (x) => x.workFunded), { compact: true })}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(t.backlog, { compact: true })}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(across(t.assetTypeId, (x) => x.failureCost), { compact: true })}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        <SimpleLineChart
+          data={years.map((y) => ({
+            year: y.year,
+            ...Object.fromEntries(y.byType.map((t) => [t.assetTypeId, t.avgCondition])),
+          }))}
+          xKey="year"
+          yDomain={[0, 100]}
+          series={types.map((t, i) => ({
+            key: t.assetTypeId,
+            label: `${t.assetTypeName} (${indexOf(t.assetTypeId)?.short ?? "condition"})`,
+            color: TYPE_COLORS[i % TYPE_COLORS.length],
+          }))}
+        />
+        <p className="text-xs text-muted-foreground">
+          Work funded is the cost of the work chosen for each type over the run; failure cost is the expected cost of
+          failures over the run, on each type&apos;s own failure cost (Settings › Asset Types).
+        </p>
       </CardContent>
     </Card>
   );
