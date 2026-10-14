@@ -6,14 +6,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { validateImportAction, commitImportAction } from "./actions";
-import { EMPTY_IMPORT_STATE, type ImportState } from "./state";
+import { EMPTY_IMPORT_STATE, type ImportKind, type ImportState } from "./state";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 export function ImportForm({
+  kind,
   assetTypeId,
   assetTypeName,
   templateCsv,
 }: {
+  kind: ImportKind;
   assetTypeId: string;
   assetTypeName: string;
   templateCsv: string;
@@ -42,6 +44,7 @@ export function ImportForm({
         <CardContent>
           <form action={action} className="space-y-3">
             <input type="hidden" name="assetTypeId" value={assetTypeId} />
+            <input type="hidden" name="kind" value={kind} />
             <textarea
               name="csv"
               rows={8}
@@ -51,8 +54,10 @@ export function ImportForm({
             />
             <div className="flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
-                Nothing is written until you commit. Validation runs against the live database, so duplicate asset
-                IDs are caught before import.
+                Nothing is written until you commit. Validation runs against the live database, so{" "}
+                {kind === "inspections"
+                  ? "an asset ID that doesn't exist is caught before import."
+                  : "duplicate asset IDs are caught before import."}
               </p>
               <Button type="submit" disabled={pending}>
                 {pending ? "Validating…" : "Validate"}
@@ -170,10 +175,13 @@ export function ImportForm({
             <form action={commitAction} className="flex items-center justify-between gap-4">
               <input type="hidden" name="csv" value={active.csv} />
               <input type="hidden" name="assetTypeId" value={assetTypeId} />
+              <input type="hidden" name="kind" value={kind} />
               <p className="text-xs text-muted-foreground">
                 {hasErrors
                   ? "Commit is disabled while the file has errors — fix them and validate again."
-                  : `${report.validRows.length} row${report.validRows.length === 1 ? "" : "s"} will be created as active ${assetTypeName.toLowerCase()} assets.`}
+                  : kind === "inspections"
+                    ? `${report.validRows.length} row${report.validRows.length === 1 ? "" : "s"} will be recorded as ${assetTypeName.toLowerCase()} inspections, oldest first, each scored by the condition index.`
+                    : `${report.validRows.length} row${report.validRows.length === 1 ? "" : "s"} will be created as active ${assetTypeName.toLowerCase()} assets.`}
               </p>
               <Button type="submit" disabled={!canCommit || committing}>
                 {committing ? "Importing…" : "Commit Import"}
