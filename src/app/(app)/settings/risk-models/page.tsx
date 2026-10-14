@@ -1,3 +1,4 @@
+import { NothingModelled } from "@/components/layout/nothing-modelled";
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { findRiskModel, getRiskModelConfig } from "@/server/settings";
@@ -23,6 +24,7 @@ export default async function RiskModelsPage({ searchParams }: { searchParams: P
 
   // Each modelled asset type weighs its own risk factors.
   const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
+  if (!selected) return <NothingModelled title={pageTitle} about="How probability and consequence of failure are rated for each modelled asset type" />;
   const header = (
     <>
       <PageHeader

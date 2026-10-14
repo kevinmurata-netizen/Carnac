@@ -1,3 +1,4 @@
+import { NothingModelled } from "@/components/layout/nothing-modelled";
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { findIndexModel, getConditionIndex } from "@/server/condition-model";
@@ -21,6 +22,7 @@ export default async function ConditionIndexPage({ searchParams }: { searchParam
 
   // Each modelled asset type is scored by its own index.
   const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
+  if (!selected) return <NothingModelled title={pageTitle} about="The components and weights that produce every condition score" />;
   const pills = (
     <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/condition-index?type=${id}`} />
   );

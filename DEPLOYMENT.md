@@ -143,6 +143,68 @@ $env:DATABASE_URL = "<neon-pooled-url>"; npm run user:password -- admin@carnac.l
 
 ---
 
+## A new customer
+
+Each customer gets its own Neon database and its own Vercel project, built from
+this same repository. Their data cannot mix with anyone else's, and each site
+carries its own name, logo and words (Settings › Branding).
+
+**Do not run `npm run db:seed` on a customer's database.** The seed is the water
+demo: it deletes everything first, then loads Meridian Falls.
+
+1. **Database.** Create a new Neon project and copy its **pooled** connection
+   string, as in step 2 above.
+
+2. **Schema.** In a new PowerShell window, from the project folder:
+
+   ```powershell
+   $env:DATABASE_URL = "<their-neon-pooled-url>"
+   ```
+
+   ```powershell
+   npx prisma migrate deploy
+   ```
+
+3. **Organization and first login.** In the same window:
+
+   ```powershell
+   npm run org:new -- --name "Ridgeway Power Cooperative" --admin them@example.com --admin-name "Their Name" --product "Ridgeway AMS" --logo zap
+   ```
+
+   It creates the organization, its branding and one Administrator, and prints
+   that account's password **once**. Optional: `--tagline`, `--asset`/`--assets`
+   (what the inventory is called, "Asset" by default) and `--item`/`--items`
+   (what one is called in a sentence, "asset" by default). It refuses a database
+   that already has an organization. Close the window when done.
+
+4. **Site.** In Vercel, **Add New → Project** and import the same GitHub repo
+   under a new project name. Set `DATABASE_URL` (their string), a new
+   `AUTH_SECRET` and `NEXTAUTH_URL` exactly as in step 4 above, and deploy.
+
+5. **Set up their network** in the app, signed in as that Administrator:
+   - Settings › Asset Types: add the type, its attributes and measures, then
+     switch its modelling on (it creates a starter condition index and risk
+     model).
+   - Settings › Inspection Templates and Condition Index: the questions and
+     their weights.
+   - Data Import: the assets, then any inspection history.
+   - Settings › Deterioration Models, Treatments, Treatment Costs: how it ages
+     and what can be done to it.
+   - Settings › Risk Models: recompute risk once the data is in.
+
+   Until something is modelled, the dashboard and the condition, risk and
+   forecast pages say so and point at these screens.
+
+**Every customer database takes every migration.** When a change comes with a
+migration, run it on each customer's database (Neon's SQL editor, or
+`npm run db:deploy` with that `DATABASE_URL`) before it is merged, not only on
+the demo's. Keep a list of the projects so none is missed.
+
+A customer responsible for several kinds of asset — water mains and poles, say —
+keeps them all in one site: each is an asset type, modelled side by side.
+
+---
+
 ## Schema changes
 
 Builds deliberately do **not** run migrations. They used to, and it broke:
