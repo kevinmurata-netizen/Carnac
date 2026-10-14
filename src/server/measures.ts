@@ -124,7 +124,8 @@ export const getMeasureLabels = cache(
         })
         .filter((l): l is MeasureLabel => !!l);
       const [first] = found;
-      return first && found.every((l) => l.heading === first.heading) ? first : GENERIC_MEASURE_LABELS[role];
+      if (!first) return { ...GENERIC_MEASURE_LABELS[role], recorded: false };
+      return found.every((l) => l.heading === first.heading) ? first : GENERIC_MEASURE_LABELS[role];
     };
     return { diameter: labelFor("diameter"), length: labelFor("length") };
   }

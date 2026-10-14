@@ -6,7 +6,7 @@ import { listSavedFilters } from "@/server/saved-filters";
 import { prisma } from "@/lib/prisma";
 import { ageInYears, formatStatus } from "@/lib/format";
 import { buildWorkbook, excelFileName, XLSX_CONTENT_TYPE, type ExcelColumn } from "@/server/excel";
-import { assetFiltersFromParams, paramsFromRequest, describeFilters } from "@/server/grid-params";
+import { assetFiltersFromParams, inventoryTypeFromParams, paramsFromRequest, describeFilters } from "@/server/grid-params";
 import { getAssetWords } from "@/server/branding";
 import type { MeasureLabels } from "@/lib/measure-labels";
 import { getMeasureLabels } from "@/server/measures";
@@ -49,7 +49,8 @@ export async function GET(request: Request) {
   const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const params = paramsFromRequest(request);
-  const filters = await assetFiltersFromParams(organizationId, params);
+  const inventoryType = await inventoryTypeFromParams(organizationId, params);
+  const filters = { ...(await assetFiltersFromParams(organizationId, params)), assetTypeId: inventoryType?.id };
   const [assets, measuresOf] = await Promise.all([listAssets(organizationId, filters), getMeasureCodes(organizationId)]);
 
   // The other attributes of the asset types being exported, one column per
@@ -113,7 +114,7 @@ export async function GET(request: Request) {
     sheetName: words.plural,
     title: `${words.singular} Inventory — ${rows.length.toLocaleString()} ${words.items}`,
     note: describeFilters(params, savedFilterName),
-    columns: [...columnsFor(words, await getMeasureLabels(organizationId)), ...extra, DEPARTMENT],
+    columns: [...columnsFor(words, await getMeasureLabels(organizationId, inventoryType?.id)), ...extra, DEPARTMENT],
     rows,
   });
 

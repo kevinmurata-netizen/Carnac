@@ -17,14 +17,17 @@ export type MeasureLabel = {
   unit: string | null;
   /** A column heading carrying the unit: "Diameter (in)". */
   heading: string;
+  /** False when no type read records it at all — a pole has no length — so a
+   * screen can leave out a column or figure that would only ever be blank. */
+  recorded: boolean;
 };
 
 /** The measures the screens label: an asset's size and its length. */
 export type MeasureLabels = { diameter: MeasureLabel; length: MeasureLabel };
 
-export function measureLabel(name: string, unit: string | null): MeasureLabel {
+export function measureLabel(name: string, unit: string | null, recorded = true): MeasureLabel {
   const clean = unit?.trim() || null;
-  return { name, unit: clean, heading: clean ? `${name} (${clean})` : name };
+  return { name, unit: clean, heading: clean ? `${name} (${clean})` : name, recorded };
 }
 
 /** For a screen spanning types that measure differently — the roles' own names. */

@@ -1,4 +1,6 @@
 import { AssetStatus } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { modelledType } from "@/server/modelled-asset-type";
 import { matchingAssetIds } from "@/server/saved-filters";
 import { parseDateInput } from "@/lib/format";
 import type { AssetFilters } from "@/server/assets";
@@ -73,6 +75,27 @@ export async function inspectionFiltersFromParams(
 }
 
 /** Reads a request's query string into the same shape a page receives. */
+/**
+ * Which modelled asset type the inventory is showing: the one its tab names
+ * (?type=CODE), or else the one with the most assets — the main network, as
+ * the settings screens choose. Null when nothing is modelled, or the tab names
+ * a type that is not, which the inventory reads in that type's own terms.
+ */
+export async function inventoryTypeFromParams(
+  organizationId: string,
+  params: GridParams
+): Promise<{ id: string; code: string; name: string } | null> {
+  const types = await prisma.assetType.findMany({
+    where: modelledType(organizationId),
+    select: { id: true, code: true, name: true, _count: { select: { assets: true } } },
+    orderBy: { name: "asc" },
+  });
+  const named = params.type ? types.find((t) => t.code === params.type) : undefined;
+  if (params.type && !named) return null;
+  const chosen = named ?? [...types].sort((a, b) => b._count.assets - a._count.assets)[0];
+  return chosen ? { id: chosen.id, code: chosen.code, name: chosen.name } : null;
+}
+
 export function paramsFromRequest(request: Request): GridParams {
   return Object.fromEntries(new URL(request.url).searchParams.entries());
 }

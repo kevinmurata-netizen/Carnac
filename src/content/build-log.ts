@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-14",
+    title: "Each modelled type has its own inventory tab",
+    summary:
+      "With two modelled asset types, the inventory showed both in one grid and their tabs led to the same mixed list. Each modelled type now has its own tab, filters and download; the main network opens by default.",
+    changes: [
+      "Inventory tabs for modelled types show that type alone, with its own size and length headings. With no tab chosen, the type with the most assets shows — the waterline here.",
+      "The download follows the tab.",
+      "A size or length the type does not record is left out of its inventory columns and its assets' summary, instead of showing a column of zeros or a blank \"Length\" on a pole.",
+      "An imported asset with Expected Life left blank takes its material curve's service life, falling back to 75 years only where there is no curve.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-14",
     title: "Size moves price only where a type says so",
     summary:
       "Every treatment price was scaled by pipe size — (size ÷ 8)^0.7 — whatever the asset was, so a 35 ft pole priced its work 2.8 times its rate. Each asset type now says whether its size moves price, and how. Water prices are unchanged.",
