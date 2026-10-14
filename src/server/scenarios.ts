@@ -227,9 +227,12 @@ export function effectiveAssumptions(
  * would have a scenario run against whatever it last produced, and its own
  * re-run would be refused by the very lock.
  */
-async function assertLockablePlan(planId: string | null) {
+async function assertLockablePlan(organizationId: string, planId: string | null) {
   if (!planId) return;
-  const plan = await prisma.workPlan.findUnique({ where: { id: planId }, select: { isScenarioMirror: true, name: true } });
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: planId, organizationId },
+    select: { isScenarioMirror: true, name: true },
+  });
   if (!plan) throw new Error("That work plan no longer exists");
   if (plan.isScenarioMirror) {
     throw new Error(
@@ -298,7 +301,7 @@ export async function createScenario(
 ) {
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   await assertFilterInOrganization(organizationId, input.savedFilterId ?? null);
-  await assertLockablePlan(input.lockedWorkPlanId ?? null);
+  await assertLockablePlan(organizationId, input.lockedWorkPlanId ?? null);
   const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
   return prisma.scenario.create({
     data: {
@@ -367,7 +370,7 @@ export async function updateScenario(
     throw new Error("A scenario in a set can be moved to another set, but not taken out of one");
   }
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
-  await assertLockablePlan(input.lockedWorkPlanId ?? null);
+  await assertLockablePlan(organizationId, input.lockedWorkPlanId ?? null);
   const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
 
   await prisma.$transaction([
@@ -800,6 +803,7 @@ async function persistScenarioProgram(
   const fundedYears = years.flatMap((y) => y.selected.map((p) => p.fundedYear));
   const workPlan = await prisma.workPlan.create({
     data: {
+      organizationId,
       scenarioId,
       name: `${scenarioName} — Funded Program`,
       startYear: Math.min(...fundedYears),

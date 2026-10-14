@@ -93,7 +93,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
     listSavedFilters(organizationId),
-    lockablePlanChoices(),
+    lockablePlanChoices(organizationId),
     getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
     listScenarioSets(organizationId),
