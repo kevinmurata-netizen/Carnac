@@ -36,8 +36,8 @@ export async function getSqlSchemaAction(): Promise<ConsoleTable[]> {
 
 export async function runSqlAction(sql: string): Promise<SqlRunResult> {
   try {
-    await requireAdministrator();
-    const result = await runConsoleQuery(sql);
+    const session = await requireAdministrator();
+    const result = await runConsoleQuery(session.user.organizationId, sql);
     return { ok: true, ...result };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not run that query" };

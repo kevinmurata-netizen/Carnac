@@ -84,7 +84,7 @@ async function main() {
     ["text", "SELECT \"assetCode\" FROM assets ORDER BY \"assetCode\" LIMIT 2"],
   ] as const) {
     try {
-      snapshot[`sqlConsole.${label}`] = describe(await runConsoleQuery(sql));
+      snapshot[`sqlConsole.${label}`] = describe(await runConsoleQuery(org.id, sql));
     } catch (e) {
       snapshot[`sqlConsole.${label}`] = `ERROR: ${e instanceof Error ? e.message : String(e)}`;
     }
