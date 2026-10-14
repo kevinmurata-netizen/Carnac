@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "The SQL console reads only your organization",
+    summary:
+      "The Administrators' SQL console read the whole database, every organization's rows. Every query now sees only the signed-in organization's, however it is written. Nothing changes for a site with one organization.",
+    changes: [
+      "Each table a query names is answered from that organization's rows — directly, through its asset type or asset, or through the record it belongs to — including tables joined after a comma and a CTE that reuses a table's name.",
+      "A query naming a schema (public., information_schema), a system catalog (pg_…) or a table the console doesn't offer is refused wherever the name appears; previously a table after a comma slipped past the check.",
+      "Queries are still read-only and limited to 500 rows and 8 seconds.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-15",
     title: "Work plans belong to their organization",
     summary:
       "A work plan carried no organization, so a second organization on the same site saw — and could open, change and delete — the first's plans. Each plan now belongs to one, and every list and action is limited to it. Nothing changes for a site with one organization.",
