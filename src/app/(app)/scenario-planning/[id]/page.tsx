@@ -201,6 +201,12 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   // Whether the stored run spent anything on locked projects — what decides
   // whether spending is shown in two parts.
   const programmedTotal = years.reduce((sum, y) => sum + y.programmedSpend, 0);
+  // What each type's work typically scored in the run's first year, beside its
+  // weight on the form: the scale a weight is set against.
+  const typeChoices = assetTypeChoices.map((c) => ({
+    ...c,
+    typicalPriority: years[0]?.byType.find((t) => t.assetTypeId === c.id)?.typicalPriority ?? null,
+  }));
   const hasProgrammed = programmedTotal > 0;
   const first = years[0];
   const last = years[years.length - 1];
@@ -397,7 +403,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={assetTypeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={typeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -494,7 +500,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               answer: what each year costs. */}
           {scenario.target && <TargetSpendCard scenario={scenario} index={index} words={words} />}
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={assetTypeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={typeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -1147,6 +1153,7 @@ function ByTypeCard({
                 <TableHead className="text-right">Work funded</TableHead>
                 <TableHead className="text-right">Backlog at end</TableHead>
                 <TableHead className="text-right">Failure cost</TableHead>
+                <TableHead className="text-right">Typical priority {first.year}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1165,6 +1172,12 @@ function ByTypeCard({
                     <TableCell className="text-right tabular-nums">{formatCurrency(t.backlog, { compact: true })}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatCurrency(across(t.assetTypeId, (x) => x.failureCost), { compact: true })}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {(() => {
+                        const typical = first.byType.find((x) => x.assetTypeId === t.assetTypeId)?.typicalPriority;
+                        return typical != null ? String(Number(typical.toPrecision(4))) : "—";
+                      })()}
                     </TableCell>
                   </TableRow>
                 );
@@ -1187,7 +1200,9 @@ function ByTypeCard({
         />
         <p className="text-xs text-muted-foreground">
           Work funded is the cost of the work chosen for each type over the run; failure cost is the expected cost of
-          failures over the run, on each type&apos;s own failure cost (Settings › Asset Types).
+          failures over the run, on each type&apos;s own failure cost (Settings › Asset Types). Typical priority is
+          the median Priority Score of the type&apos;s work in the first year, before its weight — the scale its
+          weight is set against, since types&apos; scores need not share one.
         </p>
       </CardContent>
     </Card>

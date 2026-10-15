@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Each type's typical Priority Score, to set its weight against",
+    summary:
+      "Asset types' Priority Scores need not be on one scale: a length-based scale factor puts a water main's in the thousands where a pole's is 1. A scenario over several types now shows what each type's work typically scores, so its weight can be set knowing the gap.",
+    changes: [
+      "Each run records, for every type and year, the median Priority Score of the type's options before its weight.",
+      "On the scenario form, each type's weight box shows its typical score from the first year of the last run, and \"Level the types\" fills in the weights that bring them level — offered, never applied on its own.",
+      "The By Asset Type section gains a Typical priority column for the first year.",
+      "A single-type scenario is unchanged and stores exactly what it did.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-15",
     title: "Asset type weights on a cross-asset scenario",
     summary:
       "A scenario over several asset types can now lean toward one of them. Each type gets a weight that multiplies the Priority Score of its work, beside the category weighting. Every weight starts at 1, so existing scenarios rank exactly as before.",

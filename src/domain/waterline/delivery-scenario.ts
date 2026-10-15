@@ -76,6 +76,7 @@ import {
   type SimAsset,
   type YearAlternative,
   breakdownByType,
+  typicalPriorities,
   withByType,
 } from "./scenario";
 
@@ -303,13 +304,17 @@ export function runDeliveryScenario(
 ): DeliveryRunResult {
   const maxPasses = Math.max(1, options.maxPasses ?? 4);
   let fixed: Commitment[] = [];
-  let outcome = walk(assets, assumptions, options, fixed);
+  // Each year's typical score per type comes from the first pass, where every
+  // segment is still open: a later pass leaves alone the segments an earlier
+  // one settled, so a type whose work was all decided first would rank nothing.
+  const typical = new Map<number, Map<string, number | null>>();
+  let outcome = walk(assets, assumptions, options, fixed, typical);
   let passes = 1;
   let added = outcome.decided.length;
 
   while (passes < maxPasses) {
     fixed = outcome.decided;
-    const next = walk(assets, assumptions, options, fixed);
+    const next = walk(assets, assumptions, options, fixed, typical);
     added = next.decided.length - fixed.length;
     passes++;
     outcome = next;
@@ -328,12 +333,16 @@ export function runDeliveryScenario(
  * so nothing added here can change the network a fixed project was judged
  * against. What is left of each year's budget is then offered to segments that
  * hold nothing.
+ *
+ * `typical` holds each year's typical score per type: filled by the first
+ * pass, read by the rest.
  */
 function walk(
   assets: SimAsset[],
   assumptions: ScenarioAssumptions,
   options: DeliveryRunOptions,
-  fixed: Commitment[]
+  fixed: Commitment[],
+  typical: Map<number, Map<string, number | null>>
 ): { result: Omit<DeliveryRunResult, "passes" | "addedInLastPass">; decided: Commitment[] } {
   const library = options.library ?? WATERLINE_TREATMENTS;
   const combinations = options.combinations ?? [];
@@ -591,6 +600,7 @@ function walk(
       }
     }
     const outcome = selectAgainst(candidates, purse, heldCandidates);
+    if (!typical.has(year)) typical.set(year, typicalPriorities(candidates, assumptions.assetTypeWeights));
 
     if (trace) {
       for (const candidate of candidates) {
@@ -708,7 +718,7 @@ function walk(
         (a) => pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold
       ).length,
       selected: programmed,
-      ...withByType(breakdownByType(state, programmed, backlogBest)),
+      ...withByType(breakdownByType(state, programmed, backlogBest, typical.get(year) ?? new Map())),
       byCategory: money.byCategoryIn(year).map((r) => ({
         category: r.category,
         spent: Math.round(r.spent),
