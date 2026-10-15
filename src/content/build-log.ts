@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Corridor bundling settings",
+    summary:
+      "The first part of corridor bundling: Settings › Corridor Bundling says which assets are neighbours and what doing their work together saves. Scenarios don't bundle yet — this is the configuration they will read, with a preview of what it finds.",
+    changes: [
+      "Neighbours by distance — between the nearest points of two assets' lines or locations, 50 m to start — across any asset types.",
+      "A corridor attribute per asset type, such as the street: where both assets' types record one, the same value makes them neighbours and a different value does not, whatever the distance.",
+      "A savings table for every pair of modelled asset types, a type with itself included: whether the pair shares one mobilization, and a further percentage off each added member. A pair saving nothing never bundles.",
+      "A timing window, 2 years to start, for how far work may later be moved to join a neighbour's bundle.",
+      "A preview of how many assets have neighbours, and the neighbouring pairs by asset type.",
+    ],
+    note: "Migration: 20261015150000_corridor_settings (new corridor_settings and corridor_savings tables, and a nullable asset_types.corridorAttribute).",
+  },
+  {
+    date: "2026-10-15",
     title: "Budgets by asset type, pooled or separate",
     summary:
       "Where several asset types are modelled, a budget can now set each type's own money year by year, with amounts per category within a type. A scenario over several types chooses whether they share the year's money or each spends only its own.",
