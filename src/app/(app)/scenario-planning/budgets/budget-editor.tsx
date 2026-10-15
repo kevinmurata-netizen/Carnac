@@ -11,7 +11,9 @@ import type { BudgetFormState } from "./actions";
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const cell =
-  "h-8 w-full min-w-24 rounded-md border border-input bg-background px-2 text-right text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "h-8 rounded-md border border-input bg-background px-2 text-right text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-ring";
+/** A money cell in the table, which takes its column's width. */
+const money = `${cell} w-full min-w-28`;
 
 /** One year as the table holds it: strings, so an emptied box stays empty. */
 type Row = { year: string; total: string } & Record<BudgetCategory, string>;
@@ -176,7 +178,7 @@ export function BudgetEditor({
                         value={r.total}
                         placeholder={hasCategories(r) ? String(sumCategories(r)) : ""}
                         onChange={(e) => setCell(i, { total: e.target.value })}
-                        className={cell}
+                        className={money}
                       />
                       {over && <p className="mt-1 text-right text-xs text-amber-600">Categories add up to more; the total still holds.</p>}
                     </td>
@@ -190,7 +192,7 @@ export function BudgetEditor({
                             aria-label={`${r.year} ${c}`}
                             value={r[c]}
                             onChange={(e) => setCell(i, { [c]: e.target.value } as Partial<Row>)}
-                            className={cell}
+                            className={money}
                           />
                         </td>
                       ))}
