@@ -155,21 +155,33 @@ export type ScoredBenefit<T> = {
  * so it is not a new property — but a benefit score should not be stored and
  * compared against a later run's as though it were absolute.
  */
+/** Each term's lowest and highest value across a pool of options — what
+ * Expected Benefit is normalized against. */
+export type BenefitRanges = Record<BenefitTermKey, { min: number; max: number }>;
+
+export function benefitRanges(items: Array<{ terms: BenefitTerms }>): BenefitRanges | null {
+  if (items.length === 0) return null;
+  return TERM_KEYS.reduce((acc, key) => {
+    const values = items.map((c) => c.terms[key]);
+    acc[key] = { min: Math.min(...values), max: Math.max(...values) };
+    return acc;
+  }, {} as BenefitRanges);
+}
+
 export function scoreBenefits<T>(
   items: Array<{ item: T; terms: BenefitTerms }>,
-  weights: BenefitWeights
+  weights: BenefitWeights,
+  /**
+   * Another pool's ranges to score against, instead of these items' own —
+   * for options that must be measured on a year's scale without changing it.
+   * A term outside the range is held to 0–100.
+   */
+  against?: BenefitRanges | null
 ): Array<ScoredBenefit<T>> {
   const w = normalizeBenefitWeights(weights);
   if (items.length === 0) return [];
 
-  const ranges = TERM_KEYS.reduce(
-    (acc, key) => {
-      const values = items.map((c) => c.terms[key]);
-      acc[key] = { min: Math.min(...values), max: Math.max(...values) };
-      return acc;
-    },
-    {} as Record<BenefitTermKey, { min: number; max: number }>
-  );
+  const ranges = against ?? benefitRanges(items)!;
 
   return items.map(({ item, terms }) => {
     const normalized = {} as BenefitTerms;
@@ -182,7 +194,8 @@ export function scoreBenefits<T>(
       // Every candidate scoring the same on a term means that term carries no
       // information for this decision, so it scores zero for everyone rather
       // than an arbitrary constant.
-      const n = span > 0 ? ((terms[key] - min) / span) * 100 : 0;
+      const raw = span > 0 ? ((terms[key] - min) / span) * 100 : 0;
+      const n = against ? Math.max(0, Math.min(100, raw)) : raw;
       normalized[key] = Math.round(n * 10) / 10;
       const contribution = n * w[key];
       contributions[key] = Math.round(contribution * 10) / 10;

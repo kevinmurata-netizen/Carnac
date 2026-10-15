@@ -18,6 +18,9 @@ import type { TreatmentOption } from "./treatment";
 export type CorridorRun = {
   neighbours: Map<string, Set<string>>;
   savings: Map<string, PairSaving>;
+  /** How many years ahead work not yet due may be brought forward to join a
+   * neighbour's bundle. 0 bundles only work due this year. */
+  windowYears: number;
 };
 
 /** What joining a bundle did for one piece of work. */
@@ -26,6 +29,9 @@ export type CorridorJoin = {
   withAssetId: string;
   /** What it saved, in dollars. */
   saving: number;
+  /** The year the work would have been due, where it was brought forward
+   * from a later year to join. */
+  dueYear?: number;
 };
 
 type Bundleable = Rankable & {
@@ -67,11 +73,30 @@ export const repriced = (value: number, cost: number) => (cost > 0 && Number.isF
  * original candidate to the bundled copy it was last offered as, and
  * `joinOf` says how a funded copy joined.
  */
+/**
+ * The year an asset's work would first be due, looking up to `years` ahead —
+ * or null when it is not due within them. `eligible` is the strategy's own
+ * test, so "due" means what it means for the rest of the run.
+ */
+export function dueWithin<A extends { condition: number }>(
+  asset: A,
+  years: number,
+  conditionIn: (asset: A, yearsAhead: number) => number,
+  eligible: (asset: A) => boolean
+): number | null {
+  for (let k = 1; k <= years; k++) {
+    if (eligible({ ...asset, condition: conditionIn(asset, k) })) return k;
+  }
+  return null;
+}
+
 export function corridorRepricer<T extends Bundleable>(
   candidates: T[],
   corridor: CorridorRun,
   rebate: (candidate: T, saving: number) => T,
-  canJoin: (candidate: T, anchor: T) => boolean = () => true
+  canJoin: (candidate: T, anchor: T) => boolean = () => true,
+  /** For work brought forward: the year each such asset would have been due. */
+  dueYear?: ReadonlyMap<string, number>
 ) {
   const bySegment = new Map<string, T[]>();
   for (const c of candidates) bySegment.set(c.assetId, [...(bySegment.get(c.assetId) ?? []), c]);
@@ -103,6 +128,8 @@ export function corridorRepricer<T extends Bundleable>(
           if (saved > 0 && (!best || saved > best.saving)) best = { withAssetId: n, saving: saved };
         }
         if (!best) return c;
+        const due = dueYear?.get(other);
+        if (due != null) best = { ...best, dueYear: due };
         changed = true;
         const copy = rebate(c, best.saving);
         joinOf.set(copy, best);

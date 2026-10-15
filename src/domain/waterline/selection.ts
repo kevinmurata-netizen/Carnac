@@ -499,9 +499,11 @@ export function selectAgainst<T extends Rankable>(
   const versions = new Map<string, number>();
 
   /** A segment's new options, where it has no work yet: a new ladder, scored
-   * afresh, and its first step back in the heap. */
+   * afresh, and its first step back in the heap. A segment that had no
+   * options at all this year — work not yet due, offered only to join a
+   * neighbour's — gets its first ladder the same way. */
   const rebuild = (assetId: string, options: T[]) => {
-    if (level.has(assetId) || !ladders.has(assetId)) return;
+    if (level.has(assetId)) return;
     const usable = options.filter(
       (o) => o.priority != null && o.cost > 0 && Number.isFinite(o.value) && !purse.unfunded(o)
     );

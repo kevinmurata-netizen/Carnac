@@ -94,7 +94,8 @@ export function CorridorForm({
             className={`${box} w-24`}
           />
           <p className="text-xs text-muted-foreground">
-            How far work may be brought forward or deferred to join a neighbour&apos;s bundle. Read once scenarios bundle.
+            How many years ahead work not yet due may be brought forward to join a neighbour&apos;s bundle. 0 bundles
+            only work due that year.
           </p>
         </div>
       </div>
