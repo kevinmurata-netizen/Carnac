@@ -14,6 +14,7 @@ import {
   Layers,
   Map as MapIcon,
   Palette,
+  Route,
   Ruler,
   ListChecks,
   ListTodo,
@@ -307,6 +308,15 @@ export const SETTINGS_CARDS: SettingsCard[] = [
     icon: CalendarClock,
     detail:
       "How long after work is decided its money leaves the budget, and how long before it is built. Per category, with exceptions per treatment. Named sets, so two delivery policies can be run over the same network.",
+  },
+  {
+    key: "corridor-bundling",
+    href: "/settings/corridor-bundling",
+    tab: "modeling",
+    title: "Corridor Bundling",
+    icon: Route,
+    detail:
+      "Which assets are close enough that doing their work together saves money — by distance, or by a shared attribute such as the street — and what each pair of asset types saves when it does.",
   },
   {
     key: "rollup",

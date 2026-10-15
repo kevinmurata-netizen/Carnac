@@ -153,6 +153,12 @@ model AssetType {
   /// failures are not costed, so life-cycle savings count no failures avoided.
   failureCost Json?
 
+  /// The attribute that names the corridor an asset of this type sits in — a
+  /// street, say. Where two assets' types both name one, it decides whether
+  /// they are neighbours for corridor bundling, in place of distance. Null:
+  /// distance alone decides.
+  corridorAttribute String?
+
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
 
@@ -179,6 +185,8 @@ model AssetType {
 
   scenarios ScenarioAssetType[]
   budgetLines BudgetPlanLine[]
+  corridorSavingsA CorridorSaving[] @relation("CorridorSavingA")
+  corridorSavingsB CorridorSaving[] @relation("CorridorSavingB")
 
   @@unique([organizationId, code])
   @@map("asset_types")
@@ -1276,6 +1284,45 @@ model CategoryFundingPlan {
 
   @@unique([organizationId, name])
   @@map("category_funding_plans")
+}
+
+/// How an organization finds corridors for bundling work on neighbouring
+/// assets. One row per organization; none means the defaults below.
+model CorridorSettings {
+  id             String @id @default(cuid())
+  organizationId String @unique
+  /// How close two assets must be to be neighbours, in metres, measured
+  /// between the nearest points of their lines or locations.
+  distanceMeters Float  @default(50)
+  /// How many years work may be brought forward or deferred to join a
+  /// neighbour's bundle.
+  windowYears    Int    @default(2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("corridor_settings")
+}
+
+/// What doing two asset types' work together in one corridor saves. One row
+/// per pair, the pair's ids in sorted order so (A, B) and (B, A) are one row;
+/// a type paired with itself is its own row. No row: no saving.
+model CorridorSaving {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  assetTypeAId       String
+  assetTypeA         AssetType @relation("CorridorSavingA", fields: [assetTypeAId], references: [id], onDelete: Cascade)
+  assetTypeBId       String
+  assetTypeB         AssetType @relation("CorridorSavingB", fields: [assetTypeBId], references: [id], onDelete: Cascade)
+  /// Whether the two share one mobilization: charged once for the bundle.
+  sharesMobilization Boolean   @default(false)
+  /// A further share off each added member's cost, 0 to 0.5 — shared traffic
+  /// control, one reinstatement.
+  savingPct          Float     @default(0)
+
+  @@unique([assetTypeAId, assetTypeBId])
+  @@index([organizationId])
+  @@map("corridor_savings")
 }
 
 /// The money a utility expects to have, set year by year in dollars rather
