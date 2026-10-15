@@ -341,7 +341,7 @@ export function withTypeLimits<T extends Rankable>(
     money: (c: T) => Array<{ year: number; amount: number }>;
     limitsIn: (year: number) => TypeLimits | null;
   }
-): Purse<T> {
+): Purse<T> & { snapshot(): () => void } {
   const spent = new Map<string, number>();
   /** Every limit an option's money counts against, with how much. */
   const entries = (c: T, sign: 1 | -1) => {
@@ -388,6 +388,15 @@ export function withTypeLimits<T extends Rankable>(
     },
     byCategory: () => purse.byCategory(),
     totalSpent: () => purse.totalSpent(),
+    /** What it has spent so far, and a way back to it. The wrapped purse's
+     * own money is its owner's to restore. */
+    snapshot() {
+      const saved = new Map(spent);
+      return () => {
+        spent.clear();
+        for (const [k, v] of saved) spent.set(k, v);
+      };
+    },
   };
 }
 

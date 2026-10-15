@@ -188,12 +188,16 @@ export async function createWorkPlanFromScenario(
               // than the whole cost landing in one of them.
               ...(p.cash.length > 1 ? { cash: p.cash } : {}),
               ...(p.corridor ? { corridor: p.corridor } : {}),
+              ...(p.deferred ? { deferred: p.deferred } : {}),
             },
             reasonExplanation: [
               `Funded by the ${run.name} run in ${year.year}${isBundle ? ` as part of ${p.treatment}` : ""}.`,
               p.corridor
                 ? `Bundled with ${p.corridor.withAssetCode} in one corridor, saving $${p.corridor.saving.toLocaleString("en-US")}` +
                   (p.corridor.dueYear != null ? `, brought forward from ${p.corridor.dueYear}.` : ".")
+                : "",
+              p.deferred
+                ? `Waited from ${p.deferred.from} for ${p.deferred.withAssetCode}'s work to bundle with it: an estimated $${p.deferred.saving.toLocaleString("en-US")} saving against $${p.deferred.waitingCost.toLocaleString("en-US")} expected failure cost of waiting.`
                 : "",
               p.buildYear !== p.programmedYear
                 ? `Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}.`

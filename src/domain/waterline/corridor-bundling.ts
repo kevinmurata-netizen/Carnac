@@ -143,3 +143,68 @@ export function corridorRepricer<T extends Bundleable>(
 
   return { onFunded, offeredAs, joinOf };
 }
+
+/** Work held back to join a neighbour's bundle in a later year. */
+export type Deferral = {
+  /** The year it was held back in. */
+  from: number;
+  /** The year it waits for: when the neighbour's work comes due. */
+  until: number;
+  /** The neighbour it waits for. */
+  withAssetId: string;
+  /** What bundling is expected to save, estimated now. */
+  saving: number;
+  /** What waiting is expected to cost in failures over those years. */
+  waitingCost: number;
+};
+
+/**
+ * Which of this year's work to hold back for a neighbour's later bundle.
+ *
+ * An asset waits only when a neighbour not yet due will be within the window,
+ * the pair has a saving set, that neighbour could not be brought forward to
+ * join it this year instead, and the saving is larger than the failures the
+ * asset is expected to cost by waiting. `skip` rules out the rest — work
+ * already deferred once, work too risky to wait, work already committed.
+ *
+ * The saving is estimated as if the neighbour's work were like this asset's
+ * own; the real figure is set when the two are bought together.
+ */
+export function chooseDeferrals<T extends Bundleable>(
+  candidates: T[],
+  year: number,
+  corridor: CorridorRun,
+  dueYear: ReadonlyMap<string, number>,
+  /** Neighbours that could be brought forward this year, so need not be waited for. */
+  bringable: ReadonlySet<string>,
+  skip: (candidate: T) => boolean,
+  waitingCost: (candidate: T, years: number) => number,
+  /** Any asset's type, the neighbour's included — it is not a candidate yet. */
+  typeOf: (assetId: string) => string | null | undefined,
+  /** The run's last year: work never waits past it, since it could not be
+   * bought after. */
+  lastYear: number
+): Map<string, Deferral> {
+  const deferrals = new Map<string, Deferral>();
+  const seen = new Set<string>();
+  // Candidates arrive sorted by Priority Score, so the first per asset is the
+  // work it would most likely get.
+  for (const c of candidates) {
+    if (seen.has(c.assetId)) continue;
+    seen.add(c.assetId);
+    if (skip(c)) continue;
+    let best: Deferral | null = null;
+    for (const n of corridor.neighbours.get(c.assetId) ?? []) {
+      const until = dueYear.get(n);
+      if (until == null || until <= year || until > year + corridor.windowYears || until > lastYear || bringable.has(n)) continue;
+      const saving = joinSaving(pairSaving(corridor.savings, c.asset.assetTypeId ?? "", typeOf(n) ?? ""), c, c);
+      if (saving <= 0) continue;
+      const cost = waitingCost(c, until - year);
+      if (saving > cost && (!best || saving - cost > best.saving - best.waitingCost)) {
+        best = { from: year, until, withAssetId: n, saving, waitingCost: cost };
+      }
+    }
+    if (best) deferrals.set(c.assetId, best);
+  }
+  return deferrals;
+}

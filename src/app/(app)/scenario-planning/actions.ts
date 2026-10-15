@@ -38,6 +38,7 @@ const schema = z.object({
   budgetPlanId: z.string().optional(),
   typeFunding: z.string().optional(),
   corridorBundling: z.string().optional(),
+  corridorDeferral: z.string().optional(),
   savedFilterId: z.string().optional(),
   scenarioSetId: z.string().optional(),
   fundingMode: z.string().optional(),
@@ -167,6 +168,9 @@ function parseForm(formData: FormData): {
         : {}),
       // Bundling is read in budget years only.
       ...(fundingMode === "budget" && d.corridorBundling === "on" ? { corridorBundling: true } : {}),
+      ...(fundingMode === "budget" && d.corridorBundling === "on" && d.corridorDeferral === "on"
+        ? { corridorDeferral: true }
+        : {}),
     },
   };
 }
