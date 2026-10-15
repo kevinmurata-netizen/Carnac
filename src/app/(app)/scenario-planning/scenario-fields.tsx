@@ -3,7 +3,7 @@
 import { useAssetWords } from "@/components/layout/asset-words";
 import { Label } from "@/components/ui/label";
 import { useIndexWords } from "@/components/layout/index-words";
-import { AFTER_TARGET, AFTER_TARGET_LABELS, STRATEGIES } from "@/domain/waterline/scenario";
+import { AFTER_TARGET, AFTER_TARGET_LABELS, ASSET_TYPE_WEIGHT_RANGE, STRATEGIES } from "@/domain/waterline/scenario";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -35,6 +35,9 @@ export type ScenarioValues = {
   /** The modelled asset types it is narrowed to, sorted and comma-joined so it
    * compares like every other field. Empty is all of them. */
   assetTypeIds: string;
+  /** Each asset type's weight as typed, "id=weight" pairs sorted and
+   * comma-joined. A type with no pair has a weight of 1. */
+  assetTypeWeights: string;
   scenarioSetId: string;
   fundingMode: string;
   /** "on" when a budget scenario shows a condition target; a target run
@@ -65,6 +68,8 @@ export type ScenarioFieldDefaults = {
   savedFilterId: string | null;
   /** Empty, or absent, is every modelled asset type. */
   assetTypeIds?: string[];
+  /** Absent, or a type left out, is a weight of 1. */
+  assetTypeWeights?: Record<string, number>;
   scenarioSetId: string | null;
   fundingMode: string;
   targetInYears: number;
@@ -93,6 +98,9 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     leadTimeSetId: d.leadTimeSetId ?? "",
     savedFilterId: d.savedFilterId ?? "",
     assetTypeIds: [...(d.assetTypeIds ?? [])].sort().join(","),
+    assetTypeWeights: joinWeights(
+      Object.fromEntries(Object.entries(d.assetTypeWeights ?? {}).map(([id, w]) => [id, String(w)]))
+    ),
     scenarioSetId: d.scenarioSetId ?? "",
     fundingMode: d.fundingMode,
     hasConditionTarget: d.conditionTarget != null ? "on" : "",
@@ -314,6 +322,9 @@ export function ScenarioFields({
           value={values.assetTypeIds}
           changed={!!saved && values.assetTypeIds !== saved.assetTypeIds}
           onChange={(assetTypeIds) => onChange({ assetTypeIds })}
+          weights={values.assetTypeWeights}
+          weightsChanged={!!saved && values.assetTypeWeights !== saved.assetTypeWeights}
+          onWeightsChange={(assetTypeWeights) => onChange({ assetTypeWeights })}
         />
       )}
 
@@ -768,53 +779,111 @@ export function ScenarioFields({
   );
 }
 
+/** "id=weight" pairs, as the form holds them. */
+function splitWeights(value: string): Record<string, string> {
+  return Object.fromEntries(
+    value
+      .split(",")
+      .filter(Boolean)
+      .map((pair) => {
+        const at = pair.indexOf("=");
+        return [pair.slice(0, at), pair.slice(at + 1)];
+      })
+  );
+}
+
+function joinWeights(weights: Record<string, string>): string {
+  return Object.entries(weights)
+    .filter(([, w]) => w.trim() !== "")
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([id, w]) => `${id}=${w.trim()}`)
+    .join(",");
+}
+
 /**
  * Which modelled asset types the run covers, as a box per type. Every box
  * ticked is stored as no choice at all, so a type modelled later joins the
  * scenario; the last ticked box cannot be unticked, since a run over no asset
  * types has nothing to do.
+ *
+ * With more than one type ticked, each also takes a weight: a multiplier on
+ * the Priority Score of its work, so the run can lean toward one type when
+ * the types compete for the same budget. 1 for every type ranks them evenly.
  */
 function AssetTypeField({
   choices,
   value,
   changed,
   onChange,
+  weights,
+  weightsChanged,
+  onWeightsChange,
 }: {
   choices: AssetTypeChoice[];
   value: string;
   changed: boolean;
   onChange: (value: string) => void;
+  weights: string;
+  weightsChanged: boolean;
+  onWeightsChange: (value: string) => void;
 }) {
   const all = choices.map((c) => c.id);
   const chosen = value ? value.split(",") : all;
+  const typed = splitWeights(weights);
+  const weighs = chosen.length > 1;
   const toggle = (id: string) => {
     const next = chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id];
     onChange(next.length === all.length ? "" : [...next].sort().join(","));
   };
+  const setWeight = (id: string, w: string) => onWeightsChange(joinWeights({ ...typed, [id]: w }));
   return (
     <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
       <div className="text-sm font-medium">Asset types</div>
       {/* Posted only when narrowed: nothing posted is every modelled type. */}
       {value && chosen.map((id) => <input key={id} type="hidden" name="assetTypeIds" value={id} />)}
-      <div className={`flex flex-wrap gap-x-5 gap-y-2 rounded-md border px-3 py-2 ${changed ? "border-amber-500" : ""}`}>
+      <div
+        className={`flex flex-wrap gap-x-5 gap-y-2 rounded-md border px-3 py-2 ${
+          changed || weightsChanged ? "border-amber-500" : ""
+        }`}
+      >
         {choices.map((c) => {
           const on = chosen.includes(c.id);
           return (
-            <label key={c.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={on}
-                disabled={on && chosen.length === 1}
-                onChange={() => toggle(c.id)}
-              />
-              {c.name}
-            </label>
+            <div key={c.id} className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={on && chosen.length === 1}
+                  onChange={() => toggle(c.id)}
+                />
+                {c.name}
+              </label>
+              {weighs && on && (
+                <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                  ×
+                  <input
+                    type="number"
+                    name={`assetTypeWeight.${c.id}`}
+                    aria-label={`${c.name} weight`}
+                    min={ASSET_TYPE_WEIGHT_RANGE.min}
+                    max={ASSET_TYPE_WEIGHT_RANGE.max}
+                    step="any"
+                    value={typed[c.id] ?? "1"}
+                    onChange={(e) => setWeight(c.id, e.target.value)}
+                    className="h-7 w-16 rounded-md border border-input bg-background px-2 text-sm tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                </label>
+              )}
+            </div>
           );
         })}
       </div>
       <p className="text-xs text-muted-foreground">
         Run this scenario over some of the modelled asset types rather than all of them. Its averages, backlog and
         condition target are then those types&apos; alone.
+        {weighs &&
+          " The number beside each type multiplies the Priority Score of its work: above 1 favours that type when the types compete for the same budget, below 1 holds it back. 1 for every type ranks them evenly."}
       </p>
     </div>
   );

@@ -202,6 +202,9 @@ export type PriorityTerms = {
   scaleFactor: number;
   /** How far the scenario leans toward this kind of work. 1 is neutral. */
   categoryWeight: number;
+  /** How far a scenario over several asset types leans toward this one. 1 is
+   * neutral, and absent is 1: only a cross-asset scenario sets it. */
+  assetTypeWeight?: number;
   /** What the treatment achieves, 0-100. */
   benefit: number;
   /** The option's own price, in dollars. */
@@ -223,9 +226,10 @@ export type PriorityTerms = {
  */
 export function priorityScore(terms: PriorityTerms): number | null {
   const { criticality, scaleFactor, categoryWeight, benefit, totalCost } = terms;
+  const assetTypeWeight = terms.assetTypeWeight ?? 1;
   if (!Number.isFinite(totalCost) || totalCost <= 0) return null;
 
-  const raw = (criticality * scaleFactor * categoryWeight * benefit) / totalCost;
+  const raw = (criticality * scaleFactor * categoryWeight * assetTypeWeight * benefit) / totalCost;
   if (!Number.isFinite(raw)) return null;
   return Math.round(raw * 10000) / 10000;
 }
@@ -239,6 +243,7 @@ export function explainPriority(terms: PriorityTerms, score: number | null): str
     `criticality ${Math.round(terms.criticality * 10) / 10}`,
     `scale ${Math.round(terms.scaleFactor * 100) / 100}`,
     ...(terms.categoryWeight === 1 ? [] : [`category ×${terms.categoryWeight}`]),
+    ...((terms.assetTypeWeight ?? 1) === 1 ? [] : [`asset type ×${terms.assetTypeWeight}`]),
     `benefit ${terms.benefit}`,
   ];
   return `Priority ${score} — ${parts.join(" × ")} ÷ $${Math.round(terms.totalCost).toLocaleString("en-US")}.`;

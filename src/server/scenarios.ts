@@ -9,9 +9,12 @@ import {
   STRATEGIES,
   FUNDING_MODES,
   AFTER_TARGET,
+  ASSET_TYPE_WEIGHT_RANGE,
+  parseAssetTypeWeights,
   solveForTarget,
   goalOf,
   type AfterTarget,
+  type AssetTypeWeights,
   type FundingMode,
   type ScenarioAssumptions,
   type SimAsset,
@@ -193,8 +196,14 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
     programmedFunding: PROGRAMMED_FUNDING.includes(map.programmedFunding as ProgrammedFunding)
       ? (map.programmedFunding as ProgrammedFunding)
       : DEFAULT_ASSUMPTIONS.programmedFunding,
+    // Present only on a scenario that weighs its asset types; every other
+    // scenario reads exactly as it did before the weights existed.
+    ...withTypeWeights(parseAssetTypeWeights(map.assetTypeWeights)),
   };
 }
+
+const withTypeWeights = (weights: AssetTypeWeights) =>
+  Object.keys(weights).length > 0 ? { assetTypeWeights: weights } : {};
 
 /**
  * Assumptions as rows to store.
@@ -203,7 +212,8 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
  * choice, and a missing row reads as the default target instead.
  */
 export function assumptionRows(assumptions: ScenarioAssumptions) {
-  return Object.entries(assumptions).map(([key, value]) => ({
+  const { assetTypeWeights, ...rest } = assumptions;
+  return Object.entries({ ...rest, ...withTypeWeights(parseAssetTypeWeights(assetTypeWeights)) }).map(([key, value]) => ({
     key,
     value: value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue),
   }));
@@ -270,6 +280,32 @@ async function scenarioAssetTypes(organizationId: string, ids: string[] | undefi
   return chosen.length === modelled.length ? [] : chosen;
 }
 
+/**
+ * The assumptions with their asset type weights checked: each weight is for a
+ * type the scenario covers and inside the allowed range. A scenario over one
+ * type keeps none, since there is nothing for that type to be weighed against.
+ */
+async function checkedTypeWeights(
+  organizationId: string,
+  assumptions: ScenarioAssumptions,
+  assetTypeIds: string[]
+): Promise<ScenarioAssumptions> {
+  const { assetTypeWeights, ...rest } = assumptions;
+  const weights = parseAssetTypeWeights(assetTypeWeights);
+  if (Object.keys(weights).length === 0) return rest;
+  const covered =
+    assetTypeIds.length > 0 ? assetTypeIds : (await listModelledAssetTypes(organizationId)).map((t) => t.id);
+  if (covered.length < 2) return rest;
+  const { min, max } = ASSET_TYPE_WEIGHT_RANGE;
+  const kept: AssetTypeWeights = {};
+  for (const [id, w] of Object.entries(weights)) {
+    if (!covered.includes(id)) continue;
+    if (w < min || w > max) throw new Error(`An asset type weight must be between ${min} and ${max}.`);
+    kept[id] = w;
+  }
+  return { ...rest, ...withTypeWeights(kept) };
+}
+
 export async function createScenario(
   organizationId: string,
   input: {
@@ -306,6 +342,7 @@ export async function createScenario(
   await assertFilterInOrganization(organizationId, input.savedFilterId ?? null);
   await assertLockablePlan(organizationId, input.lockedWorkPlanId ?? null);
   const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
+  const assumptions = await checkedTypeWeights(organizationId, input.assumptions, assetTypeIds);
   return prisma.scenario.create({
     data: {
       organizationId,
@@ -320,7 +357,7 @@ export async function createScenario(
       scenarioSetId: input.scenarioSetId || null,
       lockedWorkPlanId: input.lockedWorkPlanId || null,
       assumptions: {
-        create: assumptionRows(input.assumptions),
+        create: assumptionRows(assumptions),
       },
       assetTypes: { create: assetTypeIds.map((assetTypeId) => ({ assetTypeId })) },
     },
@@ -375,6 +412,7 @@ export async function updateScenario(
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   await assertLockablePlan(organizationId, input.lockedWorkPlanId ?? null);
   const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
+  const assumptions = await checkedTypeWeights(organizationId, input.assumptions, assetTypeIds);
 
   await prisma.$transaction([
     // Replaced wholesale, like the assumptions below.
@@ -397,7 +435,7 @@ export async function updateScenario(
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
     prisma.scenarioAssumption.createMany({
-      data: assumptionRows(input.assumptions).map((row) => ({ scenarioId, ...row })),
+      data: assumptionRows(assumptions).map((row) => ({ scenarioId, ...row })),
     }),
   ]);
 }

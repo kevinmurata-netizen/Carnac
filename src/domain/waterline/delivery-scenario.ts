@@ -61,11 +61,13 @@ import { cashPlan, leadTimeFor, type LeadTime, type LeadTimes } from "./lead-tim
 import { buildLocked, lockSchedule, lockedRecord, type LockedProject, type LockSchedule } from "./locked-projects";
 import {
   NOT_RANKED,
+  assetTypeWeight,
   belowTargetBar,
   goalOf,
   pofFromCondition,
   ruleBar,
   simAssetContext,
+  type AssetTypeWeights,
   type ScenarioAssumptions,
   type ScenarioProject,
   type ScenarioRunOptions,
@@ -595,7 +597,7 @@ function walk(
         const reason = outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
         const step = outcome.incremental.get(candidate);
         trace.push({
-          ...traceOf(candidate, year, categoryWeights),
+          ...traceOf(candidate, year, categoryWeights, assumptions.assetTypeWeights),
           incremental: step?.score ?? null,
           incrementalOver: step ? (step.over?.option.label ?? null) : null,
           selected: reason === SELECTED,
@@ -942,15 +944,17 @@ function rankCandidates(args: {
 
   const scored = scoreBenefits(pending, args.benefitWeights).map<Candidate>((s) => {
     const weight = categoryWeight(args.categoryWeights, s.item.option.category);
+    const typeWeight = assetTypeWeight(args.assumptions.assetTypeWeights, s.item.asset.assetTypeId);
     return {
       ...s.item,
       terms: s.raw,
       benefit: s.benefit,
-      value: s.item.asset.criticalityScore * s.item.asset.scaleFactor * weight * s.benefit,
+      value: s.item.asset.criticalityScore * s.item.asset.scaleFactor * weight * typeWeight * s.benefit,
       priority: priorityScore({
         criticality: s.item.asset.criticalityScore,
         scaleFactor: s.item.asset.scaleFactor,
         categoryWeight: weight,
+        assetTypeWeight: typeWeight,
         benefit: s.benefit,
         totalCost: s.item.cost,
       }),
@@ -973,7 +977,7 @@ function rankCandidates(args: {
     if (enough && clears) return true;
     if (args.trace) {
       args.trace.push({
-        ...traceOf(c, args.year, args.categoryWeights),
+        ...traceOf(c, args.year, args.categoryWeights, args.assumptions.assetTypeWeights),
         incremental: null,
         incrementalOver: null,
         selected: false,
@@ -1212,7 +1216,8 @@ function toCommitment(candidate: Candidate, superseded: Commitment | null): Comm
 function traceOf(
   c: Candidate,
   year: number,
-  weights: Parameters<typeof categoryWeight>[0]
+  weights: Parameters<typeof categoryWeight>[0],
+  typeWeights: AssetTypeWeights | undefined
 ): Omit<YearAlternative, "selected" | "reason" | "incremental" | "incrementalOver"> {
   return {
     year,
@@ -1229,6 +1234,7 @@ function traceOf(
     criticality: round1(c.asset.criticalityScore),
     scaleFactor: Math.round(c.asset.scaleFactor * 100) / 100,
     categoryWeight: categoryWeight(weights, c.option.category),
+    assetTypeWeight: assetTypeWeight(typeWeights, c.asset.assetTypeId),
     conditionAfter: round1(c.projectedCondition),
     riskBefore: round1(c.riskNow),
     riskAfter: round1(c.riskAfter),

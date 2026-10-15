@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Asset type weights on a cross-asset scenario",
+    summary:
+      "A scenario over several asset types can now lean toward one of them. Each type gets a weight that multiplies the Priority Score of its work, beside the category weighting. Every weight starts at 1, so existing scenarios rank exactly as before.",
+    changes: [
+      "With more than one asset type ticked on a scenario, each type has a weight box beside it. Above 1 favours that type when the types compete for the same budget; below 1 holds it back. The range is 0.01 to 100.",
+      "Both scenario engines apply it, and the Alternatives page shows it in the Priority Score breakdown where it is not 1.",
+      "Weights are kept only for types the scenario covers, and a scenario over one type keeps none. Copies and scenario sets carry them with the other assumptions.",
+    ],
+    note: "No migration: the weights are stored with the scenario's assumptions.",
+  },
+  {
+    date: "2026-10-15",
     title: "A suggested failure cost where a type has none",
     summary:
       "A modelled asset type with no failure cost now gets a starting figure to accept or change, worked out from its own treatments and assets. Nothing is applied until someone saves it.",

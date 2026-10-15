@@ -59,6 +59,23 @@ function parseSelection(formData: FormData) {
   };
 }
 
+/**
+ * Each asset type's weight, off the boxes beside the ticked types. The server
+ * keeps only those for types the scenario covers, and checks their range.
+ */
+function parseTypeWeights(formData: FormData): Record<string, number> {
+  const weights: Record<string, number> = {};
+  for (const [key, raw] of formData.entries()) {
+    if (!key.startsWith("assetTypeWeight.")) continue;
+    const text = String(raw).trim();
+    if (text === "") continue;
+    const weight = Number(text);
+    if (!Number.isFinite(weight)) throw new Error("Enter each asset type weight as a number");
+    weights[key.slice("assetTypeWeight.".length)] = weight;
+  }
+  return weights;
+}
+
 /** Percentages are entered as whole numbers in the form but stored as rates. */
 function parseForm(formData: FormData): {
   name: string;
@@ -135,6 +152,7 @@ function parseForm(formData: FormData): {
       targetInYears: Math.max(1, Math.min(d.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears, d.analysisPeriodYears)),
       afterTarget: d.afterTarget === "none" ? "none" : "hold",
       programmedFunding: d.programmedFunding === "additional" ? "additional" : "within",
+      assetTypeWeights: parseTypeWeights(formData),
     },
   };
 }
