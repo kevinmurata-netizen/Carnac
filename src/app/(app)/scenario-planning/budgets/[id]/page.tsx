@@ -10,14 +10,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatCurrency } from "@/lib/format";
 import { BudgetEditor } from "../budget-editor";
 import { deleteBudgetPlanAction, saveBudgetPlanAction } from "../actions";
+import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 
 export default async function BudgetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
   const organizationId = session!.user.organizationId;
   const canEdit = canRecordFieldData(session);
-  const plan = await getBudgetPlan(organizationId, id);
+  const [plan, assetTypes] = await Promise.all([
+    getBudgetPlan(organizationId, id),
+    listModelledAssetTypes(organizationId),
+  ]);
   if (!plan) notFound();
+  const typeName = new Map(assetTypes.map((t) => [t.id, t.name]));
 
   const following = plan.scenarioCount;
 
@@ -57,6 +62,7 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
             <BudgetEditor
               action={saveBudgetPlanAction}
               initial={{ id: plan.id, name: plan.name, description: plan.description ?? "", lines: plan.lines }}
+              assetTypes={assetTypes}
             />
           ) : (
             <div className="overflow-x-auto rounded-md border">
@@ -72,7 +78,11 @@ export default async function BudgetPage({ params }: { params: Promise<{ id: str
                   {plan.lines.map((l, i) => (
                     <TableRow key={i}>
                       <TableCell className="tabular-nums">{l.year}</TableCell>
-                      <TableCell>{l.category ?? "Total"}</TableCell>
+                      <TableCell>
+                        {[l.assetTypeId ? (typeName.get(l.assetTypeId) ?? "Removed type") : null, l.category ?? "Total"]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </TableCell>
                       <TableCell className="text-right tabular-nums">{formatCurrency(l.amount)}</TableCell>
                     </TableRow>
                   ))}

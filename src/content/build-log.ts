@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Budgets by asset type, pooled or separate",
+    summary:
+      "Where several asset types are modelled, a budget can now set each type's own money year by year, with amounts per category within a type. A scenario over several types chooses whether they share the year's money or each spends only its own.",
+    changes: [
+      "The budget editor has a tab per modelled asset type beside the whole budget, each with its own years, totals and category amounts.",
+      "On a scenario over several asset types that follows a budget, choose Pooled (the types share each year's money) or Separate (each type is held to its own amount, and to its category amounts within it). Money one type leaves unspent is not used by another.",
+      "A year with no whole-budget total takes the types' amounts added up, so a budget can be set entirely by type.",
+      "Both scenario engines follow it. An option held back by its type's money says so on the Alternatives page: \"Asset type's budget spent\".",
+    ],
+    note: "No migration: the per-type amounts use the budget lines added last time, and the choice is stored with the scenario's assumptions.",
+  },
+  {
+    date: "2026-10-15",
     title: "Budgets set year by year",
     summary:
       "A scenario can now follow a budget: the money you expect to have, entered year by year in dollars, instead of one annual figure and a growth rate. Optional — a scenario with no budget runs exactly as before.",

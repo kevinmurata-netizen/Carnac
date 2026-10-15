@@ -1,4 +1,5 @@
 import { yearLimits, type FundingPlan } from "./category-funding";
+import type { TypeLimits } from "./budget-plan";
 import type { TreatmentCategory, TreatmentOption } from "./treatment";
 
 /**
@@ -65,6 +66,9 @@ export const NOT_SELECTED = {
   notEfficient: "Another option gives more for the money",
   budgetSpent: "Year's budget spent",
   categoryFull: "Category budget full",
+  /** Only where a scenario funds its asset types separately: the option's
+   * type, or its category within the type, has spent its own money. */
+  typeFull: "Asset type's budget spent",
   unpriced: "Could not be priced",
   categoryUnfunded: "Category not in the funding plan",
   /** Only with delivery lead times: the money would fall in a year past the
@@ -316,6 +320,72 @@ export function targetPurse<T extends Rankable>(progress: TargetProgress<T>): Pu
     },
     byCategory: () => [{ category: "All" as const, spent, cap: spent }],
     totalSpent: () => spent,
+  };
+}
+
+/**
+ * A purse with each asset type held to its own money as well: what a scenario
+ * that funds its types separately spends against.
+ *
+ * Wraps rather than replaces, so the year's total and its category limits —
+ * in one year, or across a ledger of years — are checked exactly as before,
+ * and the type limits on top. `money` says which years an option's cost falls
+ * in, which is one year without lead times and its instalments with them.
+ */
+export function withTypeLimits<T extends Rankable>(
+  purse: Purse<T>,
+  opts: {
+    typeOf: (c: T) => string | null | undefined;
+    money: (c: T) => Array<{ year: number; amount: number }>;
+    limitsIn: (year: number) => TypeLimits | null;
+  }
+): Purse<T> {
+  const spent = new Map<string, number>();
+  /** Every limit an option's money counts against, with how much. */
+  const entries = (c: T, sign: 1 | -1) => {
+    const type = opts.typeOf(c);
+    if (!type) return [];
+    const out: Array<{ key: string; cap: number; amount: number }> = [];
+    for (const { year, amount } of opts.money(c)) {
+      const limits = opts.limitsIn(year);
+      if (!limits) continue;
+      const typeCap = limits.byType.get(type);
+      if (typeCap != null) out.push({ key: `${year}|${type}`, cap: typeCap, amount: sign * amount });
+      const categoryCap = limits.byTypeCategory.get(`${type}|${c.option.category}`);
+      if (categoryCap != null) {
+        out.push({ key: `${year}|${type}|${c.option.category}`, cap: categoryCap, amount: sign * amount });
+      }
+    }
+    return out;
+  };
+
+  return {
+    unfunded(candidate) {
+      const refused = purse.unfunded(candidate);
+      if (refused) return refused;
+      return entries(candidate, 1).some((e) => e.cap <= 0) ? NOT_SELECTED.typeFull : null;
+    },
+    check(next, current) {
+      const refused = purse.check(next, current);
+      if (refused) return refused;
+      const delta = new Map<string, { cap: number; amount: number }>();
+      for (const e of [...entries(next, 1), ...(current ? entries(current, -1) : [])]) {
+        const d = delta.get(e.key);
+        delta.set(e.key, { cap: e.cap, amount: (d?.amount ?? 0) + e.amount });
+      }
+      for (const [key, d] of delta) {
+        if (d.amount > 0 && (spent.get(key) ?? 0) + d.amount > d.cap + 0.01) return NOT_SELECTED.typeFull;
+      }
+      return null;
+    },
+    commit(next, current) {
+      purse.commit(next, current);
+      for (const e of [...entries(next, 1), ...(current ? entries(current, -1) : [])]) {
+        spent.set(e.key, (spent.get(e.key) ?? 0) + e.amount);
+      }
+    },
+    byCategory: () => purse.byCategory(),
+    totalSpent: () => purse.totalSpent(),
   };
 }
 

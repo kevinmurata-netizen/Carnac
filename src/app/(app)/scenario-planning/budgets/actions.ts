@@ -30,7 +30,7 @@ function parse(formData: FormData): BudgetPlanInput {
     if (!Array.isArray(raw)) throw new Error();
     lines = raw.map((l) => ({
       year: Number(l.year),
-      assetTypeId: null,
+      assetTypeId: l.assetTypeId ? String(l.assetTypeId) : null,
       category: l.category ? String(l.category) : null,
       amount: Number(l.amount),
     })) as BudgetPlanLine[];

@@ -49,6 +49,7 @@ export default async function BudgetsPage() {
                 <TableHead>Years</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead>By category</TableHead>
+                <TableHead>By asset type</TableHead>
                 <TableHead className="text-right">Scenarios following it</TableHead>
               </TableRow>
             </TableHeader>
@@ -70,6 +71,7 @@ export default async function BudgetsPage() {
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{formatCurrency(p.total, { compact: true })}</TableCell>
                   <TableCell>{p.lines.some((l) => l.category != null) ? "Yes" : "No"}</TableCell>
+                  <TableCell>{p.lines.some((l) => l.assetTypeId != null) ? "Yes" : "No"}</TableCell>
                   <TableCell className="text-right tabular-nums">{p.scenarioCount}</TableCell>
                 </TableRow>
               ))}

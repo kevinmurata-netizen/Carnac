@@ -87,7 +87,12 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
   [NOT_SELECTED.categoryFull]: {
     stage: "not-funded",
     description:
-      "The year still had money, but this option's category had used its share under the scenario's funding plan — a limit of the plan, not of the budget.",
+      "The year still had money, but this option's category had reached its limit — its share under the scenario's funding plan, or its amount for the year in the scenario's budget.",
+  },
+  [NOT_SELECTED.typeFull]: {
+    stage: "not-funded",
+    description:
+      "The scenario funds its asset types separately, and this {item}'s type — or this category within the type — had spent its own money for the year in the budget, though the year as a whole may not have.",
   },
   [NOT_SELECTED.unpriced]: {
     stage: "not-funded",

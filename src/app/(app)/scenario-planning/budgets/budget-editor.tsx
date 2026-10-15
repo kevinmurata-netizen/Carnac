@@ -20,11 +20,16 @@ type Row = { year: string; total: string } & Record<BudgetCategory, string>;
 
 const emptyCategories = () => Object.fromEntries(BUDGET_CATEGORIES.map((c) => [c, ""])) as Record<BudgetCategory, string>;
 
-function toRows(lines: BudgetPlanLine[]): Row[] {
-  const years = [...new Set(lines.map((l) => l.year))].sort((a, b) => a - b);
+/** The whole budget's scope, beside one per asset type. */
+const WHOLE = "";
+
+/** One scope's rows: the whole budget's, or one asset type's. */
+function toRows(lines: BudgetPlanLine[], scope: string): Row[] {
+  const mine = lines.filter((l) => (l.assetTypeId ?? WHOLE) === scope);
+  const years = [...new Set(mine.map((l) => l.year))].sort((a, b) => a - b);
   return years.map((year) => {
     const row: Row = { year: String(year), total: "", ...emptyCategories() };
-    for (const l of lines.filter((x) => x.year === year && x.assetTypeId == null)) {
+    for (const l of mine.filter((x) => x.year === year)) {
       if (l.category == null) row.total = String(l.amount);
       else if ((BUDGET_CATEGORIES as readonly string[]).includes(l.category)) row[l.category as BudgetCategory] = String(l.amount);
     }
@@ -32,12 +37,17 @@ function toRows(lines: BudgetPlanLine[]): Row[] {
   });
 }
 
-function toLines(rows: Row[]): Array<{ year: number; category: string | null; amount: number }> {
-  const lines: Array<{ year: number; category: string | null; amount: number }> = [];
+type PostedLine = { year: number; assetTypeId: string | null; category: string | null; amount: number };
+
+function toLines(rows: Row[], scope: string): PostedLine[] {
+  const assetTypeId = scope === WHOLE ? null : scope;
+  const lines: PostedLine[] = [];
   for (const r of rows) {
     const year = Number(r.year);
-    if (r.total.trim() !== "") lines.push({ year, category: null, amount: Number(r.total) });
-    for (const c of BUDGET_CATEGORIES) if (r[c].trim() !== "") lines.push({ year, category: c, amount: Number(r[c]) });
+    if (r.total.trim() !== "") lines.push({ year, assetTypeId, category: null, amount: Number(r.total) });
+    for (const c of BUDGET_CATEGORIES) {
+      if (r[c].trim() !== "") lines.push({ year, assetTypeId, category: c, amount: Number(r[c]) });
+    }
   }
   return lines;
 }
@@ -51,21 +61,37 @@ const yearMoney = (r: Row) => num(r.total) ?? (hasCategories(r) ? sumCategories(
 
 /**
  * The budget table: a row per year, a total and, when the money is broken out
- * that way, an amount per category.
+ * that way, an amount per category. Where several asset types are modelled,
+ * each also has a table of its own, read by scenarios that fund their types
+ * separately.
  */
 export function BudgetEditor({
   action,
   initial,
+  assetTypes,
 }: {
   action: (prev: BudgetFormState, formData: FormData) => Promise<BudgetFormState>;
   initial: { id: string; name: string; description: string; lines: BudgetPlanLine[] };
+  /** The modelled asset types. Their tables are offered only when there are
+   * several, since money by type means nothing with one. */
+  assetTypes: Array<{ id: string; name: string }>;
 }) {
   const [state, formAction] = useActionState(action, { status: "idle" } as BudgetFormState);
   const thisYear = new Date().getFullYear();
-  const [rows, setRows] = useState<Row[]>(() => {
-    const existing = toRows(initial.lines);
-    return existing.length > 0 ? existing : [{ year: String(thisYear), total: "", ...emptyCategories() }];
+  const scopes = [{ id: WHOLE, name: "Whole budget" }, ...(assetTypes.length > 1 ? assetTypes : [])];
+  const [byScope, setByScope] = useState<Record<string, Row[]>>(() => {
+    const out: Record<string, Row[]> = {};
+    for (const s of scopes) out[s.id] = toRows(initial.lines, s.id);
+    if (out[WHOLE].length === 0 && scopes.every((s) => out[s.id].length === 0)) {
+      out[WHOLE] = [{ year: String(thisYear), total: "", ...emptyCategories() }];
+    }
+    return out;
   });
+  const [scope, setScope] = useState(WHOLE);
+  const rows = byScope[scope] ?? [];
+  const setRows = (change: (rows: Row[]) => Row[]) =>
+    setByScope((all) => ({ ...all, [scope]: change(all[scope] ?? []) }));
+  const scopeName = scopes.find((s) => s.id === scope)?.name ?? "";
   const [byCategory, setByCategory] = useState(() => initial.lines.some((l) => l.category != null));
 
   // Filling a run of years from one figure and a growth rate: the usual
@@ -96,7 +122,7 @@ export function BudgetEditor({
     );
   };
 
-  const lines = useMemo(() => toLines(rows), [rows]);
+  const lines = useMemo(() => Object.entries(byScope).flatMap(([s, rs]) => toLines(rs, s)), [byScope]);
   const grand = rows.reduce((sum, r) => sum + (yearMoney(r) ?? 0), 0);
 
   return (
@@ -145,6 +171,37 @@ export function BudgetEditor({
       </fieldset>
 
       <div className="space-y-2">
+        {scopes.length > 1 && (
+          <div role="tablist" aria-label="Whose money" className="flex flex-wrap gap-1 border-b">
+            {scopes.map((s) => {
+              const on = s.id === scope;
+              const set = (byScope[s.id] ?? []).some((r) => yearMoney(r) != null);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => setScope(s.id)}
+                  className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${
+                    on ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {s.name}
+                  {s.id !== WHOLE && set && <span className="ml-1 text-xs text-muted-foreground">•</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {scope !== WHOLE && (
+          <p className="text-xs text-muted-foreground">
+            {scopeName}&apos;s own money, read only by a scenario over several asset types that funds them separately:
+            there, {scopeName} spends no more than this each year, and a category amount is the most that kind of{" "}
+            {scopeName} work may take. A pooled scenario ignores it. A year with no whole-budget total takes the asset
+            types&apos; amounts added up.
+          </p>
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={byCategory} onChange={(e) => setByCategory(e.target.checked)} />
           Break the money out by category
@@ -197,7 +254,13 @@ export function BudgetEditor({
                         </td>
                       ))}
                     <td className="px-3 py-1.5 text-right">
-                      <Button type="button" size="sm" variant="ghost" onClick={() => removeYear(i)} disabled={rows.length === 1}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => removeYear(i)}
+                        disabled={scope === WHOLE && rows.length === 1}
+                      >
                         Remove
                       </Button>
                     </td>
@@ -207,7 +270,7 @@ export function BudgetEditor({
             </tbody>
             <tfoot className="border-t bg-muted/30 text-sm">
               <tr>
-                <td className="px-3 py-2 font-medium">All years</td>
+                <td className="px-3 py-2 font-medium">{scope === WHOLE ? "All years" : `${scopeName}, all years`}</td>
                 <td className="px-3 py-2 text-right font-medium tabular-nums">{formatCurrency(grand)}</td>
                 {byCategory && BUDGET_CATEGORIES.map((c) => (
                   <td key={c} className="px-3 py-2 text-right tabular-nums text-muted-foreground">

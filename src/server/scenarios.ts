@@ -200,6 +200,8 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
     // Present only on a scenario that weighs its asset types; every other
     // scenario reads exactly as it did before the weights existed.
     ...withTypeWeights(parseAssetTypeWeights(map.assetTypeWeights)),
+    // Likewise only on a scenario that funds its types separately.
+    ...(map.typeFunding === "separate" ? { typeFunding: "separate" as const } : {}),
   };
 }
 
@@ -213,8 +215,12 @@ const withTypeWeights = (weights: AssetTypeWeights) =>
  * choice, and a missing row reads as the default target instead.
  */
 export function assumptionRows(assumptions: ScenarioAssumptions) {
-  const { assetTypeWeights, ...rest } = assumptions;
-  return Object.entries({ ...rest, ...withTypeWeights(parseAssetTypeWeights(assetTypeWeights)) }).map(([key, value]) => ({
+  const { assetTypeWeights, typeFunding, ...rest } = assumptions;
+  return Object.entries({
+    ...rest,
+    ...withTypeWeights(parseAssetTypeWeights(assetTypeWeights)),
+    ...(typeFunding === "separate" ? { typeFunding } : {}),
+  }).map(([key, value]) => ({
     key,
     value: value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue),
   }));
@@ -282,21 +288,25 @@ async function scenarioAssetTypes(organizationId: string, ids: string[] | undefi
 }
 
 /**
- * The assumptions with their asset type weights checked: each weight is for a
+ * The assumptions with their asset type settings checked: each weight is for a
  * type the scenario covers and inside the allowed range. A scenario over one
- * type keeps none, since there is nothing for that type to be weighed against.
+ * type keeps no weights and does not fund types separately, since there is
+ * nothing for that type to be weighed against or kept apart from.
  */
 async function checkedTypeWeights(
   organizationId: string,
   assumptions: ScenarioAssumptions,
   assetTypeIds: string[]
 ): Promise<ScenarioAssumptions> {
-  const { assetTypeWeights, ...rest } = assumptions;
+  const { assetTypeWeights, typeFunding, ...rest } = assumptions;
   const weights = parseAssetTypeWeights(assetTypeWeights);
-  if (Object.keys(weights).length === 0) return rest;
+  if (Object.keys(weights).length === 0 && typeFunding !== "separate") return rest;
   const covered =
     assetTypeIds.length > 0 ? assetTypeIds : (await listModelledAssetTypes(organizationId)).map((t) => t.id);
+  // Over one type there is nothing to weigh it against, and nothing to fund
+  // separately from.
   if (covered.length < 2) return rest;
+  const funding = typeFunding === "separate" ? { typeFunding } : {};
   const { min, max } = ASSET_TYPE_WEIGHT_RANGE;
   const kept: AssetTypeWeights = {};
   for (const [id, w] of Object.entries(weights)) {
@@ -304,7 +314,7 @@ async function checkedTypeWeights(
     if (w < min || w > max) throw new Error(`An asset type weight must be between ${min} and ${max}.`);
     kept[id] = w;
   }
-  return { ...rest, ...withTypeWeights(kept) };
+  return { ...rest, ...withTypeWeights(kept), ...funding };
 }
 
 export async function createScenario(

@@ -36,6 +36,7 @@ const schema = z.object({
   categoryFundingPlanId: z.string().optional(),
   leadTimeSetId: z.string().optional(),
   budgetPlanId: z.string().optional(),
+  typeFunding: z.string().optional(),
   savedFilterId: z.string().optional(),
   scenarioSetId: z.string().optional(),
   fundingMode: z.string().optional(),
@@ -158,6 +159,11 @@ function parseForm(formData: FormData): {
       afterTarget: d.afterTarget === "none" ? "none" : "hold",
       programmedFunding: d.programmedFunding === "additional" ? "additional" : "within",
       assetTypeWeights: parseTypeWeights(formData),
+      // Only with a budget to divide; the server keeps it only for a scenario
+      // over several types.
+      ...(fundingMode === "budget" && d.budgetPlanId?.trim() && d.typeFunding === "separate"
+        ? { typeFunding: "separate" as const }
+        : {}),
     },
   };
 }

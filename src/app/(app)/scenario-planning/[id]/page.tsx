@@ -173,6 +173,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
     leadTimeSetId: scenario.leadTimeSetId ?? null,
     budgetPlanId: scenario.budgetPlanId ?? null,
+    typeFunding: a.typeFunding ?? "pooled",
     savedFilterId: scenario.savedFilterId ?? null,
     assetTypeIds: scenario.assetTypeIds,
     assetTypeWeights: a.assetTypeWeights,
@@ -874,7 +875,12 @@ function AssumptionsCard({
         <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4 lg:grid-cols-7">
           <Field label="Strategy" value={a.strategy} />
           <Field label="Annual Budget" value={formatCurrency(a.annualBudget, { compact: true })} />
-          {scenario.budgetPlanName && <Field label="Budget" value={scenario.budgetPlanName} />}
+          {scenario.budgetPlanName && (
+            <Field
+              label="Budget"
+              value={`${scenario.budgetPlanName}${a.typeFunding === "separate" ? " — each asset type from its own money" : ""}`}
+            />
+          )}
           <Field label="Funding Growth" value={`${(a.fundingGrowth * 100).toFixed(1)}%/yr`} />
           <Field label="Discount Rate" value={`${(a.discountRate * 100).toFixed(2)}%`} />
           <Field
