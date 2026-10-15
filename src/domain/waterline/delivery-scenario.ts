@@ -34,7 +34,8 @@ import { annualFailureProbability, failureEventCost, presentValue } from "./lcca
 import { buildLccaEvaluator } from "./lcca-evaluator";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS } from "./category-weight";
 import { CONSIDER_ALL, filterOptions } from "./option-selection";
-import { categoryLimits } from "./category-funding";
+import { yearLimits } from "./category-funding";
+import { budgetYear } from "./budget-plan";
 import { NOT_SELECTED, SELECTED, restingPurse, selectAgainst, type Purse, type Rankable } from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import {
@@ -53,6 +54,7 @@ import {
   projectedConditionOf,
   splitOptionCost,
   type AssetTreatmentContext,
+  type TreatmentCategory,
   type TreatmentDef,
   type TreatmentOption,
   findTreatment,
@@ -163,7 +165,9 @@ export type DeliveryRunResult = Omit<ScenarioRunResult, "years"> & {
 function ledger(
   budgetFor: (year: number) => number,
   plan: ScenarioRunOptions["fundingPlan"],
-  endYear: number
+  endYear: number,
+  /** A budget plan's dollar ceilings for a year, by category. */
+  ceilingsFor: (year: number) => Map<TreatmentCategory, number> | null
 ) {
   const spent = new Map<number, number>();
   const spentByCategory = new Map<string, number>();
@@ -171,7 +175,7 @@ function ledger(
 
   const key = (year: number, category: string) => `${year}|${category}`;
   const limits = (year: number) => {
-    if (!limitsFor.has(year)) limitsFor.set(year, categoryLimits(plan ?? null, budgetFor(year)));
+    if (!limitsFor.has(year)) limitsFor.set(year, yearLimits(plan ?? null, budgetFor(year), ceilingsFor(year)));
     return limitsFor.get(year)!;
   };
   const capFor = (year: number, category: string) => {
@@ -380,11 +384,17 @@ function walk(
   // Flat in target mode: what is being solved for there is one figure a year,
   // and escalating it would mean the answer was a figure that is never
   // actually the amount in any year but the first.
+  //
+  // A budget plan replaces the annual budget and growth in the years it
+  // lists, and its category amounts are ceilings in those years.
+  const plannedFor = (year: number) =>
+    assumptions.fundingMode === "target" ? null : budgetYear(options.budgetPlan, year);
   const budgetFor = (year: number) =>
     assumptions.fundingMode === "target"
       ? assumptions.annualBudget
-      : assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear);
-  const money = ledger(budgetFor, options.fundingPlan ?? null, endYear);
+      : (plannedFor(year)?.total ??
+        assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear));
+  const money = ledger(budgetFor, options.fundingPlan ?? null, endYear, (year) => plannedFor(year)?.ceilings ?? null);
   /** Past the target year of a target run set to do nothing after it. */
   const afterTargetIn = (year: number) =>
     assumptions.fundingMode === "target" &&

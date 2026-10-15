@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Budgets set year by year",
+    summary:
+      "A scenario can now follow a budget: the money you expect to have, entered year by year in dollars, instead of one annual figure and a growth rate. Optional — a scenario with no budget runs exactly as before.",
+    changes: [
+      "Scenario Planning › Budgets: name a budget and enter each year's total, filled from a starting figure and growth rate if you like and edited year by year from there.",
+      "Break the money out by category if you want: a dollar amount for Repair, Rehabilitate or Renew is the most that kind of work may take that year. Leave the total blank and it is the categories added up.",
+      "On a budget-constrained scenario, choose the budget under Budget. Years it lists use its amounts; years it does not list use the scenario's annual budget and growth. A category funding plan's shares still hold alongside it — the lower limit wins.",
+      "Both scenario engines follow it, with or without delivery lead times. A budget can't be deleted while a scenario follows it.",
+    ],
+    note: "Migration: 20261015140000_budget_plans (new budget_plans and budget_plan_lines tables, and a nullable scenarios.budgetPlanId).",
+  },
+  {
+    date: "2026-10-15",
     title: "Each type's typical Priority Score, to set its weight against",
     summary:
       "Asset types' Priority Scores need not be on one scale: a length-based scale factor puts a water main's in the thousands where a pole's is 1. A scenario over several types now shows what each type's work typically scores, so its weight can be set knowing the gap.",

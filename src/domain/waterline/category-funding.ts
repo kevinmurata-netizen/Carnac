@@ -51,6 +51,30 @@ export function categoryLimits(plan: FundingPlan, budget: number): Map<Treatment
 }
 
 /**
+ * Each category's limit for one year: its funding-plan share of the budget,
+ * held further by a budget plan's dollar ceiling where the year sets one.
+ *
+ * The two are separate decisions and both hold — a share says how the year is
+ * divided, a ceiling says what money exists for that kind of work — so the
+ * lower wins. Without ceilings this is exactly `categoryLimits`.
+ */
+export function yearLimits(
+  plan: FundingPlan,
+  budget: number,
+  ceilings?: Map<TreatmentCategory, number> | null
+): Map<TreatmentCategory, number> | null {
+  const shares = categoryLimits(plan, budget);
+  if (!ceilings || ceilings.size === 0) return shares;
+  const limits = new Map<TreatmentCategory, number>();
+  for (const category of CATEGORY_KEYS) {
+    const share = shares == null ? budget : (shares.get(category) ?? 0);
+    const ceiling = ceilings.get(category);
+    limits.set(category, ceiling == null ? share : Math.min(share, ceiling));
+  }
+  return limits;
+}
+
+/**
  * Categories a plan never funds at all: capped at zero, or simply absent.
  *
  * An absent category is the easier one to get wrong. A plan listing only

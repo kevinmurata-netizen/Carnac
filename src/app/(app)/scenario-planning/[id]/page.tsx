@@ -9,6 +9,7 @@ import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { listLeadTimeSets } from "@/server/lead-times";
+import { listBudgetPlans, toBudgetPlanChoice } from "@/server/budget-plans";
 import { listSavedFilters } from "@/server/saved-filters";
 import { lockablePlanChoices } from "@/server/workplans";
 import {
@@ -41,6 +42,7 @@ import type {
   CategoryWeightSetChoice,
   FundingPlanChoice,
   LeadTimeChoice,
+  BudgetPlanChoice,
   FilterChoice,
   AssetTypeChoice,
   LockedPlanChoice,
@@ -77,6 +79,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryWeightSets,
     fundingPlans,
     leadTimeSets,
+    budgetPlans,
     savedFilters,
     lockedPlanChoices,
     catalogue,
@@ -92,6 +95,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     listCategoryWeightSets(organizationId),
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
+    listBudgetPlans(organizationId),
     listSavedFilters(organizationId),
     lockablePlanChoices(organizationId),
     getScenarioOptionCatalogue(organizationId, id),
@@ -141,6 +145,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     isDefault: l.isDefault,
     summary: l.summary,
   }));
+  const budgetPlanChoices: BudgetPlanChoice[] = budgetPlans.map(toBudgetPlanChoice);
   const filterChoices: FilterChoice[] = savedFilters.map((f) => ({
     id: f.id,
     name: f.name,
@@ -167,6 +172,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryWeightSetId: scenario.categoryWeightSetId ?? null,
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
     leadTimeSetId: scenario.leadTimeSetId ?? null,
+    budgetPlanId: scenario.budgetPlanId ?? null,
     savedFilterId: scenario.savedFilterId ?? null,
     assetTypeIds: scenario.assetTypeIds,
     assetTypeWeights: a.assetTypeWeights,
@@ -403,7 +409,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={typeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} budgetPlanChoices={budgetPlanChoices} filterChoices={filterChoices} assetTypeChoices={typeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -500,7 +506,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               answer: what each year costs. */}
           {scenario.target && <TargetSpendCard scenario={scenario} index={index} words={words} />}
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={typeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} budgetPlanChoices={budgetPlanChoices} filterChoices={filterChoices} assetTypeChoices={typeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -813,6 +819,7 @@ function AssumptionsCard({
   categoryWeightSetChoices,
   fundingPlanChoices,
   leadTimeChoices,
+  budgetPlanChoices,
   filterChoices,
   assetTypeChoices,
   lockedPlanChoices,
@@ -826,6 +833,7 @@ function AssumptionsCard({
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
+  budgetPlanChoices: BudgetPlanChoice[];
   filterChoices: FilterChoice[];
   assetTypeChoices: AssetTypeChoice[];
   lockedPlanChoices: LockedPlanChoice[];
@@ -853,6 +861,7 @@ function AssumptionsCard({
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
+            budgetPlanChoices={budgetPlanChoices}
             filterChoices={filterChoices}
             assetTypeChoices={assetTypeChoices}
             lockedPlanChoices={lockedPlanChoices}
@@ -865,6 +874,7 @@ function AssumptionsCard({
         <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4 lg:grid-cols-7">
           <Field label="Strategy" value={a.strategy} />
           <Field label="Annual Budget" value={formatCurrency(a.annualBudget, { compact: true })} />
+          {scenario.budgetPlanName && <Field label="Budget" value={scenario.budgetPlanName} />}
           <Field label="Funding Growth" value={`${(a.fundingGrowth * 100).toFixed(1)}%/yr`} />
           <Field label="Discount Rate" value={`${(a.discountRate * 100).toFixed(2)}%`} />
           <Field

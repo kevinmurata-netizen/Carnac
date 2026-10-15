@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useAssetWords } from "@/components/layout/asset-words";
 import { Label } from "@/components/ui/label";
 import { useIndexWords } from "@/components/layout/index-words";
@@ -31,6 +32,7 @@ export type ScenarioValues = {
   categoryWeightSetId: string;
   categoryFundingPlanId: string;
   leadTimeSetId: string;
+  budgetPlanId: string;
   savedFilterId: string;
   /** The modelled asset types it is narrowed to, sorted and comma-joined so it
    * compares like every other field. Empty is all of them. */
@@ -65,6 +67,7 @@ export type ScenarioFieldDefaults = {
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
+  budgetPlanId?: string | null;
   savedFilterId: string | null;
   /** Empty, or absent, is every modelled asset type. */
   assetTypeIds?: string[];
@@ -96,6 +99,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     categoryWeightSetId: d.categoryWeightSetId ?? "",
     categoryFundingPlanId: d.categoryFundingPlanId ?? "",
     leadTimeSetId: d.leadTimeSetId ?? "",
+    budgetPlanId: d.budgetPlanId ?? "",
     savedFilterId: d.savedFilterId ?? "",
     assetTypeIds: [...(d.assetTypeIds ?? [])].sort().join(","),
     assetTypeWeights: joinWeights(
@@ -146,6 +150,10 @@ export type FundingPlanChoice = { id: string; name: string; isDefault: boolean; 
  * names only the categories that wait, since that is what distinguishes one
  * set from another. */
 export type LeadTimeChoice = { id: string; name: string; isDefault: boolean; summary: string };
+
+/** The budget plans this scenario can follow. `summary` is the years each
+ * covers. */
+export type BudgetPlanChoice = { id: string; name: string; summary: string };
 
 /** The saved filters a scenario can be limited to. `criteriaCount` is shown
  * because a filter with no criteria matches everything, which is worth knowing
@@ -198,6 +206,7 @@ export function ScenarioFields({
   categoryWeightSetChoices = [],
   fundingPlanChoices = [],
   leadTimeChoices = [],
+  budgetPlanChoices = [],
   filterChoices = [],
   assetTypeChoices = [],
   lockedPlanChoices = [],
@@ -214,6 +223,7 @@ export function ScenarioFields({
   categoryWeightSetChoices?: CategoryWeightSetChoice[];
   fundingPlanChoices?: FundingPlanChoice[];
   leadTimeChoices?: LeadTimeChoice[];
+  budgetPlanChoices?: BudgetPlanChoice[];
   filterChoices?: FilterChoice[];
   /** Offered only when more than one asset type is modelled. */
   assetTypeChoices?: AssetTypeChoice[];
@@ -685,6 +695,37 @@ export function ScenarioFields({
             How far this scenario leans toward one kind of work — repair over renewal, or the other way about. A
             multiplier on the Priority Score, so leaving every category at 1 ranks purely on the merits. Edit the sets
             under Settings &rsaquo; Scenario Weights.
+          </p>
+        </div>
+      )}
+
+      {/* The money itself, year by year, where the utility has it set out
+          rather than as one figure and a growth rate. A target run solves for
+          its money, so it has nothing to follow. */}
+      {!targeting && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("budgetPlanId")}>Budget</Label>
+          <select
+            id={id("budgetPlanId")}
+            name="budgetPlanId"
+            value={values.budgetPlanId}
+            onChange={(e) => onChange({ budgetPlanId: e.target.value })}
+            className={mark("budgetPlanId")}
+          >
+            <option value="">The annual budget and growth above</option>
+            {budgetPlanChoices.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} — {p.summary}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted-foreground">
+            {values.budgetPlanId
+              ? "Each year the budget lists uses its amount instead of the annual budget and growth, and any category amounts it sets are the most that category may take that year. Years it does not list still use the annual budget and growth above."
+              : "Follow a budget set year by year in dollars — the money you actually expect to have, with amounts per category if you break it out that way."}{" "}
+            <Link href="/scenario-planning/budgets" className="font-medium text-primary underline-offset-2 hover:underline">
+              {budgetPlanChoices.length > 0 ? "Edit budgets" : "Set up a budget"}
+            </Link>
           </p>
         </div>
       )}

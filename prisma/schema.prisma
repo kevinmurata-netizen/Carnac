@@ -178,6 +178,7 @@ model AssetType {
   updatedAt DateTime @updatedAt
 
   scenarios ScenarioAssetType[]
+  budgetLines BudgetPlanLine[]
 
   @@unique([organizationId, code])
   @@map("asset_types")
@@ -1277,6 +1278,49 @@ model CategoryFundingPlan {
   @@map("category_funding_plans")
 }
 
+/// The money a utility expects to have, set year by year in dollars rather
+/// than as one figure and a growth rate. Optional: a scenario follows one only
+/// when it chooses to.
+model BudgetPlan {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  lines BudgetPlanLine[]
+
+  scenarios Scenario[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("budget_plans")
+}
+
+/// One amount in a budget, for one year.
+///
+/// With neither an asset type nor a category it is the year's total. With a
+/// category it is the most that category may take that year; with an asset
+/// type, the most that type may take; with both, the most that category may
+/// take within that type. A year the budget does not list falls back to the
+/// scenario's own annual budget and growth.
+model BudgetPlanLine {
+  id           String     @id @default(cuid())
+  budgetPlanId String
+  budgetPlan   BudgetPlan @relation(fields: [budgetPlanId], references: [id], onDelete: Cascade)
+  year         Int
+  assetTypeId  String?
+  assetType    AssetType? @relation(fields: [assetTypeId], references: [id], onDelete: Cascade)
+  /// A TreatmentCategory, or null for every category.
+  category     String?
+  amount       Float
+
+  @@index([budgetPlanId, year])
+  @@index([assetTypeId])
+  @@map("budget_plan_lines")
+}
+
 /// One category's turn: how much of the year it may take, and when it takes it.
 ///
 /// Rows rather than columns on the plan, because the order is a decision
@@ -1426,6 +1470,12 @@ model Scenario {
   /// ranked list, which is what allocation did before order existed.
   categoryFundingPlanId String?
   categoryFundingPlan   CategoryFundingPlan? @relation(fields: [categoryFundingPlanId], references: [id], onDelete: SetNull)
+
+  /// The money set year by year, where the scenario follows a budget rather
+  /// than its annual budget and growth. Null is the annual budget and growth,
+  /// which is how every scenario ran before budgets existed.
+  budgetPlanId String?
+  budgetPlan   BudgetPlan? @relation(fields: [budgetPlanId], references: [id], onDelete: SetNull)
 
   /// Whether this scenario considers only the treatments and combinations it
   /// names, rather than the whole library.

@@ -35,6 +35,7 @@ const schema = z.object({
   categoryWeightSetId: z.string().optional(),
   categoryFundingPlanId: z.string().optional(),
   leadTimeSetId: z.string().optional(),
+  budgetPlanId: z.string().optional(),
   savedFilterId: z.string().optional(),
   scenarioSetId: z.string().optional(),
   fundingMode: z.string().optional(),
@@ -86,6 +87,7 @@ function parseForm(formData: FormData): {
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
+  budgetPlanId: string | null;
   savedFilterId: string | null;
   assetTypeIds: string[];
   scenarioSetId: string | null;
@@ -126,6 +128,9 @@ function parseForm(formData: FormData): {
     // Empty means the organization's default lead times, and no default means
     // everything is decided, paid for and built in the same year.
     leadTimeSetId: d.leadTimeSetId?.trim() || null,
+    // Empty means the annual budget and growth. Only a budget run follows a
+    // plan; a target run solves for its money, so it keeps none.
+    budgetPlanId: fundingMode === "budget" ? d.budgetPlanId?.trim() || null : null,
     // Empty means the whole network, which is what every scenario ran over
     // before a filter could be attached.
     savedFilterId: d.savedFilterId?.trim() || null,
