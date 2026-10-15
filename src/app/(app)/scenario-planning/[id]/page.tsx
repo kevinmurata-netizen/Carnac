@@ -174,6 +174,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     leadTimeSetId: scenario.leadTimeSetId ?? null,
     budgetPlanId: scenario.budgetPlanId ?? null,
     typeFunding: a.typeFunding ?? "pooled",
+    corridorBundling: !!a.corridorBundling,
     savedFilterId: scenario.savedFilterId ?? null,
     assetTypeIds: scenario.assetTypeIds,
     assetTypeWeights: a.assetTypeWeights,
@@ -208,6 +209,11 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
   // Whether the stored run spent anything on locked projects — what decides
   // whether spending is shown in two parts.
   const programmedTotal = years.reduce((sum, y) => sum + y.programmedSpend, 0);
+  // Work that joined a corridor bundle: one row per treatment, so a bundle
+  // visit's rows are counted once.
+  const corridorJoined = [
+    ...new Map(projects.filter((p) => p.corridor).map((p) => [`${p.assetId}:${p.year}`, p])).values(),
+  ];
   // What each type's work typically scored in the run's first year, beside its
   // weight on the form: the scale a weight is set against.
   const typeChoices = assetTypeChoices.map((c) => ({
@@ -607,10 +613,18 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
 
           <Card className="mt-4">
             <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle>
-                Funded Projects{" "}
-                <span className="text-muted-foreground">({formatNumber(projects.length)})</span>
-              </CardTitle>
+              <div>
+                <CardTitle>
+                  Funded Projects{" "}
+                  <span className="text-muted-foreground">({formatNumber(projects.length)})</span>
+                </CardTitle>
+                {corridorJoined.length > 0 && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Corridor bundling: {formatNumber(corridorJoined.length)} pieces of work joined neighbouring work,
+                    saving {formatCurrency(corridorJoined.reduce((sum, p) => sum + (p.corridor?.saving ?? 0), 0))}.
+                  </p>
+                )}
+              </div>
               {projects.length > 0 && (
                 <ExportButton
                   href={`/scenario-planning/${scenario.id}/export`}
@@ -676,6 +690,14 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                                     title="One visit, funded as a combination. Its cost is divided between the treatments in it, and the condition and risk figures are the visit's."
                                   >
                                     part of {p.bundleName}
+                                  </div>
+                                )}
+                                {p.corridor && (
+                                  <div
+                                    className="text-xs text-muted-foreground"
+                                    title="Done beside neighbouring funded work in the same corridor. Its cost is already the bundled price."
+                                  >
+                                    bundled with {p.corridor.withAssetCode}, saving {formatCurrency(p.corridor.saving)}
                                   </div>
                                 )}
                               </TableCell>
@@ -875,6 +897,7 @@ function AssumptionsCard({
         <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4 lg:grid-cols-7">
           <Field label="Strategy" value={a.strategy} />
           <Field label="Annual Budget" value={formatCurrency(a.annualBudget, { compact: true })} />
+          {a.corridorBundling && <Field label="Corridor Bundling" value="On" />}
           {scenario.budgetPlanName && (
             <Field
               label="Budget"
