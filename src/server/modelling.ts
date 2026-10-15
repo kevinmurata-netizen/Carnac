@@ -112,7 +112,7 @@ export async function getModellingReadiness(organizationId: string): Promise<Map
         ok: parseFailureCost(t.failureCost) != null,
         detail: parseFailureCost(t.failureCost)
           ? "Set — failures avoided count in life-cycle savings"
-          : "Not set — life-cycle savings count no failures avoided",
+          : "Not set — life-cycle savings count no failures avoided; a starting figure is suggested under its measures",
         href: "/settings/asset-types",
       },
       {

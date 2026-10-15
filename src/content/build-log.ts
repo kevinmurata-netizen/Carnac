@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-15",
+    title: "A suggested failure cost where a type has none",
+    summary:
+      "A modelled asset type with no failure cost now gets a starting figure to accept or change, worked out from its own treatments and assets. Nothing is applied until someone saves it.",
+    changes: [
+      "The repair is what the type's cheapest Repair treatment costs on a typical asset of the type — the median size and length of its assets — or its replacement where it has no Repair treatment. The interruption is a typical $145 per customer, offered where the type records customers served.",
+      "Settings › Asset Types shows the suggestion under the type's measures, and the measures form has a \"Use suggestion\" button that fills it in, with where it came from.",
+      "The modelling checklist says a starting figure is suggested when the failure cost is missing.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-14",
     title: "Scenario results for each asset type",
     summary:
