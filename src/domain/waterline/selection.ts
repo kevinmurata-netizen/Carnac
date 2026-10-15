@@ -1,4 +1,4 @@
-import { categoryLimits, type FundingPlan } from "./category-funding";
+import { yearLimits, type FundingPlan } from "./category-funding";
 import type { TreatmentCategory, TreatmentOption } from "./treatment";
 
 /**
@@ -215,8 +215,13 @@ export type Purse<T extends Rankable> = {
 
 /** One year's money, spent on one year's work: how every scenario ran before
  * delivery lead times existed. */
-export function yearPurse<T extends Rankable>(budget: number, plan: FundingPlan): Purse<T> {
-  const limits = categoryLimits(plan, budget);
+export function yearPurse<T extends Rankable>(
+  budget: number,
+  plan: FundingPlan,
+  /** A budget plan's dollar ceilings for the year, by category. */
+  ceilings?: Map<TreatmentCategory, number> | null
+): Purse<T> {
+  const limits = yearLimits(plan, budget, ceilings);
   const limitOf = (category: TreatmentCategory) => (limits == null ? budget : (limits.get(category) ?? 0));
   const spentBy = new Map<TreatmentCategory, number>();
   let spent = 0;
@@ -259,9 +264,10 @@ export function yearPurse<T extends Rankable>(budget: number, plan: FundingPlan)
 export function selectForYear<T extends Rankable>(
   candidates: T[],
   budget: number,
-  plan: FundingPlan
+  plan: FundingPlan,
+  ceilings?: Map<TreatmentCategory, number> | null
 ): SelectionResult<T> {
-  return selectAgainst(candidates, yearPurse<T>(budget, plan));
+  return selectAgainst(candidates, yearPurse<T>(budget, plan, ceilings));
 }
 
 /** What a target-constrained year needs to know about the network it is

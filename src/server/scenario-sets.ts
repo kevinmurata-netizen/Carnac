@@ -215,6 +215,7 @@ function scenarioCopyData(
     categoryFundingPlanId: scenario.categoryFundingPlanId,
     savedFilterId: scenario.savedFilterId,
     leadTimeSetId: scenario.leadTimeSetId,
+    budgetPlanId: scenario.budgetPlanId,
     lockedWorkPlanId: scenario.lockedWorkPlanId,
     limitsOptions: scenario.limitsOptions,
     // A stored null — a budget scenario with no target line — is copied as

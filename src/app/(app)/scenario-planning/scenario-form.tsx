@@ -16,6 +16,7 @@ import {
   type CategoryWeightSetChoice,
   type FundingPlanChoice,
   type LeadTimeChoice,
+  type BudgetPlanChoice,
   type FilterChoice,
   type AssetTypeChoice,
   type LockedPlanChoice,
@@ -59,6 +60,7 @@ export function ScenarioEditForm({
   categoryWeightSetChoices,
   fundingPlanChoices,
   leadTimeChoices,
+  budgetPlanChoices,
   filterChoices,
   assetTypeChoices,
   lockedPlanChoices,
@@ -73,6 +75,7 @@ export function ScenarioEditForm({
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
+  budgetPlanChoices: BudgetPlanChoice[];
   filterChoices: FilterChoice[];
   assetTypeChoices: AssetTypeChoice[];
   lockedPlanChoices: LockedPlanChoice[];
@@ -101,6 +104,7 @@ export function ScenarioEditForm({
         categoryWeightSetChoices={categoryWeightSetChoices}
         fundingPlanChoices={fundingPlanChoices}
         leadTimeChoices={leadTimeChoices}
+        budgetPlanChoices={budgetPlanChoices}
         filterChoices={filterChoices}
         assetTypeChoices={assetTypeChoices}
         lockedPlanChoices={lockedPlanChoices}
@@ -155,6 +159,7 @@ export function ScenarioCreateForm({
   categoryWeightSetChoices,
   fundingPlanChoices,
   leadTimeChoices,
+  budgetPlanChoices,
   filterChoices,
   assetTypeChoices,
   lockedPlanChoices,
@@ -170,6 +175,7 @@ export function ScenarioCreateForm({
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
+  budgetPlanChoices: BudgetPlanChoice[];
   filterChoices: FilterChoice[];
   assetTypeChoices: AssetTypeChoice[];
   lockedPlanChoices: LockedPlanChoice[];
@@ -195,6 +201,7 @@ export function ScenarioCreateForm({
         categoryWeightSetChoices={categoryWeightSetChoices}
         fundingPlanChoices={fundingPlanChoices}
         leadTimeChoices={leadTimeChoices}
+        budgetPlanChoices={budgetPlanChoices}
         filterChoices={filterChoices}
         assetTypeChoices={assetTypeChoices}
         lockedPlanChoices={lockedPlanChoices}

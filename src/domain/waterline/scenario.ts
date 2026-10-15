@@ -20,6 +20,7 @@ import {
 export { curveFor };
 import { annualFailureProbability, failureEventCost, presentValue, type FailureCost } from "./lcca";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
+import { budgetYear, type BudgetPlanLine } from "./budget-plan";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
 import { selectAgainst, selectForYear, selectForTarget, restingPurse, NOT_SELECTED, SELECTED } from "./selection";
@@ -1000,6 +1001,10 @@ export type ScenarioRunOptions = {
   /** The share of each year each category may take, and the order they take
    * it in. Null means no category limits, only the year's budget. */
   fundingPlan?: FundingPlan;
+  /** The money set year by year, where the scenario follows a budget plan.
+   * A year it lists replaces the annual budget and growth; read only in a
+   * budget run. */
+  budgetPlan?: BudgetPlanLine[] | null;
   /** Deterioration curves by material. */
   curves?: Record<string, CurveParams>;
   /** The same, for one asset type: where several are modelled, each ages on
@@ -1133,9 +1138,12 @@ export function runScenario(
 
   for (let i = 0; i < assumptions.analysisPeriodYears; i++) {
     const year = startYear + i;
+    // A budget plan's year, where it lists this one: its total replaces the
+    // annual budget and growth, and its category amounts are ceilings.
+    const planned = targeted ? null : budgetYear(options.budgetPlan, year);
     const budget = targeted
       ? assumptions.annualBudget
-      : assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, i);
+      : (planned?.total ?? assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, i));
 
     // 0. Criticality, from the network as it now stands. A formula may read
     //    condition, age or risk, and a segment replaced in year 3 must stop
@@ -1204,7 +1212,7 @@ export function runScenario(
         current: (assetId) => untreated.get(assetId) ?? 0,
       });
     } else {
-      outcome = selectForYear(candidates, allocation, fundingPlan);
+      outcome = selectForYear(candidates, allocation, fundingPlan, planned?.ceilings);
     }
 
     // Recorded here rather than inside the selection engine, which is written

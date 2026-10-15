@@ -9,6 +9,7 @@ import { getScenarioOptionCatalogue } from "@/server/scenario-options";
 import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { listLeadTimeSets } from "@/server/lead-times";
+import { listBudgetPlans, toBudgetPlanChoice } from "@/server/budget-plans";
 import { listSavedFilters } from "@/server/saved-filters";
 import { lockablePlanChoices } from "@/server/workplans";
 import { normalizeWeights } from "@/domain/waterline/optimization";
@@ -49,6 +50,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     categoryWeightSets,
     fundingPlans,
     leadTimeSets,
+    budgetPlans,
     savedFilters,
     lockedPlanChoices,
     catalogue,
@@ -61,6 +63,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
     listCategoryWeightSets(organizationId),
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
+    listBudgetPlans(organizationId),
     listSavedFilters(organizationId),
     lockablePlanChoices(organizationId),
     getScenarioOptionCatalogue(organizationId),
@@ -132,6 +135,7 @@ export default async function NewScenarioPage({ searchParams }: { searchParams: 
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
+            budgetPlanChoices={budgetPlans.map(toBudgetPlanChoice)}
             filterChoices={filterChoices}
             assetTypeChoices={assetTypeChoices}
             lockedPlanChoices={lockedPlanChoices}

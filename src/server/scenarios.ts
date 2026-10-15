@@ -35,6 +35,7 @@ import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
+import { assertBudgetPlanInOrganization, resolveBudgetPlan } from "@/server/budget-plans";
 import { resolveFundingPlan } from "@/server/category-funding";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveOptionSelection } from "@/server/scenario-options";
@@ -328,6 +329,8 @@ export async function createScenario(
      * organization's default set, and no default means everything happens in
      * the year it is decided. */
     leadTimeSetId?: string | null;
+    /** The money set year by year. Null is the annual budget and growth. */
+    budgetPlanId?: string | null;
     /** Which assets it runs over. Null is the whole network. */
     savedFilterId?: string | null;
     /** Which modelled asset types it runs over. Empty is all of them. */
@@ -341,6 +344,7 @@ export async function createScenario(
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   await assertFilterInOrganization(organizationId, input.savedFilterId ?? null);
   await assertLockablePlan(organizationId, input.lockedWorkPlanId ?? null);
+  await assertBudgetPlanInOrganization(organizationId, input.budgetPlanId ?? null);
   const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
   const assumptions = await checkedTypeWeights(organizationId, input.assumptions, assetTypeIds);
   return prisma.scenario.create({
@@ -353,6 +357,7 @@ export async function createScenario(
       categoryWeightSetId: input.categoryWeightSetId || null,
       categoryFundingPlanId: input.categoryFundingPlanId || null,
       leadTimeSetId: input.leadTimeSetId || null,
+      budgetPlanId: input.budgetPlanId || null,
       savedFilterId: input.savedFilterId || null,
       scenarioSetId: input.scenarioSetId || null,
       lockedWorkPlanId: input.lockedWorkPlanId || null,
@@ -390,6 +395,8 @@ export async function updateScenario(
     /** How long its work takes to be paid for and built. Null uses the
      * organization's default set. */
     leadTimeSetId?: string | null;
+    /** The money set year by year. Null is the annual budget and growth. */
+    budgetPlanId?: string | null;
     /** Which assets it runs over. Null is the whole network. */
     savedFilterId?: string | null;
     /** Which modelled asset types it runs over. Empty is all of them. */
@@ -411,6 +418,7 @@ export async function updateScenario(
   }
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   await assertLockablePlan(organizationId, input.lockedWorkPlanId ?? null);
+  await assertBudgetPlanInOrganization(organizationId, input.budgetPlanId ?? null);
   const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
   const assumptions = await checkedTypeWeights(organizationId, input.assumptions, assetTypeIds);
 
@@ -428,6 +436,7 @@ export async function updateScenario(
         categoryWeightSetId: input.categoryWeightSetId || null,
         categoryFundingPlanId: input.categoryFundingPlanId || null,
         leadTimeSetId: input.leadTimeSetId || null,
+        budgetPlanId: input.budgetPlanId || null,
         savedFilterId: input.savedFilterId || null,
         scenarioSetId: input.scenarioSetId || null,
         lockedWorkPlanId: input.lockedWorkPlanId || null,
@@ -495,7 +504,7 @@ export async function loadScenarioRun(
   // A set decides the years: its base year starts the run and its planning
   // period replaces the scenario's own, so every member covers the same span.
   const assumptions = effectiveAssumptions(scenario.assumptions, scenario.scenarioSet);
-  const [simAssets, library, combinations, weights, categories, funding, selection, curvesFor, criticality, leadTimes] =
+  const [simAssets, library, combinations, weights, categories, funding, selection, curvesFor, criticality, leadTimes, budget] =
     await Promise.all([
     buildSimAssets(
       organizationId,
@@ -523,6 +532,9 @@ export async function loadScenarioRun(
     // How long its work takes to be paid for and built. No set, or a set that
     // leaves everything immediate, is the engine this app has always had.
     resolveLeadTimes(organizationId, scenario.leadTimeSetId),
+    // The money year by year, where it follows a budget plan. None is the
+    // annual budget and growth, as every scenario ran before plans existed.
+    resolveBudgetPlan(organizationId, scenario.budgetPlanId),
   ]);
 
   if (simAssets.length === 0 && scenario.assetTypes.length > 0) {
@@ -564,6 +576,7 @@ export async function loadScenarioRun(
       },
       categoryWeights: categories.weights,
       fundingPlan: funding.plan,
+      budgetPlan: budget.lines,
       curvesFor,
       startYear: scenario.scenarioSet?.baseYear,
       // Absent when no formula is configured, in which case each asset keeps
@@ -1036,6 +1049,9 @@ export type ScenarioSummary = {
    * decided, paid for and built in the same year. */
   leadTimeSetId: string | null;
   leadTimeSetName: string | null;
+  /** The budget plan it follows, when it follows one. */
+  budgetPlanId: string | null;
+  budgetPlanName: string | null;
   /** The saved filter deciding which assets this scenario runs over. Null is
    * the whole network, which is what every scenario did before filters could
    * be attached. */
@@ -1113,6 +1129,7 @@ export async function listScenarios(
       categoryWeightSet: { select: { name: true } },
       categoryFundingPlan: { select: { name: true } },
       leadTimeSet: { select: { name: true } },
+      budgetPlan: { select: { name: true } },
       savedFilter: { select: { name: true } },
       lockedWorkPlan: { select: { name: true } },
       assetTypes: { select: { assetTypeId: true, assetType: { select: { name: true } } } },
@@ -1156,6 +1173,8 @@ export async function listScenarios(
       categoryFundingPlanName: s.categoryFundingPlan?.name ?? null,
       leadTimeSetId: s.leadTimeSetId,
       leadTimeSetName: s.leadTimeSet?.name ?? null,
+      budgetPlanId: s.budgetPlanId,
+      budgetPlanName: s.budgetPlan?.name ?? null,
       savedFilterId: s.savedFilterId,
       savedFilterName: s.savedFilter?.name ?? null,
       assetTypeIds: s.assetTypes.map((t) => t.assetTypeId),
