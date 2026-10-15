@@ -78,9 +78,11 @@ import {
   type SimAsset,
   type YearAlternative,
   breakdownByType,
+  corridorOf,
   typicalPriorities,
   withByType,
 } from "./scenario";
+import { corridorRepricer, repriced, type CorridorJoin } from "./corridor-bundling";
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -637,15 +639,26 @@ function walk(
         );
       }
     }
-    const outcome = selectAgainst(candidates, purse, heldCandidates);
+    // Bundling corridor work, in a budget year: each asset given work makes
+    // its neighbours cheaper for the rest of the year's buying — beside work
+    // built the same year, since that is when the crews are there together.
+    const bundling =
+      options.corridor && !resting && !targeted
+        ? corridorRepricer(candidates, options.corridor, rebated, (c, anchor) => c.buildYear === anchor.buildYear)
+        : null;
+    const outcome = selectAgainst(candidates, purse, heldCandidates, bundling?.onFunded);
     if (!typical.has(year)) typical.set(year, typicalPriorities(candidates, assumptions.assetTypeWeights));
+    const offeredAs: Map<Candidate, Candidate> | null = bundling?.offeredAs ?? null;
+    const joins: Map<Candidate, CorridorJoin> | null = bundling?.joinOf ?? null;
 
     if (trace) {
       for (const candidate of candidates) {
-        const reason = outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
-        const step = outcome.incremental.get(candidate);
+        const shown = offeredAs?.get(candidate) ?? candidate;
+        const reason = outcome.outcome.get(shown) ?? outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
+        const step = outcome.incremental.get(shown) ?? outcome.incremental.get(candidate);
         trace.push({
-          ...traceOf(candidate, year, categoryWeights, assumptions.assetTypeWeights),
+          ...traceOf(shown, year, categoryWeights, assumptions.assetTypeWeights),
+          ...(shown !== candidate ? { corridorSaving: Math.round(candidate.cost - shown.cost) } : {}),
           incremental: step?.score ?? null,
           incrementalOver: step ? (step.over?.option.label ?? null) : null,
           selected: reason === SELECTED,
@@ -657,6 +670,7 @@ function walk(
     // 5. Record what was decided, and take back out what it superseded.
     let supersededCount = 0;
     let supersededValue = 0;
+    let corridorSaving = 0;
     for (const [assetId, candidate] of outcome.chosen) {
       const previous = commitments.get(assetId);
       if (previous && candidate.held === previous) continue; // unchanged
@@ -672,7 +686,9 @@ function walk(
         const was = decided.indexOf(previous);
         if (was >= 0) decided.splice(was, 1);
       }
-      const commitment = toCommitment(candidate, previous ?? null);
+      const join = joins?.get(candidate);
+      if (join) corridorSaving += join.saving;
+      const commitment = toCommitment(candidate, previous ?? null, join ? corridorOf(join, state).corridor : undefined);
       commitments.set(assetId, commitment);
       decided.push(commitment);
       programmed.push(commitment.project);
@@ -757,6 +773,7 @@ function walk(
       ).length,
       selected: programmed,
       ...withByType(breakdownByType(state, programmed, backlogBest, typical.get(year) ?? new Map())),
+      ...(options.corridor ? { corridorSaving: Math.round(corridorSaving) } : {}),
       byCategory: money.byCategoryIn(year).map((r) => ({
         category: r.category,
         spent: Math.round(r.spent),
@@ -1212,7 +1229,27 @@ function both<T extends Rankable>(first: Purse<T>, second: Purse<T>): Purse<T> {
   };
 }
 
-function toCommitment(candidate: Candidate, superseded: Commitment | null): Commitment {
+/** A candidate at its bundled price: the saving comes off every instalment
+ * in proportion, so the money still leaves in the years its lead time says. */
+function rebated(c: Candidate, saving: number): Candidate {
+  const cost = c.cost - saving;
+  const factor = c.cost > 0 ? cost / c.cost : 0;
+  const cash = c.cash.map((i) => ({ year: i.year, amount: Math.round(i.amount * factor) }));
+  // Rounding lands on the largest instalment, so the instalments still add up
+  // to the price.
+  const drift = Math.round(cost) - cash.reduce((sum, i) => sum + i.amount, 0);
+  if (drift !== 0 && cash.length > 0) {
+    const largest = cash.reduce((a, b) => (b.amount > a.amount ? b : a));
+    largest.amount += drift;
+  }
+  return { ...c, cost, cash, priority: repriced(c.value, cost) };
+}
+
+function toCommitment(
+  candidate: Candidate,
+  superseded: Commitment | null,
+  corridor?: ScenarioProject["corridor"]
+): Commitment {
   const isBundle = candidate.option.members.length > 1;
   const shares = isBundle ? splitOptionCost(candidate.option, candidate.ctx) : [Math.round(candidate.cost)];
 
@@ -1242,6 +1279,7 @@ function toCommitment(candidate: Candidate, superseded: Commitment | null): Comm
     buildYear: candidate.buildYear,
     cash: candidate.cash,
     supersededTreatment: superseded?.project.treatment ?? null,
+    ...(corridor ? { corridor } : {}),
   };
 
   return {

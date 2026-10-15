@@ -36,6 +36,8 @@ export type ScenarioValues = {
   /** "pooled" or "separate": how a scenario over several types spends a
    * budget that sets money per type. */
   typeFunding: string;
+  /** "on" when the scenario bundles neighbouring work. */
+  corridorBundling: string;
   savedFilterId: string;
   /** The modelled asset types it is narrowed to, sorted and comma-joined so it
    * compares like every other field. Empty is all of them. */
@@ -72,6 +74,7 @@ export type ScenarioFieldDefaults = {
   leadTimeSetId: string | null;
   budgetPlanId?: string | null;
   typeFunding?: string;
+  corridorBundling?: boolean;
   savedFilterId: string | null;
   /** Empty, or absent, is every modelled asset type. */
   assetTypeIds?: string[];
@@ -105,6 +108,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     leadTimeSetId: d.leadTimeSetId ?? "",
     budgetPlanId: d.budgetPlanId ?? "",
     typeFunding: d.typeFunding ?? "pooled",
+    corridorBundling: d.corridorBundling ? "on" : "",
     savedFilterId: d.savedFilterId ?? "",
     assetTypeIds: [...(d.assetTypeIds ?? [])].sort().join(","),
     assetTypeWeights: joinWeights(
@@ -750,6 +754,36 @@ export function ScenarioFields({
             <Link href="/scenario-planning/budgets" className="font-medium text-primary underline-offset-2 hover:underline">
               {budgetPlanChoices.length > 0 ? "Edit budgets" : "Set up a budget"}
             </Link>
+          </p>
+        </div>
+      )}
+
+      {/* Where the work is, beside what it costs: neighbouring work done
+          together for what that saves. A target run solves for its money,
+          and bundling is not yet part of that. */}
+      {!targeting && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <label
+            className={`flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${
+              saved && values.corridorBundling !== saved.corridorBundling ? "border-amber-500" : "border-transparent"
+            }`}
+          >
+            <input
+              type="checkbox"
+              name="corridorBundling"
+              checked={values.corridorBundling === "on"}
+              onChange={(e) => onChange({ corridorBundling: e.target.checked ? "on" : "" })}
+            />
+            Bundle neighbouring work (corridor bundling)
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Once the year&apos;s work is chosen, work on {words.items} beside it is offered again at its bundled price —
+            what doing it together saves comes off — and joins if the money left is worth spending on it. Which{" "}
+            {words.items} are neighbours, and what each pair of asset types saves, are set under{" "}
+            <Link href="/settings/corridor-bundling" className="font-medium text-primary underline-offset-2 hover:underline">
+              Settings &rsaquo; Corridor Bundling
+            </Link>
+            ; a pair with no saving set never bundles.
           </p>
         </div>
       )}

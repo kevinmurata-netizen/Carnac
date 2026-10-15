@@ -36,6 +36,9 @@ import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
 import { assertBudgetPlanInOrganization, resolveBudgetPlan } from "@/server/budget-plans";
+import { getCorridorConfig, loadCorridorAssets, savingsByPair } from "@/server/corridors";
+import { findNeighbours } from "@/domain/waterline/corridor";
+import type { CorridorRun } from "@/domain/waterline/corridor-bundling";
 import { resolveFundingPlan } from "@/server/category-funding";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveOptionSelection } from "@/server/scenario-options";
@@ -202,6 +205,8 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
     ...withTypeWeights(parseAssetTypeWeights(map.assetTypeWeights)),
     // Likewise only on a scenario that funds its types separately.
     ...(map.typeFunding === "separate" ? { typeFunding: "separate" as const } : {}),
+    // And only on one that bundles corridor work.
+    ...(map.corridorBundling === true ? { corridorBundling: true } : {}),
   };
 }
 
@@ -215,11 +220,12 @@ const withTypeWeights = (weights: AssetTypeWeights) =>
  * choice, and a missing row reads as the default target instead.
  */
 export function assumptionRows(assumptions: ScenarioAssumptions) {
-  const { assetTypeWeights, typeFunding, ...rest } = assumptions;
+  const { assetTypeWeights, typeFunding, corridorBundling, ...rest } = assumptions;
   return Object.entries({
     ...rest,
     ...withTypeWeights(parseAssetTypeWeights(assetTypeWeights)),
     ...(typeFunding === "separate" ? { typeFunding } : {}),
+    ...(corridorBundling ? { corridorBundling: true } : {}),
   }).map(([key, value]) => ({
     key,
     value: value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue),
@@ -557,6 +563,8 @@ export async function loadScenarioRun(
     ? await lockedProjects(scenario.lockedWorkPlan.id, new Set(simAssets.map((a) => a.id)))
     : null;
 
+  const corridor = assumptions.corridorBundling ? await corridorRun(organizationId, simAssets.map((a) => a.id)) : null;
+
   return {
     name: scenario.name,
     assumptions,
@@ -587,6 +595,7 @@ export async function loadScenarioRun(
       categoryWeights: categories.weights,
       fundingPlan: funding.plan,
       budgetPlan: budget.lines,
+      corridor,
       curvesFor,
       startYear: scenario.scenarioSet?.baseYear,
       // Absent when no formula is configured, in which case each asset keeps
@@ -595,6 +604,19 @@ export async function loadScenarioRun(
       locked: locked?.projects,
     },
   };
+}
+
+/**
+ * Who neighbours whom among a run's assets, and what pairs save — or null
+ * where no pair of asset types saves anything, since then nothing can bundle.
+ */
+async function corridorRun(organizationId: string, assetIds: string[]): Promise<CorridorRun | null> {
+  const config = await getCorridorConfig(organizationId);
+  const savings = savingsByPair(config);
+  if (savings.size === 0) return null;
+  const assets = await loadCorridorAssets(organizationId, config, assetIds);
+  const withAttribute = new Set(config.types.filter((t) => t.corridorAttribute).map((t) => t.id));
+  return { neighbours: findNeighbours(assets, config.distanceMeters, withAttribute), savings };
 }
 
 /** Statuses a locked plan's projects are left out on: work no longer going
@@ -933,6 +955,9 @@ async function persistScenarioProgram(
               // Absent in the usual case, where the row's own year is the
               // whole answer.
               ...(p.cash.length > 1 ? { cash: p.cash } : {}),
+              // Where it joined a corridor bundle: beside what, and for how
+              // much less. Absent on everything else.
+              ...(p.corridor ? { corridor: p.corridor } : {}),
             },
             reasonExplanation: p.locked
               ? `Locked from ${lockedPlanName ?? "the locked work plan"}` +
@@ -946,6 +971,9 @@ async function persistScenarioProgram(
                 ? `. Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}`
                 : "") +
               (p.supersededTreatment ? `, replacing ${p.supersededTreatment} programmed earlier on this ${words.item}` : "") +
+              (p.corridor
+                ? `, bundled with ${p.corridor.withAssetCode} to save $${p.corridor.saving.toLocaleString("en-US")}`
+                : "") +
               `. Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
             fundingSource: p.locked ? "Programmed (locked)" : "Scenario Budget",
             status: (p.locked?.status as WorkPlanItemStatus | undefined) ?? WorkPlanItemStatus.PLANNED,
@@ -981,6 +1009,9 @@ export type ScenarioProjectRow = {
   riskBefore: number | null;
   riskAfter: number | null;
   riskReductionPct: number | null;
+  /** Where it joined a corridor bundle: beside which asset, and what that
+   * saved. Null on everything else. */
+  corridor: { withAssetCode: string; saving: number } | null;
 };
 
 /** The projects a scenario run funded, newest run only. */
@@ -1004,6 +1035,7 @@ export async function getScenarioProjects(
       riskBefore?: number;
       riskAfter?: number;
       riskReductionPct?: number;
+      corridor?: { withAssetCode?: string; saving?: number };
     };
     return {
       year: i.year,
@@ -1021,6 +1053,7 @@ export async function getScenarioProjects(
       riskBefore: b.riskBefore ?? null,
       riskAfter: b.riskAfter ?? null,
       riskReductionPct: b.riskReductionPct ?? null,
+      corridor: b.corridor ? { withAssetCode: b.corridor.withAssetCode ?? "", saving: b.corridor.saving ?? 0 } : null,
     };
   });
 }

@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Corridor bundling within a year",
+    summary:
+      "A budget-constrained scenario can now bundle neighbouring work: as each year's work is bought, an asset that gets work makes its neighbours cheaper — what doing them together saves comes off — so work beside it competes for the rest of the year's money on that price. Off unless chosen on the scenario.",
+    changes: [
+      "\"Bundle neighbouring work\" on the scenario form. Neighbours and what each pair of asset types saves come from Settings › Corridor Bundling; a pair with no saving set never bundles.",
+      "Mobilization is charged once at the larger of the two, so sharing it saves the smaller; the pair's further percentage comes off the rest. Work funded first pays full price; work that joins pays less, and can itself make the next neighbour cheaper, so a bundle can run along a street.",
+      "Both scenario engines bundle. With delivery lead times, only work built in the same year bundles.",
+      "Funded Projects says what joined a bundle, beside which asset and for how much less, with a total for the run; the export gains Bundled With and Corridor Saving columns when anything bundled; work plans made from the scenario carry it in each row's explanation.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-15",
     title: "Corridor bundling settings",
     summary:
       "The first part of corridor bundling: Settings › Corridor Bundling says which assets are neighbours and what doing their work together saves. Scenarios don't bundle yet — this is the configuration they will read, with a preview of what it finds.",

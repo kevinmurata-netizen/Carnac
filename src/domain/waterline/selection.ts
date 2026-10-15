@@ -146,15 +146,17 @@ export function efficientLadder<T extends Rankable>(options: T[]): T[] {
 /** A max-heap of each segment's next step, so the best step on the network is
  * found without rescanning every segment each time one is bought. */
 class StepHeap {
-  private items: Array<{ assetId: string; rung: number; score: number; seq: number }> = [];
+  private items: Array<{ assetId: string; rung: number; score: number; seq: number; version: number }> = [];
   private seq = 0;
 
   get size() {
     return this.items.length;
   }
 
-  push(assetId: string, rung: number, score: number) {
-    this.items.push({ assetId, rung, score, seq: this.seq++ });
+  /** `version` marks which of a segment's ladders the step is on, so a step
+   * left over from a ladder since rebuilt can be told apart and skipped. */
+  push(assetId: string, rung: number, score: number, version = 0) {
+    this.items.push({ assetId, rung, score, seq: this.seq++, version });
     let i = this.items.length - 1;
     while (i > 0) {
       const parent = (i - 1) >> 1;
@@ -424,7 +426,15 @@ export function selectForTarget<T extends Rankable>(
 export function selectAgainst<T extends Rankable>(
   candidates: T[],
   purse: Purse<T>,
-  held?: Map<string, T>
+  held?: Map<string, T>,
+  /**
+   * Called when a segment is first funded, and may hand back new options for
+   * other segments not yet funded — the same work at another price. Each such
+   * segment's ladder is rebuilt from them and it competes again for what is
+   * left. How corridor bundling makes neighbours of funded work cheaper as
+   * the year is bought; absent, nothing is ever re-priced.
+   */
+  onFunded?: (assetId: string, funded: T) => Map<string, T[]> | null
 ): SelectionResult<T> {
   const outcome = new Map<T, string>();
   const incremental = new Map<T, IncrementalScore<T>>();
@@ -485,9 +495,36 @@ export function selectAgainst<T extends Rankable>(
 
   /** Why a segment stopped climbing, for every rung above where it stopped. */
   const stoppedBy = new Map<string, string>();
+  /** Which ladder each segment is on; bumped when one is rebuilt. */
+  const versions = new Map<string, number>();
+
+  /** A segment's new options, where it has no work yet: a new ladder, scored
+   * afresh, and its first step back in the heap. */
+  const rebuild = (assetId: string, options: T[]) => {
+    if (level.has(assetId) || !ladders.has(assetId)) return;
+    const usable = options.filter(
+      (o) => o.priority != null && o.cost > 0 && Number.isFinite(o.value) && !purse.unfunded(o)
+    );
+    if (usable.length === 0) return;
+    const ladder = efficientLadder(usable);
+    ladders.set(assetId, ladder);
+    ladder.forEach((rung, i) => {
+      const below = i > 0 ? ladder[i - 1] : null;
+      incremental.set(rung, {
+        score: round4((rung.value - (below?.value ?? 0)) / (rung.cost - (below?.cost ?? 0))),
+        over: below,
+      });
+    });
+    for (const option of usable) if (!ladder.includes(option)) outcome.set(option, NOT_SELECTED.notEfficient);
+    const version = (versions.get(assetId) ?? 0) + 1;
+    versions.set(assetId, version);
+    stoppedBy.delete(assetId);
+    heap.push(assetId, 0, stepScore(assetId, 0), version);
+  };
 
   while (heap.size > 0) {
-    const { assetId, rung } = heap.pop();
+    const { assetId, rung, version } = heap.pop();
+    if ((versions.get(assetId) ?? 0) !== version) continue;
     const ladder = ladders.get(assetId)!;
     const next = ladder[rung];
     const current = rung > 0 ? ladder[rung - 1] : null;
@@ -501,7 +538,10 @@ export function selectAgainst<T extends Rankable>(
     purse.commit(next, current);
     if (!current) firstFunded.push(assetId);
     level.set(assetId, rung);
-    if (rung + 1 < ladder.length) heap.push(assetId, rung + 1, stepScore(assetId, rung + 1));
+    if (rung + 1 < ladder.length) heap.push(assetId, rung + 1, stepScore(assetId, rung + 1), versions.get(assetId) ?? 0);
+    if (!current && onFunded) {
+      for (const [other, options] of onFunded(assetId, next) ?? []) rebuild(other, options);
+    }
   }
 
   const selected: T[] = [];

@@ -55,10 +55,24 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const totalCost = projects.reduce((sum, p) => sum + p.cost, 0);
   const years = projects.length > 0 ? `${projects[0].year}–${projects[projects.length - 1].year}` : "no years";
 
+  // Corridor columns only on a run that bundled anything, so every other
+  // export keeps the layout it has always had.
+  const bundled = projects.some((p) => p.corridor);
+  const columns = bundled
+    ? [
+        ...COLUMNS,
+        { key: "corridorWith", header: "Bundled With", width: 14 },
+        { key: "corridorSaving", header: "Corridor Saving", type: "money" as const, width: 16 },
+      ]
+    : COLUMNS;
+
   const buffer = await buildWorkbook({
     sheetName: "Funded Projects",
-    columns: COLUMNS.map((c) => ({ ...c, header: withAssetWords(c.header, words) })),
-    rows: projects.map((p) => ({ ...p })),
+    columns: columns.map((c) => ({ ...c, header: withAssetWords(c.header, words) })),
+    rows: projects.map(({ corridor, ...p }) => ({
+      ...p,
+      ...(bundled ? { corridorWith: corridor?.withAssetCode ?? null, corridorSaving: corridor?.saving ?? null } : {}),
+    })),
     title: `${scenario.name} — Funded Projects`,
     // The run date rather than today's, because a scenario's results are
     // stored: exporting on Friday a run made on Monday should say Monday.

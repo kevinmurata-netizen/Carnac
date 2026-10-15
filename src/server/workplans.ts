@@ -187,9 +187,13 @@ export async function createWorkPlanFromScenario(
               // totals are the money that actually leaves each year rather
               // than the whole cost landing in one of them.
               ...(p.cash.length > 1 ? { cash: p.cash } : {}),
+              ...(p.corridor ? { corridor: p.corridor } : {}),
             },
             reasonExplanation: [
               `Funded by the ${run.name} run in ${year.year}${isBundle ? ` as part of ${p.treatment}` : ""}.`,
+              p.corridor
+                ? `Bundled with ${p.corridor.withAssetCode} in one corridor, saving $${p.corridor.saving.toLocaleString("en-US")}.`
+                : "",
               p.buildYear !== p.programmedYear
                 ? `Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}.`
                 : "",

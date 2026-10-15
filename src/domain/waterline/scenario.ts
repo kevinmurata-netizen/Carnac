@@ -21,11 +21,11 @@ export { curveFor };
 import { annualFailureProbability, failureEventCost, presentValue, type FailureCost } from "./lcca";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
 import { budgetYear, type BudgetPlanLine, type TypeFunding } from "./budget-plan";
+import { corridorRepricer, repriced, type CorridorJoin, type CorridorRun } from "./corridor-bundling";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
 import {
   selectAgainst,
-  selectForYear,
   selectForTarget,
   restingPurse,
   withTypeLimits,
@@ -156,6 +156,9 @@ export type ScenarioAssumptions = {
   /** How a scenario over several asset types spends a budget plan that sets
    * money per type: from one pot (absent), or each type from its own. */
   typeFunding?: TypeFunding;
+  /** Whether work on neighbouring assets is bundled for what doing it
+   * together saves. Absent is off: each piece of work priced on its own. */
+  corridorBundling?: boolean;
 };
 
 /** A Priority Score multiplier per asset type, by asset type id. */
@@ -349,6 +352,10 @@ export type ScenarioProject = {
   /** Present on a project locked in from a work plan rather than chosen by
    * the run, with its status in that plan. */
   locked?: { status: string };
+  /** Present on work that joined a corridor bundle: the funded asset it was
+   * done beside, and what doing them together saved. `cost` is already the
+   * bundled price. */
+  corridor?: { withAssetId: string; withAssetCode: string; saving: number };
 };
 
 export type ScenarioYearResult = {
@@ -389,7 +396,20 @@ export type ScenarioYearResult = {
    * average above mixes them and each type's own figures are what mean
    * anything. */
   byType?: TypeYearResult[];
+  /** What corridor bundling saved on the work decided this year. Present only
+   * on a run that bundles. */
+  corridorSaving?: number;
 };
+
+/** A project's corridor field, where it joined a bundle. */
+export function corridorOf(
+  join: CorridorJoin | undefined,
+  state: Array<{ id: string; assetCode: string }>
+): { corridor?: ScenarioProject["corridor"] } {
+  if (!join) return {};
+  const code = state.find((a) => a.id === join.withAssetId)?.assetCode ?? "";
+  return { corridor: { withAssetId: join.withAssetId, withAssetCode: code, saving: Math.round(join.saving) } };
+}
 
 /** The key only when there is something under it. */
 export function withByType(byType: TypeYearResult[] | undefined): { byType?: TypeYearResult[] } {
@@ -599,6 +619,9 @@ export type YearAlternative = {
   categoryWeight: number;
   /** The asset type's weight in this scenario; 1 unless it weighs types. */
   assetTypeWeight?: number;
+  /** What corridor bundling took off its price, where it was offered at a
+   * bundled price beside funded neighbouring work. */
+  corridorSaving?: number;
   conditionAfter: number | null;
   riskBefore: number | null;
   riskAfter: number | null;
@@ -1017,6 +1040,9 @@ export type ScenarioRunOptions = {
    * A year it lists replaces the annual budget and growth; read only in a
    * budget run. */
   budgetPlan?: BudgetPlanLine[] | null;
+  /** Who neighbours whom and what pairs save, where the scenario bundles
+   * corridor work. Read only in a budget-constrained year. */
+  corridor?: CorridorRun | null;
   /** Deterioration curves by material. */
   curves?: Record<string, CurveParams>;
   /** The same, for one asset type: where several are modelled, each ages on
@@ -1202,6 +1228,10 @@ export function runScenario(
     //    budget-mode year — the year's money is the constraint.
     const holding = targeted && i + 1 > holdFrom;
     let outcome;
+    /** Where corridor bundling offered work again at a bundled price, and
+     * what joined. Null on a run that does not bundle. */
+    let offeredAs: Map<Candidate, Candidate> | null = null;
+    let joins: Map<Candidate, CorridorJoin> | null = null;
     if (holding && assumptions.afterTarget === "none") {
       // Set to stop at the target: nothing new is bought, and the network
       // deteriorates from here.
@@ -1227,26 +1257,42 @@ export function runScenario(
       // Funded by type, each type is held to its own money as well as the
       // year's; pooled, the types share the year's money.
       const typeLimits = planned?.types ?? null;
-      outcome = typeLimits
-        ? selectAgainst(
-            candidates,
-            withTypeLimits(yearPurse<Candidate>(allocation, fundingPlan, planned?.ceilings), {
-              typeOf: (c) => c.asset.assetTypeId,
-              money: (c) => [{ year, amount: c.cost }],
-              limitsIn: () => typeLimits,
-            })
-          )
-        : selectForYear(candidates, allocation, fundingPlan, planned?.ceilings);
+      const yearMoney = yearPurse<Candidate>(allocation, fundingPlan, planned?.ceilings);
+      const purse = typeLimits
+        ? withTypeLimits(yearMoney, {
+            typeOf: (c) => c.asset.assetTypeId,
+            money: (c) => [{ year, amount: c.cost }],
+            limitsIn: () => typeLimits,
+          })
+        : yearMoney;
+      // Bundling corridor work, each asset funded makes its neighbours
+      // cheaper for the rest of the year's buying.
+      const bundling = options.corridor
+        ? corridorRepricer(candidates, options.corridor, (c, saving) => ({
+            ...c,
+            cost: c.cost - saving,
+            priority: repriced(c.value, c.cost - saving),
+          }))
+        : null;
+      outcome = selectAgainst(candidates, purse, undefined, bundling?.onFunded);
+      if (bundling) {
+        offeredAs = bundling.offeredAs;
+        joins = bundling.joinOf;
+      }
     }
 
     // Recorded here rather than inside the selection engine, which is written
     // against a shape that knows nothing about segments or conditions.
     if (trace) {
       for (const candidate of candidates) {
-        const reason = outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
-        const step = outcome.incremental.get(candidate);
+        // Offered again at a bundled price, what happened to that offer is
+        // what happened to it.
+        const shown = offeredAs?.get(candidate) ?? candidate;
+        const reason = outcome.outcome.get(shown) ?? outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
+        const step = outcome.incremental.get(shown) ?? outcome.incremental.get(candidate);
         trace.push({
-          ...traceOf(candidate, year, categoryWeights, assumptions.assetTypeWeights),
+          ...traceOf(shown, year, categoryWeights, assumptions.assetTypeWeights),
+          ...(shown !== candidate ? { corridorSaving: Math.round(candidate.cost - shown.cost) } : {}),
           incremental: step?.score ?? null,
           incrementalOver: step ? (step.over?.option.label ?? null) : null,
           selected: reason === SELECTED,
@@ -1256,6 +1302,7 @@ export function runScenario(
     }
 
     let treatedCount = 0;
+    let corridorSaving = 0;
     const treated = new Set<string>();
     const selected: ScenarioProject[] = [];
     for (const candidate of outcome.selected) {
@@ -1294,7 +1341,9 @@ export function runScenario(
         buildYear: year,
         cash: [{ year, amount: Math.round(candidate.cost) }],
         supersededTreatment: null,
+        ...corridorOf(joins?.get(candidate), state),
       });
+      corridorSaving += joins?.get(candidate)?.saving ?? 0;
       recordTreatment(history, candidate.assetId, candidate.option, year);
       candidate.asset.condition = candidate.projectedCondition;
       candidate.asset.effectiveAge = effectiveAgeForCondition(candidate.asset.curve, candidate.projectedCondition);
@@ -1395,6 +1444,7 @@ export function runScenario(
       ...withByType(
         breakdownByType(state, selected, backlogBest, typicalPriorities(candidates, assumptions.assetTypeWeights))
       ),
+      ...(options.corridor ? { corridorSaving: Math.round(corridorSaving) } : {}),
     });
   }
 
