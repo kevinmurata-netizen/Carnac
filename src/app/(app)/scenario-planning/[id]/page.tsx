@@ -169,6 +169,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     leadTimeSetId: scenario.leadTimeSetId ?? null,
     savedFilterId: scenario.savedFilterId ?? null,
     assetTypeIds: scenario.assetTypeIds,
+    assetTypeWeights: a.assetTypeWeights,
     lockedWorkPlanId: scenario.lockedWorkPlanId ?? null,
     programmedFunding: a.programmedFunding,
     fundingMode: a.fundingMode,
@@ -879,6 +880,15 @@ function AssumptionsCard({
           <Field label="Considers" value={describeSelection(catalogue)} />
           {scenario.assetTypeNames.length > 0 && (
             <Field label="Asset Types" value={scenario.assetTypeNames.join(", ")} />
+          )}
+          {a.assetTypeWeights && (
+            <Field
+              label="Asset Type Weights"
+              value={assetTypeChoices
+                .filter((t) => a.assetTypeWeights?.[t.id] != null)
+                .map((t) => `${t.name} ×${a.assetTypeWeights?.[t.id]}`)
+                .join(", ")}
+            />
           )}
         </CardContent>
       )}

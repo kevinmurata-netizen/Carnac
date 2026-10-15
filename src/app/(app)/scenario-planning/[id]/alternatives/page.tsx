@@ -241,6 +241,7 @@ export default async function AlternativesPage({
                 criticality: r.criticality,
                 scaleFactor: r.scaleFactor,
                 categoryWeight: r.categoryWeight,
+                assetTypeWeight: r.assetTypeWeight ?? 1,
                 conditionAfter: r.conditionAfter,
                 riskBefore: r.riskBefore,
                 riskAfter: r.riskAfter,
@@ -252,7 +253,8 @@ export default async function AlternativesPage({
 
           <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
             Priority Score is Criticality × Scale Factor × Category Weight × Expected Benefit ÷ Total Cost, computed
-            against that year&apos;s condition. The Incremental score is what decides what is bought: each option on a{" "}
+            against that year&apos;s condition — and × the asset type&apos;s weight, where the scenario weighs its
+            types. The Incremental score is what decides what is bought: each option on a{" "}
             {words.item} is scored on the weighted benefit it adds over the next cheaper option worth having, per dollar
             of the extra it costs, and the year buys the best next step anywhere on the network until the money — or
             a category&apos;s share of it — runs out. The cheapest option on a {words.item} scores the same both ways; larger

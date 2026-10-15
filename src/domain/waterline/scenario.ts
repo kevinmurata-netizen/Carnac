@@ -140,7 +140,40 @@ export type ScenarioAssumptions = {
    * budget: paid first out of it, or funded on top of it. Read only when the
    * scenario locks a plan. */
   programmedFunding: ProgrammedFunding;
+  /** How far a scenario over several asset types leans toward each, as a
+   * multiplier on the Priority Score. Absent, or a type left out, is 1. */
+  assetTypeWeights?: AssetTypeWeights;
 };
+
+/** A Priority Score multiplier per asset type, by asset type id. */
+export type AssetTypeWeights = Record<string, number>;
+
+/** The lowest and highest weight an asset type can be given. Above zero: a
+ * type the scenario should not fund is one it does not cover. Wide, because
+ * types' Priority Scores need not be on one scale: a length-based Scale
+ * Factor puts a main's in the thousands where a pole's is 1. */
+export const ASSET_TYPE_WEIGHT_RANGE = { min: 0.01, max: 100 } as const;
+
+/** One asset type's weight in a scenario: 1 unless the scenario sets another. */
+export function assetTypeWeight(weights: AssetTypeWeights | undefined, assetTypeId: string | null | undefined): number {
+  const w = assetTypeId ? weights?.[assetTypeId] : undefined;
+  return w != null && Number.isFinite(w) && w > 0 ? w : 1;
+}
+
+/**
+ * Asset type weights as stored, kept only where they say something: a weight
+ * of 1 is the default, and anything that is not a positive number is dropped
+ * rather than trusted.
+ */
+export function parseAssetTypeWeights(value: unknown): AssetTypeWeights {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: AssetTypeWeights = {};
+  for (const [id, raw] of Object.entries(value as Record<string, unknown>)) {
+    const w = Number(raw);
+    if (Number.isFinite(w) && w > 0 && w !== 1) out[id] = w;
+  }
+  return out;
+}
 
 /**
  * What the treatment rules call good enough, in a budget run.
@@ -512,6 +545,8 @@ export type YearAlternative = {
   criticality: number;
   scaleFactor: number;
   categoryWeight: number;
+  /** The asset type's weight in this scenario; 1 unless it weighs types. */
+  assetTypeWeight?: number;
   conditionAfter: number | null;
   riskBefore: number | null;
   riskAfter: number | null;
@@ -658,6 +693,7 @@ function rankCandidates(
       criticality: round1(asset.criticalityScore),
       scaleFactor: Math.round(asset.scaleFactor * 100) / 100,
       categoryWeight: categoryWeight(ctx.categoryWeights, option.category),
+      assetTypeWeight: assetTypeWeight(assumptions.assetTypeWeights, asset.assetTypeId),
       conditionAfter: round1(option.projectedCondition),
       riskBefore: round1(pof * asset.cof),
       riskAfter: null,
@@ -752,15 +788,17 @@ function rankCandidates(
 
   const scored = scoreBenefits(pending, ctx.benefitWeights).map<Candidate>((s) => {
     const weight = categoryWeight(ctx.categoryWeights, s.item.option.category);
+    const typeWeight = assetTypeWeight(assumptions.assetTypeWeights, s.item.asset.assetTypeId);
     return {
       ...s.item,
       terms: s.raw,
       benefit: s.benefit,
-      value: s.item.asset.criticalityScore * s.item.asset.scaleFactor * weight * s.benefit,
+      value: s.item.asset.criticalityScore * s.item.asset.scaleFactor * weight * typeWeight * s.benefit,
       priority: priorityScore({
         criticality: s.item.asset.criticalityScore,
         scaleFactor: s.item.asset.scaleFactor,
         categoryWeight: weight,
+        assetTypeWeight: typeWeight,
         benefit: s.benefit,
         totalCost: s.item.cost,
       }),
@@ -807,7 +845,7 @@ function rankCandidates(
     // the interesting part of an option ruled out on effect rather than price.
     if (trace) {
       trace.push({
-        ...traceOf(c, year, ctx.categoryWeights),
+        ...traceOf(c, year, ctx.categoryWeights, assumptions.assetTypeWeights),
         incremental: null,
         incrementalOver: null,
         selected: false,
@@ -847,7 +885,8 @@ function keep<T>(items: T[], allowed: (item: T) => boolean, dropped: (item: T) =
 function traceOf(
   c: Candidate,
   year: number,
-  weights: CategoryWeights
+  weights: CategoryWeights,
+  typeWeights: AssetTypeWeights | undefined
 ): Omit<YearAlternative, "selected" | "reason" | "incremental" | "incrementalOver"> {
   return {
     year,
@@ -864,6 +903,7 @@ function traceOf(
     criticality: round1(c.asset.criticalityScore),
     scaleFactor: Math.round(c.asset.scaleFactor * 100) / 100,
     categoryWeight: categoryWeight(weights, c.option.category),
+    assetTypeWeight: assetTypeWeight(typeWeights, c.asset.assetTypeId),
     conditionAfter: round1(c.projectedCondition),
     riskBefore: round1(c.riskNow),
     riskAfter: round1(c.riskAfter),
@@ -1135,7 +1175,7 @@ export function runScenario(
         const reason = outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
         const step = outcome.incremental.get(candidate);
         trace.push({
-          ...traceOf(candidate, year, categoryWeights),
+          ...traceOf(candidate, year, categoryWeights, assumptions.assetTypeWeights),
           incremental: step?.score ?? null,
           incrementalOver: step ? (step.over?.option.label ?? null) : null,
           selected: reason === SELECTED,

@@ -48,6 +48,7 @@ export type AlternativeRow = {
   criticality: number;
   scaleFactor: number;
   categoryWeight: number;
+  assetTypeWeight: number;
   conditionAfter: number | null;
   riskBefore: number | null;
   riskAfter: number | null;
@@ -449,6 +450,8 @@ export function AlternativesGrid({
                         ? "Ruled out before scoring, so it has no Priority Score."
                         : `criticality ${row.criticality} × scale ${row.scaleFactor}${
                             row.categoryWeight === 1 ? "" : ` × category ×${row.categoryWeight}`
+                          }${
+                            row.assetTypeWeight === 1 ? "" : ` × asset type ×${row.assetTypeWeight}`
                           } × benefit ${row.benefit} ÷ ${formatCurrency(row.cost)}`
                     }
                   >
