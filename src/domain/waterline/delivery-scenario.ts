@@ -42,6 +42,7 @@ import {
   benefitCof,
   optionTerms,
   priorityScore,
+  benefitRanges,
   scoreBenefits,
   DEFAULT_BENEFIT_WEIGHTS,
   type BenefitTerms,
@@ -82,7 +83,7 @@ import {
   typicalPriorities,
   withByType,
 } from "./scenario";
-import { corridorRepricer, repriced, type CorridorJoin } from "./corridor-bundling";
+import { corridorRepricer, dueWithin, repriced, type CorridorJoin } from "./corridor-bundling";
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -574,7 +575,24 @@ function walk(
 
     // 3. What could be decided this year, each option judged against the
     //    segment it will meet in the year it would be built.
-    const { candidates, heldCandidates } = rankCandidates({
+    // Bundling with a window, in a budget year: work the strategy will look
+    // at within it is scored too — only ever to join a neighbour's bundle.
+    const windowYears =
+      options.corridor && !targeted && !afterTargetIn(year) ? options.corridor.windowYears : 0;
+    const dueYear = new Map<string, number>();
+    if (windowYears > 0) {
+      for (const a of state) {
+        if (isEligible(a.condition, a.cof, assumptions)) continue;
+        const k = dueWithin(
+          a,
+          windowYears,
+          (x, ahead) => forecast(x, ahead).condition,
+          (x) => isEligible(x.condition, x.cof, assumptions)
+        );
+        if (k != null) dueYear.set(a.id, year + k);
+      }
+    }
+    const { candidates, heldCandidates, early } = rankCandidates({
       locks,
       fixedUntil,
       state,
@@ -591,6 +609,7 @@ function walk(
       categoryWeights,
       curvesOf,
       trace,
+      early: dueYear.size > 0 ? new Set(dueYear.keys()) : undefined,
     });
 
     // 4. Buy the best next step anywhere on the network, against every year the
@@ -644,7 +663,13 @@ function walk(
     // built the same year, since that is when the crews are there together.
     const bundling =
       options.corridor && !resting && !targeted
-        ? corridorRepricer(candidates, options.corridor, rebated, (c, anchor) => c.buildYear === anchor.buildYear)
+        ? corridorRepricer(
+            [...candidates, ...early],
+            options.corridor,
+            rebated,
+            (c, anchor) => c.buildYear === anchor.buildYear,
+            dueYear
+          )
         : null;
     const outcome = selectAgainst(candidates, purse, heldCandidates, bundling?.onFunded);
     if (!typical.has(year)) typical.set(year, typicalPriorities(candidates, assumptions.assetTypeWeights));
@@ -659,6 +684,25 @@ function walk(
         trace.push({
           ...traceOf(shown, year, categoryWeights, assumptions.assetTypeWeights),
           ...(shown !== candidate ? { corridorSaving: Math.round(candidate.cost - shown.cost) } : {}),
+          incremental: step?.score ?? null,
+          incrementalOver: step ? (step.over?.option.label ?? null) : null,
+          selected: reason === SELECTED,
+          reason,
+        });
+      }
+    }
+
+    // Work brought forward that was offered to join a bundle: what the offer
+    // came to, beside the trace's ineligible rows for it.
+    if (trace && offeredAs) {
+      for (const c of early) {
+        const shown = offeredAs.get(c);
+        if (!shown) continue;
+        const reason = outcome.outcome.get(shown) ?? NOT_SELECTED.budgetSpent;
+        const step = outcome.incremental.get(shown);
+        trace.push({
+          ...traceOf(shown, year, categoryWeights, assumptions.assetTypeWeights),
+          corridorSaving: Math.round(c.cost - shown.cost),
           incremental: step?.score ?? null,
           incrementalOver: step ? (step.over?.option.label ?? null) : null,
           selected: reason === SELECTED,
@@ -887,9 +931,14 @@ function rankCandidates(args: {
   categoryWeights: Parameters<typeof categoryWeight>[0];
   curvesOf: (asset: SimAsset) => Record<string, CurveParams>;
   trace: YearAlternative[] | null;
-}): { candidates: Candidate[]; heldCandidates: Map<string, Candidate> } {
+  /** Assets not due yet but due within the corridor window: their options are
+   * scored on this year's scale and handed back as `early`, only for joining
+   * a neighbour's bundle. */
+  early?: ReadonlySet<string>;
+}): { candidates: Candidate[]; heldCandidates: Map<string, Candidate>; early: Candidate[] } {
   type Pending = Omit<Candidate, "priority" | "value" | "benefit" | "terms">;
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
+  const pendingEarly: Array<{ item: Pending; terms: BenefitTerms }> = [];
   const heldPending = new Map<string, Pending>();
 
   for (const asset of args.state) {
@@ -946,7 +995,8 @@ function rankCandidates(args: {
       // Work decided now and built then would be on the segment while a
       // locked project holds it.
       if (args.locks.blocks(asset.id, args.year, buildYear)) continue;
-      if (!isEligible(future.condition, future.cof, args.assumptions)) continue;
+      const isEarly = !isEligible(future.condition, future.cof, args.assumptions);
+      if (isEarly && !args.early?.has(asset.id)) continue;
 
       const ctx = simAssetContext(future);
       const applicable = enumerateOptions(ctx, args.library, args.combinations);
@@ -984,7 +1034,7 @@ function rankCandidates(args: {
         const riskAfter =
           option.failureProbMultiplier === 0 ? 0 : Math.max(1, pof * option.failureProbMultiplier) * future.cof;
 
-        pending.push({
+        (isEarly ? pendingEarly : pending).push({
           item: {
             assetId: asset.id,
             asset,
@@ -1007,7 +1057,7 @@ function rankCandidates(args: {
     }
   }
 
-  const scored = scoreBenefits(pending, args.benefitWeights).map<Candidate>((s) => {
+  const toCandidate = (s: ReturnType<typeof scoreBenefits<Pending>>[number]): Candidate => {
     const weight = categoryWeight(args.categoryWeights, s.item.option.category);
     const typeWeight = assetTypeWeight(args.assumptions.assetTypeWeights, s.item.asset.assetTypeId);
     return {
@@ -1024,7 +1074,8 @@ function rankCandidates(args: {
         totalCost: s.item.cost,
       }),
     };
-  });
+  };
+  const scored = scoreBenefits(pending, args.benefitWeights).map(toCandidate);
 
   const riskPct = (c: Candidate) => (c.riskNow > 0 ? ((c.riskNow - c.riskAfter) / c.riskNow) * 100 : null);
   const fundable = scored.filter((c) => {
@@ -1055,9 +1106,26 @@ function rankCandidates(args: {
   const heldCandidates = new Map<string, Candidate>();
   for (const candidate of fundable) if (candidate.held) heldCandidates.set(candidate.assetId, candidate);
 
+  // Work not due yet, on this year's scale, held to the same two filters.
+  const early: Candidate[] = [];
+  const scale = benefitRanges(pending);
+  if (scale && pendingEarly.length > 0) {
+    for (const c of scoreBenefits(pendingEarly, args.benefitWeights, scale).map(toCandidate)) {
+      const enough = doesEnough({
+        conditionBefore: c.conditionBefore,
+        conditionAfter: c.projectedCondition,
+        riskReductionPct: riskPct(c),
+        conditionTarget: ruleBar(args.assumptions),
+        targetConstrained: args.assumptions.fundingMode === "target",
+      });
+      if (enough && clearsEffectivenessFloor(c.conditionBefore, riskPct(c))) early.push(c);
+    }
+  }
+
   return {
     candidates: fundable.sort((a, b) => (b.priority ?? -1) - (a.priority ?? -1)),
     heldCandidates,
+    early,
   };
 }
 

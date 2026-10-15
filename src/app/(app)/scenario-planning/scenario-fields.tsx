@@ -783,7 +783,8 @@ export function ScenarioFields({
             <Link href="/settings/corridor-bundling" className="font-medium text-primary underline-offset-2 hover:underline">
               Settings &rsaquo; Corridor Bundling
             </Link>
-            ; a pair with no saving set never bundles.
+            ; a pair with no saving set never bundles. Within the timing window set there, work not due yet can be
+            brought forward to join — judged by what it does now, so it joins only if it is still worth its price.
           </p>
         </div>
       )}

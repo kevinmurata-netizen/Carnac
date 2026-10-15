@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Bringing work forward to join a corridor bundle",
+    summary:
+      "On a scenario that bundles neighbouring work, work that isn't due yet can now be brought forward to join a neighbour's bundle, up to the timing window set under Settings › Corridor Bundling (2 years to start).",
+    changes: [
+      "Each year, assets the strategy will look at within the window — by their own deterioration — have their options scored too, but only ever offered at their bundled price beside funded neighbouring work, never on their own.",
+      "They are judged by what they do now, on the same scale as the year's other options, so work joins only when it is still worth its price that year. Nothing else's score moves.",
+      "Both scenario engines bring work forward; with delivery lead times, only beside work built in the same year.",
+      "Funded Projects, the export and work plans made from the scenario say when work was brought forward, and from which year.",
+    ],
+    note: "No migration. A window of 0 bundles only work due that year, exactly as before.",
+  },
+  {
+    date: "2026-10-15",
     title: "Corridor bundling within a year",
     summary:
       "A budget-constrained scenario can now bundle neighbouring work: as each year's work is bought, an asset that gets work makes its neighbours cheaper — what doing them together saves comes off — so work beside it competes for the rest of the year's money on that price. Off unless chosen on the scenario.",

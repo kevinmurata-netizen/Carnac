@@ -192,7 +192,8 @@ export async function createWorkPlanFromScenario(
             reasonExplanation: [
               `Funded by the ${run.name} run in ${year.year}${isBundle ? ` as part of ${p.treatment}` : ""}.`,
               p.corridor
-                ? `Bundled with ${p.corridor.withAssetCode} in one corridor, saving $${p.corridor.saving.toLocaleString("en-US")}.`
+                ? `Bundled with ${p.corridor.withAssetCode} in one corridor, saving $${p.corridor.saving.toLocaleString("en-US")}` +
+                  (p.corridor.dueYear != null ? `, brought forward from ${p.corridor.dueYear}.` : ".")
                 : "",
               p.buildYear !== p.programmedYear
                 ? `Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}.`

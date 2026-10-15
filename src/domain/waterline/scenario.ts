@@ -21,7 +21,7 @@ export { curveFor };
 import { annualFailureProbability, failureEventCost, presentValue, type FailureCost } from "./lcca";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
 import { budgetYear, type BudgetPlanLine, type TypeFunding } from "./budget-plan";
-import { corridorRepricer, repriced, type CorridorJoin, type CorridorRun } from "./corridor-bundling";
+import { corridorRepricer, dueWithin, repriced, type CorridorJoin, type CorridorRun } from "./corridor-bundling";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
 import {
@@ -40,6 +40,7 @@ import {
   benefitCof,
   optionTerms,
   priorityScore,
+  benefitRanges,
   scoreBenefits,
   DEFAULT_BENEFIT_WEIGHTS,
   type BenefitTerms,
@@ -353,9 +354,10 @@ export type ScenarioProject = {
    * the run, with its status in that plan. */
   locked?: { status: string };
   /** Present on work that joined a corridor bundle: the funded asset it was
-   * done beside, and what doing them together saved. `cost` is already the
+   * done beside, what doing them together saved, and — where it was brought
+   * forward to join — the year it would have been due. `cost` is already the
    * bundled price. */
-  corridor?: { withAssetId: string; withAssetCode: string; saving: number };
+  corridor?: { withAssetId: string; withAssetCode: string; saving: number; dueYear?: number };
 };
 
 export type ScenarioYearResult = {
@@ -408,7 +410,14 @@ export function corridorOf(
 ): { corridor?: ScenarioProject["corridor"] } {
   if (!join) return {};
   const code = state.find((a) => a.id === join.withAssetId)?.assetCode ?? "";
-  return { corridor: { withAssetId: join.withAssetId, withAssetCode: code, saving: Math.round(join.saving) } };
+  return {
+    corridor: {
+      withAssetId: join.withAssetId,
+      withAssetCode: code,
+      saving: Math.round(join.saving),
+      ...(join.dueYear != null ? { dueYear: join.dueYear } : {}),
+    },
+  };
 }
 
 /** The key only when there is something under it. */
@@ -741,15 +750,26 @@ function rankCandidates(
   },
   /** Where to record options that never reach the ranked list, or null when
    * the run is not being traced. */
-  trace: YearAlternative[] | null
+  trace: YearAlternative[] | null,
+  /**
+   * Assets the strategy is not looking at yet but will be within the corridor
+   * window: their options are scored too — against this year's options' own
+   * scale, so nothing else's score moves — and handed back in `out` rather
+   * than ranked, since they are only for joining a neighbour's bundle.
+   */
+  early?: { assets: ReadonlySet<string>; out: Candidate[] }
 ): Candidate[] {
   type Pending = Omit<Candidate, "priority" | "benefit" | "terms" | "value">;
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
+  const pendingEarly: Array<{ item: Pending; terms: BenefitTerms }> = [];
+  /** Set while building an early asset's options, which the trace leaves to
+   * the ineligible rows it already has. */
+  let quiet = false;
 
   /** An option that got no further, with the year's figures for the segment as
    * they stood when it was ruled out. */
   const ruledOut = (asset: SimAsset, option: TreatmentOption, reason: string) => {
-    if (!trace) return;
+    if (!trace || quiet) return;
     const pof = pofFromCondition(asset.condition);
     trace.push({
       year,
@@ -782,6 +802,7 @@ function rankCandidates(
     // tracing: the question the trace answers is "what could have been done
     // here", and "nothing, the strategy was not looking at this segment" is an
     // answer. Outside a trace this is the hot loop, so it stays skipped.
+    quiet = false;
     if (!isEligible(asset, assumptions)) {
       if (trace) {
         const ctxFor = buildContext(asset);
@@ -789,7 +810,8 @@ function rankCandidates(
           ruledOut(asset, option, NOT_RANKED.ineligible);
         }
       }
-      continue;
+      if (!early?.assets.has(asset.id)) continue;
+      quiet = true;
     }
 
     const assetCtx = buildContext(asset);
@@ -845,7 +867,7 @@ function rankCandidates(
       const riskAfter =
         option.failureProbMultiplier === 0 ? 0 : Math.max(1, pof * option.failureProbMultiplier) * asset.cof;
 
-      pending.push({
+      (quiet ? pendingEarly : pending).push({
         item: {
           assetId: asset.id,
           asset,
@@ -860,8 +882,9 @@ function rankCandidates(
       });
     }
   }
+  quiet = false;
 
-  const scored = scoreBenefits(pending, ctx.benefitWeights).map<Candidate>((s) => {
+  const toCandidate = (s: ReturnType<typeof scoreBenefits<Pending>>[number]): Candidate => {
     const weight = categoryWeight(ctx.categoryWeights, s.item.option.category);
     const typeWeight = assetTypeWeight(assumptions.assetTypeWeights, s.item.asset.assetTypeId);
     return {
@@ -878,7 +901,8 @@ function rankCandidates(
         totalCost: s.item.cost,
       }),
     };
-  });
+  };
+  const scored = scoreBenefits(pending, ctx.benefitWeights).map(toCandidate);
 
   const riskPct = (c: Candidate) =>
     c.riskNow > 0 ? ((c.riskNow - c.riskAfter) / c.riskNow) * 100 : null;
@@ -929,6 +953,21 @@ function rankCandidates(
     }
     return false;
   });
+
+  // Work not due yet, on this year's scale, held to the same two filters.
+  if (early && pendingEarly.length > 0) {
+    const scale = benefitRanges(pending);
+    for (const c of scoreBenefits(pendingEarly, ctx.benefitWeights, scale).map(toCandidate)) {
+      const enough = doesEnough({
+        conditionBefore: c.asset.condition,
+        conditionAfter: c.projectedCondition,
+        riskReductionPct: riskPct(c),
+        conditionTarget: ruleBar(assumptions),
+        targetConstrained: assumptions.fundingMode === "target",
+      });
+      if (scale && enough && clearsEffectivenessFloor(c.asset.condition, riskPct(c))) early.out.push(c);
+    }
+  }
 
   // Sorted by Priority Score only so ties in the selection resolve toward the
   // higher-priority segment. What is bought is decided in ./selection.ts, by
@@ -1209,14 +1248,32 @@ export function runScenario(
     //    and a year of deterioration both change what is worth doing. An asset
     //    a locked project holds this year is not the run's to work on.
     const open = locks.any ? state.filter((a) => !locks.blocks(a.id, year, year)) : state;
-    const candidates = rankCandidates(open, assumptions, year, history, {
-      library,
-      combinations,
-      selection,
-      benefitWeights,
-      categoryWeights,
-      curvesOf,
-    }, trace);
+    // Bundling with a window, the work the strategy will look at within it is
+    // scored too — only ever to join a neighbour's bundle, never on its own.
+    const windowYears = !targeted && options.corridor ? options.corridor.windowYears : 0;
+    const dueYear = new Map<string, number>();
+    if (windowYears > 0) {
+      for (const a of open) {
+        if (isEligible(a, assumptions)) continue;
+        const k = dueWithin(
+          a,
+          windowYears,
+          (x, ahead) => evaluateCurve(x.curve, x.effectiveAge + ahead),
+          (x) => isEligible(x, assumptions)
+        );
+        if (k != null) dueYear.set(a.id, year + k);
+      }
+    }
+    const early: Candidate[] = [];
+    const candidates = rankCandidates(
+      open,
+      assumptions,
+      year,
+      history,
+      { library, combinations, selection, benefitWeights, categoryWeights, curvesOf },
+      trace,
+      dueYear.size > 0 ? { assets: new Set(dueYear.keys()), out: early } : undefined
+    );
 
     // 2. Choose what the year buys: one treatment per asset, each step up
     //    judged by what it adds for what it costs, across every category,
@@ -1268,11 +1325,13 @@ export function runScenario(
       // Bundling corridor work, each asset funded makes its neighbours
       // cheaper for the rest of the year's buying.
       const bundling = options.corridor
-        ? corridorRepricer(candidates, options.corridor, (c, saving) => ({
-            ...c,
-            cost: c.cost - saving,
-            priority: repriced(c.value, c.cost - saving),
-          }))
+        ? corridorRepricer(
+            [...candidates, ...early],
+            options.corridor,
+            (c, saving) => ({ ...c, cost: c.cost - saving, priority: repriced(c.value, c.cost - saving) }),
+            undefined,
+            dueYear
+          )
         : null;
       outcome = selectAgainst(candidates, purse, undefined, bundling?.onFunded);
       if (bundling) {
@@ -1293,6 +1352,25 @@ export function runScenario(
         trace.push({
           ...traceOf(shown, year, categoryWeights, assumptions.assetTypeWeights),
           ...(shown !== candidate ? { corridorSaving: Math.round(candidate.cost - shown.cost) } : {}),
+          incremental: step?.score ?? null,
+          incrementalOver: step ? (step.over?.option.label ?? null) : null,
+          selected: reason === SELECTED,
+          reason,
+        });
+      }
+    }
+
+    // Work brought forward that was offered to join a bundle: the trace has
+    // it as ineligible already, and says here what the offer came to.
+    if (trace && offeredAs) {
+      for (const c of early) {
+        const shown = offeredAs.get(c);
+        if (!shown) continue;
+        const reason = outcome.outcome.get(shown) ?? NOT_SELECTED.budgetSpent;
+        const step = outcome.incremental.get(shown);
+        trace.push({
+          ...traceOf(shown, year, categoryWeights, assumptions.assetTypeWeights),
+          corridorSaving: Math.round(c.cost - shown.cost),
           incremental: step?.score ?? null,
           incrementalOver: step ? (step.over?.option.label ?? null) : null,
           selected: reason === SELECTED,

@@ -697,7 +697,9 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                                     className="text-xs text-muted-foreground"
                                     title="Done beside neighbouring funded work in the same corridor. Its cost is already the bundled price."
                                   >
-                                    bundled with {p.corridor.withAssetCode}, saving {formatCurrency(p.corridor.saving)}
+                                    bundled with {p.corridor.withAssetCode}
+                                    {p.corridor.dueYear != null && `, brought forward from ${p.corridor.dueYear}`}, saving{" "}
+                                    {formatCurrency(p.corridor.saving)}
                                   </div>
                                 )}
                               </TableCell>

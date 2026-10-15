@@ -63,6 +63,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         ...COLUMNS,
         { key: "corridorWith", header: "Bundled With", width: 14 },
         { key: "corridorSaving", header: "Corridor Saving", type: "money" as const, width: 16 },
+        { key: "corridorDueYear", header: "Brought Forward From", type: "integer" as const, width: 20 },
       ]
     : COLUMNS;
 
@@ -71,7 +72,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     columns: columns.map((c) => ({ ...c, header: withAssetWords(c.header, words) })),
     rows: projects.map(({ corridor, ...p }) => ({
       ...p,
-      ...(bundled ? { corridorWith: corridor?.withAssetCode ?? null, corridorSaving: corridor?.saving ?? null } : {}),
+      ...(bundled
+        ? {
+            corridorWith: corridor?.withAssetCode ?? null,
+            corridorSaving: corridor?.saving ?? null,
+            corridorDueYear: corridor?.dueYear ?? null,
+          }
+        : {}),
     })),
     title: `${scenario.name} — Funded Projects`,
     // The run date rather than today's, because a scenario's results are

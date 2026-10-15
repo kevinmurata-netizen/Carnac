@@ -616,7 +616,11 @@ async function corridorRun(organizationId: string, assetIds: string[]): Promise<
   if (savings.size === 0) return null;
   const assets = await loadCorridorAssets(organizationId, config, assetIds);
   const withAttribute = new Set(config.types.filter((t) => t.corridorAttribute).map((t) => t.id));
-  return { neighbours: findNeighbours(assets, config.distanceMeters, withAttribute), savings };
+  return {
+    neighbours: findNeighbours(assets, config.distanceMeters, withAttribute),
+    savings,
+    windowYears: config.windowYears,
+  };
 }
 
 /** Statuses a locked plan's projects are left out on: work no longer going
@@ -972,7 +976,8 @@ async function persistScenarioProgram(
                 : "") +
               (p.supersededTreatment ? `, replacing ${p.supersededTreatment} programmed earlier on this ${words.item}` : "") +
               (p.corridor
-                ? `, bundled with ${p.corridor.withAssetCode} to save $${p.corridor.saving.toLocaleString("en-US")}`
+                ? `, bundled with ${p.corridor.withAssetCode} to save $${p.corridor.saving.toLocaleString("en-US")}` +
+                  (p.corridor.dueYear != null ? ` (brought forward from ${p.corridor.dueYear})` : "")
                 : "") +
               `. Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
             fundingSource: p.locked ? "Programmed (locked)" : "Scenario Budget",
@@ -1011,7 +1016,7 @@ export type ScenarioProjectRow = {
   riskReductionPct: number | null;
   /** Where it joined a corridor bundle: beside which asset, and what that
    * saved. Null on everything else. */
-  corridor: { withAssetCode: string; saving: number } | null;
+  corridor: { withAssetCode: string; saving: number; dueYear: number | null } | null;
 };
 
 /** The projects a scenario run funded, newest run only. */
@@ -1035,7 +1040,7 @@ export async function getScenarioProjects(
       riskBefore?: number;
       riskAfter?: number;
       riskReductionPct?: number;
-      corridor?: { withAssetCode?: string; saving?: number };
+      corridor?: { withAssetCode?: string; saving?: number; dueYear?: number };
     };
     return {
       year: i.year,
@@ -1053,7 +1058,13 @@ export async function getScenarioProjects(
       riskBefore: b.riskBefore ?? null,
       riskAfter: b.riskAfter ?? null,
       riskReductionPct: b.riskReductionPct ?? null,
-      corridor: b.corridor ? { withAssetCode: b.corridor.withAssetCode ?? "", saving: b.corridor.saving ?? 0 } : null,
+      corridor: b.corridor
+        ? {
+            withAssetCode: b.corridor.withAssetCode ?? "",
+            saving: b.corridor.saving ?? 0,
+            dueYear: b.corridor.dueYear ?? null,
+          }
+        : null,
     };
   });
 }
