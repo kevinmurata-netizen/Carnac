@@ -33,6 +33,9 @@ export type ScenarioValues = {
   categoryFundingPlanId: string;
   leadTimeSetId: string;
   budgetPlanId: string;
+  /** "pooled" or "separate": how a scenario over several types spends a
+   * budget that sets money per type. */
+  typeFunding: string;
   savedFilterId: string;
   /** The modelled asset types it is narrowed to, sorted and comma-joined so it
    * compares like every other field. Empty is all of them. */
@@ -68,6 +71,7 @@ export type ScenarioFieldDefaults = {
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
   budgetPlanId?: string | null;
+  typeFunding?: string;
   savedFilterId: string | null;
   /** Empty, or absent, is every modelled asset type. */
   assetTypeIds?: string[];
@@ -100,6 +104,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     categoryFundingPlanId: d.categoryFundingPlanId ?? "",
     leadTimeSetId: d.leadTimeSetId ?? "",
     budgetPlanId: d.budgetPlanId ?? "",
+    typeFunding: d.typeFunding ?? "pooled",
     savedFilterId: d.savedFilterId ?? "",
     assetTypeIds: [...(d.assetTypeIds ?? [])].sort().join(","),
     assetTypeWeights: joinWeights(
@@ -241,6 +246,9 @@ export function ScenarioFields({
   // shows its window straight away instead of after the save that commits it.
   const governingSet = scenarioSetChoices.find((s) => s.id === values.scenarioSetId) ?? null;
   const targeting = values.fundingMode === "target";
+  // How many asset types the run covers: every modelled type when none is
+  // ticked off.
+  const coversTypes = values.assetTypeIds ? values.assetTypeIds.split(",").length : assetTypeChoices.length;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -719,7 +727,23 @@ export function ScenarioFields({
               </option>
             ))}
           </select>
+          {values.budgetPlanId && coversTypes > 1 && (
+            <select
+              id={id("typeFunding")}
+              name="typeFunding"
+              aria-label="How the asset types share the budget"
+              value={values.typeFunding}
+              onChange={(e) => onChange({ typeFunding: e.target.value })}
+              className={mark("typeFunding")}
+            >
+              <option value="pooled">Pooled — the asset types share each year&apos;s money</option>
+              <option value="separate">Separate — each asset type spends only its own money in the budget</option>
+            </select>
+          )}
           <p className="text-xs text-muted-foreground">
+            {values.budgetPlanId && coversTypes > 1 && values.typeFunding === "separate"
+              ? "Each asset type is held to its own amount for each year the budget sets one, and to any category amounts within it — money one type leaves unspent is not used by another. A type the budget sets nothing for that year is held only by the year's total. "
+              : ""}
             {values.budgetPlanId
               ? "Each year the budget lists uses its amount instead of the annual budget and growth, and any category amounts it sets are the most that category may take that year. Years it does not list still use the annual budget and growth above."
               : "Follow a budget set year by year in dollars — the money you actually expect to have, with amounts per category if you break it out that way."}{" "}

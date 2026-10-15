@@ -35,8 +35,8 @@ import { buildLccaEvaluator } from "./lcca-evaluator";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS } from "./category-weight";
 import { CONSIDER_ALL, filterOptions } from "./option-selection";
 import { yearLimits } from "./category-funding";
-import { budgetYear } from "./budget-plan";
-import { NOT_SELECTED, SELECTED, restingPurse, selectAgainst, type Purse, type Rankable } from "./selection";
+import { budgetYear, type TypeLimits } from "./budget-plan";
+import { NOT_SELECTED, SELECTED, restingPurse, selectAgainst, withTypeLimits, type Purse, type Rankable } from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import {
   benefitCof,
@@ -167,7 +167,12 @@ function ledger(
   plan: ScenarioRunOptions["fundingPlan"],
   endYear: number,
   /** A budget plan's dollar ceilings for a year, by category. */
-  ceilingsFor: (year: number) => Map<TreatmentCategory, number> | null
+  ceilingsFor: (year: number) => Map<TreatmentCategory, number> | null,
+  /** Each asset type's own money, where the scenario funds types separately. */
+  byType: {
+    typeOf: (c: { assetId?: string }) => string | null | undefined;
+    limitsIn: (year: number) => TypeLimits | null;
+  } | null
 ) {
   const spent = new Map<number, number>();
   const spentByCategory = new Map<string, number>();
@@ -254,12 +259,19 @@ function ledger(
     totalSpent: purse.totalSpent,
   };
 
+  // Held to each type's own money too, where types are funded separately.
+  // Reserving goes through the same purse, so work an earlier pass fixed
+  // counts against its type as well as its year.
+  const guarded = byType
+    ? withTypeLimits(purse, { typeOf: byType.typeOf, money: (c) => c.cash, limitsIn: byType.limitsIn })
+    : purse;
+
   return {
-    purse,
+    purse: guarded,
     unlimited,
     /** Money already spoken for before the pass starts. */
     reserve: (c: Candidate | { cash: Candidate["cash"]; option: Candidate["option"] }) =>
-      move(c as Candidate, 1),
+      byType ? guarded.commit(c as Candidate, null) : move(c as Candidate, 1),
     spentIn: (year: number) => spent.get(year) ?? 0,
     byCategoryIn: (year: number) => {
       const l = limits(year);
@@ -388,13 +400,29 @@ function walk(
   // A budget plan replaces the annual budget and growth in the years it
   // lists, and its category amounts are ceilings in those years.
   const plannedFor = (year: number) =>
-    assumptions.fundingMode === "target" ? null : budgetYear(options.budgetPlan, year);
+    assumptions.fundingMode === "target" ? null : budgetYear(options.budgetPlan, year, assumptions.typeFunding);
+  // Funded by type, each type is also held to its own money in every year its
+  // instalments fall in. Work locked from a plan carries no type here.
+  const typeOfAsset = new Map(assets.map((a) => [a.id, a.assetTypeId ?? null]));
+  const byType =
+    assumptions.fundingMode !== "target" && assumptions.typeFunding === "separate"
+      ? {
+          typeOf: (c: { assetId?: string }) => (c.assetId ? typeOfAsset.get(c.assetId) : null),
+          limitsIn: (year: number) => plannedFor(year)?.types ?? null,
+        }
+      : null;
   const budgetFor = (year: number) =>
     assumptions.fundingMode === "target"
       ? assumptions.annualBudget
       : (plannedFor(year)?.total ??
         assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear));
-  const money = ledger(budgetFor, options.fundingPlan ?? null, endYear, (year) => plannedFor(year)?.ceilings ?? null);
+  const money = ledger(
+    budgetFor,
+    options.fundingPlan ?? null,
+    endYear,
+    (year) => plannedFor(year)?.ceilings ?? null,
+    byType
+  );
   /** Past the target year of a target run set to do nothing after it. */
   const afterTargetIn = (year: number) =>
     assumptions.fundingMode === "target" &&

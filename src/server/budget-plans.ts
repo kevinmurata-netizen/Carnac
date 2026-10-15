@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { CATEGORY_KEYS } from "@/domain/waterline/category-weight";
-import { budgetLineProblem, budgetYears, type BudgetPlanLine } from "@/domain/waterline/budget-plan";
+import { budgetLineProblem, budgetYear, budgetYears, type BudgetPlanLine } from "@/domain/waterline/budget-plan";
+import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 import type { TreatmentCategory } from "@/domain/waterline/treatment";
 
 /**
@@ -44,12 +45,8 @@ function toLines(rows: Row["lines"]): BudgetPlanLine[] {
     .sort((a, b) => a.year - b.year || (a.category ?? "").localeCompare(b.category ?? ""));
 }
 
-/** A year's money as the plan sets it: its total, or its categories summed. */
-function yearTotal(lines: BudgetPlanLine[], year: number): number {
-  const inYear = lines.filter((l) => l.year === year && l.assetTypeId == null);
-  const total = inYear.find((l) => l.category == null);
-  return total ? total.amount : inYear.reduce((sum, l) => sum + l.amount, 0);
-}
+/** A year's money as the plan sets it, for a scenario that pools it. */
+const yearTotal = (lines: BudgetPlanLine[], year: number) => budgetYear(lines, year)?.total ?? 0;
 
 function toRow(r: Row): BudgetPlanRow {
   const lines = toLines(r.lines);
@@ -110,14 +107,17 @@ export type BudgetPlanInput = {
   lines: BudgetPlanLine[];
 };
 
-function validate(input: BudgetPlanInput) {
+async function validate(organizationId: string, input: BudgetPlanInput) {
   if (!input.name.trim()) throw new Error("Give the budget a name");
   if (input.lines.length === 0) throw new Error("Enter an amount for at least one year");
-  if (input.lines.some((l) => l.assetTypeId != null)) {
-    throw new Error("Amounts by asset type are not available yet");
-  }
   const problem = budgetLineProblem(input.lines);
   if (problem) throw new Error(problem);
+  // Money for an asset type is for one this organization models.
+  const typed = [...new Set(input.lines.map((l) => l.assetTypeId).filter((id): id is string => id != null))];
+  if (typed.length > 0) {
+    const modelled = new Set((await listModelledAssetTypes(organizationId)).map((t) => t.id));
+    if (typed.some((id) => !modelled.has(id))) throw new Error("A budget can set money only for asset types this organization models");
+  }
 }
 
 async function assertNameFree(organizationId: string, name: string, exceptId?: string) {
@@ -136,7 +136,7 @@ const lineData = (lines: BudgetPlanLine[]) =>
   lines.map((l) => ({ year: l.year, assetTypeId: l.assetTypeId, category: l.category, amount: l.amount }));
 
 export async function createBudgetPlan(organizationId: string, input: BudgetPlanInput): Promise<string> {
-  validate(input);
+  await validate(organizationId, input);
   const name = input.name.trim();
   await assertNameFree(organizationId, name);
   const created = await prisma.budgetPlan.create({
@@ -153,7 +153,7 @@ export async function createBudgetPlan(organizationId: string, input: BudgetPlan
 
 /** Lines are replaced wholesale: the screen edits the whole table at once. */
 export async function updateBudgetPlan(organizationId: string, id: string, input: BudgetPlanInput) {
-  validate(input);
+  await validate(organizationId, input);
   const name = input.name.trim();
   const existing = await prisma.budgetPlan.findFirst({ where: { id, organizationId }, select: { id: true } });
   if (!existing) throw new Error("That budget no longer exists");

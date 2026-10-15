@@ -20,10 +20,19 @@ import {
 export { curveFor };
 import { annualFailureProbability, failureEventCost, presentValue, type FailureCost } from "./lcca";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS, type CategoryWeights } from "./category-weight";
-import { budgetYear, type BudgetPlanLine } from "./budget-plan";
+import { budgetYear, type BudgetPlanLine, type TypeFunding } from "./budget-plan";
 import { CONSIDER_ALL, filterOptions, type OptionSelection } from "./option-selection";
 import { type FundingPlan } from "./category-funding";
-import { selectAgainst, selectForYear, selectForTarget, restingPurse, NOT_SELECTED, SELECTED } from "./selection";
+import {
+  selectAgainst,
+  selectForYear,
+  selectForTarget,
+  restingPurse,
+  withTypeLimits,
+  yearPurse,
+  NOT_SELECTED,
+  SELECTED,
+} from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import { buildLccaEvaluator } from "./lcca-evaluator";
 import { buildLocked, lockSchedule, lockedRecord, type LockedProject, type ProgrammedFunding } from "./locked-projects";
@@ -144,6 +153,9 @@ export type ScenarioAssumptions = {
   /** How far a scenario over several asset types leans toward each, as a
    * multiplier on the Priority Score. Absent, or a type left out, is 1. */
   assetTypeWeights?: AssetTypeWeights;
+  /** How a scenario over several asset types spends a budget plan that sets
+   * money per type: from one pot (absent), or each type from its own. */
+  typeFunding?: TypeFunding;
 };
 
 /** A Priority Score multiplier per asset type, by asset type id. */
@@ -1140,7 +1152,7 @@ export function runScenario(
     const year = startYear + i;
     // A budget plan's year, where it lists this one: its total replaces the
     // annual budget and growth, and its category amounts are ceilings.
-    const planned = targeted ? null : budgetYear(options.budgetPlan, year);
+    const planned = targeted ? null : budgetYear(options.budgetPlan, year, assumptions.typeFunding);
     const budget = targeted
       ? assumptions.annualBudget
       : (planned?.total ?? assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, i));
@@ -1212,7 +1224,19 @@ export function runScenario(
         current: (assetId) => untreated.get(assetId) ?? 0,
       });
     } else {
-      outcome = selectForYear(candidates, allocation, fundingPlan, planned?.ceilings);
+      // Funded by type, each type is held to its own money as well as the
+      // year's; pooled, the types share the year's money.
+      const typeLimits = planned?.types ?? null;
+      outcome = typeLimits
+        ? selectAgainst(
+            candidates,
+            withTypeLimits(yearPurse<Candidate>(allocation, fundingPlan, planned?.ceilings), {
+              typeOf: (c) => c.asset.assetTypeId,
+              money: (c) => [{ year, amount: c.cost }],
+              limitsIn: () => typeLimits,
+            })
+          )
+        : selectForYear(candidates, allocation, fundingPlan, planned?.ceilings);
     }
 
     // Recorded here rather than inside the selection engine, which is written
