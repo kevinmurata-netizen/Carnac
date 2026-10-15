@@ -704,11 +704,11 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       // "type:<id>:<metric>" beside the totals, so a single-type run stores
       // exactly what it always did.
       ...(y.byType ?? []).flatMap((t) =>
-        TYPE_METRICS.map((metric) => ({
+        TYPE_METRICS.filter((metric) => t[metric] != null).map((metric) => ({
           scenarioId,
           year: y.year,
           metricKey: `${TYPE_METRIC_PREFIX}${t.assetTypeId}:${metric}`,
-          metricValue: t[metric],
+          metricValue: t[metric] as number,
         }))
       ),
     ]),
@@ -1250,6 +1250,9 @@ const TYPE_METRICS = [
   "backlogCount",
   "workFunded",
   "projects",
+  // Absent on a year where the type had nothing scored, and on every run
+  // stored before it was recorded.
+  "typicalPriority",
 ] as const satisfies ReadonlyArray<keyof TypeYearResult>;
 
 /** A year's per-type rows read back, ordered by type name. */
@@ -1278,6 +1281,7 @@ function typeYears(
       backlogCount: m.backlogCount ?? 0,
       workFunded: m.workFunded ?? 0,
       projects: m.projects ?? 0,
+      typicalPriority: m.typicalPriority ?? null,
     }))
     .sort((a, b) => a.assetTypeName.localeCompare(b.assetTypeName));
 }

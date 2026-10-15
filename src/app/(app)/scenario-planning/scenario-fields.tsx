@@ -153,7 +153,22 @@ export type LeadTimeChoice = { id: string; name: string; isDefault: boolean; sum
 export type FilterChoice = { id: string; name: string; criteriaCount: number };
 
 /** The modelled asset types a scenario can be narrowed to. */
-export type AssetTypeChoice = { id: string; name: string };
+export type AssetTypeChoice = {
+  id: string;
+  name: string;
+  /** What the type's work typically scored in the first year of the last
+   * run, before its weight. Absent before a run, or on a single-type run. */
+  typicalPriority?: number | null;
+};
+
+const formatScore = (n: number) => String(Number(n.toPrecision(4)));
+
+/** A weight, to two significant figures and inside the allowed range. */
+function roundWeight(w: number): number {
+  const { min, max } = ASSET_TYPE_WEIGHT_RANGE;
+  const clamped = Math.min(max, Math.max(min, w));
+  return Number(clamped.toPrecision(2));
+}
 
 /** The work plans whose projects a scenario can lock. Never a scenario run's
  * own programme, which changes every time that scenario runs. */
@@ -836,6 +851,15 @@ function AssetTypeField({
     onChange(next.length === all.length ? "" : [...next].sort().join(","));
   };
   const setWeight = (id: string, w: string) => onWeightsChange(joinWeights({ ...typed, [id]: w }));
+
+  // Weights that would put each ticked type's typical score level with the
+  // highest: offered, never applied on its own.
+  const scored = choices.filter((c) => chosen.includes(c.id) && c.typicalPriority != null && c.typicalPriority > 0);
+  const top = Math.max(...scored.map((c) => c.typicalPriority!));
+  const level =
+    weighs && scored.length > 1
+      ? Object.fromEntries(scored.map((c) => [c.id, roundWeight(top / c.typicalPriority!)]))
+      : null;
   return (
     <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
       <div className="text-sm font-medium">Asset types</div>
@@ -873,17 +897,40 @@ function AssetTypeField({
                     onChange={(e) => setWeight(c.id, e.target.value)}
                     className="h-7 w-16 rounded-md border border-input bg-background px-2 text-sm tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  {c.typicalPriority != null && (
+                    <span className="tabular-nums" title="Median Priority Score of its work in the first year of the last run, before its weight">
+                      typical {formatScore(c.typicalPriority)}
+                    </span>
+                  )}
                 </label>
               )}
             </div>
           );
         })}
+        {level && (
+          <button
+            type="button"
+            onClick={() =>
+              onWeightsChange(
+                joinWeights({ ...typed, ...Object.fromEntries(Object.entries(level).map(([id, w]) => [id, String(w)])) })
+              )
+            }
+            className="ml-auto text-xs font-medium text-primary underline-offset-2 hover:underline"
+            title={`Sets ${scored.map((c) => `${c.name} ×${level[c.id]}`).join(", ")}`}
+          >
+            Level the types
+          </button>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
         Run this scenario over some of the modelled asset types rather than all of them. Its averages, backlog and
         condition target are then those types&apos; alone.
         {weighs &&
-          " The number beside each type multiplies the Priority Score of its work: above 1 favours that type when the types compete for the same budget, below 1 holds it back. 1 for every type ranks them evenly."}
+          " The number beside each type multiplies the Priority Score of its work: above 1 favours that type when the types compete for the same budget, below 1 holds it back."}
+        {weighs &&
+          (scored.length > 1
+            ? " Types' scores need not be on one scale — a length-based scale factor puts a main's far above a pole's — so each shows what its work typically scored in the last run, before its weight. Level the types sets the weights that bring those level; adjust from there."
+            : " Each type's typical score appears here once the scenario has run.")}
       </p>
     </div>
   );

@@ -396,7 +396,43 @@ export type TypeYearResult = {
   /** Cost of the work chosen for the type's assets this year. */
   workFunded: number;
   projects: number;
+  /**
+   * The median Priority Score of the type's options this year, before the
+   * type's own weight: what its work typically scores against the others'.
+   * Types' scores need not share a scale — a length-based Scale Factor puts a
+   * main's in the thousands where a pole's is 1 — and this is what a weight is
+   * set against. Null when the type had nothing scored this year.
+   */
+  typicalPriority: number | null;
 };
+
+const median = (values: number[]): number | null => {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+/** What a year's ranked options scored, by type, with each type's weight
+ * taken back out. */
+export function typicalPriorities(
+  ranked: Array<{ asset: SimAsset; priority: number | null }>,
+  weights: AssetTypeWeights | undefined
+): Map<string, number | null> {
+  const byType = new Map<string, number[]>();
+  for (const c of ranked) {
+    if (c.priority == null || !c.asset.assetTypeId) continue;
+    const list = byType.get(c.asset.assetTypeId) ?? [];
+    list.push(c.priority / assetTypeWeight(weights, c.asset.assetTypeId));
+    byType.set(c.asset.assetTypeId, list);
+  }
+  return new Map(
+    [...byType.entries()].map(([id, scores]) => {
+      const m = median(scores);
+      return [id, m == null ? null : Math.round(m * 10000) / 10000];
+    })
+  );
+}
 
 /**
  * A year split by asset type, or undefined when the run covers one type —
@@ -406,7 +442,9 @@ export type TypeYearResult = {
 export function breakdownByType(
   state: SimAsset[],
   chosen: ScenarioProject[],
-  backlogBest: Map<string, number>
+  backlogBest: Map<string, number>,
+  /** Each type's typical Priority Score this year, from `typicalPriorities`. */
+  typical: Map<string, number | null>
 ): TypeYearResult[] | undefined {
   const typeOf = new Map(state.map((a) => [a.id, a.assetTypeId ?? ""]));
   const types = [...new Set(typeOf.values())].filter(Boolean);
@@ -432,6 +470,7 @@ export function breakdownByType(
       backlogCount: backlogged.length,
       workFunded: Math.round(work.reduce((s, p) => s + p.cost, 0)),
       projects: work.length,
+      typicalPriority: typical.get(assetTypeId) ?? null,
     };
   });
 }
@@ -1321,7 +1360,9 @@ export function runScenario(
         cap: Math.round(r.cap),
       })),
       cappedOut: Math.round(outcome.cappedOut),
-      ...withByType(breakdownByType(state, selected, backlogBest)),
+      ...withByType(
+        breakdownByType(state, selected, backlogBest, typicalPriorities(candidates, assumptions.assetTypeWeights))
+      ),
     });
   }
 
