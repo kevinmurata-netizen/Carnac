@@ -30,6 +30,20 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-15",
+    title: "Letting work wait for a neighbour's corridor bundle",
+    summary:
+      "On a scenario that bundles neighbouring work, work can now also be held back — once, for up to the corridor window — to join a neighbour's bundle in a later year, where that is expected to save more than waiting costs. Off unless chosen on the scenario.",
+    changes: [
+      "\"Also let work wait for a neighbour's bundle\" under the scenario's corridor bundling option.",
+      "Only work the year actually funded on its own is considered — not work that anchors or joins a bundle that year, not high-risk work, not work already committed. It waits only for a neighbour coming due within the window that couldn't be brought forward instead, never past the end of the run, and only where the estimated saving beats the failures waiting is expected to cost on the asset's own curve.",
+      "The year is then bought again without it, so its money goes elsewhere. Work that becomes too risky while waiting is released early.",
+      "Both scenario engines. The Alternatives page gives the new reason; Funded Projects, the export and work plans say where work waited and for whom.",
+      "On the sample network it rarely applies: most funded work is high-risk or already anchors a bundle, and bringing neighbours forward usually wins first.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-15",
     title: "Bringing work forward to join a corridor bundle",
     summary:
       "On a scenario that bundles neighbouring work, work that isn't due yet can now be brought forward to join a neighbour's bundle, up to the timing window set under Settings › Corridor Bundling (2 years to start).",

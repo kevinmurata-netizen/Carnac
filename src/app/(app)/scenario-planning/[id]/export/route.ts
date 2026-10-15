@@ -57,26 +57,30 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   // Corridor columns only on a run that bundled anything, so every other
   // export keeps the layout it has always had.
-  const bundled = projects.some((p) => p.corridor);
+  const bundled = projects.some((p) => p.corridor || p.deferred);
   const columns = bundled
     ? [
         ...COLUMNS,
         { key: "corridorWith", header: "Bundled With", width: 14 },
         { key: "corridorSaving", header: "Corridor Saving", type: "money" as const, width: 16 },
         { key: "corridorDueYear", header: "Brought Forward From", type: "integer" as const, width: 20 },
+        { key: "deferredFrom", header: "Waited From", type: "integer" as const, width: 13 },
+        { key: "deferredFor", header: "Waited For", width: 13 },
       ]
     : COLUMNS;
 
   const buffer = await buildWorkbook({
     sheetName: "Funded Projects",
     columns: columns.map((c) => ({ ...c, header: withAssetWords(c.header, words) })),
-    rows: projects.map(({ corridor, ...p }) => ({
+    rows: projects.map(({ corridor, deferred, ...p }) => ({
       ...p,
       ...(bundled
         ? {
             corridorWith: corridor?.withAssetCode ?? null,
             corridorSaving: corridor?.saving ?? null,
             corridorDueYear: corridor?.dueYear ?? null,
+            deferredFrom: deferred?.from ?? null,
+            deferredFor: deferred?.withAssetCode ?? null,
           }
         : {}),
     })),

@@ -175,6 +175,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     budgetPlanId: scenario.budgetPlanId ?? null,
     typeFunding: a.typeFunding ?? "pooled",
     corridorBundling: !!a.corridorBundling,
+    corridorDeferral: !!a.corridorDeferral,
     savedFilterId: scenario.savedFilterId ?? null,
     assetTypeIds: scenario.assetTypeIds,
     assetTypeWeights: a.assetTypeWeights,
@@ -702,6 +703,14 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                                     {formatCurrency(p.corridor.saving)}
                                   </div>
                                 )}
+                                {p.deferred && (
+                                  <div
+                                    className="text-xs text-muted-foreground"
+                                    title="Held back to join a neighbouring asset's work: the bundle was expected to save more than waiting was expected to cost in failures."
+                                  >
+                                    waited from {p.deferred.from} for {p.deferred.withAssetCode}
+                                  </div>
+                                )}
                               </TableCell>
                               {projectsHaveLeadTimes && (
                                 <TableCell className="tabular-nums text-xs">{p.programmedYear}</TableCell>
@@ -899,7 +908,9 @@ function AssumptionsCard({
         <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4 lg:grid-cols-7">
           <Field label="Strategy" value={a.strategy} />
           <Field label="Annual Budget" value={formatCurrency(a.annualBudget, { compact: true })} />
-          {a.corridorBundling && <Field label="Corridor Bundling" value="On" />}
+          {a.corridorBundling && (
+            <Field label="Corridor Bundling" value={a.corridorDeferral ? "On, with deferral" : "On"} />
+          )}
           {scenario.budgetPlanName && (
             <Field
               label="Budget"

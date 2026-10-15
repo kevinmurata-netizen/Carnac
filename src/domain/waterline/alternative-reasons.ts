@@ -63,6 +63,11 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
     stage: "screened",
     description: `Would neither lift the {item} to the scenario's condition target nor cut its risk by at least ${MIN_RISK_REDUCTION_PCT}%. Scored so you can see its value, but not fundable — otherwise cheap, small improvements get bought on the same {item} year after year.`,
   },
+  [NOT_RANKED.deferred]: {
+    stage: "not-funded",
+    description:
+      "Held back to join a neighbouring {item}'s work in a later year, within the scenario's corridor window: the bundle is expected to save more than waiting is expected to cost in failures. Work is held back once at most, and released early if it becomes too risky to wait.",
+  },
   [NOT_RANKED.belowFloor]: {
     stage: "screened",
     description: `The {item} is below {index} ${MATERIAL_INTERVENTION_CONDITION}, where an option has to cut risk by at least ${MIN_RISK_REDUCTION_PCT}% to be funded. A patch that scores well per dollar but leaves a failing main failing is not bought.`,

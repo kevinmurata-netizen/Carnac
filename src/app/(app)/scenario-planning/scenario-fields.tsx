@@ -38,6 +38,8 @@ export type ScenarioValues = {
   typeFunding: string;
   /** "on" when the scenario bundles neighbouring work. */
   corridorBundling: string;
+  /** "on" when, bundling, work may also wait for a neighbour's bundle. */
+  corridorDeferral: string;
   savedFilterId: string;
   /** The modelled asset types it is narrowed to, sorted and comma-joined so it
    * compares like every other field. Empty is all of them. */
@@ -75,6 +77,7 @@ export type ScenarioFieldDefaults = {
   budgetPlanId?: string | null;
   typeFunding?: string;
   corridorBundling?: boolean;
+  corridorDeferral?: boolean;
   savedFilterId: string | null;
   /** Empty, or absent, is every modelled asset type. */
   assetTypeIds?: string[];
@@ -109,6 +112,7 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     budgetPlanId: d.budgetPlanId ?? "",
     typeFunding: d.typeFunding ?? "pooled",
     corridorBundling: d.corridorBundling ? "on" : "",
+    corridorDeferral: d.corridorDeferral ? "on" : "",
     savedFilterId: d.savedFilterId ?? "",
     assetTypeIds: [...(d.assetTypeIds ?? [])].sort().join(","),
     assetTypeWeights: joinWeights(
@@ -786,6 +790,29 @@ export function ScenarioFields({
             ; a pair with no saving set never bundles. Within the timing window set there, work not due yet can be
             brought forward to join — judged by what it does now, so it joins only if it is still worth its price.
           </p>
+          {values.corridorBundling === "on" && (
+            <label
+              className={`ml-6 flex w-fit items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${
+                saved && values.corridorDeferral !== saved.corridorDeferral ? "border-amber-500" : "border-transparent"
+              }`}
+            >
+              <input
+                type="checkbox"
+                name="corridorDeferral"
+                checked={values.corridorDeferral === "on"}
+                onChange={(e) => onChange({ corridorDeferral: e.target.checked ? "on" : "" })}
+              />
+              Also let work wait for a neighbour&apos;s bundle
+            </label>
+          )}
+          {values.corridorBundling === "on" && values.corridorDeferral === "on" && (
+            <p className="ml-6 text-xs text-muted-foreground">
+              Work that isn&apos;t high-risk can be held back, once, for up to the timing window when a neighbour&apos;s
+              work will come due and couldn&apos;t be brought forward now — but only where the bundle is expected to
+              save more than waiting is expected to cost in failures. It is released early if it becomes too risky to
+              wait.
+            </p>
+          )}
         </div>
       )}
 

@@ -80,10 +80,18 @@ import {
   type YearAlternative,
   breakdownByType,
   corridorOf,
+  waitingCost,
   typicalPriorities,
   withByType,
 } from "./scenario";
-import { corridorRepricer, dueWithin, repriced, type CorridorJoin } from "./corridor-bundling";
+import {
+  chooseDeferrals,
+  corridorRepricer,
+  dueWithin,
+  repriced,
+  type CorridorJoin,
+  type Deferral,
+} from "./corridor-bundling";
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -265,9 +273,10 @@ function ledger(
   // Held to each type's own money too, where types are funded separately.
   // Reserving goes through the same purse, so work an earlier pass fixed
   // counts against its type as well as its year.
-  const guarded = byType
+  const typed = byType
     ? withTypeLimits(purse, { typeOf: byType.typeOf, money: (c) => c.cash, limitsIn: byType.limitsIn })
-    : purse;
+    : null;
+  const guarded: Purse<Candidate> = typed ?? purse;
 
   return {
     purse: guarded,
@@ -276,6 +285,20 @@ function ledger(
     reserve: (c: Candidate | { cash: Candidate["cash"]; option: Candidate["option"] }) =>
       byType ? guarded.commit(c as Candidate, null) : move(c as Candidate, 1),
     spentIn: (year: number) => spent.get(year) ?? 0,
+    /** Everything spent so far, and a way back to it: for deciding a year a
+     * second time, as deferral does, without its first decision's money. */
+    snapshot: () => {
+      const years = new Map(spent);
+      const categories = new Map(spentByCategory);
+      const restoreTypes = typed?.snapshot() ?? null;
+      return () => {
+        spent.clear();
+        for (const [k, v] of years) spent.set(k, v);
+        spentByCategory.clear();
+        for (const [k, v] of categories) spentByCategory.set(k, v);
+        restoreTypes?.();
+      };
+    },
     byCategoryIn: (year: number) => {
       const l = limits(year);
       const categories = l == null ? ["All"] : [...l.keys()];
@@ -407,6 +430,45 @@ function walk(
   // Funded by type, each type is also held to its own money in every year its
   // instalments fall in. Work locked from a plan carries no type here.
   const typeOfAsset = new Map(assets.map((a) => [a.id, a.assetTypeId ?? null]));
+  // Corridor deferral, as in the same-year engine: what is waiting now, what
+  // has ever waited, and what waited and has yet to be decided.
+  const deferring =
+    assumptions.fundingMode !== "target" &&
+    !!assumptions.corridorDeferral &&
+    (options.corridor?.windowYears ?? 0) > 0;
+  const deferred = new Map<string, Deferral>();
+  const deferredOnce = new Set<string>();
+  const waited = new Map<string, Deferral>();
+  /** Candidates less any still waiting, which the trace records as such. */
+  let traceYear = 0;
+  let traceSink: YearAlternative[] | null = null;
+  const holdBack = (list: Candidate[]): Candidate[] => {
+    if (deferred.size === 0) return list;
+    if (traceSink) {
+      for (const c of list.filter((x) => deferred.has(x.assetId) && !x.held)) {
+        traceSink.push({
+          ...traceOf(c, traceYear, categoryWeights, assumptions.assetTypeWeights),
+          incremental: null,
+          incrementalOver: null,
+          selected: false,
+          reason: NOT_RANKED.deferred,
+        });
+      }
+    }
+    return list.filter((c) => c.held || !deferred.has(c.assetId));
+  };
+  /** The deferral behind work now decided, said once, on the work it waited for. */
+  const deferredOf = (assetId: string): ScenarioProject["deferred"] => {
+    const d = waited.get(assetId);
+    if (!d) return undefined;
+    waited.delete(assetId);
+    return {
+      from: d.from,
+      withAssetCode: byId.get(d.withAssetId)?.assetCode ?? "",
+      saving: Math.round(d.saving),
+      waitingCost: Math.round(d.waitingCost),
+    };
+  };
   const byType =
     assumptions.fundingMode !== "target" && assumptions.typeFunding === "separate"
       ? {
@@ -592,7 +654,7 @@ function walk(
         if (k != null) dueYear.set(a.id, year + k);
       }
     }
-    const { candidates, heldCandidates, early } = rankCandidates({
+    const ranked = rankCandidates({
       locks,
       fixedUntil,
       state,
@@ -611,6 +673,22 @@ function walk(
       trace,
       early: dueYear.size > 0 ? new Set(dueYear.keys()) : undefined,
     });
+    const { heldCandidates, early } = ranked;
+    let candidates = ranked.candidates;
+
+    // Deferral: release work that has waited its years or become too risky to
+    // keep waiting, and keep out of this year what is still waiting.
+    traceYear = year;
+    traceSink = trace;
+    if (deferring) {
+      for (const [id, d] of deferred) {
+        const a = byId.get(id);
+        if (d.until <= year || (a && pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold)) {
+          deferred.delete(id);
+        }
+      }
+      candidates = holdBack(candidates);
+    }
 
     // 4. Buy the best next step anywhere on the network, against every year the
     //    money would come out of — unless this is past the target year of a
@@ -661,20 +739,55 @@ function walk(
     // Bundling corridor work, in a budget year: each asset given work makes
     // its neighbours cheaper for the rest of the year's buying — beside work
     // built the same year, since that is when the crews are there together.
-    const bundling =
-      options.corridor && !resting && !targeted
-        ? corridorRepricer(
-            [...candidates, ...early],
-            options.corridor,
-            rebated,
-            (c, anchor) => c.buildYear === anchor.buildYear,
-            dueYear
-          )
-        : null;
-    const outcome = selectAgainst(candidates, purse, heldCandidates, bundling?.onFunded);
+    const buy = () => {
+      const bundling =
+        options.corridor && !resting && !targeted
+          ? corridorRepricer(
+              [...candidates, ...early],
+              options.corridor,
+              rebated,
+              (c, anchor) => c.buildYear === anchor.buildYear,
+              dueYear
+            )
+          : null;
+      return { result: selectAgainst(candidates, purse, heldCandidates, bundling?.onFunded), bundling };
+    };
+    // Deferral, among work the year actually decided on its own: what is
+    // worth waiting for a neighbour's later bundle is held back, the money is
+    // put back as it was, and the year is decided again without it.
+    const restore = deferring && options.corridor && !resting && !targeted ? money.snapshot() : null;
+    let bought = buy();
+    if (restore && options.corridor) {
+      const anchors = new Set([...(bought.bundling?.joinOf.values() ?? [])].map((j) => j.withAssetId));
+      const alone = bought.result.selected.filter(
+        (c) => !c.held && !bought.bundling?.joinOf.has(c) && !anchors.has(c.assetId)
+      );
+      const fresh = chooseDeferrals(
+        alone,
+        year,
+        options.corridor,
+        dueYear,
+        new Set(early.map((c) => c.assetId)),
+        (c) => deferredOnce.has(c.assetId) || c.riskNow >= assumptions.riskThreshold,
+        (c, years) => waitingCost(c.asset, years),
+        (id) => byId.get(id)?.assetTypeId,
+        endYear
+      );
+      if (fresh.size > 0) {
+        for (const [id, d] of fresh) {
+          deferred.set(id, d);
+          deferredOnce.add(id);
+          waited.set(id, d);
+        }
+        restore();
+        candidates = holdBack(candidates);
+        bought = buy();
+      }
+    }
+    const outcome = bought.result;
     if (!typical.has(year)) typical.set(year, typicalPriorities(candidates, assumptions.assetTypeWeights));
-    const offeredAs: Map<Candidate, Candidate> | null = bundling?.offeredAs ?? null;
-    const joins: Map<Candidate, CorridorJoin> | null = bundling?.joinOf ?? null;
+    const offeredAs: Map<Candidate, Candidate> | null = bought.bundling?.offeredAs ?? null;
+    const joins: Map<Candidate, CorridorJoin> | null = bought.bundling?.joinOf ?? null;
 
     if (trace) {
       for (const candidate of candidates) {
@@ -732,7 +845,12 @@ function walk(
       }
       const join = joins?.get(candidate);
       if (join) corridorSaving += join.saving;
-      const commitment = toCommitment(candidate, previous ?? null, join ? corridorOf(join, state).corridor : undefined);
+      const commitment = toCommitment(
+        candidate,
+        previous ?? null,
+        join ? corridorOf(join, state).corridor : undefined,
+        deferredOf(assetId)
+      );
       commitments.set(assetId, commitment);
       decided.push(commitment);
       programmed.push(commitment.project);
@@ -1316,7 +1434,8 @@ function rebated(c: Candidate, saving: number): Candidate {
 function toCommitment(
   candidate: Candidate,
   superseded: Commitment | null,
-  corridor?: ScenarioProject["corridor"]
+  corridor?: ScenarioProject["corridor"],
+  deferred?: ScenarioProject["deferred"]
 ): Commitment {
   const isBundle = candidate.option.members.length > 1;
   const shares = isBundle ? splitOptionCost(candidate.option, candidate.ctx) : [Math.round(candidate.cost)];
@@ -1348,6 +1467,7 @@ function toCommitment(
     cash: candidate.cash,
     supersededTreatment: superseded?.project.treatment ?? null,
     ...(corridor ? { corridor } : {}),
+    ...(deferred ? { deferred } : {}),
   };
 
   return {

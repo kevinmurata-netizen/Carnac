@@ -207,6 +207,7 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
     ...(map.typeFunding === "separate" ? { typeFunding: "separate" as const } : {}),
     // And only on one that bundles corridor work.
     ...(map.corridorBundling === true ? { corridorBundling: true } : {}),
+    ...(map.corridorBundling === true && map.corridorDeferral === true ? { corridorDeferral: true } : {}),
   };
 }
 
@@ -220,12 +221,13 @@ const withTypeWeights = (weights: AssetTypeWeights) =>
  * choice, and a missing row reads as the default target instead.
  */
 export function assumptionRows(assumptions: ScenarioAssumptions) {
-  const { assetTypeWeights, typeFunding, corridorBundling, ...rest } = assumptions;
+  const { assetTypeWeights, typeFunding, corridorBundling, corridorDeferral, ...rest } = assumptions;
   return Object.entries({
     ...rest,
     ...withTypeWeights(parseAssetTypeWeights(assetTypeWeights)),
     ...(typeFunding === "separate" ? { typeFunding } : {}),
     ...(corridorBundling ? { corridorBundling: true } : {}),
+    ...(corridorBundling && corridorDeferral ? { corridorDeferral: true } : {}),
   }).map(([key, value]) => ({
     key,
     value: value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue),
@@ -962,6 +964,7 @@ async function persistScenarioProgram(
               // Where it joined a corridor bundle: beside what, and for how
               // much less. Absent on everything else.
               ...(p.corridor ? { corridor: p.corridor } : {}),
+              ...(p.deferred ? { deferred: p.deferred } : {}),
             },
             reasonExplanation: p.locked
               ? `Locked from ${lockedPlanName ?? "the locked work plan"}` +
@@ -978,6 +981,9 @@ async function persistScenarioProgram(
               (p.corridor
                 ? `, bundled with ${p.corridor.withAssetCode} to save $${p.corridor.saving.toLocaleString("en-US")}` +
                   (p.corridor.dueYear != null ? ` (brought forward from ${p.corridor.dueYear})` : "")
+                : "") +
+              (p.deferred
+                ? `, after waiting from ${p.deferred.from} for ${p.deferred.withAssetCode}'s work (estimated saving $${p.deferred.saving.toLocaleString("en-US")} against $${p.deferred.waitingCost.toLocaleString("en-US")} expected failure cost of waiting)`
                 : "") +
               `. Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
             fundingSource: p.locked ? "Programmed (locked)" : "Scenario Budget",
@@ -1017,6 +1023,8 @@ export type ScenarioProjectRow = {
   /** Where it joined a corridor bundle: beside which asset, and what that
    * saved. Null on everything else. */
   corridor: { withAssetCode: string; saving: number; dueYear: number | null } | null;
+  /** Where it waited to join a neighbour's bundle: from which year, for whom. */
+  deferred: { from: number; withAssetCode: string } | null;
 };
 
 /** The projects a scenario run funded, newest run only. */
@@ -1041,6 +1049,7 @@ export async function getScenarioProjects(
       riskAfter?: number;
       riskReductionPct?: number;
       corridor?: { withAssetCode?: string; saving?: number; dueYear?: number };
+      deferred?: { from?: number; withAssetCode?: string };
     };
     return {
       year: i.year,
@@ -1065,6 +1074,8 @@ export async function getScenarioProjects(
             dueYear: b.corridor.dueYear ?? null,
           }
         : null,
+      deferred:
+        b.deferred?.from != null ? { from: b.deferred.from, withAssetCode: b.deferred.withAssetCode ?? "" } : null,
     };
   });
 }
