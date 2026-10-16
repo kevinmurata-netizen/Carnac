@@ -43,6 +43,7 @@ import {
 import type { FundingPlan } from "@/domain/waterline/category-funding";
 import { selectForYear, type Rankable } from "@/domain/waterline/selection";
 import { DEFAULT_ASSUMPTIONS, type ScenarioAssumptions } from "@/domain/waterline/scenario";
+import { corridorGroupsOf } from "@/domain/waterline/corridor-bundling";
 import { runSchedule, type ScheduledVisit } from "@/domain/waterline/schedule";
 import {
   loadScenarioRun,
@@ -152,10 +153,14 @@ export async function createWorkPlanFromScenario(
 
   // One row per treatment, so a funded bundle becomes several rows sharing a
   // bundleId: one visit, one set of effects, the cost divided between them.
+  // Corridor bundles stay together: every row of one carries its group, and
+  // work that joined carries the price it would have alone.
+  const corridorGroups = corridorGroupsOf(years.flatMap((y) => y.selected));
   const items = years.flatMap((year) =>
     year.selected.flatMap((p) => {
       const isBundle = p.bundleName != null;
       const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${p.buildYear}:${p.treatment}` : null;
+      const group = corridorGroups.get(p);
       return p.members.flatMap((member) => {
         const treatmentId = treatmentIdFor(p.assetId, member.treatment);
         if (!treatmentId) return [];
@@ -187,8 +192,9 @@ export async function createWorkPlanFromScenario(
               // totals are the money that actually leaves each year rather
               // than the whole cost landing in one of them.
               ...(p.cash.length > 1 ? { cash: p.cash } : {}),
-              ...(p.corridor ? { corridor: p.corridor } : {}),
+              ...(p.corridor ? { corridor: { ...p.corridor, costApart: costApart(member.cost, p) } } : {}),
               ...(p.deferred ? { deferred: p.deferred } : {}),
+              ...(group ? { corridorGroup: `${workPlan.id}:${group}` } : {}),
             },
             reasonExplanation: [
               `Funded by the ${run.name} run in ${year.year}${isBundle ? ` as part of ${p.treatment}` : ""}.`,
@@ -723,6 +729,12 @@ export type WorkPlanYear = {
     reason: string | null;
     fundingSource: string | null;
     status: WorkPlanItemStatus;
+    /** The corridor bundle it is part of, where it is in one. */
+    corridorGroup: string | null;
+    /** Where it joined that bundle: beside what, and for how much less. */
+    corridor: { withAssetId: string; withAssetCode: string; saving: number } | null;
+    /** Work that joined the bundle beside this one, and what each saved. */
+    corridorJoiners: Array<{ assetCode: string; saving: number }>;
   }>;
   totalCost: number;
 };
@@ -766,6 +778,8 @@ export async function getWorkPlan(organizationId: string, id: string) {
       refusedBy?: string | null;
       /** The project's own payment profile, where its cost is spread. */
       cash?: Array<{ year: number; amount: number }>;
+      corridorGroup?: string;
+      corridor?: { withAssetId?: string; withAssetCode?: string; saving?: number; dueYear?: number };
     };
     const entry = byYear.get(item.year) ?? { year: item.year, items: [], totalCost: 0 };
     entry.items.push({
@@ -800,6 +814,20 @@ export async function getWorkPlan(organizationId: string, id: string) {
       reason: item.reasonExplanation,
       fundingSource: item.fundingSource,
       status: item.status,
+      /** The corridor bundle it is part of, where it is in one. */
+      corridorGroup: benefit.corridorGroup ?? null,
+      /** Where it joined that bundle: beside what, and for how much less. */
+      corridor: benefit.corridor?.withAssetId
+        ? {
+            withAssetId: benefit.corridor.withAssetId,
+            withAssetCode: benefit.corridor.withAssetCode ?? "",
+            saving: benefit.corridor.saving ?? 0,
+          }
+        : null,
+      /** Work that joined the bundle beside this one, and what it saved —
+       * what moving this alone, or cancelling it, would price on its own
+       * again. Filled in below, once every row is read. */
+      corridorJoiners: [] as Array<{ assetCode: string; saving: number }>,
     });
     // A year's total is the money that actually leaves it. For all but a cost
     // spread over years that is the row's own figure; for those, each year
@@ -812,6 +840,20 @@ export async function getWorkPlan(organizationId: string, id: string) {
       byYear.set(instalment.year, paying);
     }
     byYear.set(item.year, entry);
+  }
+
+  // Each piece of work's joiners: rows in its corridor bundle that joined it.
+  // A joiner made of several treatments is one project, so counted once.
+  const all = [...byYear.values()].flatMap((e) => e.items);
+  for (const item of all) {
+    if (!item.corridorGroup) continue;
+    const seen = new Set<string>();
+    for (const other of all) {
+      if (other.corridorGroup !== item.corridorGroup || other.corridor?.withAssetId !== item.assetId) continue;
+      if (seen.has(other.assetCode)) continue;
+      seen.add(other.assetCode);
+      item.corridorJoiners.push({ assetCode: other.assetCode, saving: other.corridor.saving });
+    }
   }
 
   for (const entry of byYear.values()) {
@@ -1488,10 +1530,85 @@ async function projectRows(organizationId: string, itemId: string) {
   return { item, where };
 }
 
+/** A row's price outside its corridor bundle: its share of what the project
+ * would have cost on its own. */
+function costApart(share: number, project: { cost: number; corridor?: { saving: number } }): number {
+  if (!project.corridor || project.cost <= 0) return share;
+  return Math.round((share * (project.cost + project.corridor.saving)) / project.cost);
+}
+
+type CorridorRow = {
+  id: string;
+  assetId: string;
+  estimatedCost: number;
+  expectedBenefit: unknown;
+  reasonExplanation: string | null;
+};
+type CorridorNote = {
+  corridorGroup?: string;
+  corridor?: { withAssetId?: string; withAssetCode?: string; saving?: number; costApart?: number };
+};
+
+/**
+ * Corridor bundles a change breaks apart. `leaving` are rows leaving their
+ * bundle — moved alone, cancelled, deferred or removed. Each leaves its
+ * group; one that had joined is priced on its own again; and work that had
+ * joined *it* is priced on its own again too, since what it was bundled with
+ * is no longer beside it. Returns what was repriced, as asset codes.
+ */
+async function leaveCorridor(workPlanId: string, leaving: CorridorRow[], why: string) {
+  const groups = [
+    ...new Set(leaving.map((r) => (r.expectedBenefit as CorridorNote | null)?.corridorGroup).filter((g): g is string => !!g)),
+  ];
+  if (groups.length === 0) return [];
+  const leavingIds = new Set(leaving.map((r) => r.id));
+  const leavingAssets = new Set(leaving.map((r) => r.assetId));
+  const members = await prisma.workPlanItem.findMany({
+    where: { workPlanId, OR: groups.map((g) => ({ expectedBenefit: { path: ["corridorGroup"], equals: g } })) },
+    select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true, asset: { select: { assetCode: true } } },
+  });
+  const repriced = new Set<string>();
+  const updates = members.flatMap((m) => {
+    const note = (m.expectedBenefit ?? {}) as CorridorNote & Record<string, unknown>;
+    const isLeaving = leavingIds.has(m.id);
+    const lostPartner = !!note.corridor?.withAssetId && leavingAssets.has(note.corridor.withAssetId) && !isLeaving;
+    if (!isLeaving && !lostPartner) return [];
+    const reprice = !!note.corridor;
+    const rest = { ...note };
+    delete rest.corridorGroup;
+    if (reprice) delete rest.corridor;
+    if (reprice) repriced.add(m.asset.assetCode);
+    return [
+      prisma.workPlanItem.update({
+        where: { id: m.id },
+        data: {
+          expectedBenefit: rest as object,
+          ...(reprice ? { estimatedCost: note.corridor?.costApart ?? m.estimatedCost } : {}),
+          ...(reprice
+            ? {
+                reasonExplanation: `${m.reasonExplanation ?? ""} Priced on its own again: ${
+                  lostPartner ? `${note.corridor?.withAssetCode}, the work it was bundled with, was ${why}` : `it was ${why}`
+                }, so the corridor saving of $${(note.corridor?.saving ?? 0).toLocaleString("en-US")} no longer applies.`.trim(),
+              }
+            : {}),
+        },
+      }),
+    ];
+  });
+  if (updates.length > 0) await prisma.$transaction(updates);
+  return [...repriced];
+}
+
 /** Take a row — or a whole combined project — out of a plan. The plan is a
- * schedule, and removing from it changes no scenario. */
+ * schedule, and removing from it changes no scenario. Work bundled with it in
+ * a corridor is priced on its own again. */
 export async function removeWorkPlanItem(organizationId: string, itemId: string) {
   const { item, where } = await projectRows(organizationId, itemId);
+  const rows = await prisma.workPlanItem.findMany({
+    where,
+    select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true },
+  });
+  await leaveCorridor(item.workPlanId, rows, "removed from the plan");
   await prisma.workPlanItem.deleteMany({ where });
   return item.workPlanId;
 }
@@ -1499,17 +1616,36 @@ export async function removeWorkPlanItem(organizationId: string, itemId: string)
 /** Move a row, or a whole combined project, to a different year (SPEC §17).
  * Year totals are recomputed on read, so the caller sees the budget impact
  * immediately. */
-export async function moveWorkPlanItem(organizationId: string, itemId: string, targetYear: number) {
+export async function moveWorkPlanItem(
+  organizationId: string,
+  itemId: string,
+  targetYear: number,
+  /** Move every project in its corridor bundle with it, keeping their
+   * savings. Otherwise it leaves the bundle, and work bundled with it is
+   * priced on its own again. */
+  withCorridor = false
+) {
   const { item, where } = await projectRows(organizationId, itemId);
-  if (targetYear < item.workPlan.startYear || targetYear > item.workPlan.endYear) {
+  if (!Number.isInteger(targetYear) || targetYear < item.workPlan.startYear || targetYear > item.workPlan.endYear) {
     throw new Error(`Year must be between ${item.workPlan.startYear} and ${item.workPlan.endYear}`);
   }
 
   // The whole project shifts together. Moving a renewal's money two years out
   // without moving its construction would say the pipe is laid before it is
   // paid for; the lead time is a fact about delivery, not about the year.
-  const rows = await prisma.workPlanItem.findMany({
+  const own = await prisma.workPlanItem.findMany({
     where,
+    select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true },
+  });
+  const group = (own[0]?.expectedBenefit as CorridorNote | null)?.corridorGroup;
+  if (group && !withCorridor && targetYear !== item.year) {
+    await leaveCorridor(item.workPlanId, own, `moved to ${targetYear}`);
+  }
+  const rows = await prisma.workPlanItem.findMany({
+    where:
+      group && withCorridor
+        ? { workPlanId: item.workPlanId, expectedBenefit: { path: ["corridorGroup"], equals: group } }
+        : where,
     select: { id: true, year: true, programmedYear: true, buildYear: true },
   });
   const shift = targetYear - item.year;
@@ -1530,6 +1666,15 @@ export async function moveWorkPlanItem(organizationId: string, itemId: string, t
 
 export async function updateWorkPlanItemStatus(organizationId: string, itemId: string, status: WorkPlanItemStatus) {
   const { item, where } = await projectRows(organizationId, itemId);
+  // Work that is not going ahead leaves its corridor bundle, and work bundled
+  // with it is priced on its own again.
+  if (status === WorkPlanItemStatus.CANCELLED || status === WorkPlanItemStatus.DEFERRED) {
+    const rows = await prisma.workPlanItem.findMany({
+      where,
+      select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true },
+    });
+    await leaveCorridor(item.workPlanId, rows, status === WorkPlanItemStatus.CANCELLED ? "cancelled" : "deferred");
+  }
   await prisma.workPlanItem.updateMany({ where, data: { status } });
   return item.workPlanId;
 }

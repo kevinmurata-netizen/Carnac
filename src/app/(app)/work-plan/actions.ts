@@ -278,7 +278,10 @@ export async function moveItemAction(formData: FormData) {
   const targetYear = Number(formData.get("targetYear"));
   if (!itemId || !Number.isFinite(targetYear)) throw new Error("Item and target year are required");
 
-  const workPlanId = await moveWorkPlanItem(session.user.organizationId, itemId, targetYear);
+  // Ticked, the move takes its whole corridor bundle along and keeps the
+  // savings; unticked, it leaves the bundle.
+  const withCorridor = String(formData.get("withCorridor") ?? "") === "on";
+  const workPlanId = await moveWorkPlanItem(session.user.organizationId, itemId, targetYear, withCorridor);
   revalidatePath(`/work-plan/${workPlanId}`);
 }
 

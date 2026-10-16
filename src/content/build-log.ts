@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-16",
+    title: "Corridor bundles kept together in work plans",
+    summary:
+      "A work plan made from a scenario that bundles neighbouring work keeps each corridor bundle together, and says what moving, cancelling or removing one of its projects does to the others.",
+    changes: [
+      "Each project in a corridor bundle shows what it joined — \"corridor: with WL-0163, saving $2,729\" — or which work joined it.",
+      "Moving a project takes its whole corridor bundle along by default, keeping the savings. Untick \"with its corridor bundle\" to move it alone: it leaves the bundle, and work that had joined it is priced on its own again. The Move control's tooltip says by how much before you do it.",
+      "Cancelling, deferring or removing a project does the same: work bundled with it goes back to its own price, and each row's explanation says why.",
+      "Fixed: where a combination of treatments joined a corridor bundle, its rows were stored at their full price while the project was bought at the bundled one. The rows now add up to what was paid.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-15",
     title: "Letting work wait for a neighbour's corridor bundle",
     summary:

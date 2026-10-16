@@ -80,6 +80,7 @@ import {
   type YearAlternative,
   breakdownByType,
   corridorOf,
+  sharesOf,
   waitingCost,
   typicalPriorities,
   withByType,
@@ -1438,7 +1439,9 @@ function toCommitment(
   deferred?: ScenarioProject["deferred"]
 ): Commitment {
   const isBundle = candidate.option.members.length > 1;
-  const shares = isBundle ? splitOptionCost(candidate.option, candidate.ctx) : [Math.round(candidate.cost)];
+  const shares = isBundle
+    ? sharesOf(splitOptionCost(candidate.option, candidate.ctx), candidate.cost)
+    : [Math.round(candidate.cost)];
 
   const project: ScenarioProject = {
     assetId: candidate.assetId,

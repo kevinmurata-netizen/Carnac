@@ -417,6 +417,25 @@ export type ScenarioYearResult = {
   corridorSaving?: number;
 };
 
+/**
+ * A bundle's per-treatment shares, held to what the bundle was actually
+ * bought for. A corridor saving comes off the whole project, so its shares
+ * shrink with it in proportion; bought at full price they are left exactly
+ * as they were.
+ */
+export function sharesOf(shares: number[], total: number): number[] {
+  const target = Math.round(total);
+  const sum = shares.reduce((a, b) => a + b, 0);
+  if (sum === target || sum <= 0) return shares;
+  const scaled = shares.map((s) => Math.round((s * target) / sum));
+  const drift = target - scaled.reduce((a, b) => a + b, 0);
+  if (drift !== 0) {
+    const largest = scaled.indexOf(Math.max(...scaled));
+    scaled[largest] += drift;
+  }
+  return scaled;
+}
+
 /** What waiting `years` is expected to cost an asset in failures, walking
  * its own curve. */
 export function waitingCost(asset: SimAsset, years: number): number {
@@ -1504,7 +1523,7 @@ export function runScenario(
       // Computed before the treatment is applied below, though only diameter
       // and length go into it — neither of which a treatment changes.
       const shares = isBundle
-        ? splitOptionCost(candidate.option, buildContext(candidate.asset))
+        ? sharesOf(splitOptionCost(candidate.option, buildContext(candidate.asset)), candidate.cost)
         : [Math.round(candidate.cost)];
 
       selected.push({
