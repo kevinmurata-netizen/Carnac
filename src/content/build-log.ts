@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-16",
+    title: "Fixes from a pass through the new screens",
+    summary:
+      "Small fixes found walking through budgets, corridor bundling and the scenario form in the browser.",
+    changes: [
+      "Settings › Corridor Bundling: each asset type's corridor attribute choice stays inside its box at narrower widths, and the save message points to the preview beside the form.",
+      "Budgets: a budget set entirely by asset type opens on the first type with amounts rather than an empty Whole budget tab, and the whole-budget explanation shows only on that tab.",
+      "The scenario form describes corridor bundling as it works: neighbours become cheaper as the year's work is bought, and compete for the rest of its money at that price.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-16",
     title: "Bundling neighbouring work by hand in a plan",
     summary:
       "In a work plan, a project can now be bundled by hand with work on neighbouring assets in the same year, for what doing it together saves — the last part of corridor bundling.",

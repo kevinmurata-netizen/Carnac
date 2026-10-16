@@ -107,16 +107,16 @@ export function CorridorForm({
           record it, it decides instead of distance: the same value makes them neighbours, a different one does not.
           That is what tells mains along one street from mains that only meet it at a junction.
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 xl:grid-cols-2">
           {config.types.map((t) => (
-            <label key={t.id} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+            <label key={t.id} className="flex min-w-0 items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
               <span className="font-medium">{t.name}</span>
               <select
                 aria-label={`${t.name} corridor attribute`}
                 value={attributes[t.id]}
                 onChange={(e) => setAttributes({ ...attributes, [t.id]: e.target.value })}
                 disabled={!canEdit}
-                className={`${box} max-w-56`}
+                className={`${box} min-w-0 max-w-56 flex-1`}
               >
                 <option value="">Distance alone</option>
                 {t.attributeChoices.map((a) => (

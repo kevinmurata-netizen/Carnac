@@ -87,7 +87,13 @@ export function BudgetEditor({
     }
     return out;
   });
-  const [scope, setScope] = useState(WHOLE);
+  // Open on the whole budget, unless it is empty and an asset type's is not —
+  // a budget set entirely by type would otherwise open on a blank table.
+  const [scope, setScope] = useState(() => {
+    const hasRows = (id: string) => toRows(initial.lines, id).length > 0;
+    if (hasRows(WHOLE)) return WHOLE;
+    return scopes.find((s) => s.id !== WHOLE && hasRows(s.id))?.id ?? WHOLE;
+  });
   const rows = byScope[scope] ?? [];
   const setRows = (change: (rows: Row[]) => Row[]) =>
     setByScope((all) => ({ ...all, [scope]: change(all[scope] ?? []) }));
@@ -285,7 +291,7 @@ export function BudgetEditor({
         <Button type="button" size="sm" variant="outline" onClick={addYear}>
           Add a year
         </Button>
-        <p className="text-xs text-muted-foreground">
+        <p className={`text-xs text-muted-foreground ${scope === WHOLE ? "" : "hidden"}`}>
           A scenario following this budget spends each year&apos;s total in place of its annual budget and growth.
           {byCategory &&
             " A category amount is the most that kind of work may take that year; a category left blank is held only by the total. Leave the total blank and it is the categories added up."}{" "}
