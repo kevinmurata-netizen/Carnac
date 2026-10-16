@@ -437,6 +437,7 @@ export default async function WorkPlanDetailPage({
                                   <HandBadges item={first} />
                                 </>
                               )}
+                              <CorridorNote item={first} />
                             </TableCell>
                             {/* The year it was decided and the year it is done.
                                 A project waiting years for construction is the
@@ -528,7 +529,12 @@ export default async function WorkPlanDetailPage({
                                       </option>
                                     ))}
                                   </select>
-                                  <Button type="submit" size="xs" variant="outline">
+                                  <Button
+                                    type="submit"
+                                    size="xs"
+                                    variant="outline"
+                                    title={first.corridorGroup ? corridorEffect(first, "Cancelling or deferring it") : undefined}
+                                  >
                                     Set
                                   </Button>
                                 </form>
@@ -540,7 +546,7 @@ export default async function WorkPlanDetailPage({
                             </TableCell>
                             {editable && (
                               <TableCell>
-                                <form action={moveItemAction} className="flex items-center gap-1">
+                                <form action={moveItemAction} className="flex flex-wrap items-center gap-1">
                                   <input type="hidden" name="itemId" value={first.id} />
                                   <select
                                     name="targetYear"
@@ -556,6 +562,15 @@ export default async function WorkPlanDetailPage({
                                   <Button type="submit" size="xs" variant="outline">
                                     Move
                                   </Button>
+                                  {first.corridorGroup && (
+                                    <label
+                                      className="flex basis-full items-center gap-1 text-[11px] text-muted-foreground"
+                                      title={corridorEffect(first, "Moving it alone")}
+                                    >
+                                      <input type="checkbox" name="withCorridor" defaultChecked />
+                                      with its corridor bundle
+                                    </label>
+                                  )}
                                 </form>
                               </TableCell>
                             )}
@@ -569,11 +584,12 @@ export default async function WorkPlanDetailPage({
                                     ariaLabel={`Remove ${project.projectId}`}
                                     title={`Remove ${project.projectId}?`}
                                     description={
-                                      combined
+                                      (combined
                                         ? `All ${project.items.length} treatments in this project are removed from this plan. To remove just one, split the project first. The scenario is untouched.`
                                         : first.addedByHand
                                           ? "It was added by hand, so nothing regenerates it. This cannot be undone."
-                                          : "It came from the scenario this plan was made from. Removing it changes this plan only; the scenario is untouched, and making a new plan from that scenario would bring it back."
+                                          : "It came from the scenario this plan was made from. Removing it changes this plan only; the scenario is untouched, and making a new plan from that scenario would bring it back.") +
+                                      (first.corridorGroup ? ` ${corridorEffect(first, "Removing it")}` : "")
                                     }
                                   >
                                     Remove
@@ -734,6 +750,46 @@ function maxOf(values: Array<number | null>) {
 }
 
 /** Says when a treatment was put here by a person rather than the model. */
+/** Where a project sits in a corridor bundle: what it joined, or what joined it. */
+function CorridorNote({ item }: { item: PlanItem }) {
+  if (!item.corridorGroup) return null;
+  const joined = item.corridor;
+  const joiners = item.corridorJoiners;
+  if (!joined && joiners.length === 0) return null;
+  return (
+    <div
+      className="text-xs text-muted-foreground"
+      title="A corridor bundle: neighbouring work done together for what that saves. The saving holds while they stay in the same year."
+    >
+      {joined && (
+        <>
+          corridor: with {joined.withAssetCode}, saving {formatCurrency(joined.saving)}
+        </>
+      )}
+      {joined && joiners.length > 0 && "; "}
+      {joiners.length > 0 && (
+        <>
+          {joined ? "" : "corridor: "}
+          {joiners.map((j) => j.assetCode).join(", ")} joined it
+        </>
+      )}
+    </div>
+  );
+}
+
+/** What taking a project out of its corridor bundle would do, in a sentence. */
+function corridorEffect(item: PlanItem, doing: string): string {
+  const parts: string[] = [];
+  if (item.corridor) parts.push(`prices it on its own again (+${formatCurrency(item.corridor.saving)})`);
+  if (item.corridorJoiners.length > 0) {
+    const total = item.corridorJoiners.reduce((sum, j) => sum + j.saving, 0);
+    parts.push(
+      `prices ${item.corridorJoiners.map((j) => j.assetCode).join(", ")} on ${item.corridorJoiners.length === 1 ? "its" : "their"} own again (+${formatCurrency(total)})`
+    );
+  }
+  return parts.length > 0 ? `${doing} takes it out of its corridor bundle and ${parts.join(" and ")}.` : "";
+}
+
 function HandBadges({ item }: { item: PlanItem }) {
   if (!item.addedByHand) return null;
   return (

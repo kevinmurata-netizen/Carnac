@@ -208,3 +208,42 @@ export function chooseDeferrals<T extends Bundleable>(
   }
   return deferrals;
 }
+
+/**
+ * Which projects form one corridor bundle: work that joined, the work it
+ * joined, and so on along the chain, decided in the same year. Keyed by
+ * project, valued by a group key stable within a run ("year:first asset");
+ * projects in no bundle are absent.
+ */
+export function corridorGroupsOf<P extends { assetId: string; programmedYear: number; corridor?: { withAssetId: string } }>(
+  projects: P[]
+): Map<P, string> {
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    let root = k;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    parent.set(k, root);
+    return root;
+  };
+  const key = (year: number, assetId: string) => `${year}:${assetId}`;
+  for (const p of projects) {
+    const k = key(p.programmedYear, p.assetId);
+    if (!parent.has(k)) parent.set(k, k);
+  }
+  for (const p of projects) {
+    if (!p.corridor) continue;
+    const a = key(p.programmedYear, p.assetId);
+    const b = key(p.programmedYear, p.corridor.withAssetId);
+    if (!parent.has(b)) continue;
+    const [ra, rb] = [find(a), find(b)];
+    if (ra !== rb) parent.set(ra < rb ? rb : ra, ra < rb ? ra : rb);
+  }
+  const size = new Map<string, number>();
+  for (const k of parent.keys()) size.set(find(k), (size.get(find(k)) ?? 0) + 1);
+  const groups = new Map<P, string>();
+  for (const p of projects) {
+    const root = find(key(p.programmedYear, p.assetId));
+    if ((size.get(root) ?? 0) > 1) groups.set(p, root);
+  }
+  return groups;
+}
