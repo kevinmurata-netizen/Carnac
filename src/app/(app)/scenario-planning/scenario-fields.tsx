@@ -781,8 +781,9 @@ export function ScenarioFields({
             Bundle neighbouring work (corridor bundling)
           </label>
           <p className="text-xs text-muted-foreground">
-            Once the year&apos;s work is chosen, work on {words.items} beside it is offered again at its bundled price —
-            what doing it together saves comes off — and joins if the money left is worth spending on it. Which{" "}
+            As the year&apos;s work is bought, each {words.item} given work makes the work on {words.items} beside it
+            cheaper by what doing it together saves, and that work competes for the rest of the year&apos;s money at the
+            lower price. Which{" "}
             {words.items} are neighbours, and what each pair of asset types saves, are set under{" "}
             <Link href="/settings/corridor-bundling" className="font-medium text-primary underline-offset-2 hover:underline">
               Settings &rsaquo; Corridor Bundling

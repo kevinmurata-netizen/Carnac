@@ -40,5 +40,5 @@ export async function saveCorridorAction(_prev: CorridorFormState, formData: For
     return { status: "error", message: e instanceof Error ? e.message : "Could not save corridor bundling" };
   }
   for (const path of [CARD, "/scenario-planning"]) revalidatePath(path);
-  return { status: "success", message: "Saved. The preview below reflects these settings." };
+  return { status: "success", message: "Saved. What these settings find is shown alongside." };
 }
