@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireCardWrite } from "@/server/guard";
 import { updateUserRole, setUserActive, createUser, resetUserPassword } from "@/server/admin";
+import { forgetAccount } from "@/lib/account-check";
 import type { UserActionState } from "./users/state";
 
 /** User administration is Administrator-only, unlike field data entry. */
@@ -21,6 +22,7 @@ export async function updateUserRoleAction(formData: FormData) {
   }
 
   await updateUserRole(session.user.organizationId, userId, roleId);
+  forgetAccount(userId);
   revalidatePath("/administration/users");
 }
 
@@ -35,6 +37,9 @@ export async function toggleUserActiveAction(formData: FormData) {
   }
 
   await setUserActive(session.user.organizationId, userId, isActive);
+  // Their next request re-reads the account rather than waiting out the cache,
+  // at least on this server instance.
+  forgetAccount(userId);
   revalidatePath("/administration/users");
 }
 

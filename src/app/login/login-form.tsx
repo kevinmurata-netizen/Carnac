@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 const ERROR_MESSAGES: Record<string, string> = {
   CredentialsSignin: "Invalid email or password.",
+  SessionEnded: "Your session has ended. Sign in again, or ask an Administrator if your account was deactivated.",
 };
 
 /**

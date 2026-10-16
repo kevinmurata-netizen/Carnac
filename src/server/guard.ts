@@ -18,7 +18,7 @@ export async function requireAccess(
   href: string
 ): Promise<{ canWrite: boolean; roleName: string; organizationId: string }> {
   const session = await auth();
-  if (!session) redirect("/login");
+  if (!session) redirect("/session-ended");
 
   const permissions = await getSessionPermissions(session);
   const resource = resourceKey(kind, href);
