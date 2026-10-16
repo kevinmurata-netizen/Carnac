@@ -5,6 +5,7 @@ import { updateBranding } from "@/server/branding";
 import { createMaterialCurve, deleteMaterialCurve } from "@/server/deterioration";
 
 import { revalidatePath } from "next/cache";
+import { applyStarterPack } from "@/server/starter-packs";
 import { AttributeDataType } from "@prisma/client";
 import { requireCardWrite, requireAnyCardWrite } from "@/server/guard";
 import {
@@ -371,6 +372,20 @@ export async function saveMeasuresAction(
     return { status: "success", message: `${name}'s measures saved. They apply to the next run, recompute or plan.` };
   } catch (e) {
     return fail(e);
+  }
+}
+
+/** Add asset types from a starter pack. Governed by the Asset Types card:
+ * the treatments, curves and index it creates belong to the types it adds. */
+export async function applyStarterPackAction(input: { packId: string; typeCodes: string[] }) {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    const outcome = await applyStarterPack(session.user.organizationId, input.packId, input.typeCodes);
+    revalidateAll(ASSET_TYPES_CARD);
+    revalidatePath("/", "layout");
+    return { ok: true as const, outcome };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not add from the starter pack" };
   }
 }
 

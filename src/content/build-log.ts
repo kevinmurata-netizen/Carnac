@@ -30,6 +30,21 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-16",
+    title: "A power distribution starter pack",
+    summary:
+      "Settings › Asset Types can now add asset types from a starter pack, each created ready to model. The first pack is power distribution: poles, distribution transformers and overhead conductor.",
+    changes: [
+      "\"Add from a starter pack\" on Settings › Asset Types: pick the types, and each is created with its attributes and measures, inspection form, condition index, deterioration curves by material, treatments with what they do and typical prices, and failure costs — modelled and ready for Data Import.",
+      "Poles: wood, steel, concrete and composite, by height and class; a Pole Condition Index from ground-line strength, pole top, hardware, lean and surface damage; replacement, reinforcement, pole-top rebuild, remedial treatment and inspection.",
+      "Distribution transformers: pole- and pad-mounted, priced by kVA; a Transformer Condition Index from tank, leaks, bushings, loading and enclosure; replacement, refurbishment, repair and inspection.",
+      "Overhead conductor: ACSR, AAC, AAAC and copper segments priced by length; a Conductor Condition Index from stranding, splices, clearance, corrosion and vegetation; reconductoring, splice repair and line patrol.",
+      "Corridor savings between the pack's types — a pole replaced with the conductor on it shares one crew, for instance.",
+      "Every figure is an industry-typical starting point to tune. A type the organization already has is left exactly as it is.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-16",
     title: "Fixes from a pass through the new screens",
     summary:
       "Small fixes found walking through budgets, corridor bundling and the scenario form in the browser.",
