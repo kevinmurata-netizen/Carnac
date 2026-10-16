@@ -20,10 +20,13 @@ import {
   saveComponentAction,
   removeComponentAction,
   moveComponentAction,
+  applyStarterPackAction,
 } from "../actions";
 import { listComponentComposition } from "@/server/component-types";
 import { getModellingReadiness } from "@/server/modelling";
 import { suggestMissingFailureCosts } from "@/server/failure-cost";
+import { listStarterPacks } from "@/server/starter-packs";
+import { StarterPackDialog } from "./starter-pack-dialog";
 
 /**
  * The kinds of asset this utility holds, each with what it records and what is
@@ -46,11 +49,12 @@ export default async function AssetTypesPage() {
   const permissions = await getSessionPermissions(session!);
   const canEditTemplates = permissions.canWrite(resourceKey("card", "/settings/inspection-templates"));
 
-  const [types, composition, readiness, failureSuggestions] = await Promise.all([
+  const [types, composition, readiness, failureSuggestions, packs] = await Promise.all([
     listAssetTypeDetails(organizationId),
     listComponentComposition(organizationId),
     getModellingReadiness(organizationId),
     suggestMissingFailureCosts(organizationId),
+    listStarterPacks(organizationId),
   ]);
 
   return (
@@ -58,6 +62,7 @@ export default async function AssetTypesPage() {
       <PageHeader
         title={pageTitle}
         description="Every kind of asset this utility holds, what each one records, the parts it is made of, and the forms used to inspect it"
+        actions={canEdit && <StarterPackDialog packs={packs} onApply={applyStarterPackAction} />}
       />
 
       {!canEdit && (
