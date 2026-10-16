@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-16",
+    title: "Bundling neighbouring work by hand in a plan",
+    summary:
+      "In a work plan, a project can now be bundled by hand with work on neighbouring assets in the same year, for what doing it together saves — the last part of corridor bundling.",
+    changes: [
+      "A Bundle button beside Combine opens the projects that could join: same year, on a neighbouring asset by Settings › Corridor Bundling, not already in a bundle, and of a pair of asset types that saves something together. Each shows its price before and after.",
+      "The project keeps its price; each one picked joins it at its bundled price — one mobilization at the larger of the two where the pair shares one, and the pair's percentage off the rest — and its explanation says so.",
+      "An Unbundle link on any project in a corridor bundle takes it out: it, and any work that joined it, go back to their own prices.",
+      "Moving, cancelling or removing hand-made bundles works as for bundles from a scenario.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-16",
     title: "Corridor bundles kept together in work plans",
     summary:
       "A work plan made from a scenario that bundles neighbouring work keeps each corridor bundle together, and says what moving, cancelling or removing one of its projects does to the others.",
