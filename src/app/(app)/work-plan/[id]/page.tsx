@@ -23,10 +23,12 @@ import {
   deleteWorkPlanAction,
   removeItemAction,
   splitVisitAction,
+  unbundleCorridorAction,
   createFromScenarioAction,
 } from "../actions";
 import { AddWorkDialog } from "./add-work-dialog";
 import { CombineDialog } from "./combine-dialog";
+import { CorridorDialog } from "./corridor-dialog";
 import { ProjectRows } from "./project-rows";
 import { ImportDialog } from "./import-dialog";
 import { SubmitButton, PendingLinkButton } from "@/components/ui/pending-button";
@@ -437,7 +439,7 @@ export default async function WorkPlanDetailPage({
                                   <HandBadges item={first} />
                                 </>
                               )}
-                              <CorridorNote item={first} />
+                              <CorridorNote item={first} editable={editable} />
                             </TableCell>
                             {/* The year it was decided and the year it is done.
                                 A project waiting years for construction is the
@@ -487,6 +489,13 @@ export default async function WorkPlanDetailPage({
                                     year={y.year}
                                     years={years.map((yy) => yy.year)}
                                   />
+                                )}
+                                {/* Neighbouring work bundled with this one: offered
+                                    to a project not already joined to another. */}
+                                {!first.corridor && (
+                                  <span className="ml-1 inline-block">
+                                    <CorridorDialog workPlanId={plan.id} itemId={first.id} assetCode={first.assetCode} />
+                                  </span>
                                 )}
                               </TableCell>
                             )}
@@ -751,14 +760,14 @@ function maxOf(values: Array<number | null>) {
 
 /** Says when a treatment was put here by a person rather than the model. */
 /** Where a project sits in a corridor bundle: what it joined, or what joined it. */
-function CorridorNote({ item }: { item: PlanItem }) {
+function CorridorNote({ item, editable }: { item: PlanItem; editable: boolean }) {
   if (!item.corridorGroup) return null;
   const joined = item.corridor;
   const joiners = item.corridorJoiners;
   if (!joined && joiners.length === 0) return null;
   return (
     <div
-      className="text-xs text-muted-foreground"
+      className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
       title="A corridor bundle: neighbouring work done together for what that saves. The saving holds while they stay in the same year."
     >
       {joined && (
@@ -772,6 +781,18 @@ function CorridorNote({ item }: { item: PlanItem }) {
           {joined ? "" : "corridor: "}
           {joiners.map((j) => j.assetCode).join(", ")} joined it
         </>
+      )}
+      {editable && (
+        <form action={unbundleCorridorAction} className="inline">
+          <input type="hidden" name="itemId" value={item.id} />
+          <button
+            type="submit"
+            className="text-primary underline-offset-2 hover:underline"
+            title={corridorEffect(item, "Unbundling it")}
+          >
+            Unbundle
+          </button>
+        </form>
       )}
     </div>
   );

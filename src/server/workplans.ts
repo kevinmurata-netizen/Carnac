@@ -44,6 +44,8 @@ import type { FundingPlan } from "@/domain/waterline/category-funding";
 import { selectForYear, type Rankable } from "@/domain/waterline/selection";
 import { DEFAULT_ASSUMPTIONS, type ScenarioAssumptions } from "@/domain/waterline/scenario";
 import { corridorGroupsOf } from "@/domain/waterline/corridor-bundling";
+import { findNeighbours, pairSaving } from "@/domain/waterline/corridor";
+import { getCorridorConfig, loadCorridorAssets, savingsByPair } from "@/server/corridors";
 import { runSchedule, type ScheduledVisit } from "@/domain/waterline/schedule";
 import {
   loadScenarioRun,
@@ -1766,4 +1768,251 @@ export async function ensureBaselineWorkPlan(organizationId: string): Promise<bo
     weights: DEFAULT_WEIGHTS,
   });
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Corridor bundles made by hand
+// ---------------------------------------------------------------------------
+
+/** A project that could join a corridor bundle, and what it would save. */
+export type CorridorOffer = {
+  /** Its first row: actions go through it to the whole project. */
+  itemId: string;
+  assetCode: string;
+  treatment: string;
+  cost: number;
+  saving: number;
+};
+
+export type CorridorBundlePreview = {
+  assetCode: string;
+  year: number;
+  offers: CorridorOffer[];
+  /** Why there is nothing to offer, where there is nothing. */
+  note: string | null;
+};
+
+type PlanProject = {
+  key: string;
+  assetId: string;
+  assetCode: string;
+  rows: Array<{
+    id: string;
+    estimatedCost: number;
+    expectedBenefit: unknown;
+    reasonExplanation: string | null;
+    treatment: string;
+  }>;
+  cost: number;
+};
+
+/** A plan's projects in one year, one entry per project however many rows. */
+async function planProjectsIn(workPlanId: string, year: number): Promise<PlanProject[]> {
+  const items = await prisma.workPlanItem.findMany({
+    where: { workPlanId, year, status: { notIn: [WorkPlanItemStatus.CANCELLED, WorkPlanItemStatus.DEFERRED] } },
+    select: {
+      id: true,
+      assetId: true,
+      bundleId: true,
+      estimatedCost: true,
+      expectedBenefit: true,
+      reasonExplanation: true,
+      asset: { select: { assetCode: true } },
+      treatment: { select: { name: true } },
+    },
+    orderBy: { id: "asc" },
+  });
+  const byKey = new Map<string, PlanProject>();
+  for (const i of items) {
+    const key = i.bundleId ?? i.id;
+    const p = byKey.get(key) ?? { key, assetId: i.assetId, assetCode: i.asset.assetCode, rows: [], cost: 0 };
+    p.rows.push({
+      id: i.id,
+      estimatedCost: i.estimatedCost,
+      expectedBenefit: i.expectedBenefit,
+      reasonExplanation: i.reasonExplanation,
+      treatment: i.treatment.name,
+    });
+    p.cost += i.estimatedCost;
+    byKey.set(key, p);
+  }
+  return [...byKey.values()];
+}
+
+/** What mobilizing for a project's treatments costs on its asset, as the
+ * library prices it: charged once, at the largest of their rates. */
+async function projectMobilization(organizationId: string, assetId: string, treatments: string[]): Promise<number> {
+  const [found, library] = await Promise.all([
+    assetTreatmentContext(organizationId, assetId),
+    loadTreatmentDefs(organizationId),
+  ]);
+  if (!found) return 0;
+  const defs = treatments
+    .map((t) => findTreatment(library, t, found.ctx.assetTypeId))
+    .filter((d): d is NonNullable<typeof d> => !!d);
+  if (defs.length === 0) return 0;
+  return buildOption("corridor", defs.map((d) => d.name).join(" + "), defs, found.ctx)?.mobilization ?? 0;
+}
+
+/**
+ * The projects that could join a project's corridor bundle by hand: work in
+ * the same year, on a neighbouring asset (Settings > Corridor Bundling), not
+ * already in a corridor bundle, and of a pair of asset types that saves
+ * something done together.
+ */
+export async function previewCorridorBundle(
+  organizationId: string,
+  workPlanId: string,
+  itemId: string
+): Promise<CorridorBundlePreview> {
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: workPlanId, organizationId },
+    select: { name: true, isScenarioMirror: true },
+  });
+  if (!plan) throw new Error("That work plan no longer exists");
+  if (plan.isScenarioMirror) {
+    throw new Error(
+      `${plan.name} is a scenario run's own record. Make a plan from the scenario first, then bundle work on that.`
+    );
+  }
+  const { item } = await projectRows(organizationId, itemId);
+  const projects = await planProjectsIn(workPlanId, item.year);
+  const anchor = projects.find((p) => p.rows.some((r) => r.id === itemId));
+  if (!anchor) throw new Error("That project is not scheduled in a year it can be bundled in");
+  const empty = (note: string): CorridorBundlePreview => ({ assetCode: anchor.assetCode, year: item.year, offers: [], note });
+
+  const config = await getCorridorConfig(organizationId);
+  const savings = savingsByPair(config);
+  if (savings.size === 0) {
+    return empty(
+      "No pair of asset types has a saving set yet, so there is nothing to bundle. Set them under Settings › Corridor Bundling."
+    );
+  }
+  const inGroup = (p: PlanProject) => p.rows.some((r) => (r.expectedBenefit as CorridorNote | null)?.corridorGroup);
+  const others = projects.filter((p) => p.key !== anchor.key && p.assetId !== anchor.assetId && !inGroup(p));
+  if (others.length === 0) return empty(`Nothing else in ${item.year} is free to bundle with it.`);
+
+  const assets = await loadCorridorAssets(organizationId, config, [anchor.assetId, ...others.map((p) => p.assetId)]);
+  const withAttribute = new Set(config.types.filter((t) => t.corridorAttribute).map((t) => t.id));
+  const near = findNeighbours(assets, config.distanceMeters, withAttribute).get(anchor.assetId) ?? new Set<string>();
+  const typeOf = new Map(assets.map((a) => [a.id, a.assetTypeId]));
+  const neighbours = others.filter((p) => near.has(p.assetId));
+  if (neighbours.length === 0) {
+    return empty(
+      `No other work in ${item.year} on a neighbouring asset is free to bundle with it: none within ${config.distanceMeters} m or in the same corridor that is not already in a bundle.`
+    );
+  }
+
+  const anchorMobilization = await projectMobilization(
+    organizationId,
+    anchor.assetId,
+    anchor.rows.map((r) => r.treatment)
+  );
+  const offers: CorridorOffer[] = [];
+  for (const p of neighbours) {
+    const pair = pairSaving(savings, typeOf.get(anchor.assetId) ?? "", typeOf.get(p.assetId) ?? "");
+    if (!pair) continue;
+    const mobilization = pair.sharesMobilization
+      ? Math.min(
+          await projectMobilization(organizationId, p.assetId, p.rows.map((r) => r.treatment)),
+          anchorMobilization
+        )
+      : 0;
+    const saving = Math.round(Math.min(p.cost, mobilization + pair.savingPct * Math.max(0, p.cost - mobilization)));
+    if (saving <= 0) continue;
+    offers.push({
+      itemId: p.rows[0].id,
+      assetCode: p.assetCode,
+      treatment: p.rows.map((r) => r.treatment).join(" + "),
+      cost: Math.round(p.cost),
+      saving,
+    });
+  }
+  offers.sort((a, b) => b.saving - a.saving);
+  return {
+    assetCode: anchor.assetCode,
+    year: item.year,
+    offers,
+    note: offers.length === 0 ? "Its neighbours' asset types save nothing done together with it." : null,
+  };
+}
+
+/**
+ * Bundle chosen neighbouring work with a project by hand. The project anchors
+ * the bundle at its own price; each chosen project joins it at its bundled
+ * price, keeping the price it had apart so leaving the bundle restores it.
+ */
+export async function applyCorridorBundle(
+  organizationId: string,
+  workPlanId: string,
+  itemId: string,
+  joinItemIds: string[]
+): Promise<{ assetCode: string; joined: number; saving: number }> {
+  const preview = await previewCorridorBundle(organizationId, workPlanId, itemId);
+  const chosen = preview.offers.filter((o) => joinItemIds.includes(o.itemId));
+  if (chosen.length === 0) throw new Error("Choose at least one project to bundle with it");
+
+  const { item } = await projectRows(organizationId, itemId);
+  const projects = await planProjectsIn(workPlanId, item.year);
+  const anchor = projects.find((p) => p.rows.some((r) => r.id === itemId))!;
+  const existing = anchor.rows.map((r) => (r.expectedBenefit as CorridorNote | null)?.corridorGroup).find(Boolean);
+  const group = existing ?? `${workPlanId}:hand:${item.year}:${anchor.assetId}`;
+
+  const updates = [];
+  if (!existing) {
+    for (const r of anchor.rows) {
+      updates.push(
+        prisma.workPlanItem.update({
+          where: { id: r.id },
+          data: { expectedBenefit: { ...((r.expectedBenefit ?? {}) as object), corridorGroup: group } },
+        })
+      );
+    }
+  }
+  for (const offer of chosen) {
+    const p = projects.find((x) => x.rows[0].id === offer.itemId)!;
+    // The saving comes off the whole project, its treatments sharing it in
+    // proportion to their prices.
+    const target = Math.round(p.cost - offer.saving);
+    const shares = p.rows.map((r) => Math.round((r.estimatedCost * target) / (p.cost || 1)));
+    const drift = target - shares.reduce((a, b) => a + b, 0);
+    if (drift !== 0) shares[shares.indexOf(Math.max(...shares))] += drift;
+    p.rows.forEach((r, index) => {
+      updates.push(
+        prisma.workPlanItem.update({
+          where: { id: r.id },
+          data: {
+            estimatedCost: shares[index],
+            expectedBenefit: {
+              ...((r.expectedBenefit ?? {}) as object),
+              corridorGroup: group,
+              corridor: {
+                withAssetId: anchor.assetId,
+                withAssetCode: anchor.assetCode,
+                saving: offer.saving,
+                costApart: Math.round(r.estimatedCost),
+                byHand: true,
+              },
+            },
+            reasonExplanation:
+              `${r.reasonExplanation ?? ""} Bundled by hand with ${anchor.assetCode} in one corridor in ${item.year}, saving $${offer.saving.toLocaleString("en-US")}.`.trim(),
+          },
+        })
+      );
+    });
+  }
+  await prisma.$transaction(updates);
+  return { assetCode: anchor.assetCode, joined: chosen.length, saving: chosen.reduce((s, o) => s + o.saving, 0) };
+}
+
+/** Take a project out of its corridor bundle by hand: it, and any work that
+ * had joined it, go back to the prices they have apart. */
+export async function unbundleCorridor(organizationId: string, itemId: string) {
+  const { item, where } = await projectRows(organizationId, itemId);
+  const rows = await prisma.workPlanItem.findMany({
+    where,
+    select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true },
+  });
+  await leaveCorridor(item.workPlanId, rows, "taken out of its corridor bundle by hand");
+  return item.workPlanId;
 }

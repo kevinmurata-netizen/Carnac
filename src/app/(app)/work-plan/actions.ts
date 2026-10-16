@@ -20,6 +20,9 @@ import {
   segmentRowsInPlan,
   previewCombine,
   combineWorkPlanItems,
+  previewCorridorBundle,
+  applyCorridorBundle,
+  unbundleCorridor,
   splitWorkPlanVisit,
 } from "@/server/workplans";
 import {
@@ -269,6 +272,45 @@ export async function removeItemAction(formData: FormData) {
   const itemId = String(formData.get("itemId") ?? "");
   if (!itemId) throw new Error("Item is required");
   const workPlanId = await removeWorkPlanItem(session.user.organizationId, itemId);
+  revalidatePath(`/work-plan/${workPlanId}`);
+}
+
+export async function previewCorridorBundleAction(input: { workPlanId: string; itemId: string }) {
+  const session = await requireEditor();
+  try {
+    return {
+      ok: true as const,
+      preview: await previewCorridorBundle(session.user.organizationId, input.workPlanId, input.itemId),
+    };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not look for neighbouring work" };
+  }
+}
+
+export async function applyCorridorBundleAction(input: { workPlanId: string; itemId: string; joinItemIds: string[] }) {
+  const session = await requireEditor();
+  try {
+    const done = await applyCorridorBundle(
+      session.user.organizationId,
+      input.workPlanId,
+      input.itemId,
+      input.joinItemIds
+    );
+    revalidatePath(`/work-plan/${input.workPlanId}`);
+    return {
+      ok: true as const,
+      message: `${done.joined} project${done.joined === 1 ? "" : "s"} bundled with ${done.assetCode}, saving $${done.saving.toLocaleString("en-US")}.`,
+    };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not bundle that work" };
+  }
+}
+
+export async function unbundleCorridorAction(formData: FormData) {
+  const session = await requireEditor();
+  const itemId = String(formData.get("itemId") ?? "");
+  if (!itemId) throw new Error("Item is required");
+  const workPlanId = await unbundleCorridor(session.user.organizationId, itemId);
   revalidatePath(`/work-plan/${workPlanId}`);
 }
 
