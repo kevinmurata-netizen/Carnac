@@ -25,6 +25,8 @@ export type PackChoice = {
   name: string;
   description: string;
   types: PackTypeChoice[];
+  /** Whether Data Import offers made-up files for its types. */
+  hasSamples: boolean;
 };
 
 /** The packs on offer, with which of their types this organization has. */
@@ -37,6 +39,7 @@ export async function listStarterPacks(organizationId: string): Promise<PackChoi
     name: pack.name,
     description: pack.description,
     types: pack.types.map((t) => ({ code: t.code, name: t.name, description: t.description, exists: existing.has(t.code) })),
+    hasSamples: pack.types.some((t) => t.samples),
   }));
 }
 

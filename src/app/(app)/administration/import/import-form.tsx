@@ -1,24 +1,28 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { validateImportAction, commitImportAction } from "./actions";
 import { EMPTY_IMPORT_STATE, type ImportKind, type ImportState } from "./state";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileUp } from "lucide-react";
+import type { SampleFile } from "@/config/starter-packs";
 
 export function ImportForm({
   kind,
   assetTypeId,
   assetTypeName,
   templateCsv,
+  samples,
 }: {
   kind: ImportKind;
   assetTypeId: string;
   assetTypeName: string;
   templateCsv: string;
+  /** Made-up files from a starter pack, for trying the app out. */
+  samples: SampleFile[];
 }) {
   const [state, action, pending] = useActionState<ImportState, FormData>(
     validateImportAction,
@@ -32,6 +36,28 @@ export function ImportForm({
   // The commit result supersedes the validation result once it exists.
   const active = commitState.phase === "idle" ? state : commitState;
   const report = active.report;
+
+  const [csv, setCsv] = useState(templateCsv);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  // A chosen file is read here, in the browser, into the box: what is sent is
+  // what can be seen and edited.
+  const readFile = async (file: File | undefined) => {
+    if (!file) return;
+    setLoadError(null);
+    setCsv(await file.text());
+  };
+  const loadSample = async (sample: SampleFile) => {
+    setLoadError(null);
+    try {
+      const response = await fetch(sample.url);
+      if (!response.ok) throw new Error();
+      setCsv(await response.text());
+    } catch {
+      setLoadError(`${sample.name} could not be loaded. Reload the page and try again.`);
+    }
+  };
   const hasErrors = (report?.errors.length ?? 0) > 0;
   const canCommit = report != null && !hasErrors && report.validRows.length > 0;
 
@@ -45,10 +71,49 @@ export function ImportForm({
           <form action={action} className="space-y-3">
             <input type="hidden" name="assetTypeId" value={assetTypeId} />
             <input type="hidden" name="kind" value={kind} />
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  void readFile(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              <Button type="button" size="sm" variant="outline" onClick={() => fileInput.current?.click()}>
+                <FileUp className="mr-1.5 h-4 w-4" aria-hidden />
+                Choose a CSV file
+              </Button>
+              {samples.length > 0 && (
+                <>
+                  <span className="text-xs text-muted-foreground">or load sample data:</span>
+                  {samples.map((s) => (
+                    <Button key={s.url} type="button" size="sm" variant="ghost" onClick={() => void loadSample(s)}>
+                      {s.name}
+                    </Button>
+                  ))}
+                </>
+              )}
+            </div>
+            {samples.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Sample data is a made-up network from a starter pack, for trying the app out before your own data
+                is in — not for a live setup.{" "}
+                {kind === "assets"
+                  ? "Import each type's assets before its inspections."
+                  : samples.length > 1
+                    ? "Import them in the order listed, oldest first."
+                    : "Import the assets first."}
+              </p>
+            )}
+            {loadError && <p className="text-xs text-destructive">{loadError}</p>}
             <textarea
               name="csv"
               rows={8}
-              defaultValue={active.csv || templateCsv}
+              value={csv}
+              onChange={(e) => setCsv(e.target.value)}
               spellCheck={false}
               className="w-full rounded-md border border-input bg-background p-3 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />

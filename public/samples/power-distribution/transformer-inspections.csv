@@ -1,0 +1,66 @@
+Asset ID,Inspection Date,Inspection Type,Follow-up,Notes,Tank and corrosion,Oil leaks,Bushings and connections,Loading and heat,"Pad, enclosure and grounding"
+T-103-10,2019-03-28,Routine,No,,10,10,10,10,10
+T-103-01,2019-05-08,Routine,No,,9,9,9,9,8
+T-101-08,2019-05-22,Routine,Yes,Tank rusting through at the base,2,2,2,2,2
+T-101-12,2019-06-03,Routine,No,,8,9,8,9,8
+T-101-15,2019-06-13,Routine,No,,8,4,8,8,8
+T-103-14,2019-07-18,Routine,No,,10,6,10,9,9
+T-102-14,2019-07-23,Routine,No,,7,6,6,6,6
+T-101-07,2019-07-24,Routine,No,,10,10,10,10,9
+T-103-05,2019-07-28,Routine,No,,10,10,10,9,10
+T-102-05,2019-08-13,Routine,No,,6,6,6,7,6
+T-102-07,2019-08-14,Routine,No,,7,7,7,8,7
+T-103-07,2019-08-14,Routine,No,,8,8,9,9,8
+T-101-14,2019-08-22,Routine,Yes,Runs hot at peak load,4,1,3,3,3
+T-101-02,2019-09-03,Routine,Yes,Tank rusting through at the base,2,1,2,2,1
+T-103-12,2019-09-13,Routine,No,,8,8,8,8,9
+T-101-05,2019-09-14,Routine,No,,9,9,9,9,10
+T-102-01,2019-10-02,Routine,No,,10,10,10,10,10
+T-103-04,2019-10-04,Routine,No,,9,9,10,10,9
+T-103-02,2019-10-19,Routine,No,,8,9,8,9,8
+T-103-09,2019-10-21,Routine,No,,10,10,10,9,9
+T-101-03,2023-03-23,Routine,No,,7,7,8,7,7
+T-101-09,2023-04-03,Routine,Yes,Runs hot at peak load,2,2,2,2,2
+T-103-09,2023-04-07,Routine,No,,9,9,9,9,9
+T-102-04,2023-04-08,Routine,No,,10,9,10,10,10
+T-103-14,2023-04-10,Routine,No,,10,5,9,9,9
+T-103-12,2023-04-13,Routine,No,,7,7,8,8,8
+T-101-10,2023-04-24,Routine,Yes,Tank rusting through at the base,4,4,3,3,3
+T-102-10,2023-05-01,Routine,No,,6,6,6,5,6
+T-101-01,2023-05-04,Routine,Yes,Oil weeping at the lower gasket,1,1,1,1,1
+T-103-02,2023-05-08,Routine,No,,8,7,7,8,7
+T-101-14,2023-05-09,Routine,Yes,Runs hot at peak load,3,1,3,3,3
+T-102-01,2023-05-09,Routine,No,,10,10,9,9,10
+T-102-14,2023-05-10,Routine,No,,6,6,5,6,5
+T-101-04,2023-05-12,Routine,Yes,Runs hot at peak load,1,1,1,1,1
+T-103-10,2023-05-28,Routine,No,,10,10,10,10,10
+T-103-13,2023-06-04,Routine,No,,8,8,8,8,9
+T-101-02,2023-06-10,Routine,Yes,Oil weeping at the lower gasket,1,1,1,1,1
+T-102-09,2023-06-12,Routine,No,,9,9,9,9,9
+T-103-01,2023-07-02,Routine,No,,8,8,8,8,8
+T-103-05,2023-07-03,Routine,No,,10,10,9,10,9
+T-102-02,2023-07-06,Routine,No,,6,6,6,6,7
+T-103-06,2023-07-10,Routine,No,,10,10,10,10,10
+T-103-04,2023-07-11,Routine,No,,10,9,9,10,9
+T-102-08,2023-07-12,Routine,Yes,Tank rusting through at the base,5,2,5,5,5
+T-103-15,2023-07-13,Routine,No,,10,7,10,8,10
+T-102-15,2023-07-14,Routine,No,,5,5,5,5,5
+T-101-12,2023-07-15,Routine,No,,9,9,9,8,9
+T-101-05,2023-07-17,Routine,No,,8,9,9,9,9
+T-101-07,2023-07-25,Routine,No,,9,9,10,10,9
+T-101-08,2023-08-11,Routine,Yes,Runs hot at peak load,1,1,1,1,1
+T-102-13,2023-08-12,Routine,No,,5,5,4,4,4
+T-101-11,2023-08-16,Routine,Yes,Runs hot at peak load,3,2,2,2,2
+T-101-13,2023-08-16,Routine,Yes,Runs hot at peak load,1,1,1,1,1
+T-103-07,2023-08-20,Routine,No,,8,9,8,8,8
+T-102-06,2023-09-02,Routine,No,,7,7,6,7,6
+T-102-07,2023-09-02,Routine,No,,7,7,6,6,7
+T-101-06,2023-09-09,Routine,Yes,Runs hot at peak load,1,1,1,1,1
+T-102-03,2023-09-12,Routine,No,,9,9,10,9,9
+T-102-12,2023-09-12,Routine,No,,7,6,6,6,6
+T-103-08,2023-09-26,Routine,No,,9,9,9,7,9
+T-102-05,2023-09-27,Routine,No,,6,5,5,6,5
+T-103-11,2023-10-08,Routine,No,,10,10,10,10,10
+T-101-15,2023-10-14,Routine,No,,8,4,8,8,8
+T-103-03,2023-10-14,Routine,No,,9,9,8,9,9
+T-102-11,2023-10-22,Routine,No,,10,10,10,10,9

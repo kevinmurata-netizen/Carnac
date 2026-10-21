@@ -8,6 +8,7 @@ import { getImportSpec, templateHeader } from "@/server/import";
 import { getInspectionImportSpec, inspectionTemplateHeader } from "@/server/inspection-import";
 import type { ImportKind } from "./state";
 import { chooseModelledAssetType } from "@/server/modelled-asset-type";
+import { sampleFiles } from "@/config/starter-packs";
 import { PageHeader } from "@/components/layout/page-header";
 import { AssetTypePills } from "@/components/layout/asset-type-pills";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,7 +33,7 @@ export default async function ImportPage({
   // Any of the organization's asset types can be imported, modelled or not.
   // Without a choice, the main modelled network's.
   const [types, { selected }] = await Promise.all([
-    prisma.assetType.findMany({ where: { organizationId }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.assetType.findMany({ where: { organizationId }, select: { id: true, name: true, code: true }, orderBy: { name: "asc" } }),
     chooseModelledAssetType(organizationId),
   ]);
   const chosen = types.find((t) => t.id === requestedType) ?? types.find((t) => t.id === selected?.id) ?? types[0];
@@ -137,6 +138,7 @@ export default async function ImportPage({
         assetTypeId={chosen.id}
         assetTypeName={spec.assetTypeName}
         templateCsv={header}
+        samples={sampleFiles(chosen.code, kind)}
       />
     </div>
   );
