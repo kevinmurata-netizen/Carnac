@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-21",
+    title: "The new-customer runbook, from setting up Carnac Power",
+    summary:
+      "DEPLOYMENT.md's steps for a new customer site now follow what setting up the second site taught: checking which database a window points at, Production-only settings in Vercel, and the starter pack.",
+    changes: [
+      "Each database step checks the window points at the intended database before anything runs, one window per database.",
+      "Vercel's steps in full: a new sign-in secret, Production-only environment variables, the address checked against NEXTAUTH_URL, and the sign-in page as proof the site reads its own database.",
+      "Setting up a network starts from a starter pack where one fits, and Data Import's sample files are there for demos.",
+      "A list of every site and its database, so that no migration misses one; schema changes now run on each before merging.",
+    ],
+    note: "No migration. Documentation only.",
+  },
+  {
+    date: "2026-10-21",
     title: "Sample power network, and choosing a file in Data Import",
     summary:
       "The power distribution starter pack comes with sample data for trying the app out: a small made-up cooperative's poles, transformers and conductor, with inspection history, loaded through Data Import like anyone's real data.",

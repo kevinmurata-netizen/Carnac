@@ -52,7 +52,7 @@ You are on Windows, so set it the PowerShell way. Open a **new** PowerShell
 window, then **cd into the project first** — every command below depends on it:
 
 ```powershell
-cd C:UsersKevinMurataDesktopcarnac
+cd C:\Users\KevinMurata\Desktop\carnac
 ```
 
 This matters more than it looks. Run `npx prisma` from anywhere else and npm
@@ -106,6 +106,9 @@ condition scores, risk assessments, treatments and baseline scenarios.
    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    ```
 
+   Set each for **Production only**: preview builds are skipped (`vercel.json`),
+   and a preview must never reach the production database.
+
    `NEXTAUTH_URL` is a chicken-and-egg: deploy once, copy the URL Vercel
    assigns, set the variable, then redeploy.
 
@@ -147,23 +150,41 @@ $env:DATABASE_URL = "<neon-pooled-url>"; npm run user:password -- admin@carnac.l
 
 Each customer gets its own Neon database and its own Vercel project, built from
 this same repository. Their data cannot mix with anyone else's, and each site
-carries its own name, logo and words (Settings › Branding).
+carries its own name, logo and words (Settings › Branding). Every site runs the
+same code: merging to `main` deploys all of them at once, and what differs
+between customers is what is in their database.
 
 **Do not run `npm run db:seed` on a customer's database.** The seed is the water
 demo: it deletes everything first, then loads Meridian Falls.
 
-1. **Database.** Create a new Neon project and copy its **pooled** connection
-   string, as in step 2 above.
+1. **Database.** In Neon, **New Project**, named after the customer, in the
+   same region as the others. Copy its **pooled** connection string (Connect,
+   with connection pooling on). Note its endpoint ID, the `ep-…` part of the
+   host, and add the site to [Sites](#sites) below.
 
-2. **Schema.** In a new PowerShell window, from the project folder:
+2. **Schema.** In a **new** PowerShell window:
+
+   ```powershell
+   cd C:\Users\KevinMurata\Desktop\carnac
+   ```
 
    ```powershell
    $env:DATABASE_URL = "<their-neon-pooled-url>"
    ```
 
+   Check the window points at their database before running anything. It
+   must print `True`:
+
+   ```powershell
+   $env:DATABASE_URL -match "<their ep- ID>"
+   ```
+
    ```powershell
    npx prisma migrate deploy
    ```
+
+   Keep each window to one database. A window still set to another customer's
+   string is how a migration lands on the wrong database.
 
 3. **Organization and first login.** In the same window:
 
@@ -177,17 +198,44 @@ demo: it deletes everything first, then loads Meridian Falls.
    (what one is called in a sentence, "asset" by default). It refuses a database
    that already has an organization. Close the window when done.
 
-4. **Site.** In Vercel, **Add New → Project** and import the same GitHub repo
-   under a new project name. Set `DATABASE_URL` (their string), a new
-   `AUTH_SECRET` and `NEXTAUTH_URL` exactly as in step 4 above, and deploy.
+4. **Site.** In Vercel:
+
+   1. Make a new sign-in secret, never another site's:
+
+      ```powershell
+      node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      ```
+
+   2. **Add New → Project** and import the same GitHub repo under a new project
+      name. The name sets the address, e.g. `https://ridgeway-ams.vercel.app`.
+      Leave the framework and build settings alone.
+   3. Add the **Environment Variables**, each for **Production only** (untick
+      Preview and Development). Preview builds are skipped (`vercel.json`), and
+      a preview must never be able to reach a customer's database.
+
+      | Name | Value |
+      | --- | --- |
+      | `DATABASE_URL` | their pooled connection string |
+      | `AUTH_SECRET` | the secret from step 1 |
+      | `NEXTAUTH_URL` | the site's address, exactly, with no trailing slash |
+      | `ANTHROPIC_API_KEY` | optional: turns on the AI Assistant |
+
+   4. **Deploy.** Then check Settings › Domains. If Vercel gave a different
+      address than the one in `NEXTAUTH_URL`, correct the variable and
+      **Redeploy** the latest deployment.
+   5. Open the site. The sign-in page shows the product name and tagline from
+      step 3, which shows it is reading their database.
 
 5. **Set up their network** in the app, signed in as that Administrator:
-   - Settings › Asset Types: add the type, its attributes and measures, then
-     switch its modelling on (it creates a starter condition index and risk
-     model).
+   - Settings › Asset Types: **Add from a starter pack** where one fits (power
+     distribution: poles, distribution transformers and overhead conductor).
+     Each type arrives fully modelled with industry-typical figures to tune.
+     Otherwise add the type by hand: its attributes and measures, then switch
+     its modelling on (it creates a starter condition index and risk model).
    - Settings › Inspection Templates and Condition Index: the questions and
      their weights.
-   - Data Import: the assets, then any inspection history.
+   - Data Import: the assets, then any inspection history. **Choose a CSV
+     file**, validate, then commit; the page lists each type's columns.
    - Settings › Deterioration Models, Treatments, Treatment Costs: how it ages
      and what can be done to it.
    - Settings › Risk Models: recompute risk once the data is in.
@@ -195,13 +243,25 @@ demo: it deletes everything first, then loads Meridian Falls.
    Until something is modelled, the dashboard and the condition, risk and
    forecast pages say so and point at these screens.
 
-**Every customer database takes every migration.** When a change comes with a
-migration, run it on each customer's database (Neon's SQL editor, or
-`npm run db:deploy` with that `DATABASE_URL`) before it is merged, not only on
-the demo's. Keep a list of the projects so none is missed.
+   **For a demo** rather than a live customer, Data Import offers each starter
+   pack type's sample files: a made-up network to load in place of real data.
+   Load each type's assets, then its inspections, oldest first.
 
 A customer responsible for several kinds of asset — water mains and poles, say —
 keeps them all in one site: each is an asset type, modelled side by side.
+
+### Sites
+
+Every site, so that no migration misses one. Connection strings and passwords
+never go here: they live in Neon and in each Vercel project.
+
+| Site | Address | Vercel project | Neon project | Endpoint | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| Carnac | https://carnacms.vercel.app | `carnac_ms` | Carnac | `ep-tiny-shape` | Water demo |
+| Carnac Power | https://carnac-power.vercel.app | `carnac-power` | Carnac Power | `ep-divine-lake` | Test of the new-customer process |
+
+**Every customer database takes every migration**, before the change is
+merged — see Schema changes below.
 
 ---
 
@@ -213,19 +273,29 @@ deploy` against the same database, the second waits on the first's advisory
 lock and fails with `P1002` after 10 seconds. A deploy should not be able to
 fail because another deploy was in flight, or because Neon was waking up.
 
-So when you change `schema.prisma`, apply it yourself **before** pushing:
+So when you change `schema.prisma`, apply it yourself **before** merging, to
+**every site** in [Sites](#sites), one PowerShell window per database:
 
 ```powershell
 cd C:\Users\KevinMurata\Desktop\carnac
 ```
 
 ```powershell
-$env:DATABASE_URL = "<neon-pooled-url>"; npm run db:deploy
+$env:DATABASE_URL = "<that site's neon-pooled-url>"
 ```
 
-Then push. Order matters: the new code expects the new columns, so migrating
+```powershell
+$env:DATABASE_URL -match "<that site's ep- ID>"
+```
+
+```powershell
+npm run db:deploy
+```
+
+Then merge. Order matters: the new code expects the new columns, so migrating
 after deploying leaves a window where the live site queries columns that do
-not exist yet.
+not exist yet. Merging deploys every site, so a database that missed the
+migration breaks its site.
 
 Code-only changes — the vast majority — need none of this. Just push.
 
