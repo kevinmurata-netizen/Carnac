@@ -63,6 +63,9 @@ export type PackType = {
   effects: PackEffect[];
   treatments: PackTreatment[];
   failureCost: { repairCost: number; perCustomer: number };
+  /** Sample files for a demo, in public/samples/<pack id>/, written by
+   * `npm run samples:power`: the assets, then their inspections oldest first. */
+  samples?: { assets: string; inspections: string[] };
 };
 
 export type StarterPack = {
@@ -110,6 +113,7 @@ export const POWER_DISTRIBUTION: StarterPack = {
       ],
       measures: { material: "MATERIAL", diameter: "HEIGHT", customersServed: "CUSTOMERS_SERVED", criticality: "CRITICALITY" },
       sizeCostScale: { reference: 40, exponent: 1 },
+      samples: { assets: "poles.csv", inspections: ["pole-inspections-2016.csv", "pole-inspections-2024.csv"] },
       inspection: "Pole Inspection",
       index: {
         name: "Pole Condition Index (PCI)",
@@ -185,6 +189,7 @@ export const POWER_DISTRIBUTION: StarterPack = {
         { name: "Transformer Inspection", description: "Visual and infrared inspection, with an oil sample where fitted.", category: "Assess", role: "inspection", unitCost: 90, costUnit: "per each", mobilizationCost: 0, usefulLife: 1, effects: [] },
       ],
       failureCost: { repairCost: 9000, perCustomer: 35 },
+      samples: { assets: "transformers.csv", inspections: ["transformer-inspections.csv"] },
     },
     {
       code: "OH_CONDUCTOR",
@@ -229,6 +234,7 @@ export const POWER_DISTRIBUTION: StarterPack = {
         { name: "Line Patrol", description: "Ground or drone patrol with infrared survey.", category: "Assess", role: "inspection", unitCost: 0.4, costUnit: "per LF", mobilizationCost: 0, usefulLife: 1, effects: [] },
       ],
       failureCost: { repairCost: 15000, perCustomer: 35 },
+      samples: { assets: "overhead-conductor.csv", inspections: ["line-patrols.csv"] },
     },
   ],
   corridorSavings: [
@@ -242,3 +248,20 @@ export const POWER_DISTRIBUTION: StarterPack = {
 };
 
 export const STARTER_PACKS: StarterPack[] = [POWER_DISTRIBUTION];
+
+export type SampleFile = { name: string; url: string };
+
+/**
+ * A pack type's sample files for one kind of import, matched by the asset
+ * type's code: made-up data for trying the app out, loaded through Data
+ * Import like anyone's real data. Empty for a type no pack has samples for.
+ */
+export function sampleFiles(typeCode: string, kind: "assets" | "inspections"): SampleFile[] {
+  for (const pack of STARTER_PACKS) {
+    const samples = pack.types.find((t) => t.code === typeCode)?.samples;
+    if (!samples) continue;
+    const names = kind === "assets" ? [samples.assets] : samples.inspections;
+    return names.map((name) => ({ name, url: `/samples/${pack.id}/${name}` }));
+  }
+  return [];
+}

@@ -1,0 +1,34 @@
+Asset ID,Inspection Date,Inspection Type,Follow-up,Notes,Broken strands and annealing,Splices and connectors,Sag and clearance,Corrosion,Vegetation contact
+C-102-11,2025-03-02,Routine,Yes,Broken strands at a clamp,8,8,8,7,2
+C-101-01,2025-03-04,Routine,No,,10,10,10,10,10
+C-102-10,2025-03-13,Routine,Yes,Tree limbs in the conductor,8,8,7,8,3
+C-101-04,2025-04-11,Routine,Yes,Tree limbs in the conductor,6,3,7,7,7
+C-102-08,2025-05-02,Routine,No,,8,8,7,8,7
+C-101-08,2025-05-03,Routine,Yes,Hot splice on the infrared survey,9,8,9,8,3
+C-101-03,2025-05-04,Routine,No,,6,6,6,6,6
+C-101-09,2025-05-11,Routine,No,,5,5,5,6,5
+C-103-03,2025-05-18,Routine,No,,9,9,9,9,10
+C-103-01,2025-05-24,Routine,No,,10,10,9,10,10
+C-103-08,2025-06-01,Routine,No,,9,9,9,9,9
+C-102-04,2025-06-20,Routine,No,,8,8,8,8,8
+C-103-07,2025-06-28,Routine,No,,10,10,10,10,10
+C-103-04,2025-07-05,Routine,Yes,Tree limbs in the conductor,8,8,9,9,3
+C-102-03,2025-07-21,Routine,No,,6,7,7,7,4
+C-103-02,2025-07-25,Routine,No,,9,10,10,9,10
+C-101-05,2025-07-27,Routine,No,,6,6,7,6,6
+C-103-10,2025-08-07,Routine,No,,9,9,9,8,4
+C-102-09,2025-08-10,Routine,No,,10,9,9,9,9
+C-102-05,2025-08-18,Routine,No,,8,8,8,8,8
+C-101-10,2025-08-25,Routine,No,,9,10,9,10,10
+C-102-07,2025-08-26,Routine,No,,6,6,6,6,7
+C-103-05,2025-08-27,Routine,No,,9,9,9,9,9
+C-103-06,2025-08-27,Routine,No,,9,8,9,9,4
+C-102-06,2025-09-01,Routine,No,,7,7,8,8,8
+C-101-06,2025-09-03,Routine,No,,6,4,6,6,6
+C-101-07,2025-09-04,Routine,Yes,Tree limbs in the conductor,7,7,7,6,2
+C-101-02,2025-09-26,Routine,Yes,Tree limbs in the conductor,7,4,7,7,2
+C-103-09,2025-09-28,Routine,No,,10,10,10,9,5
+C-102-01,2025-10-09,Routine,No,,7,7,7,7,7
+C-102-02,2025-10-14,Routine,No,,8,7,7,7,7
+C-101-11,2025-10-18,Routine,Yes,Tree limbs in the conductor,6,3,5,6,5
+C-103-11,2025-10-26,Routine,No,,10,9,9,10,10

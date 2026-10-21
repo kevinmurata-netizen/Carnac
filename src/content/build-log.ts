@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-21",
+    title: "Sample power network, and choosing a file in Data Import",
+    summary:
+      "The power distribution starter pack comes with sample data for trying the app out: a small made-up cooperative's poles, transformers and conductor, with inspection history, loaded through Data Import like anyone's real data.",
+    changes: [
+      "Data Import has a Choose a CSV file button: the file is read into the box, to check or edit before validating.",
+      "For a type from a starter pack, Data Import offers the pack's sample files to load: Ridgeway's three feeders — 132 poles, 45 transformers and 33 conductor sections — then pole inspections from 2016 and 2024, transformer inspections and a line patrol. Each feeder was built in a different era, so the oldest is due for work and the newest is not.",
+      "After adding types from the starter pack, the result says where the sample files are.",
+      "The samples are for demonstrations, not a live setup. They are written by `npm run samples:power` from the pack's own column labels.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-16",
     title: "A power distribution starter pack",
     summary:

@@ -44,6 +44,9 @@ export function StarterPackDialog({
         o.created.length > 0 ? `Added ${o.created.join(", ")}, each fully modelled.` : "",
         o.savings > 0 ? `Set ${o.savings} corridor saving${o.savings === 1 ? "" : "s"} between them.` : "",
         ...o.skipped.map((s) => `${s.name}: ${s.reason}.`),
+        o.created.length > 0 && pack.hasSamples
+          ? "To try them out before your own data is in, Data Import has sample files for each."
+          : "",
       ].filter(Boolean);
       setResult({ ok: o.created.length > 0, text: parts.join(" ") });
       setChosen([]);
