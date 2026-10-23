@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { BrandLogo } from "@/components/layout/brand-logo";
-import { BRAND_LOGOS, DEFAULT_BRANDING, type Branding } from "@/lib/branding";
+import type { Branding } from "@/lib/branding";
 import { saveBrandingAction } from "../actions";
 import { EMPTY_SETTINGS_STATE } from "../state";
 import { SaveBar } from "../save-bar";
@@ -14,7 +14,8 @@ const input =
 
 /**
  * The branding form, with a live preview of the sidebar's header and the
- * inventory's title — the two places the words show most.
+ * inventory's title — the two places the words show most. The product's name
+ * and logo are shown, not offered: they are set for the site.
  */
 export function BrandingEditor({ branding, canEdit }: { branding: Branding; canEdit: boolean }) {
   const [state, action] = useActionState(saveBrandingAction, EMPTY_SETTINGS_STATE);
@@ -31,16 +32,14 @@ export function BrandingEditor({ branding, canEdit }: { branding: Branding; canE
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="productName">Name</Label>
-                <input
-                  id="productName"
-                  name="productName"
-                  value={draft.productName}
-                  onChange={(e) => set({ productName: e.target.value })}
-                  disabled={!canEdit}
-                  className={input}
-                />
-                <p className="text-xs text-muted-foreground">In the sidebar and the browser tab.</p>
+                <Label>Name and logo</Label>
+                <div className="flex h-9 items-center gap-2 rounded-md border border-dashed bg-muted/40 px-3 text-sm">
+                  <BrandLogo logo={draft.logo} className="h-4 w-4" />
+                  <span className="font-medium">{draft.productName}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Set for this site by your provider, in the sidebar and the browser tab.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="tagline">Tagline</Label>
@@ -56,27 +55,6 @@ export function BrandingEditor({ branding, canEdit }: { branding: Branding; canE
                 <p className="text-xs text-muted-foreground">On the login screen and at the foot of the sidebar.</p>
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Logo</Label>
-              <input type="hidden" name="logo" value={draft.logo} />
-              <div className="flex flex-wrap gap-2">
-                {BRAND_LOGOS.map((l) => (
-                  <button
-                    key={l.key}
-                    type="button"
-                    disabled={!canEdit}
-                    onClick={() => set({ logo: l.key })}
-                    aria-pressed={draft.logo === l.key}
-                    className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
-                      draft.logo === l.key ? "border-primary bg-primary/10" : "hover:border-primary/50"
-                    }`}
-                  >
-                    <BrandLogo logo={l.key} className="h-4 w-4" />
-                    {l.label}
-                  </button>
-                ))}
-              </div>
-            </div>
           </CardContent>
         </Card>
 
@@ -87,7 +65,7 @@ export function BrandingEditor({ branding, canEdit }: { branding: Branding; canE
           <CardContent className="space-y-3">
             <div className="flex items-center gap-2 rounded-md border bg-sidebar px-4 py-3 text-sidebar-foreground">
               <BrandLogo logo={draft.logo} className="h-6 w-6 text-sidebar-primary" />
-              <span className="text-lg font-semibold tracking-tight">{draft.productName || DEFAULT_BRANDING.productName}</span>
+              <span className="text-lg font-semibold tracking-tight">{draft.productName}</span>
             </div>
             <p className="text-xs text-muted-foreground">{draft.tagline}</p>
             <p className="text-sm">

@@ -311,11 +311,11 @@ export async function saveBrandingAction(
   try {
     const session = await requireWriteAccess("/settings/branding");
     await updateBranding(session.user.organizationId, {
-      productName: String(formData.get("productName") ?? ""),
       tagline: String(formData.get("tagline") ?? ""),
-      logo: String(formData.get("logo") ?? ""),
       assetSingular: String(formData.get("assetSingular") ?? ""),
       assetPlural: String(formData.get("assetPlural") ?? ""),
+      itemSingular: String(formData.get("itemSingular") ?? ""),
+      itemPlural: String(formData.get("itemPlural") ?? ""),
     });
     // The words and the name appear on nearly every page.
     revalidatePath("/", "layout");
