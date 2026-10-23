@@ -4,9 +4,11 @@
  * Everything else is set up in the app: Settings › Asset Types, Data Import.
  *
  *   npm run org:new -- --name "Ridgeway Power Cooperative" --admin you@example.com
- *     [--admin-name "Full Name"] [--product "Ridgeway AMS"] [--tagline "Asset Management Platform"]
- *     [--logo zap|droplets|flame|network] [--asset Asset] [--assets Assets]
- *     [--item asset] [--items assets] [--alongside]
+ *     [--admin-name "Full Name"] [--tagline "Asset Management Platform"]
+ *     [--asset Asset] [--assets Assets] [--item asset] [--items assets] [--alongside]
+ *
+ * The product's name and logo are not set here: they belong to the site, as
+ * PRODUCT_NAME and PRODUCT_LOGO in its Vercel project (see DEPLOYMENT.md).
  *
  * Runs against whatever DATABASE_URL points at — a new customer's own Neon
  * database, after `npx prisma migrate deploy` (see DEPLOYMENT.md, "A new
@@ -22,7 +24,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../src/lib/prisma";
 import { ensureSystemRoles } from "../src/server/system-roles";
 import { updateBranding } from "../src/server/branding";
-import { BRAND_LOGOS, DEFAULT_BRANDING } from "../src/lib/branding";
 
 function arg(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
@@ -37,17 +38,18 @@ function generatePassword(length = 20): string {
 
 const USAGE =
   'Usage: npm run org:new -- --name "Organization Name" --admin admin@example.com [--admin-name "Full Name"] ' +
-  "[--product NAME] [--tagline TEXT] [--logo zap|droplets|flame|network] [--asset Asset] [--assets Assets] " +
-  "[--item asset] [--items assets] [--alongside]";
+  "[--tagline TEXT] [--asset Asset] [--assets Assets] [--item asset] [--items assets] [--alongside]";
 
 async function main() {
   const name = arg("--name")?.trim();
   const adminEmail = arg("--admin")?.trim().toLowerCase();
   if (!name || !adminEmail || !adminEmail.includes("@")) throw new Error(USAGE);
 
-  const logo = arg("--logo") ?? "network";
-  if (!BRAND_LOGOS.some((l) => l.key === logo)) {
-    throw new Error(`--logo must be one of: ${BRAND_LOGOS.map((l) => l.key).join(", ")}`);
+  if (process.argv.includes("--product") || process.argv.includes("--logo")) {
+    throw new Error(
+      "The product's name and logo are set for the site, not the organization: PRODUCT_NAME and PRODUCT_LOGO in " +
+        "its Vercel project (DEPLOYMENT.md, \"A new customer\"). Run this again without --product and --logo."
+    );
   }
 
   const existing = await prisma.organization.findMany({ select: { name: true } });
@@ -69,9 +71,7 @@ async function main() {
 
   // A neutral platform by default — not water's words — unless told otherwise.
   await updateBranding(organization.id, {
-    productName: arg("--product") ?? DEFAULT_BRANDING.productName,
     tagline: arg("--tagline") ?? "Asset Management Platform",
-    logo,
     assetSingular: arg("--asset") ?? "Asset",
     assetPlural: arg("--assets") ?? "Assets",
     itemSingular: arg("--item") ?? "asset",
@@ -93,7 +93,8 @@ async function main() {
   console.log(`  administrator: ${adminEmail}`);
   console.log(`  password:      ${password}`);
   console.log(`\nThe password is shown once and stored only as a hash. Sign in, then set the network up under`);
-  console.log(`Settings › Asset Types and load it under Settings › Data Import.\n`);
+  console.log(`Settings › Asset Types and load it under Settings › Data Import.`);
+  console.log(`The product's name and logo come from PRODUCT_NAME and PRODUCT_LOGO in the site's Vercel project.\n`);
 }
 
 main()

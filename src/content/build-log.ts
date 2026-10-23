@@ -29,6 +29,21 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-23",
+    title: "Each site's product name and logo, set before it ships",
+    summary:
+      "The product's name and logo — Hydrocore for water, Powercore for power — are now set for each site where it is hosted, before it ships to a customer. A customer's Administrator still sets the tagline and what the assets are called, but no longer the name or logo.",
+    changes: [
+      "Two new site settings in Vercel, PRODUCT_NAME and PRODUCT_LOGO, name the product in the sidebar, the browser tab, the sign-in page and Excel exports. A site without them keeps the name and logo it had.",
+      "Settings › Branding shows the name and logo as set for the site, and no longer offers to change them.",
+      "`npm run org:new` no longer takes --product or --logo; the runbook sets them in Vercel instead.",
+    ],
+    fixes: [
+      "Saving Settings › Branding failed every time with \"Say what one asset is called in a sentence\": the form's in-sentence words were never sent. They are now.",
+    ],
+    note: "No migration. After merging, set PRODUCT_NAME and PRODUCT_LOGO on each Vercel project, Production only, and redeploy.",
+  },
+  {
     date: "2026-10-21",
     title: "The new-customer runbook, from setting up Carnac Power",
     summary:

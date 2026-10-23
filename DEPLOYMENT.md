@@ -92,13 +92,15 @@ condition scores, risk assessments, treatments and baseline scenarios.
    the build settings alone. The `vercel-build` script in `package.json` is
    picked up automatically and runs `prisma generate && next build`. It does **not**
    touch the database — see Schema changes below for why.
-2. Add three **Environment Variables**:
+2. Add the **Environment Variables**:
 
    | Name | Value |
    | --- | --- |
    | `DATABASE_URL` | the Neon pooled connection string |
    | `AUTH_SECRET` | a new random value (below) |
    | `NEXTAUTH_URL` | your deployed URL, e.g. `https://carnac.vercel.app` |
+   | `PRODUCT_NAME` | the product's name, e.g. `Hydrocore` |
+   | `PRODUCT_LOGO` | `droplets`, `zap`, `flame` or `network` |
 
    Generate the secret:
 
@@ -150,7 +152,10 @@ $env:DATABASE_URL = "<neon-pooled-url>"; npm run user:password -- admin@carnac.l
 
 Each customer gets its own Neon database and its own Vercel project, built from
 this same repository. Their data cannot mix with anyone else's, and each site
-carries its own name, logo and words (Settings › Branding). Every site runs the
+carries its own name, logo and words. The product's **name and logo** belong to
+the site and are set in Vercel before it ships (`PRODUCT_NAME`,
+`PRODUCT_LOGO`); the customer's Administrator can change the tagline and what
+the assets are called under Settings › Branding, but not those. Every site runs the
 same code: merging to `main` deploys all of them at once, and what differs
 between customers is what is in their database.
 
@@ -189,7 +194,7 @@ demo: it deletes everything first, then loads Meridian Falls.
 3. **Organization and first login.** In the same window:
 
    ```powershell
-   npm run org:new -- --name "Ridgeway Power Cooperative" --admin them@example.com --admin-name "Their Name" --product "Ridgeway AMS" --logo zap
+   npm run org:new -- --name "Ridgeway Power Cooperative" --admin them@example.com --admin-name "Their Name" --tagline "Power Asset Management"
    ```
 
    It creates the organization, its branding and one Administrator, and prints
@@ -218,13 +223,16 @@ demo: it deletes everything first, then loads Meridian Falls.
       | `DATABASE_URL` | their pooled connection string |
       | `AUTH_SECRET` | the secret from step 1 |
       | `NEXTAUTH_URL` | the site's address, exactly, with no trailing slash |
+      | `PRODUCT_NAME` | the product's name for this asset class, e.g. `Powercore` |
+      | `PRODUCT_LOGO` | `droplets`, `zap`, `flame` or `network` |
       | `ANTHROPIC_API_KEY` | optional: turns on the AI Assistant |
 
    4. **Deploy.** Then check Settings › Domains. If Vercel gave a different
       address than the one in `NEXTAUTH_URL`, correct the variable and
       **Redeploy** the latest deployment.
-   5. Open the site. The sign-in page shows the product name and tagline from
-      step 3, which shows it is reading their database.
+   5. Open the site. The sign-in page shows the product name from
+      `PRODUCT_NAME`, and the tagline from step 3, which shows it is reading
+      their database.
 
 5. **Set up their network** in the app, signed in as that Administrator:
    - Settings › Asset Types: **Add from a starter pack** where one fits (power
@@ -255,10 +263,10 @@ keeps them all in one site: each is an asset type, modelled side by side.
 Every site, so that no migration misses one. Connection strings and passwords
 never go here: they live in Neon and in each Vercel project.
 
-| Site | Address | Vercel project | Neon project | Endpoint | Purpose |
-| --- | --- | --- | --- | --- | --- |
-| Carnac | https://carnacms.vercel.app | `carnac_ms` | Carnac | `ep-tiny-shape` | Water demo |
-| Carnac Power | https://carnac-power.vercel.app | `carnac-power` | Carnac Power | `ep-divine-lake` | Test of the new-customer process |
+| Site | Product | Address | Vercel project | Neon project | Endpoint | Purpose |
+| --- | --- | --- | --- | --- | --- | --- |
+| Carnac | Hydrocore (`droplets`) | https://carnacms.vercel.app | `carnac_ms` | Carnac | `ep-tiny-shape` | Water demo |
+| Carnac Power | Powercore (`zap`) | https://carnac-power.vercel.app | `carnac-power` | Carnac Power | `ep-divine-lake` | Test of the new-customer process |
 
 **Every customer database takes every migration**, before the change is
 merged — see Schema changes below.
