@@ -30,6 +30,17 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-23",
+    title: "The product name as a wordmark",
+    summary:
+      "The product's name — HYDROCORE, POWERCORE — now stands out as a wordmark: Orbitron, in capitals and spaced out, in the sidebar, on the sign-in page and on Settings › Branding.",
+    changes: [
+      "Orbitron is bundled with the app and used for the product's name only; everything else stays as it was.",
+      "The browser tab keeps the name as written, \"Hydrocore | …\".",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-23",
     title: "Each site's product name and logo, set before it ships",
     summary:
       "The product's name and logo — Hydrocore for water, Powercore for power — are now set for each site where it is hosted, before it ships to a customer. A customer's Administrator still sets the tagline and what the assets are called, but no longer the name or logo.",
