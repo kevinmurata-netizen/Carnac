@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { BrandLogo } from "@/components/layout/brand-logo";
+import { BrandLogo, BrandName } from "@/components/layout/brand-logo";
 import type { Branding } from "@/lib/branding";
 import { saveBrandingAction } from "../actions";
 import { EMPTY_SETTINGS_STATE } from "../state";
@@ -35,7 +35,7 @@ export function BrandingEditor({ branding, canEdit }: { branding: Branding; canE
                 <Label>Name and logo</Label>
                 <div className="flex h-9 items-center gap-2 rounded-md border border-dashed bg-muted/40 px-3 text-sm">
                   <BrandLogo logo={draft.logo} className="h-4 w-4" />
-                  <span className="font-medium">{draft.productName}</span>
+                  <BrandName name={draft.productName} />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Set for this site by your provider, in the sidebar and the browser tab.
@@ -65,7 +65,7 @@ export function BrandingEditor({ branding, canEdit }: { branding: Branding; canE
           <CardContent className="space-y-3">
             <div className="flex items-center gap-2 rounded-md border bg-sidebar px-4 py-3 text-sidebar-foreground">
               <BrandLogo logo={draft.logo} className="h-6 w-6 text-sidebar-primary" />
-              <span className="text-lg font-semibold tracking-tight">{draft.productName}</span>
+              <BrandName name={draft.productName} className="min-w-0 break-all text-base" />
             </div>
             <p className="text-xs text-muted-foreground">{draft.tagline}</p>
             <p className="text-sm">
