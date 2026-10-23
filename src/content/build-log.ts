@@ -314,6 +314,18 @@ export const ENTRIES: BuildEntry[] = [
   },
   {
     date: "2026-10-14",
+    title: "Deactivated users are signed out",
+    summary:
+      "Deactivating or deleting a user now ends their session on their next click, instead of leaving them signed in for up to 30 days. A change to someone's role reaches them the same way, without signing out.",
+    changes: [
+      "Every signed-in request re-checks the account behind it, at most once a minute per server. A deactivated or deleted account is sent to the sign-in page with a note that the session has ended.",
+      "Moving someone to another role, or renaming their role, applies on their next request rather than the next time they sign in.",
+      "Changes made under Administration apply immediately on the server that made them; elsewhere they take up to a minute.",
+    ],
+    note: "A password reset still does not sign anyone out — only deactivation does.",
+  },
+  {
+    date: "2026-10-14",
     title: "Import inspection history",
     summary:
       "Data Import can now load inspections as well as assets: one row per inspection, a column per question on the asset type's inspection form. Each is scored by the type's condition index, exactly as if it had been typed in, so a new asset class can arrive with its condition history.",
