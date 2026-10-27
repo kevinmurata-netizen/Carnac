@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-27",
+    title: "Loading a starter pack's sample network in one go",
+    summary:
+      "Settings › Asset Types › Add from a starter pack now has Load sample data: one button that fills a new site with the pack's made-up network — assets, inspection history and risk — for demonstrations.",
+    changes: [
+      "For power distribution: Ridgeway's 132 poles, 45 transformers and 33 conductor sections, 348 inspections from 2016 to 2025, then risk recomputed. Progress shows file by file.",
+      "Every file goes through Data Import's own validation and import, one request each, just as a utility's own data would.",
+      "Sample data only goes into the pack's types while they have no assets, so it never mixes with a live network.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-27",
     title: "Pruning old deployments on every site",
     summary:
       "`npm run vercel:prune` now clears old deployments from every site at once — Hydrocore and Powercore today — instead of the water site alone.",

@@ -6,7 +6,9 @@ import { addComponent, renameIndex } from "@/server/condition-model";
 import { createMaterialCurve } from "@/server/deterioration";
 import { createEffect, setTreatmentEffects } from "@/server/effects";
 import { createTreatment } from "@/server/treatment-config";
-import { STARTER_PACKS, type PackType, type StarterPack } from "@/config/starter-packs";
+import { commitImport, validateImport } from "@/server/import";
+import { commitInspectionImport } from "@/server/inspection-import";
+import { STARTER_PACKS, sampleFiles, type PackType, type StarterPack } from "@/config/starter-packs";
 
 /**
  * Apply a starter pack: each chosen asset type set up exactly as it would be
@@ -18,7 +20,17 @@ import { STARTER_PACKS, type PackType, type StarterPack } from "@/config/starter
  * adds, it never overwrites someone's configuration.
  */
 
-export type PackTypeChoice = { code: string; name: string; description: string; exists: boolean };
+export type PackTypeChoice = {
+  code: string;
+  name: string;
+  description: string;
+  exists: boolean;
+  /** Assets of this type the organization has. */
+  assets: number;
+};
+
+/** One file of a pack's sample data, in the order they are loaded. */
+export type SampleStep = { typeCode: string; typeName: string; kind: "assets" | "inspections"; name: string; url: string };
 
 export type PackChoice = {
   id: string;
@@ -27,20 +39,36 @@ export type PackChoice = {
   types: PackTypeChoice[];
   /** Whether Data Import offers made-up files for its types. */
   hasSamples: boolean;
+  /** Its sample files, every type's assets before any inspections. */
+  samples: SampleStep[];
 };
 
 /** The packs on offer, with which of their types this organization has. */
 export async function listStarterPacks(organizationId: string): Promise<PackChoice[]> {
-  const existing = new Set(
-    (await prisma.assetType.findMany({ where: { organizationId }, select: { code: true } })).map((t) => t.code)
-  );
-  return STARTER_PACKS.map((pack) => ({
-    id: pack.id,
-    name: pack.name,
-    description: pack.description,
-    types: pack.types.map((t) => ({ code: t.code, name: t.name, description: t.description, exists: existing.has(t.code) })),
-    hasSamples: pack.types.some((t) => t.samples),
-  }));
+  const types = await prisma.assetType.findMany({
+    where: { organizationId },
+    select: { code: true, _count: { select: { assets: { where: { deletedAt: null } } } } },
+  });
+  const assetsOf = new Map(types.map((t) => [t.code, t._count.assets]));
+  return STARTER_PACKS.map((pack) => {
+    const withSamples = pack.types.filter((t) => t.samples);
+    const step = (t: PackType, kind: SampleStep["kind"]) =>
+      sampleFiles(t.code, kind).map((f) => ({ typeCode: t.code, typeName: t.name, kind, ...f }));
+    return {
+      id: pack.id,
+      name: pack.name,
+      description: pack.description,
+      types: pack.types.map((t) => ({
+        code: t.code,
+        name: t.name,
+        description: t.description,
+        exists: assetsOf.has(t.code),
+        assets: assetsOf.get(t.code) ?? 0,
+      })),
+      hasSamples: withSamples.length > 0,
+      samples: [...withSamples.flatMap((t) => step(t, "assets")), ...withSamples.flatMap((t) => step(t, "inspections"))],
+    };
+  });
 }
 
 export type PackOutcome = {
@@ -194,4 +222,42 @@ export async function applyStarterPack(organizationId: string, packId: string, t
   }
   outcome.savings = await applySavings(organizationId, pack, createdCodes);
   return outcome;
+}
+
+/**
+ * One of a pack's sample files, loaded the way anyone's data is: through Data
+ * Import's own validation and import, so a demo network arrives exactly as a
+ * real one would. The browser sends the files one at a time, so no single
+ * request has the whole network to write.
+ *
+ * Only into a type the pack made (matched by code) — and assets only while it
+ * has none, so a live network is never mixed with made-up data.
+ */
+export async function loadSampleFile(
+  organizationId: string,
+  userId: string,
+  input: { typeCode: string; kind: "assets" | "inspections"; csv: string }
+): Promise<{ imported: number; typeName: string }> {
+  const pack = STARTER_PACKS.find((p) => p.types.some((t) => t.code === input.typeCode && t.samples));
+  if (!pack) throw new Error(`No starter pack has sample data for ${input.typeCode}`);
+  const type = await prisma.assetType.findFirst({
+    where: { organizationId, code: input.typeCode },
+    select: { id: true, name: true, _count: { select: { assets: { where: { deletedAt: null } } } } },
+  });
+  if (!type) throw new Error(`Add ${input.typeCode} from the starter pack first`);
+
+  if (input.kind === "assets") {
+    if (type._count.assets > 0) {
+      throw new Error(`${type.name} already has assets; sample data only goes into an empty type`);
+    }
+    const report = await validateImport(organizationId, type.id, input.csv);
+    if (report.errors.length > 0) {
+      const e = report.errors[0];
+      throw new Error(`${type.name} sample row ${e.row}, ${e.column}: ${e.message}`);
+    }
+    const result = await commitImport(organizationId, type.id, input.csv);
+    return { imported: result.imported, typeName: type.name };
+  }
+  const result = await commitInspectionImport(organizationId, type.id, userId, input.csv);
+  return { imported: result.imported, typeName: type.name };
 }
