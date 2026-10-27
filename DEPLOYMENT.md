@@ -165,7 +165,7 @@ demo: it deletes everything first, then loads Meridian Falls.
 1. **Database.** In Neon, **New Project**, named after the customer, in the
    same region as the others. Copy its **pooled** connection string (Connect,
    with connection pooling on). Note its endpoint ID, the `ep-…` part of the
-   host, and add the site to [Sites](#sites) below.
+   host, and add the site to [Sites](#sites) below and to `scripts/sites.ts`.
 
 2. **Schema.** In a **new** PowerShell window:
 
@@ -261,7 +261,19 @@ keeps them all in one site: each is an asset type, modelled side by side.
 ### Sites
 
 Every site, so that no migration misses one. Connection strings and passwords
-never go here: they live in Neon and in each Vercel project.
+never go here: they live in Neon and in each Vercel project. The same list,
+for scripts, is `scripts/sites.ts`: keep the two in step.
+
+Old deployments pile up on every site. Prune them all once a deploy is Ready —
+a dry run first, then for real; `--site <project>` limits it to one:
+
+```powershell
+npm run vercel:prune -- --keep-rollbacks 2
+```
+
+```powershell
+npm run vercel:prune -- --keep-rollbacks 2 --yes
+```
 
 | Site | Product | Address | Vercel project | Neon project | Endpoint | Purpose |
 | --- | --- | --- | --- | --- | --- | --- |

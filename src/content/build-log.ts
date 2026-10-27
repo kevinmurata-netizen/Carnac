@@ -29,6 +29,17 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-27",
+    title: "Pruning old deployments on every site",
+    summary:
+      "`npm run vercel:prune` now clears old deployments from every site at once — Hydrocore and Powercore today — instead of the water site alone.",
+    changes: [
+      "The sites are listed for scripts in scripts/sites.ts, beside the Sites table in DEPLOYMENT.md; a new site is added to both.",
+      "Each site's live deployment is found from its own address, so a rollback on one site is respected there. `--site` limits a run to one site, and one site's trouble is reported without stopping the rest.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-23",
     title: "The product name as a wordmark",
     summary:
