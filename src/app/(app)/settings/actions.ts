@@ -5,7 +5,7 @@ import { updateBranding } from "@/server/branding";
 import { createMaterialCurve, deleteMaterialCurve } from "@/server/deterioration";
 
 import { revalidatePath } from "next/cache";
-import { applyStarterPack } from "@/server/starter-packs";
+import { applyStarterPack, loadSampleFile } from "@/server/starter-packs";
 import { AttributeDataType } from "@prisma/client";
 import { requireCardWrite, requireAnyCardWrite } from "@/server/guard";
 import {
@@ -386,6 +386,28 @@ export async function applyStarterPackAction(input: { packId: string; typeCodes:
     return { ok: true as const, outcome };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : "Could not add from the starter pack" };
+  }
+}
+
+/** One sample file from a starter pack, or — kind "risk", once the files are
+ * in — risk recomputed so the dashboard and risk pages reflect them. */
+export async function loadSampleFileAction(
+  input: { typeCode: string; kind: "assets" | "inspections"; csv: string } | { kind: "risk" }
+) {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    if (input.kind === "risk") {
+      const count = await recomputeRiskForOrganization(session.user.organizationId);
+      for (const path of ["/risk", "/dashboard", "/assets"]) revalidatePath(path);
+      return { ok: true as const, imported: count };
+    }
+    const result = await loadSampleFile(session.user.organizationId, session.user.id!, input);
+    for (const path of ["/assets", "/network", "/dashboard", "/inspections", "/condition", ASSET_TYPES_CARD]) {
+      revalidatePath(path);
+    }
+    return { ok: true as const, imported: result.imported };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not load the sample data" };
   }
 }
 
