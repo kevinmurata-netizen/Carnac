@@ -162,8 +162,10 @@ between customers is what is in their database.
 **Do not run `npm run db:seed` on a customer's database.** The seed is the water
 demo: it deletes everything first, then loads Meridian Falls.
 
-1. **Database.** In Neon, **New Project**, named after the customer, in the
-   same region as the others. Copy its **pooled** connection string (Connect,
+1. **Database.** In Neon, **New Project**, named after the customer, in
+   **AWS US West 2 (Oregon)** like the others: every site's functions run in
+   Vercel's `pdx1` (Portland) beside it (`vercel.json`), and a database
+   anywhere else puts a long round trip under every query. Copy its **pooled** connection string (Connect,
    with connection pooling on). Note its endpoint ID, the `ep-…` part of the
    host, and add the site to [Sites](#sites) below and to `scripts/sites.ts`.
 

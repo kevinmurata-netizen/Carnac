@@ -29,6 +29,20 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-28",
+    title: "Servers beside the databases",
+    summary:
+      "Every site's server now runs in Portland, next to its database in Oregon, instead of Washington, D.C. Each database query no longer crosses the country, so pages answer faster and long jobs such as recomputing risk finish.",
+    changes: [
+      "Vercel runs the app's functions in pdx1 (Portland), the region beside Neon's AWS US West 2 where every site's database lives.",
+      "The new-customer runbook says to create each database in that region.",
+    ],
+    fixes: [
+      "Recomputing risk could stop partway on a hosted site: each batch of assessments is written in one database transaction, and at about 70 ms a query across the country a batch outlasted the transaction's 5-second limit. Loading Powercore's sample data hit this at its last step.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-27",
     title: "Loading a starter pack's sample network in one go",
     summary:
