@@ -29,6 +29,18 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-10-29",
+    title: "Line shapes in Data Import",
+    summary:
+      "Pipes, conductors and other line assets can now be imported along their real route, from an end point or from the line exactly as GIS software exports it, instead of a short stand-in line around one position.",
+    changes: [
+      "Importing a line asset type takes three new optional columns: End Latitude and End Longitude, which draw a straight line from the start, and Shape, which takes the whole line as WKT (LINESTRING) or GeoJSON.",
+      "A row with a Shape needs no Latitude or Longitude; its start and end are read from the line. Rows with only a position are drawn as before.",
+      "A Shape that can't be read — not a line, more than one separate part, a point off the map, or latitude written first — is reported against its row before anything is imported.",
+    ],
+    note: "No migration.",
+  },
+  {
     date: "2026-10-28",
     title: "Servers beside the databases",
     summary:

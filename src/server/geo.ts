@@ -17,6 +17,9 @@ export type LineEndpoints = {
   endLng: number;
 };
 
+/** A line's vertices in order, each [longitude, latitude] as GeoJSON has them. */
+export type LinePath = Array<[number, number]>;
+
 /**
  * AssetLocation.geometry is an Unsupported("geometry") column — Prisma Client
  * excludes it entirely from generated types, so both writes and geometry reads
@@ -39,6 +42,32 @@ export async function insertAssetLineLocation(
       ST_SetSRID(ST_MakeLine(ST_MakePoint(${startLng}, ${startLat}), ST_MakePoint(${endLng}, ${endLat})), 4326),
       ${startLat}, ${startLng}, ${endLat}, ${endLng},
       ${extra.depth ?? null}, ${extra.serviceArea ?? null}, ${extra.pressureZone ?? null}
+    )
+  `;
+}
+
+/**
+ * A line asset drawn along its own vertices, as an import's Shape gives them.
+ * The first and last are kept as its start and end, as for any other line, so
+ * what reads only the endpoints still finds them.
+ */
+export async function insertAssetPathLocation(
+  assetId: string,
+  path: LinePath,
+  extra: { serviceArea?: string | null } = {}
+) {
+  const [startLng, startLat] = path[0];
+  const [endLng, endLat] = path[path.length - 1];
+  const line = JSON.stringify({ type: "LineString", coordinates: path });
+  await prisma.$executeRaw`
+    INSERT INTO asset_locations
+      (id, "assetId", geometry, "startLat", "startLng", "endLat", "endLng", "serviceArea")
+    VALUES (
+      ${`loc_${assetId}`},
+      ${assetId},
+      ST_SetSRID(ST_GeomFromGeoJSON(${line}), 4326),
+      ${startLat}, ${startLng}, ${endLat}, ${endLng},
+      ${extra.serviceArea ?? null}
     )
   `;
 }
