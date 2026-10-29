@@ -22,6 +22,7 @@ import {
   moveComponentAction,
   applyStarterPackAction,
   loadSampleFileAction,
+  loadSampleScenarioSetAction,
 } from "../actions";
 import { listComponentComposition } from "@/server/component-types";
 import { getModellingReadiness } from "@/server/modelling";
@@ -63,7 +64,7 @@ export default async function AssetTypesPage() {
       <PageHeader
         title={pageTitle}
         description="Every kind of asset this utility holds, what each one records, the parts it is made of, and the forms used to inspect it"
-        actions={canEdit && <StarterPackDialog packs={packs} onApply={applyStarterPackAction} onLoadSample={loadSampleFileAction} />}
+        actions={canEdit && <StarterPackDialog packs={packs} onApply={applyStarterPackAction} onLoadSample={loadSampleFileAction} onLoadScenarios={loadSampleScenarioSetAction} />}
       />
 
       {!canEdit && (

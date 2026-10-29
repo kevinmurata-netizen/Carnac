@@ -9,6 +9,13 @@ import type { PackChoice, PackOutcome, SampleStep } from "@/server/starter-packs
 
 type LoadResult = { ok: true; imported: number } | { ok: false; message: string };
 type StepState = { status: "waiting" | "loading" | "done" | "failed"; text?: string };
+/** One step of loading sample data: a file, risk, or the sample scenario set
+ * being made and then run. */
+type SampleRow =
+  | SampleStep
+  | { kind: "risk"; name: string }
+  | { kind: "scenarios"; name: string }
+  | { kind: "run"; name: string };
 
 /**
  * Add asset types from a starter pack: each one created fully modelled —
@@ -19,6 +26,7 @@ export function StarterPackDialog({
   packs,
   onApply,
   onLoadSample,
+  onLoadScenarios,
 }: {
   packs: PackChoice[];
   onApply: (input: { packId: string; typeCodes: string[] }) => Promise<
@@ -27,6 +35,7 @@ export function StarterPackDialog({
   onLoadSample: (
     input: { typeCode: string; kind: "assets" | "inspections"; csv: string } | { kind: "risk" }
   ) => Promise<LoadResult>;
+  onLoadScenarios: (input: { packId: string; step: "create" | "run" }) => Promise<LoadResult>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -36,6 +45,7 @@ export function StarterPackDialog({
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, start] = useTransition();
   const [steps, setSteps] = useState<StepState[] | null>(null);
+  const [running, setRunning] = useState<SampleRow[]>([]);
   const loading = steps?.some((s) => s.status === "loading") ?? false;
 
   if (!pack) return null;
@@ -45,23 +55,34 @@ export function StarterPackDialog({
   const sampleTypes = pack.types.filter((t) => pack.samples.some((s) => s.typeCode === t.code));
   const missing = sampleTypes.filter((t) => !t.exists);
   const occupied = sampleTypes.filter((t) => t.assets > 0);
-  const sampleRows: Array<SampleStep | { kind: "risk"; name: string }> = [
-    ...pack.samples,
-    { kind: "risk", name: "Risk recomputed" },
-  ];
+  const networkRows: SampleRow[] = [...pack.samples, { kind: "risk", name: "Risk recomputed" }];
+  // The scenario set follows the network, or comes on its own to a network
+  // already loaded; once there, it is left alone.
+  const set = pack.scenarioSet;
+  const setRows: SampleRow[] =
+    set && !set.loaded
+      ? [
+          { kind: "scenarios", name: `Scenario set “${set.name}”` },
+          { kind: "run", name: "Scenarios run" },
+        ]
+      : [];
+  const networkLoaded = sampleTypes.length > 0 && occupied.length === sampleTypes.length;
 
-  const loadSamples = async () => {
-    const state: StepState[] = sampleRows.map(() => ({ status: "waiting" }));
+  const loadSamples = async (rows: SampleRow[]) => {
+    setRunning(rows);
+    const state: StepState[] = rows.map(() => ({ status: "waiting" }));
     const show = (i: number, s: StepState) => {
       state[i] = s;
       setSteps([...state]);
     };
-    for (let i = 0; i < sampleRows.length; i++) {
-      const row = sampleRows[i];
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
       show(i, { status: "loading" });
       let result: LoadResult;
       if (row.kind === "risk") {
         result = await onLoadSample({ kind: "risk" });
+      } else if (row.kind === "scenarios" || row.kind === "run") {
+        result = await onLoadScenarios({ packId: pack.id, step: row.kind === "scenarios" ? "create" : "run" });
       } else {
         const response = await fetch(row.url).catch(() => null);
         result =
@@ -76,7 +97,14 @@ export function StarterPackDialog({
       }
       show(i, {
         status: "done",
-        text: row.kind === "risk" ? `${result.imported} assets scored` : `${result.imported} ${row.kind === "assets" ? "added" : "recorded"}`,
+        text:
+          row.kind === "risk"
+            ? `${result.imported} assets scored`
+            : row.kind === "scenarios"
+              ? `${result.imported} scenarios, in Scenario Planning › Sets`
+              : row.kind === "run"
+                ? `${result.imported} run`
+                : `${result.imported} ${row.kind === "assets" ? "added" : "recorded"}`,
       });
     }
     router.refresh();
@@ -176,10 +204,16 @@ export function StarterPackDialog({
               <p className="text-xs text-muted-foreground">
                 A made-up network for trying the app out — not for a live setup. Each file goes through Data Import
                 like anyone&apos;s data: the assets first, then their inspection history, then risk.
+                {set && (
+                  <>
+                    {" "}
+                    Then the scenario set {set.name} compares {set.scenarios} ways of funding it over {set.years} years.
+                  </>
+                )}
               </p>
               {steps && (
                 <ul className="space-y-1 text-xs">
-                  {sampleRows.map((row, i) => {
+                  {running.map((row, i) => {
                     const s = steps[i];
                     return (
                       <li key={row.name} className="flex items-start gap-2">
@@ -193,7 +227,7 @@ export function StarterPackDialog({
                           )}
                         </span>
                         <span className={s.status === "failed" ? "text-destructive" : s.status === "waiting" ? "text-muted-foreground" : ""}>
-                          {row.kind === "risk" ? row.name : `${row.typeName}: ${row.name}`}
+                          {"typeName" in row ? `${row.typeName}: ${row.name}` : row.name}
                           {s.text && <span className="text-muted-foreground"> — {s.text}</span>}
                         </span>
                       </li>
@@ -206,13 +240,27 @@ export function StarterPackDialog({
                   Add {missing.map((t) => t.name).join(", ")} above first; the sample network needs every type it covers.
                 </p>
               ) : occupied.length > 0 && !steps ? (
-                <p className="text-xs text-muted-foreground">
-                  {occupied.map((t) => t.name).join(", ")} already {occupied.length === 1 ? "has" : "have"} assets, so
-                  the sample data stays out: it only goes into empty types.
-                </p>
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    {occupied.map((t) => t.name).join(", ")} already {occupied.length === 1 ? "has" : "have"} assets, so
+                    the sample network stays out: it only goes into empty types.
+                    {set?.loaded && <> The scenario set {set.name} is already under Scenario Planning › Sets.</>}
+                  </p>
+                  {networkLoaded && setRows.length > 0 && (
+                    <Button type="button" size="sm" variant="outline" disabled={loading || busy} onClick={() => void loadSamples(setRows)}>
+                      Load the sample scenario set
+                    </Button>
+                  )}
+                </>
               ) : (
                 !steps && (
-                  <Button type="button" size="sm" variant="outline" disabled={loading || busy} onClick={() => void loadSamples()}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={loading || busy}
+                    onClick={() => void loadSamples([...networkRows, ...setRows])}
+                  >
                     Load sample data
                   </Button>
                 )

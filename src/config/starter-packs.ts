@@ -1,5 +1,6 @@
 import type { TreatmentCategory, TreatmentRole } from "@/domain/waterline/treatment";
 import type { EffectConditionMode } from "@/domain/waterline/effect";
+import type { ScenarioAssumptions } from "@/domain/waterline/scenario";
 
 /**
  * Starter packs: a whole asset class set up in one go — its asset types,
@@ -75,6 +76,26 @@ export type StarterPack = {
   types: PackType[];
   /** What doing two of the pack's types' work together saves, by type code. */
   corridorSavings: Array<{ a: string; b: string; sharesMobilization: boolean; savingPct: number }>;
+  /** Scenarios for trying Scenario Planning on the sample network. */
+  sampleScenarioSet?: SampleScenarioSet;
+};
+
+/**
+ * A scenario set made for a pack's sample network: the questions a utility
+ * first asks of its own network, with budgets sized to the made-up one rather
+ * than anyone's real one. Each scenario is the app's defaults with its own
+ * assumptions laid over them; asset type weights are left out, since they are
+ * kept by type id and the ids are only known once the types exist.
+ */
+export type SampleScenarioSet = {
+  name: string;
+  description: string;
+  planningPeriodYears: number;
+  scenarios: Array<{
+    name: string;
+    description: string;
+    assumptions: Partial<Omit<ScenarioAssumptions, "assetTypeWeights" | "typeFunding">>;
+  }>;
 };
 
 const CRITICALITY: PackAttribute = {
@@ -245,6 +266,47 @@ export const POWER_DISTRIBUTION: StarterPack = {
     { a: "OH_CONDUCTOR", b: "DIST_TRANSFORMER", sharesMobilization: true, savingPct: 0.05 },
     { a: "DIST_TRANSFORMER", b: "DIST_TRANSFORMER", sharesMobilization: false, savingPct: 0.05 },
   ],
+  // The sample network costs about $4M to replace in full: 132 poles, 45
+  // transformers and 33,000 ft of conductor. Spread over lives of 35 to 55
+  // years that is roughly $80,000 a year, so the budgets sit either side of it.
+  sampleScenarioSet: {
+    name: "Sample Distribution Scenarios",
+    description:
+      "Six ways of funding the sample network's poles, transformers and conductor, compared over twenty years. The budgets are sized for the sample network, which costs about $4M to replace in full.",
+    planningPeriodYears: 20,
+    scenarios: [
+      {
+        name: "Current Funding",
+        description: "$75,000 a year, rising 2% a year, spent on the highest-risk work first.",
+        assumptions: { annualBudget: 75_000, fundingGrowth: 0.02 },
+      },
+      {
+        name: "Reduced Funding",
+        description: "$40,000 a year with no growth: what a tighter budget leaves undone.",
+        assumptions: { annualBudget: 40_000, fundingGrowth: 0 },
+      },
+      {
+        name: "Increased Funding",
+        description: "$150,000 a year, rising 3% a year.",
+        assumptions: { annualBudget: 150_000, fundingGrowth: 0.03 },
+      },
+      {
+        name: "Worst Condition First",
+        description: "Current funding, spent on the worst-condition assets first, whatever they serve.",
+        assumptions: { annualBudget: 75_000, fundingGrowth: 0.02, strategy: "condition-based" },
+      },
+      {
+        name: "Corridor Bundling",
+        description: "Current funding, with neighbouring work done together for what doing it together saves.",
+        assumptions: { annualBudget: 75_000, fundingGrowth: 0.02, corridorBundling: true },
+      },
+      {
+        name: "Reach Condition 80",
+        description: "What it costs a year to bring average condition to 80 within ten years, then hold it there.",
+        assumptions: { fundingMode: "target", conditionTarget: 80, targetInYears: 10, afterTarget: "hold" },
+      },
+    ],
+  },
 };
 
 export const STARTER_PACKS: StarterPack[] = [POWER_DISTRIBUTION];

@@ -30,6 +30,19 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-10-29",
+    title: "A sample scenario set for the power starter pack",
+    summary:
+      "The power starter pack's sample data now ends with a scenario set: six ways of funding the sample network over twenty years, made and run so Scenario Planning has something to compare from the start.",
+    changes: [
+      "Sample Distribution Scenarios compares Current Funding ($75,000 a year), Reduced and Increased Funding, Worst Condition First, Corridor Bundling, and Reach Condition 80, which works out what a year it costs to bring average condition to 80 within ten years.",
+      "Its budgets are sized for the sample network, which costs about $4M to replace in full.",
+      "Load sample data adds the set after the network and risk. Where the sample network is already in, Settings › Asset Types › Add from a starter pack offers Load the sample scenario set on its own.",
+      "The set is a Draft starting this year, made through Scenario Planning's own functions, so every scenario can be changed or copied like any other.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-29",
     title: "Line shapes in Data Import",
     summary:
       "Pipes, conductors and other line assets can now be imported along their real route, from an end point or from the line exactly as GIS software exports it, instead of a short stand-in line around one position.",

@@ -5,7 +5,7 @@ import { updateBranding } from "@/server/branding";
 import { createMaterialCurve, deleteMaterialCurve } from "@/server/deterioration";
 
 import { revalidatePath } from "next/cache";
-import { applyStarterPack, loadSampleFile } from "@/server/starter-packs";
+import { applyStarterPack, createSampleScenarioSet, loadSampleFile, runSampleScenarioSet } from "@/server/starter-packs";
 import { AttributeDataType } from "@prisma/client";
 import { requireCardWrite, requireAnyCardWrite } from "@/server/guard";
 import {
@@ -408,6 +408,23 @@ export async function loadSampleFileAction(
     return { ok: true as const, imported: result.imported };
   } catch (e) {
     return { ok: false as const, message: e instanceof Error ? e.message : "Could not load the sample data" };
+  }
+}
+
+/** A starter pack's sample scenario set: made, then — a second call — run. */
+export async function loadSampleScenarioSetAction(input: { packId: string; step: "create" | "run" }) {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    const organizationId = session.user.organizationId;
+    const count =
+      input.step === "create"
+        ? await createSampleScenarioSet(organizationId, input.packId)
+        : await runSampleScenarioSet(organizationId, input.packId);
+    revalidatePath("/scenario-planning", "layout");
+    revalidatePath(ASSET_TYPES_CARD);
+    return { ok: true as const, imported: count };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not load the sample scenario set" };
   }
 }
 
