@@ -8,6 +8,9 @@ import { createEffect, setTreatmentEffects } from "@/server/effects";
 import { createTreatment } from "@/server/treatment-config";
 import { commitImport, validateImport } from "@/server/import";
 import { commitInspectionImport } from "@/server/inspection-import";
+import { createScenarioSet } from "@/server/scenario-sets";
+import { createScenario, runScenarioSet } from "@/server/scenarios";
+import { DEFAULT_ASSUMPTIONS } from "@/domain/waterline/scenario";
 import { STARTER_PACKS, sampleFiles, type PackType, type StarterPack } from "@/config/starter-packs";
 
 /**
@@ -41,6 +44,9 @@ export type PackChoice = {
   hasSamples: boolean;
   /** Its sample files, every type's assets before any inspections. */
   samples: SampleStep[];
+  /** Its sample scenario set, where it has one, and whether this organization
+   * has a set of that name already. */
+  scenarioSet: { name: string; scenarios: number; years: number; loaded: boolean } | null;
 };
 
 /** The packs on offer, with which of their types this organization has. */
@@ -50,6 +56,8 @@ export async function listStarterPacks(organizationId: string): Promise<PackChoi
     select: { code: true, _count: { select: { assets: { where: { deletedAt: null } } } } },
   });
   const assetsOf = new Map(types.map((t) => [t.code, t._count.assets]));
+  const sets = await prisma.scenarioSet.findMany({ where: { organizationId }, select: { name: true } });
+  const setNames = new Set(sets.map((s) => s.name));
   return STARTER_PACKS.map((pack) => {
     const withSamples = pack.types.filter((t) => t.samples);
     const step = (t: PackType, kind: SampleStep["kind"]) =>
@@ -67,6 +75,14 @@ export async function listStarterPacks(organizationId: string): Promise<PackChoi
       })),
       hasSamples: withSamples.length > 0,
       samples: [...withSamples.flatMap((t) => step(t, "assets")), ...withSamples.flatMap((t) => step(t, "inspections"))],
+      scenarioSet: pack.sampleScenarioSet
+        ? {
+            name: pack.sampleScenarioSet.name,
+            scenarios: pack.sampleScenarioSet.scenarios.length,
+            years: pack.sampleScenarioSet.planningPeriodYears,
+            loaded: setNames.has(pack.sampleScenarioSet.name),
+          }
+        : null,
     };
   });
 }
@@ -260,4 +276,52 @@ export async function loadSampleFile(
   }
   const result = await commitInspectionImport(organizationId, type.id, userId, input.csv);
   return { imported: result.imported, typeName: type.name };
+}
+
+/**
+ * A pack's sample scenario set, made through Scenario Planning's own
+ * functions, as a Draft starting this year. Only once every type of the
+ * sample network holds assets: its budgets are sized for that network, and
+ * over empty types every scenario would run to nothing.
+ */
+export async function createSampleScenarioSet(organizationId: string, packId: string): Promise<number> {
+  const pack = STARTER_PACKS.find((p) => p.id === packId);
+  const sample = pack?.sampleScenarioSet;
+  if (!pack || !sample) throw new Error("That starter pack has no sample scenario set");
+  const needed = pack.types.filter((t) => t.samples);
+  const types = await prisma.assetType.findMany({
+    where: { organizationId, code: { in: needed.map((t) => t.code) } },
+    select: { code: true, _count: { select: { assets: { where: { deletedAt: null } } } } },
+  });
+  const empty = needed.filter((t) => !types.some((x) => x.code === t.code && x._count.assets > 0));
+  if (empty.length > 0) {
+    throw new Error(`Load the sample network first: ${empty.map((t) => t.name).join(", ")} has no assets yet`);
+  }
+
+  const set = await createScenarioSet(organizationId, {
+    name: sample.name,
+    description: sample.description,
+    baseYear: new Date().getFullYear(),
+    planningPeriodYears: sample.planningPeriodYears,
+    status: "DRAFT",
+  });
+  for (const s of sample.scenarios) {
+    await createScenario(organizationId, {
+      name: s.name,
+      description: s.description,
+      assumptions: { ...DEFAULT_ASSUMPTIONS, analysisPeriodYears: sample.planningPeriodYears, ...s.assumptions },
+      scenarioSetId: set.id,
+    });
+  }
+  return sample.scenarios.length;
+}
+
+/** Run every scenario in a pack's sample set, as Run Set does, so the
+ * comparison is there to open. A separate request from making the set, so
+ * neither has the other's work to do in its time. */
+export async function runSampleScenarioSet(organizationId: string, packId: string): Promise<number> {
+  const name = STARTER_PACKS.find((p) => p.id === packId)?.sampleScenarioSet?.name;
+  const set = name ? await prisma.scenarioSet.findFirst({ where: { organizationId, name }, select: { id: true } }) : null;
+  if (!set) throw new Error("The sample scenario set hasn't been made yet");
+  return runScenarioSet(organizationId, set.id);
 }
