@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getFilterSchema } from "@/server/filter-schema";
 import { listSavedFilters } from "@/server/saved-filters";
 import { getPageName } from "@/server/navigation";
@@ -7,10 +6,10 @@ import { PageHeader } from "@/components/layout/page-header";
 import { FilterBuilder } from "./filter-builder";
 
 export default async function FiltersPage() {
-  const session = await auth();
+  const session = await requireSession();
 
   await requireCard("/filters");
-  const organizationId = session!.user.organizationId;
+  const organizationId = session.user.organizationId;
 
   const [pageTitle, schema, saved] = await Promise.all([
     getPageName(organizationId, "/filters", "Filters"),

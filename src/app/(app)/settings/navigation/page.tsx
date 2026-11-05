@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listRenameablePages, getPageName } from "@/server/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { NavigationEditor } from "./editor";
 
 export default async function NavigationSettingsPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/navigation");
 
   const [sections, title] = await Promise.all([
@@ -30,7 +29,7 @@ export default async function NavigationSettingsPage() {
       ) : (
         <>
           <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-            You are signed in as {session!.user.roleName}. Page names are read-only for your role.
+            You are signed in as {session.user.roleName}. Page names are read-only for your role.
           </div>
           <Card>
             <CardContent className="space-y-2 py-6 text-sm">

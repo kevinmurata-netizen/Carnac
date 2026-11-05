@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getMeasureCodes, readMeasures } from "@/server/measures";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getAssetById } from "@/server/assets";
 import { rollUpAssets } from "@/server/rollup";
 import { componentHistory, componentTypesForAsset } from "@/server/components";
@@ -61,8 +61,8 @@ export default async function AssetDetailPage({
 }) {
   const { id } = await params;
   const { tab } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const conditionBands = await getConditionBands(organizationId);
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { listScenarios, getAnnualBudget } from "@/server/scenarios";
 import { listScenarioSets } from "@/server/scenario-sets";
@@ -26,8 +26,8 @@ import { getPageName } from "@/server/navigation";
  * the comparison of every scenario sits underneath as the wider view.
  */
 export default async function ScenarioPlanningPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/scenario-planning", "Scenario Planning");
   const conditionBands = await getConditionBands(organizationId);

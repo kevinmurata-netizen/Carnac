@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listTreatmentsForAdmin } from "@/server/treatment-config";
 
 import { PageHeader } from "@/components/layout/page-header";
@@ -14,8 +13,8 @@ import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
 export default async function TreatmentsAdminPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/treatments", "Treatments");
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
@@ -50,7 +49,7 @@ export default async function TreatmentsAdminPage({ searchParams }: { searchPara
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Treatments are read-only for your role.
+          You are signed in as {session.user.roleName}. Treatments are read-only for your role.
         </div>
       )}
 

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listRoles } from "@/server/admin";
 import { getNavOverrides, getPageName } from "@/server/navigation";
 import { ADMINISTRATOR_CODE, countOverrides, getRoleMatrix } from "@/server/permissions";
@@ -31,8 +30,8 @@ export default async function RolesPage({
   searchParams: Promise<{ role?: string }>;
 }) {
   const { role: requested } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/administration/roles");
 
   const [roles, overrides, counts, title] = await Promise.all([
@@ -63,7 +62,7 @@ export default async function RolesPage({
       {!canEdit && (
         <Card className="mb-4 border-dashed bg-muted/40">
           <CardContent className="py-3 text-sm text-muted-foreground">
-            You are signed in as {session!.user.roleName}. Your role cannot change permissions; below is what each
+            You are signed in as {session.user.roleName}. Your role cannot change permissions; below is what each
             role is currently allowed.
           </CardContent>
         </Card>

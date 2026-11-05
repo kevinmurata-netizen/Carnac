@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getBudgetPlan } from "@/server/budget-plans";
 import { PageHeader } from "@/components/layout/page-header";
@@ -14,8 +14,8 @@ import { listModelledAssetTypes } from "@/server/modelled-asset-type";
 
 export default async function BudgetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const canEdit = canRecordFieldData(session);
   const [plan, assetTypes] = await Promise.all([
     getBudgetPlan(organizationId, id),

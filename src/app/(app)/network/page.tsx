@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getAssetWords } from "@/server/branding";
 import { getMeasureCodes, readMeasures } from "@/server/measures";
 import Link from "next/link";
@@ -33,8 +33,8 @@ export default async function NetworkPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const measures = await getMeasureLabels(organizationId);
   const pageTitle = await getPageName(organizationId, "/network", "Network");

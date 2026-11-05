@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { requireCard, canWriteCard } from "@/server/guard";
+import { requireCard, canWriteCard, requireSession } from "@/server/guard";
 import { getTreatmentForAdmin } from "@/server/treatment-config";
 import { listRules, getTreatmentRules } from "@/server/rules";
 import { getTreatmentCosts } from "@/server/cost-rates";
@@ -23,8 +22,8 @@ const SECTION_IDS = ["definition", "does", "costs", "rules"];
 
 export default async function TreatmentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
 
   const [treatment, allRules, selection, costs, allEffects, effects, canEditRules, canEditEffects] = await Promise.all([
@@ -51,7 +50,7 @@ export default async function TreatmentDetailPage({ params }: { params: Promise<
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Treatments are read-only for your role.
+          You are signed in as {session.user.roleName}. Treatments are read-only for your role.
         </div>
       )}
 

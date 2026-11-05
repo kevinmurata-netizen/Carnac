@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { requireCard, canWriteCard } from "@/server/guard";
+import { requireCard, canWriteCard, requireSession } from "@/server/guard";
 import { listRules } from "@/server/rules";
 import { listEffects } from "@/server/effects";
 import { emptyRuleGroup } from "@/domain/waterline/decision-tree";
@@ -19,8 +18,8 @@ import { chooseModelledAssetType } from "@/server/modelled-asset-type";
  */
 export default async function NewTreatmentPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatments");
   if (!canEdit) redirect("/settings/treatments");
   // The asset type it is for: the library tab it was added from.

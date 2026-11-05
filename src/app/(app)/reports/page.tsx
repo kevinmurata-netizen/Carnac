@@ -9,17 +9,17 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Download, FileText } from "lucide-react";
 import { getPageName } from "@/server/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 
 const CATEGORY_ORDER: ReportCategory[] = ["Inventory", "Condition & Risk", "Planning", "Financial"];
 
 export default async function ReportsPage() {
-  const session = await auth();
-  const pageTitle = await getPageName(session!.user.organizationId, "/reports", "Reports");
+  const session = await requireSession();
+  const pageTitle = await getPageName(session.user.organizationId, "/reports", "Reports");
   const reportList = listReports(
-    await getIndexWords(session!.user.organizationId),
-    await getAssetWords(session!.user.organizationId),
-    await getMeasureLabels(session!.user.organizationId)
+    await getIndexWords(session.user.organizationId),
+    await getAssetWords(session.user.organizationId),
+    await getMeasureLabels(session.user.organizationId)
   );
 
   return (

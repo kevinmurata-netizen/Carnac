@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getScenarioSet, listScenarioSets } from "@/server/scenario-sets";
 import { listScenarios, plansMadeFrom } from "@/server/scenarios";
@@ -28,8 +28,8 @@ import {
 
 export default async function ScenarioSetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
 
   const [set, scenarios, bands, estimate, sets] = await Promise.all([
     getScenarioSet(organizationId, id),

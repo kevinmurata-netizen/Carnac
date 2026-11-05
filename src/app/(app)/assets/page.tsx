@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getMeasureCodes, readMeasures } from "@/server/measures";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import {
   listAssets,
   listMaterials,
@@ -49,8 +49,8 @@ export default async function AssetsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const params = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
 
   // Which kind of asset is being looked at. A modelled type by default — the

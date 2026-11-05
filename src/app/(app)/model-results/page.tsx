@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getWciFlow, listScenarioOptions } from "@/server/model-results";
 import { getPageName } from "@/server/navigation";
 import { getAssetWords } from "@/server/branding";
@@ -19,8 +19,8 @@ export default async function ModelResultsPage({
   searchParams: Promise<{ scenario?: string }>;
 }) {
   const { scenario: requested } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/model-results", "Model Results");
 

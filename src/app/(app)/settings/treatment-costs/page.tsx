@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard, canWriteCard } from "@/server/guard";
+import { requireCard, canWriteCard, requireSession } from "@/server/guard";
 import { listAllCostRates } from "@/server/cost-rates";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,8 +18,8 @@ import { AssetTypePills } from "@/components/layout/asset-type-pills";
  */
 export default async function TreatmentCostsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/treatment-costs", "Treatment Costs");
   await requireCard("/settings/treatment-costs");
   const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);

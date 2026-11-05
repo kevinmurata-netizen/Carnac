@@ -1,4 +1,4 @@
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getAssetWords } from "@/server/branding";
 import { getSessionPermissions } from "@/server/permissions";
 import { assistantConfigured } from "@/server/assistant";
@@ -10,12 +10,12 @@ import { askAction } from "./actions";
 import { runSqlAction, translateToSqlAction } from "./sql-actions";
 
 export default async function AskPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/ask", "AI Assistant");
   const configured = assistantConfigured();
-  const isAdmin = (await getSessionPermissions(session!)).isAdministrator;
+  const isAdmin = (await getSessionPermissions(session)).isAdministrator;
 
   // Only fetched for the role that can use it — no reason to run an
   // information_schema query for every visitor to this page.

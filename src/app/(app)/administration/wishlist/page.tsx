@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listWishlist, listWishlistLocations, countWishlistByLocation } from "@/server/wishlist";
 import { getPageName } from "@/server/navigation";
 import { PageHeader } from "@/components/layout/page-header";
@@ -11,10 +10,10 @@ export default async function WishlistPage({
   searchParams: Promise<{ location?: string }>;
 }) {
   const { location } = await searchParams;
-  const session = await auth();
+  const session = await requireSession();
 
   await requireCard("/administration/wishlist");
-  const organizationId = session!.user.organizationId;
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/administration/wishlist", "Wishlist");
 
   const [items, locations, counts] = await Promise.all([

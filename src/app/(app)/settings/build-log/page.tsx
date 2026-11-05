@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { ENTRIES } from "@/content/build-log";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,10 +27,10 @@ export default async function BuildLogPage({
   searchParams: Promise<{ from?: string; to?: string; sort?: string }>;
 }) {
   const { from: rawFrom, to: rawTo, sort: rawSort } = await searchParams;
-  const session = await auth();
+  const session = await requireSession();
 
   await requireCard("/settings/build-log");
-  const pageTitle = await getPageName(session!.user.organizationId, "/settings/build-log", "Build Log");
+  const pageTitle = await getPageName(session.user.organizationId, "/settings/build-log", "Build Log");
 
   const dates = ENTRIES.map((e) => e.date).sort();
   const earliest = dates[0] ?? "";

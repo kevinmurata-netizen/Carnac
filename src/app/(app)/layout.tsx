@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getNavOverrides, getHiddenHrefs } from "@/server/navigation";
 import { getPermissions, governedPages, resourceKey } from "@/server/permissions";
 import { AppShell } from "@/components/layout/app-shell";
@@ -21,11 +21,9 @@ export async function generateMetadata() {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
   // The proxy let them in on the strength of the cookie alone; no session here
   // means the account behind it has been deactivated or deleted since.
-  if (!session) redirect("/session-ended");
-  const user = session.user;
+  const user = (await requireSession()).user;
 
   // Loaded once here and shared with both the sidebar and the breadcrumb trail
   // so a renamed page reads the same in either place.

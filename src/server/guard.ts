@@ -1,6 +1,26 @@
 import { redirect } from "next/navigation";
+import type { Session } from "next-auth";
 import { auth } from "@/lib/auth";
 import { getSessionPermissions, resourceKey, type ResourceKind } from "@/server/permissions";
+
+/**
+ * The session, for a page or layout that only needs to know who is signed in.
+ *
+ * The proxy lets a request through on the cookie alone, so a page can still
+ * be reached by an account that has since been deactivated or deleted, for
+ * which auth() answers null. The (app) layout sends that request to
+ * /session-ended, but Next renders the page alongside its layout rather than
+ * after it, so each one has to stop for itself — otherwise the page throws on
+ * the missing session before the layout's redirect wins.
+ *
+ * Server components only. Route handlers and server actions answer a missing
+ * session in their own way and should keep calling auth().
+ */
+export async function requireSession(): Promise<Session> {
+  const session = await auth();
+  if (!session) redirect("/session-ended");
+  return session;
+}
 
 /**
  * The guard every governed page calls before rendering anything.

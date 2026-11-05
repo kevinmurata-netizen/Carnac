@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { listBudgetPlans } from "@/server/budget-plans";
 import { PageHeader } from "@/components/layout/page-header";
@@ -10,8 +10,8 @@ import { formatCurrency } from "@/lib/format";
 import { BUDGET_CATEGORIES } from "@/domain/waterline/budget-plan";
 
 export default async function BudgetsPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const canEdit = canRecordFieldData(session);
   const plans = await listBudgetPlans(organizationId);
 

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listCombinations, getCombination } from "@/server/combinations";
 import { listTreatmentsForAdmin } from "@/server/treatment-config";
 import { listRules } from "@/server/rules";
@@ -19,8 +18,8 @@ export default async function TreatmentCombinationsPage({
   searchParams: Promise<{ combination?: string; type?: string }>;
 }) {
   const { combination: requested, type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/treatment-combinations");
   const pageTitle = await getPageName(
     organizationId,
@@ -107,7 +106,7 @@ export default async function TreatmentCombinationsPage({
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Treatment combinations are read-only for your role.
+          You are signed in as {session.user.roleName}. Treatment combinations are read-only for your role.
         </div>
       )}
 

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listInspectionTemplateDetails } from "@/server/settings";
 import { getPageName } from "@/server/navigation";
 import { PageHeader } from "@/components/layout/page-header";
@@ -22,8 +21,8 @@ import { formatNumber } from "@/lib/format";
  * itself, under Asset Types.
  */
 export default async function InspectionTemplatesPage() {
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/inspection-templates", "Inspection Templates");
   const { canWrite: canEdit } = await requireCard("/settings/inspection-templates");
 
@@ -38,7 +37,7 @@ export default async function InspectionTemplatesPage() {
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Inspection templates are read-only for your role.
+          You are signed in as {session.user.roleName}. Inspection templates are read-only for your role.
         </div>
       )}
 

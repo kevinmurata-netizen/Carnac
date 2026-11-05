@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getNavOverrides } from "@/server/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,8 +18,8 @@ export default async function NoAccessPage({
   searchParams: Promise<{ from?: string }>;
 }) {
   const { from } = await searchParams;
-  const session = await auth();
-  const overrides = await getNavOverrides(session!.user.organizationId);
+  const session = await requireSession();
+  const overrides = await getNavOverrides(session.user.organizationId);
 
   // Only ever a name we already know, never the raw parameter — this value
   // comes off the URL, so echoing it back verbatim would be someone else's
@@ -38,7 +38,7 @@ export default async function NoAccessPage({
             {pageName ? <span>{pageName} is closed to your role.</span> : <span>That page is closed to your role.</span>}
           </div>
           <p className="text-muted-foreground">
-            You are signed in as {session!.user.roleName}. An Administrator can change what this role reaches under
+            You are signed in as {session.user.roleName}. An Administrator can change what this role reaches under
             Roles &amp; Permissions.
           </p>
           <p>

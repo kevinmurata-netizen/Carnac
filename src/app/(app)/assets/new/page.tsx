@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { getAssetWords } from "@/server/branding";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getNewAssetForm } from "@/server/assets";
@@ -17,9 +17,9 @@ import { NewAssetForm } from "./new-asset-form";
  */
 export default async function NewAssetPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type } = await searchParams;
-  const session = await auth();
+  const session = await requireSession();
   if (!canRecordFieldData(session)) redirect("/assets");
-  const organizationId = session!.user.organizationId;
+  const organizationId = session.user.organizationId;
   const words = await getAssetWords(organizationId);
 
   if (!type) redirect("/assets");

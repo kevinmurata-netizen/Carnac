@@ -1,6 +1,5 @@
 import { NothingModelled } from "@/components/layout/nothing-modelled";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { findIndexModel, getConditionIndex } from "@/server/condition-model";
 import { ModelNotSetUp } from "@/components/settings/model-not-set-up";
 import { PageHeader } from "@/components/layout/page-header";
@@ -15,8 +14,8 @@ import { AssetTypePills } from "@/components/layout/asset-type-pills";
 
 export default async function ConditionIndexPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/condition-index", "Condition Index");
   const { canWrite: canEdit } = await requireCard("/settings/condition-index");
 
@@ -69,7 +68,7 @@ export default async function ConditionIndexPage({ searchParams }: { searchParam
 
       {!canEdit && (
         <div className="mb-4 rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          You are signed in as {session!.user.roleName}. Only an Administrator can change the index, because
+          You are signed in as {session.user.roleName}. Only an Administrator can change the index, because
           reweighting it moves every condition score in the system.
         </div>
       )}

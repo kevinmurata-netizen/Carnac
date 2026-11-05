@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { requireSession } from "@/server/guard";
 import { canRecordFieldData } from "@/lib/permissions";
 import { getAssetById } from "@/server/assets";
 import { listFailureTypes } from "@/server/failures";
@@ -14,8 +14,8 @@ import { createFailureAction } from "./actions";
 
 export default async function NewFailurePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
 
   if (!canRecordFieldData(session)) {
     redirect(`/assets/${id}?tab=failures`);

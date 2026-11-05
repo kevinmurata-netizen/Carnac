@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { listDeteriorationModels, getMarkovConfig } from "@/server/settings";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,8 +16,8 @@ import { NewCurve } from "./new-curve";
 
 export default async function DeteriorationModelSettingsPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
   const { type: requestedType } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const pageTitle = await getPageName(organizationId, "/settings/deterioration-models", "Deterioration Models");
   const { canWrite: canEdit } = await requireCard("/settings/deterioration-models");
 
@@ -77,7 +76,7 @@ export default async function DeteriorationModelSettingsPage({ searchParams }: {
         <Card>
           <CardContent className="space-y-3 py-6 text-sm">
             <div className="text-muted-foreground">
-              You are signed in as {session!.user.roleName}. Deterioration models are read-only for your role.
+              You are signed in as {session.user.roleName}. Deterioration models are read-only for your role.
             </div>
             {models.map((m) => (
               <div key={m.id} className="flex flex-wrap items-center gap-2 border-t pt-3">

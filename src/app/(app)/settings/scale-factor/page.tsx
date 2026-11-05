@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { requireCard } from "@/server/guard";
+import { requireCard, requireSession } from "@/server/guard";
 import { getPageName } from "@/server/navigation";
 import { getFormulaFields } from "@/server/criticality";
 import { listScaleFactors } from "@/server/scale-factors";
@@ -45,8 +44,8 @@ export default async function ScaleFactorPage({
   searchParams: Promise<{ type?: string }>;
 }) {
   const { type: requested } = await searchParams;
-  const session = await auth();
-  const organizationId = session!.user.organizationId;
+  const session = await requireSession();
+  const organizationId = session.user.organizationId;
   const { canWrite: canEdit } = await requireCard("/settings/scale-factor");
 
   const [groups, title] = await Promise.all([
@@ -67,7 +66,7 @@ export default async function ScaleFactorPage({
       {!canEdit && (
         <Card className="mb-4 border-dashed bg-muted/40">
           <CardContent className="py-3 text-sm text-muted-foreground">
-            You are signed in as {session!.user.roleName}. Scale factors are read-only for your role — you can still
+            You are signed in as {session.user.roleName}. Scale factors are read-only for your role — you can still
             try one out to see what it would produce.
           </CardContent>
         </Card>
