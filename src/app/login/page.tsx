@@ -1,5 +1,5 @@
 import { LoginForm } from "./login-form";
-import { BrandLogo } from "@/components/layout/brand-logo";
+import { BrandLogo, BrandName } from "@/components/layout/brand-logo";
 import { getDeploymentBranding } from "@/server/branding";
 
 export default async function LoginPage({
@@ -18,7 +18,9 @@ export default async function LoginPage({
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <BrandLogo logo={branding.logo} className="h-6 w-6" />
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">{branding.productName}</h1>
+          <h1>
+            <BrandName name={branding.productName} className="text-2xl" />
+          </h1>
           <p className="text-sm text-muted-foreground">{branding.tagline}</p>
         </div>
         <LoginForm callbackUrl={params.callbackUrl} error={params.error} />

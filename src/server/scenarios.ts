@@ -9,14 +9,18 @@ import {
   STRATEGIES,
   FUNDING_MODES,
   AFTER_TARGET,
+  ASSET_TYPE_WEIGHT_RANGE,
+  parseAssetTypeWeights,
   solveForTarget,
   goalOf,
   type AfterTarget,
+  type AssetTypeWeights,
   type FundingMode,
   type ScenarioAssumptions,
   type SimAsset,
   type Strategy,
   type ScenarioRunResult,
+  type TypeYearResult,
   type ScenarioRunOptions,
 } from "@/domain/waterline/scenario";
 import { runDeliveryScenario, type DeliveryRunResult } from "@/domain/waterline/delivery-scenario";
@@ -31,11 +35,15 @@ import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { resolveCategoryWeights } from "@/server/category-weight-sets";
+import { assertBudgetPlanInOrganization, resolveBudgetPlan } from "@/server/budget-plans";
+import { getCorridorConfig, loadCorridorAssets, savingsByPair } from "@/server/corridors";
+import { findNeighbours } from "@/domain/waterline/corridor";
+import type { CorridorRun } from "@/domain/waterline/corridor-bundling";
 import { resolveFundingPlan } from "@/server/category-funding";
 import { resolveWeights } from "@/server/weight-sets";
 import { resolveOptionSelection } from "@/server/scenario-options";
 import { loadCombinations } from "@/server/combinations";
-import { getCurvesByAssetType, getRiskFactorsByType, getSizeCostByType } from "@/server/settings";
+import { getCurvesByAssetType, getRiskFactorsByType, getSizeCostByType, getFailureCostByType } from "@/server/settings";
 import { modelledScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
@@ -98,6 +106,7 @@ export async function buildSimAssets(
   const measuresOf = await getMeasureCodes(organizationId);
   const riskFactorsOf = await getRiskFactorsByType(organizationId);
   const sizeCostOf = await getSizeCostByType(organizationId);
+  const failureCostOf = await getFailureCostByType(organizationId);
   return assets.map((asset) => {
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const material = m.material;
@@ -112,6 +121,7 @@ export async function buildSimAssets(
       assetTypeId: asset.assetTypeId,
       cofFactors: riskFactorsOf(asset.assetTypeId).cof,
       sizeCostScale: sizeCostOf(asset.assetTypeId),
+      failureCost: failureCostOf(asset.assetTypeId),
       assetCode: asset.assetCode,
       material,
       diameterInches: m.diameter,
@@ -190,8 +200,19 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
     programmedFunding: PROGRAMMED_FUNDING.includes(map.programmedFunding as ProgrammedFunding)
       ? (map.programmedFunding as ProgrammedFunding)
       : DEFAULT_ASSUMPTIONS.programmedFunding,
+    // Present only on a scenario that weighs its asset types; every other
+    // scenario reads exactly as it did before the weights existed.
+    ...withTypeWeights(parseAssetTypeWeights(map.assetTypeWeights)),
+    // Likewise only on a scenario that funds its types separately.
+    ...(map.typeFunding === "separate" ? { typeFunding: "separate" as const } : {}),
+    // And only on one that bundles corridor work.
+    ...(map.corridorBundling === true ? { corridorBundling: true } : {}),
+    ...(map.corridorBundling === true && map.corridorDeferral === true ? { corridorDeferral: true } : {}),
   };
 }
+
+const withTypeWeights = (weights: AssetTypeWeights) =>
+  Object.keys(weights).length > 0 ? { assetTypeWeights: weights } : {};
 
 /**
  * Assumptions as rows to store.
@@ -200,7 +221,14 @@ export function assumptionsFromRows(rows: Array<{ key: string; value: unknown }>
  * choice, and a missing row reads as the default target instead.
  */
 export function assumptionRows(assumptions: ScenarioAssumptions) {
-  return Object.entries(assumptions).map(([key, value]) => ({
+  const { assetTypeWeights, typeFunding, corridorBundling, corridorDeferral, ...rest } = assumptions;
+  return Object.entries({
+    ...rest,
+    ...withTypeWeights(parseAssetTypeWeights(assetTypeWeights)),
+    ...(typeFunding === "separate" ? { typeFunding } : {}),
+    ...(corridorBundling ? { corridorBundling: true } : {}),
+    ...(corridorBundling && corridorDeferral ? { corridorDeferral: true } : {}),
+  }).map(([key, value]) => ({
     key,
     value: value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue),
   }));
@@ -227,9 +255,12 @@ export function effectiveAssumptions(
  * would have a scenario run against whatever it last produced, and its own
  * re-run would be refused by the very lock.
  */
-async function assertLockablePlan(planId: string | null) {
+async function assertLockablePlan(organizationId: string, planId: string | null) {
   if (!planId) return;
-  const plan = await prisma.workPlan.findUnique({ where: { id: planId }, select: { isScenarioMirror: true, name: true } });
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: planId, organizationId },
+    select: { isScenarioMirror: true, name: true },
+  });
   if (!plan) throw new Error("That work plan no longer exists");
   if (plan.isScenarioMirror) {
     throw new Error(
@@ -264,6 +295,36 @@ async function scenarioAssetTypes(organizationId: string, ids: string[] | undefi
   return chosen.length === modelled.length ? [] : chosen;
 }
 
+/**
+ * The assumptions with their asset type settings checked: each weight is for a
+ * type the scenario covers and inside the allowed range. A scenario over one
+ * type keeps no weights and does not fund types separately, since there is
+ * nothing for that type to be weighed against or kept apart from.
+ */
+async function checkedTypeWeights(
+  organizationId: string,
+  assumptions: ScenarioAssumptions,
+  assetTypeIds: string[]
+): Promise<ScenarioAssumptions> {
+  const { assetTypeWeights, typeFunding, ...rest } = assumptions;
+  const weights = parseAssetTypeWeights(assetTypeWeights);
+  if (Object.keys(weights).length === 0 && typeFunding !== "separate") return rest;
+  const covered =
+    assetTypeIds.length > 0 ? assetTypeIds : (await listModelledAssetTypes(organizationId)).map((t) => t.id);
+  // Over one type there is nothing to weigh it against, and nothing to fund
+  // separately from.
+  if (covered.length < 2) return rest;
+  const funding = typeFunding === "separate" ? { typeFunding } : {};
+  const { min, max } = ASSET_TYPE_WEIGHT_RANGE;
+  const kept: AssetTypeWeights = {};
+  for (const [id, w] of Object.entries(weights)) {
+    if (!covered.includes(id)) continue;
+    if (w < min || w > max) throw new Error(`An asset type weight must be between ${min} and ${max}.`);
+    kept[id] = w;
+  }
+  return { ...rest, ...withTypeWeights(kept), ...funding };
+}
+
 export async function createScenario(
   organizationId: string,
   input: {
@@ -286,6 +347,8 @@ export async function createScenario(
      * organization's default set, and no default means everything happens in
      * the year it is decided. */
     leadTimeSetId?: string | null;
+    /** The money set year by year. Null is the annual budget and growth. */
+    budgetPlanId?: string | null;
     /** Which assets it runs over. Null is the whole network. */
     savedFilterId?: string | null;
     /** Which modelled asset types it runs over. Empty is all of them. */
@@ -298,8 +361,10 @@ export async function createScenario(
 ) {
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
   await assertFilterInOrganization(organizationId, input.savedFilterId ?? null);
-  await assertLockablePlan(input.lockedWorkPlanId ?? null);
+  await assertLockablePlan(organizationId, input.lockedWorkPlanId ?? null);
+  await assertBudgetPlanInOrganization(organizationId, input.budgetPlanId ?? null);
   const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
+  const assumptions = await checkedTypeWeights(organizationId, input.assumptions, assetTypeIds);
   return prisma.scenario.create({
     data: {
       organizationId,
@@ -310,11 +375,12 @@ export async function createScenario(
       categoryWeightSetId: input.categoryWeightSetId || null,
       categoryFundingPlanId: input.categoryFundingPlanId || null,
       leadTimeSetId: input.leadTimeSetId || null,
+      budgetPlanId: input.budgetPlanId || null,
       savedFilterId: input.savedFilterId || null,
       scenarioSetId: input.scenarioSetId || null,
       lockedWorkPlanId: input.lockedWorkPlanId || null,
       assumptions: {
-        create: assumptionRows(input.assumptions),
+        create: assumptionRows(assumptions),
       },
       assetTypes: { create: assetTypeIds.map((assetTypeId) => ({ assetTypeId })) },
     },
@@ -347,6 +413,8 @@ export async function updateScenario(
     /** How long its work takes to be paid for and built. Null uses the
      * organization's default set. */
     leadTimeSetId?: string | null;
+    /** The money set year by year. Null is the annual budget and growth. */
+    budgetPlanId?: string | null;
     /** Which assets it runs over. Null is the whole network. */
     savedFilterId?: string | null;
     /** Which modelled asset types it runs over. Empty is all of them. */
@@ -367,8 +435,10 @@ export async function updateScenario(
     throw new Error("A scenario in a set can be moved to another set, but not taken out of one");
   }
   await assertSetInOrganization(organizationId, input.scenarioSetId ?? null);
-  await assertLockablePlan(input.lockedWorkPlanId ?? null);
+  await assertLockablePlan(organizationId, input.lockedWorkPlanId ?? null);
+  await assertBudgetPlanInOrganization(organizationId, input.budgetPlanId ?? null);
   const assetTypeIds = await scenarioAssetTypes(organizationId, input.assetTypeIds);
+  const assumptions = await checkedTypeWeights(organizationId, input.assumptions, assetTypeIds);
 
   await prisma.$transaction([
     // Replaced wholesale, like the assumptions below.
@@ -384,6 +454,7 @@ export async function updateScenario(
         categoryWeightSetId: input.categoryWeightSetId || null,
         categoryFundingPlanId: input.categoryFundingPlanId || null,
         leadTimeSetId: input.leadTimeSetId || null,
+        budgetPlanId: input.budgetPlanId || null,
         savedFilterId: input.savedFilterId || null,
         scenarioSetId: input.scenarioSetId || null,
         lockedWorkPlanId: input.lockedWorkPlanId || null,
@@ -391,7 +462,7 @@ export async function updateScenario(
     }),
     prisma.scenarioAssumption.deleteMany({ where: { scenarioId } }),
     prisma.scenarioAssumption.createMany({
-      data: assumptionRows(input.assumptions).map((row) => ({ scenarioId, ...row })),
+      data: assumptionRows(assumptions).map((row) => ({ scenarioId, ...row })),
     }),
   ]);
 }
@@ -451,7 +522,7 @@ export async function loadScenarioRun(
   // A set decides the years: its base year starts the run and its planning
   // period replaces the scenario's own, so every member covers the same span.
   const assumptions = effectiveAssumptions(scenario.assumptions, scenario.scenarioSet);
-  const [simAssets, library, combinations, weights, categories, funding, selection, curvesFor, criticality, leadTimes] =
+  const [simAssets, library, combinations, weights, categories, funding, selection, curvesFor, criticality, leadTimes, budget] =
     await Promise.all([
     buildSimAssets(
       organizationId,
@@ -479,6 +550,9 @@ export async function loadScenarioRun(
     // How long its work takes to be paid for and built. No set, or a set that
     // leaves everything immediate, is the engine this app has always had.
     resolveLeadTimes(organizationId, scenario.leadTimeSetId),
+    // The money year by year, where it follows a budget plan. None is the
+    // annual budget and growth, as every scenario ran before plans existed.
+    resolveBudgetPlan(organizationId, scenario.budgetPlanId),
   ]);
 
   if (simAssets.length === 0 && scenario.assetTypes.length > 0) {
@@ -490,6 +564,8 @@ export async function loadScenarioRun(
   const locked = scenario.lockedWorkPlan
     ? await lockedProjects(scenario.lockedWorkPlan.id, new Set(simAssets.map((a) => a.id)))
     : null;
+
+  const corridor = assumptions.corridorBundling ? await corridorRun(organizationId, simAssets.map((a) => a.id)) : null;
 
   return {
     name: scenario.name,
@@ -520,6 +596,8 @@ export async function loadScenarioRun(
       },
       categoryWeights: categories.weights,
       fundingPlan: funding.plan,
+      budgetPlan: budget.lines,
+      corridor,
       curvesFor,
       startYear: scenario.scenarioSet?.baseYear,
       // Absent when no formula is configured, in which case each asset keeps
@@ -527,6 +605,23 @@ export async function loadScenarioRun(
       criticality: criticality?.score,
       locked: locked?.projects,
     },
+  };
+}
+
+/**
+ * Who neighbours whom among a run's assets, and what pairs save — or null
+ * where no pair of asset types saves anything, since then nothing can bundle.
+ */
+async function corridorRun(organizationId: string, assetIds: string[]): Promise<CorridorRun | null> {
+  const config = await getCorridorConfig(organizationId);
+  const savings = savingsByPair(config);
+  if (savings.size === 0) return null;
+  const assets = await loadCorridorAssets(organizationId, config, assetIds);
+  const withAttribute = new Set(config.types.filter((t) => t.corridorAttribute).map((t) => t.id));
+  return {
+    neighbours: findNeighbours(assets, config.distanceMeters, withAttribute),
+    savings,
+    windowYears: config.windowYears,
   };
 }
 
@@ -656,6 +751,17 @@ export async function runAndStoreScenario(organizationId: string, scenarioId: st
       { scenarioId, year: y.year, metricKey: "expectedFailures", metricValue: y.expectedFailures },
       { scenarioId, year: y.year, metricKey: "failureCost", metricValue: y.failureCost },
       { scenarioId, year: y.year, metricKey: "belowTargetCount", metricValue: y.belowTargetCount },
+      // Each asset type's share, when the run covers several: stored as
+      // "type:<id>:<metric>" beside the totals, so a single-type run stores
+      // exactly what it always did.
+      ...(y.byType ?? []).flatMap((t) =>
+        TYPE_METRICS.filter((metric) => t[metric] != null).map((metric) => ({
+          scenarioId,
+          year: y.year,
+          metricKey: `${TYPE_METRIC_PREFIX}${t.assetTypeId}:${metric}`,
+          metricValue: t[metric] as number,
+        }))
+      ),
     ]),
   });
   // How the run got to its first year, stored against that year so no extra
@@ -800,6 +906,7 @@ async function persistScenarioProgram(
   const fundedYears = years.flatMap((y) => y.selected.map((p) => p.fundedYear));
   const workPlan = await prisma.workPlan.create({
     data: {
+      organizationId,
       scenarioId,
       name: `${scenarioName} — Funded Program`,
       startYear: Math.min(...fundedYears),
@@ -854,6 +961,10 @@ async function persistScenarioProgram(
               // Absent in the usual case, where the row's own year is the
               // whole answer.
               ...(p.cash.length > 1 ? { cash: p.cash } : {}),
+              // Where it joined a corridor bundle: beside what, and for how
+              // much less. Absent on everything else.
+              ...(p.corridor ? { corridor: p.corridor } : {}),
+              ...(p.deferred ? { deferred: p.deferred } : {}),
             },
             reasonExplanation: p.locked
               ? `Locked from ${lockedPlanName ?? "the locked work plan"}` +
@@ -867,6 +978,13 @@ async function persistScenarioProgram(
                 ? `. Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}`
                 : "") +
               (p.supersededTreatment ? `, replacing ${p.supersededTreatment} programmed earlier on this ${words.item}` : "") +
+              (p.corridor
+                ? `, bundled with ${p.corridor.withAssetCode} to save $${p.corridor.saving.toLocaleString("en-US")}` +
+                  (p.corridor.dueYear != null ? ` (brought forward from ${p.corridor.dueYear})` : "")
+                : "") +
+              (p.deferred
+                ? `, after waiting from ${p.deferred.from} for ${p.deferred.withAssetCode}'s work (estimated saving $${p.deferred.saving.toLocaleString("en-US")} against $${p.deferred.waitingCost.toLocaleString("en-US")} expected failure cost of waiting)`
+                : "") +
               `. Condition ${p.conditionBefore} → ${p.conditionAfter}, risk ${p.riskBefore} → ${p.riskAfter}.`,
             fundingSource: p.locked ? "Programmed (locked)" : "Scenario Budget",
             status: (p.locked?.status as WorkPlanItemStatus | undefined) ?? WorkPlanItemStatus.PLANNED,
@@ -902,6 +1020,11 @@ export type ScenarioProjectRow = {
   riskBefore: number | null;
   riskAfter: number | null;
   riskReductionPct: number | null;
+  /** Where it joined a corridor bundle: beside which asset, and what that
+   * saved. Null on everything else. */
+  corridor: { withAssetCode: string; saving: number; dueYear: number | null } | null;
+  /** Where it waited to join a neighbour's bundle: from which year, for whom. */
+  deferred: { from: number; withAssetCode: string } | null;
 };
 
 /** The projects a scenario run funded, newest run only. */
@@ -925,6 +1048,8 @@ export async function getScenarioProjects(
       riskBefore?: number;
       riskAfter?: number;
       riskReductionPct?: number;
+      corridor?: { withAssetCode?: string; saving?: number; dueYear?: number };
+      deferred?: { from?: number; withAssetCode?: string };
     };
     return {
       year: i.year,
@@ -942,6 +1067,15 @@ export async function getScenarioProjects(
       riskBefore: b.riskBefore ?? null,
       riskAfter: b.riskAfter ?? null,
       riskReductionPct: b.riskReductionPct ?? null,
+      corridor: b.corridor
+        ? {
+            withAssetCode: b.corridor.withAssetCode ?? "",
+            saving: b.corridor.saving ?? 0,
+            dueYear: b.corridor.dueYear ?? null,
+          }
+        : null,
+      deferred:
+        b.deferred?.from != null ? { from: b.deferred.from, withAssetCode: b.deferred.withAssetCode ?? "" } : null,
     };
   });
 }
@@ -980,6 +1114,9 @@ export type ScenarioSummary = {
    * decided, paid for and built in the same year. */
   leadTimeSetId: string | null;
   leadTimeSetName: string | null;
+  /** The budget plan it follows, when it follows one. */
+  budgetPlanId: string | null;
+  budgetPlanName: string | null;
   /** The saved filter deciding which assets this scenario runs over. Null is
    * the whole network, which is what every scenario did before filters could
    * be attached. */
@@ -1057,6 +1194,7 @@ export async function listScenarios(
       categoryWeightSet: { select: { name: true } },
       categoryFundingPlan: { select: { name: true } },
       leadTimeSet: { select: { name: true } },
+      budgetPlan: { select: { name: true } },
       savedFilter: { select: { name: true } },
       lockedWorkPlan: { select: { name: true } },
       assetTypes: { select: { assetTypeId: true, assetType: { select: { name: true } } } },
@@ -1100,6 +1238,8 @@ export async function listScenarios(
       categoryFundingPlanName: s.categoryFundingPlan?.name ?? null,
       leadTimeSetId: s.leadTimeSetId,
       leadTimeSetName: s.leadTimeSet?.name ?? null,
+      budgetPlanId: s.budgetPlanId,
+      budgetPlanName: s.budgetPlan?.name ?? null,
       savedFilterId: s.savedFilterId,
       savedFilterName: s.savedFilter?.name ?? null,
       assetTypeIds: s.assetTypes.map((t) => t.assetTypeId),
@@ -1177,8 +1317,58 @@ export type ScenarioDetail = ScenarioSummary & {
     expectedFailures: number;
     failureCost: number;
     belowTargetCount: number;
+    /** Each asset type's share, when the run covered several; empty otherwise. */
+    byType: Array<
+      Omit<TypeYearResult, "assetTypeId"> & { assetTypeId: string; assetTypeName: string }
+    >;
   }>;
 };
+
+const TYPE_METRIC_PREFIX = "type:";
+const TYPE_METRICS = [
+  "assets",
+  "avgCondition",
+  "expectedFailures",
+  "failureCost",
+  "backlog",
+  "backlogCount",
+  "workFunded",
+  "projects",
+  // Absent on a year where the type had nothing scored, and on every run
+  // stored before it was recorded.
+  "typicalPriority",
+] as const satisfies ReadonlyArray<keyof TypeYearResult>;
+
+/** A year's per-type rows read back, ordered by type name. */
+function typeYears(
+  metrics: Record<string, number>,
+  names: Map<string, string>
+): ScenarioDetail["years"][number]["byType"] {
+  const byId = new Map<string, Partial<Record<(typeof TYPE_METRICS)[number], number>>>();
+  for (const [key, value] of Object.entries(metrics)) {
+    if (!key.startsWith(TYPE_METRIC_PREFIX)) continue;
+    const rest = key.slice(TYPE_METRIC_PREFIX.length);
+    const cut = rest.lastIndexOf(":");
+    const id = rest.slice(0, cut);
+    const metric = rest.slice(cut + 1) as (typeof TYPE_METRICS)[number];
+    byId.set(id, { ...(byId.get(id) ?? {}), [metric]: value });
+  }
+  return [...byId.entries()]
+    .map(([assetTypeId, m]) => ({
+      assetTypeId,
+      assetTypeName: names.get(assetTypeId) ?? "Removed type",
+      assets: m.assets ?? 0,
+      avgCondition: m.avgCondition ?? 0,
+      expectedFailures: m.expectedFailures ?? 0,
+      failureCost: m.failureCost ?? 0,
+      backlog: m.backlog ?? 0,
+      backlogCount: m.backlogCount ?? 0,
+      workFunded: m.workFunded ?? 0,
+      projects: m.projects ?? 0,
+      typicalPriority: m.typicalPriority ?? null,
+    }))
+    .sort((a, b) => a.assetTypeName.localeCompare(b.assetTypeName));
+}
 
 export async function getScenario(organizationId: string, scenarioId: string): Promise<ScenarioDetail | null> {
   const s = await prisma.scenario.findFirst({
@@ -1196,6 +1386,9 @@ export async function getScenario(organizationId: string, scenarioId: string): P
 
   const summaries = await listScenarios(organizationId);
   const summary = summaries.find((x) => x.id === scenarioId)!;
+  const typeNames = new Map(
+    (await prisma.assetType.findMany({ where: { organizationId }, select: { id: true, name: true } })).map((t) => [t.id, t.name])
+  );
 
   return {
     ...summary,
@@ -1214,6 +1407,7 @@ export async function getScenario(organizationId: string, scenarioId: string): P
         expectedFailures: m.expectedFailures ?? 0,
         failureCost: m.failureCost ?? 0,
         belowTargetCount: m.belowTargetCount ?? 0,
+        byType: typeYears(m, typeNames),
       })),
   };
 }

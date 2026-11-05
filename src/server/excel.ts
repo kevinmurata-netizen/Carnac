@@ -1,3 +1,5 @@
+import { siteProduct } from "@/server/branding";
+import { DEFAULT_BRANDING } from "@/lib/branding";
 import ExcelJS from "exceljs";
 
 /**
@@ -50,7 +52,7 @@ export function buildWorkbook(sheet: ExcelSheet): Promise<Buffer> {
  */
 export async function buildWorkbookSheets(sheets: ExcelSheet[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "CARNAC";
+  workbook.creator = siteProduct().productName ?? DEFAULT_BRANDING.productName;
   workbook.created = new Date();
 
   for (const sheet of sheets) addSheet(workbook, sheet);

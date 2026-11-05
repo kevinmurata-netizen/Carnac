@@ -34,13 +34,15 @@ import { annualFailureProbability, failureEventCost, presentValue } from "./lcca
 import { buildLccaEvaluator } from "./lcca-evaluator";
 import { categoryWeight, NEUTRAL_CATEGORY_WEIGHTS } from "./category-weight";
 import { CONSIDER_ALL, filterOptions } from "./option-selection";
-import { categoryLimits } from "./category-funding";
-import { NOT_SELECTED, SELECTED, restingPurse, selectAgainst, type Purse, type Rankable } from "./selection";
+import { yearLimits } from "./category-funding";
+import { budgetYear, type TypeLimits } from "./budget-plan";
+import { NOT_SELECTED, SELECTED, restingPurse, selectAgainst, withTypeLimits, type Purse, type Rankable } from "./selection";
 import { recordTreatment, withinInterval, type TreatmentHistory } from "./retreatment";
 import {
   benefitCof,
   optionTerms,
   priorityScore,
+  benefitRanges,
   scoreBenefits,
   DEFAULT_BENEFIT_WEIGHTS,
   type BenefitTerms,
@@ -53,6 +55,7 @@ import {
   projectedConditionOf,
   splitOptionCost,
   type AssetTreatmentContext,
+  type TreatmentCategory,
   type TreatmentDef,
   type TreatmentOption,
   findTreatment,
@@ -61,11 +64,13 @@ import { cashPlan, leadTimeFor, type LeadTime, type LeadTimes } from "./lead-tim
 import { buildLocked, lockSchedule, lockedRecord, type LockedProject, type LockSchedule } from "./locked-projects";
 import {
   NOT_RANKED,
+  assetTypeWeight,
   belowTargetBar,
   goalOf,
   pofFromCondition,
   ruleBar,
   simAssetContext,
+  type AssetTypeWeights,
   type ScenarioAssumptions,
   type ScenarioProject,
   type ScenarioRunOptions,
@@ -73,7 +78,21 @@ import {
   type ScenarioYearResult,
   type SimAsset,
   type YearAlternative,
+  breakdownByType,
+  corridorOf,
+  sharesOf,
+  waitingCost,
+  typicalPriorities,
+  withByType,
 } from "./scenario";
+import {
+  chooseDeferrals,
+  corridorRepricer,
+  dueWithin,
+  repriced,
+  type CorridorJoin,
+  type Deferral,
+} from "./corridor-bundling";
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -158,7 +177,14 @@ export type DeliveryRunResult = Omit<ScenarioRunResult, "years"> & {
 function ledger(
   budgetFor: (year: number) => number,
   plan: ScenarioRunOptions["fundingPlan"],
-  endYear: number
+  endYear: number,
+  /** A budget plan's dollar ceilings for a year, by category. */
+  ceilingsFor: (year: number) => Map<TreatmentCategory, number> | null,
+  /** Each asset type's own money, where the scenario funds types separately. */
+  byType: {
+    typeOf: (c: { assetId?: string }) => string | null | undefined;
+    limitsIn: (year: number) => TypeLimits | null;
+  } | null
 ) {
   const spent = new Map<number, number>();
   const spentByCategory = new Map<string, number>();
@@ -166,7 +192,7 @@ function ledger(
 
   const key = (year: number, category: string) => `${year}|${category}`;
   const limits = (year: number) => {
-    if (!limitsFor.has(year)) limitsFor.set(year, categoryLimits(plan ?? null, budgetFor(year)));
+    if (!limitsFor.has(year)) limitsFor.set(year, yearLimits(plan ?? null, budgetFor(year), ceilingsFor(year)));
     return limitsFor.get(year)!;
   };
   const capFor = (year: number, category: string) => {
@@ -245,13 +271,35 @@ function ledger(
     totalSpent: purse.totalSpent,
   };
 
+  // Held to each type's own money too, where types are funded separately.
+  // Reserving goes through the same purse, so work an earlier pass fixed
+  // counts against its type as well as its year.
+  const typed = byType
+    ? withTypeLimits(purse, { typeOf: byType.typeOf, money: (c) => c.cash, limitsIn: byType.limitsIn })
+    : null;
+  const guarded: Purse<Candidate> = typed ?? purse;
+
   return {
-    purse,
+    purse: guarded,
     unlimited,
     /** Money already spoken for before the pass starts. */
     reserve: (c: Candidate | { cash: Candidate["cash"]; option: Candidate["option"] }) =>
-      move(c as Candidate, 1),
+      byType ? guarded.commit(c as Candidate, null) : move(c as Candidate, 1),
     spentIn: (year: number) => spent.get(year) ?? 0,
+    /** Everything spent so far, and a way back to it: for deciding a year a
+     * second time, as deferral does, without its first decision's money. */
+    snapshot: () => {
+      const years = new Map(spent);
+      const categories = new Map(spentByCategory);
+      const restoreTypes = typed?.snapshot() ?? null;
+      return () => {
+        spent.clear();
+        for (const [k, v] of years) spent.set(k, v);
+        spentByCategory.clear();
+        for (const [k, v] of categories) spentByCategory.set(k, v);
+        restoreTypes?.();
+      };
+    },
     byCategoryIn: (year: number) => {
       const l = limits(year);
       const categories = l == null ? ["All"] : [...l.keys()];
@@ -299,13 +347,17 @@ export function runDeliveryScenario(
 ): DeliveryRunResult {
   const maxPasses = Math.max(1, options.maxPasses ?? 4);
   let fixed: Commitment[] = [];
-  let outcome = walk(assets, assumptions, options, fixed);
+  // Each year's typical score per type comes from the first pass, where every
+  // segment is still open: a later pass leaves alone the segments an earlier
+  // one settled, so a type whose work was all decided first would rank nothing.
+  const typical = new Map<number, Map<string, number | null>>();
+  let outcome = walk(assets, assumptions, options, fixed, typical);
   let passes = 1;
   let added = outcome.decided.length;
 
   while (passes < maxPasses) {
     fixed = outcome.decided;
-    const next = walk(assets, assumptions, options, fixed);
+    const next = walk(assets, assumptions, options, fixed, typical);
     added = next.decided.length - fixed.length;
     passes++;
     outcome = next;
@@ -324,12 +376,16 @@ export function runDeliveryScenario(
  * so nothing added here can change the network a fixed project was judged
  * against. What is left of each year's budget is then offered to segments that
  * hold nothing.
+ *
+ * `typical` holds each year's typical score per type: filled by the first
+ * pass, read by the rest.
  */
 function walk(
   assets: SimAsset[],
   assumptions: ScenarioAssumptions,
   options: DeliveryRunOptions,
-  fixed: Commitment[]
+  fixed: Commitment[],
+  typical: Map<number, Map<string, number | null>>
 ): { result: Omit<DeliveryRunResult, "passes" | "addedInLastPass">; decided: Commitment[] } {
   const library = options.library ?? WATERLINE_TREATMENTS;
   const combinations = options.combinations ?? [];
@@ -367,11 +423,72 @@ function walk(
   // Flat in target mode: what is being solved for there is one figure a year,
   // and escalating it would mean the answer was a figure that is never
   // actually the amount in any year but the first.
+  //
+  // A budget plan replaces the annual budget and growth in the years it
+  // lists, and its category amounts are ceilings in those years.
+  const plannedFor = (year: number) =>
+    assumptions.fundingMode === "target" ? null : budgetYear(options.budgetPlan, year, assumptions.typeFunding);
+  // Funded by type, each type is also held to its own money in every year its
+  // instalments fall in. Work locked from a plan carries no type here.
+  const typeOfAsset = new Map(assets.map((a) => [a.id, a.assetTypeId ?? null]));
+  // Corridor deferral, as in the same-year engine: what is waiting now, what
+  // has ever waited, and what waited and has yet to be decided.
+  const deferring =
+    assumptions.fundingMode !== "target" &&
+    !!assumptions.corridorDeferral &&
+    (options.corridor?.windowYears ?? 0) > 0;
+  const deferred = new Map<string, Deferral>();
+  const deferredOnce = new Set<string>();
+  const waited = new Map<string, Deferral>();
+  /** Candidates less any still waiting, which the trace records as such. */
+  let traceYear = 0;
+  let traceSink: YearAlternative[] | null = null;
+  const holdBack = (list: Candidate[]): Candidate[] => {
+    if (deferred.size === 0) return list;
+    if (traceSink) {
+      for (const c of list.filter((x) => deferred.has(x.assetId) && !x.held)) {
+        traceSink.push({
+          ...traceOf(c, traceYear, categoryWeights, assumptions.assetTypeWeights),
+          incremental: null,
+          incrementalOver: null,
+          selected: false,
+          reason: NOT_RANKED.deferred,
+        });
+      }
+    }
+    return list.filter((c) => c.held || !deferred.has(c.assetId));
+  };
+  /** The deferral behind work now decided, said once, on the work it waited for. */
+  const deferredOf = (assetId: string): ScenarioProject["deferred"] => {
+    const d = waited.get(assetId);
+    if (!d) return undefined;
+    waited.delete(assetId);
+    return {
+      from: d.from,
+      withAssetCode: byId.get(d.withAssetId)?.assetCode ?? "",
+      saving: Math.round(d.saving),
+      waitingCost: Math.round(d.waitingCost),
+    };
+  };
+  const byType =
+    assumptions.fundingMode !== "target" && assumptions.typeFunding === "separate"
+      ? {
+          typeOf: (c: { assetId?: string }) => (c.assetId ? typeOfAsset.get(c.assetId) : null),
+          limitsIn: (year: number) => plannedFor(year)?.types ?? null,
+        }
+      : null;
   const budgetFor = (year: number) =>
     assumptions.fundingMode === "target"
       ? assumptions.annualBudget
-      : assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear);
-  const money = ledger(budgetFor, options.fundingPlan ?? null, endYear);
+      : (plannedFor(year)?.total ??
+        assumptions.annualBudget * Math.pow(1 + assumptions.fundingGrowth, year - startYear));
+  const money = ledger(
+    budgetFor,
+    options.fundingPlan ?? null,
+    endYear,
+    (year) => plannedFor(year)?.ceilings ?? null,
+    byType
+  );
   /** Past the target year of a target run set to do nothing after it. */
   const afterTargetIn = (year: number) =>
     assumptions.fundingMode === "target" &&
@@ -521,7 +638,24 @@ function walk(
 
     // 3. What could be decided this year, each option judged against the
     //    segment it will meet in the year it would be built.
-    const { candidates, heldCandidates } = rankCandidates({
+    // Bundling with a window, in a budget year: work the strategy will look
+    // at within it is scored too — only ever to join a neighbour's bundle.
+    const windowYears =
+      options.corridor && !targeted && !afterTargetIn(year) ? options.corridor.windowYears : 0;
+    const dueYear = new Map<string, number>();
+    if (windowYears > 0) {
+      for (const a of state) {
+        if (isEligible(a.condition, a.cof, assumptions)) continue;
+        const k = dueWithin(
+          a,
+          windowYears,
+          (x, ahead) => forecast(x, ahead).condition,
+          (x) => isEligible(x.condition, x.cof, assumptions)
+        );
+        if (k != null) dueYear.set(a.id, year + k);
+      }
+    }
+    const ranked = rankCandidates({
       locks,
       fixedUntil,
       state,
@@ -538,7 +672,24 @@ function walk(
       categoryWeights,
       curvesOf,
       trace,
+      early: dueYear.size > 0 ? new Set(dueYear.keys()) : undefined,
     });
+    const { heldCandidates, early } = ranked;
+    let candidates = ranked.candidates;
+
+    // Deferral: release work that has waited its years or become too risky to
+    // keep waiting, and keep out of this year what is still waiting.
+    traceYear = year;
+    traceSink = trace;
+    if (deferring) {
+      for (const [id, d] of deferred) {
+        const a = byId.get(id);
+        if (d.until <= year || (a && pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold)) {
+          deferred.delete(id);
+        }
+      }
+      candidates = holdBack(candidates);
+    }
 
     // 4. Buy the best next step anywhere on the network, against every year the
     //    money would come out of — unless this is past the target year of a
@@ -586,14 +737,86 @@ function walk(
         );
       }
     }
-    const outcome = selectAgainst(candidates, purse, heldCandidates);
+    // Bundling corridor work, in a budget year: each asset given work makes
+    // its neighbours cheaper for the rest of the year's buying — beside work
+    // built the same year, since that is when the crews are there together.
+    const buy = () => {
+      const bundling =
+        options.corridor && !resting && !targeted
+          ? corridorRepricer(
+              [...candidates, ...early],
+              options.corridor,
+              rebated,
+              (c, anchor) => c.buildYear === anchor.buildYear,
+              dueYear
+            )
+          : null;
+      return { result: selectAgainst(candidates, purse, heldCandidates, bundling?.onFunded), bundling };
+    };
+    // Deferral, among work the year actually decided on its own: what is
+    // worth waiting for a neighbour's later bundle is held back, the money is
+    // put back as it was, and the year is decided again without it.
+    const restore = deferring && options.corridor && !resting && !targeted ? money.snapshot() : null;
+    let bought = buy();
+    if (restore && options.corridor) {
+      const anchors = new Set([...(bought.bundling?.joinOf.values() ?? [])].map((j) => j.withAssetId));
+      const alone = bought.result.selected.filter(
+        (c) => !c.held && !bought.bundling?.joinOf.has(c) && !anchors.has(c.assetId)
+      );
+      const fresh = chooseDeferrals(
+        alone,
+        year,
+        options.corridor,
+        dueYear,
+        new Set(early.map((c) => c.assetId)),
+        (c) => deferredOnce.has(c.assetId) || c.riskNow >= assumptions.riskThreshold,
+        (c, years) => waitingCost(c.asset, years),
+        (id) => byId.get(id)?.assetTypeId,
+        endYear
+      );
+      if (fresh.size > 0) {
+        for (const [id, d] of fresh) {
+          deferred.set(id, d);
+          deferredOnce.add(id);
+          waited.set(id, d);
+        }
+        restore();
+        candidates = holdBack(candidates);
+        bought = buy();
+      }
+    }
+    const outcome = bought.result;
+    if (!typical.has(year)) typical.set(year, typicalPriorities(candidates, assumptions.assetTypeWeights));
+    const offeredAs: Map<Candidate, Candidate> | null = bought.bundling?.offeredAs ?? null;
+    const joins: Map<Candidate, CorridorJoin> | null = bought.bundling?.joinOf ?? null;
 
     if (trace) {
       for (const candidate of candidates) {
-        const reason = outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
-        const step = outcome.incremental.get(candidate);
+        const shown = offeredAs?.get(candidate) ?? candidate;
+        const reason = outcome.outcome.get(shown) ?? outcome.outcome.get(candidate) ?? NOT_SELECTED.budgetSpent;
+        const step = outcome.incremental.get(shown) ?? outcome.incremental.get(candidate);
         trace.push({
-          ...traceOf(candidate, year, categoryWeights),
+          ...traceOf(shown, year, categoryWeights, assumptions.assetTypeWeights),
+          ...(shown !== candidate ? { corridorSaving: Math.round(candidate.cost - shown.cost) } : {}),
+          incremental: step?.score ?? null,
+          incrementalOver: step ? (step.over?.option.label ?? null) : null,
+          selected: reason === SELECTED,
+          reason,
+        });
+      }
+    }
+
+    // Work brought forward that was offered to join a bundle: what the offer
+    // came to, beside the trace's ineligible rows for it.
+    if (trace && offeredAs) {
+      for (const c of early) {
+        const shown = offeredAs.get(c);
+        if (!shown) continue;
+        const reason = outcome.outcome.get(shown) ?? NOT_SELECTED.budgetSpent;
+        const step = outcome.incremental.get(shown);
+        trace.push({
+          ...traceOf(shown, year, categoryWeights, assumptions.assetTypeWeights),
+          corridorSaving: Math.round(c.cost - shown.cost),
           incremental: step?.score ?? null,
           incrementalOver: step ? (step.over?.option.label ?? null) : null,
           selected: reason === SELECTED,
@@ -605,6 +828,7 @@ function walk(
     // 5. Record what was decided, and take back out what it superseded.
     let supersededCount = 0;
     let supersededValue = 0;
+    let corridorSaving = 0;
     for (const [assetId, candidate] of outcome.chosen) {
       const previous = commitments.get(assetId);
       if (previous && candidate.held === previous) continue; // unchanged
@@ -620,7 +844,14 @@ function walk(
         const was = decided.indexOf(previous);
         if (was >= 0) decided.splice(was, 1);
       }
-      const commitment = toCommitment(candidate, previous ?? null);
+      const join = joins?.get(candidate);
+      if (join) corridorSaving += join.saving;
+      const commitment = toCommitment(
+        candidate,
+        previous ?? null,
+        join ? corridorOf(join, state).corridor : undefined,
+        deferredOf(assetId)
+      );
       commitments.set(assetId, commitment);
       decided.push(commitment);
       programmed.push(commitment.project);
@@ -704,6 +935,8 @@ function walk(
         (a) => pofFromCondition(a.condition) * a.cof >= assumptions.riskThreshold
       ).length,
       selected: programmed,
+      ...withByType(breakdownByType(state, programmed, backlogBest, typical.get(year) ?? new Map())),
+      ...(options.corridor ? { corridorSaving: Math.round(corridorSaving) } : {}),
       byCategory: money.byCategoryIn(year).map((r) => ({
         category: r.category,
         spent: Math.round(r.spent),
@@ -817,9 +1050,14 @@ function rankCandidates(args: {
   categoryWeights: Parameters<typeof categoryWeight>[0];
   curvesOf: (asset: SimAsset) => Record<string, CurveParams>;
   trace: YearAlternative[] | null;
-}): { candidates: Candidate[]; heldCandidates: Map<string, Candidate> } {
+  /** Assets not due yet but due within the corridor window: their options are
+   * scored on this year's scale and handed back as `early`, only for joining
+   * a neighbour's bundle. */
+  early?: ReadonlySet<string>;
+}): { candidates: Candidate[]; heldCandidates: Map<string, Candidate>; early: Candidate[] } {
   type Pending = Omit<Candidate, "priority" | "value" | "benefit" | "terms">;
   const pending: Array<{ item: Pending; terms: BenefitTerms }> = [];
+  const pendingEarly: Array<{ item: Pending; terms: BenefitTerms }> = [];
   const heldPending = new Map<string, Pending>();
 
   for (const asset of args.state) {
@@ -876,7 +1114,8 @@ function rankCandidates(args: {
       // Work decided now and built then would be on the segment while a
       // locked project holds it.
       if (args.locks.blocks(asset.id, args.year, buildYear)) continue;
-      if (!isEligible(future.condition, future.cof, args.assumptions)) continue;
+      const isEarly = !isEligible(future.condition, future.cof, args.assumptions);
+      if (isEarly && !args.early?.has(asset.id)) continue;
 
       const ctx = simAssetContext(future);
       const applicable = enumerateOptions(ctx, args.library, args.combinations);
@@ -914,7 +1153,7 @@ function rankCandidates(args: {
         const riskAfter =
           option.failureProbMultiplier === 0 ? 0 : Math.max(1, pof * option.failureProbMultiplier) * future.cof;
 
-        pending.push({
+        (isEarly ? pendingEarly : pending).push({
           item: {
             assetId: asset.id,
             asset,
@@ -937,22 +1176,25 @@ function rankCandidates(args: {
     }
   }
 
-  const scored = scoreBenefits(pending, args.benefitWeights).map<Candidate>((s) => {
+  const toCandidate = (s: ReturnType<typeof scoreBenefits<Pending>>[number]): Candidate => {
     const weight = categoryWeight(args.categoryWeights, s.item.option.category);
+    const typeWeight = assetTypeWeight(args.assumptions.assetTypeWeights, s.item.asset.assetTypeId);
     return {
       ...s.item,
       terms: s.raw,
       benefit: s.benefit,
-      value: s.item.asset.criticalityScore * s.item.asset.scaleFactor * weight * s.benefit,
+      value: s.item.asset.criticalityScore * s.item.asset.scaleFactor * weight * typeWeight * s.benefit,
       priority: priorityScore({
         criticality: s.item.asset.criticalityScore,
         scaleFactor: s.item.asset.scaleFactor,
         categoryWeight: weight,
+        assetTypeWeight: typeWeight,
         benefit: s.benefit,
         totalCost: s.item.cost,
       }),
     };
-  });
+  };
+  const scored = scoreBenefits(pending, args.benefitWeights).map(toCandidate);
 
   const riskPct = (c: Candidate) => (c.riskNow > 0 ? ((c.riskNow - c.riskAfter) / c.riskNow) * 100 : null);
   const fundable = scored.filter((c) => {
@@ -970,7 +1212,7 @@ function rankCandidates(args: {
     if (enough && clears) return true;
     if (args.trace) {
       args.trace.push({
-        ...traceOf(c, args.year, args.categoryWeights),
+        ...traceOf(c, args.year, args.categoryWeights, args.assumptions.assetTypeWeights),
         incremental: null,
         incrementalOver: null,
         selected: false,
@@ -983,9 +1225,26 @@ function rankCandidates(args: {
   const heldCandidates = new Map<string, Candidate>();
   for (const candidate of fundable) if (candidate.held) heldCandidates.set(candidate.assetId, candidate);
 
+  // Work not due yet, on this year's scale, held to the same two filters.
+  const early: Candidate[] = [];
+  const scale = benefitRanges(pending);
+  if (scale && pendingEarly.length > 0) {
+    for (const c of scoreBenefits(pendingEarly, args.benefitWeights, scale).map(toCandidate)) {
+      const enough = doesEnough({
+        conditionBefore: c.conditionBefore,
+        conditionAfter: c.projectedCondition,
+        riskReductionPct: riskPct(c),
+        conditionTarget: ruleBar(args.assumptions),
+        targetConstrained: args.assumptions.fundingMode === "target",
+      });
+      if (enough && clearsEffectivenessFloor(c.conditionBefore, riskPct(c))) early.push(c);
+    }
+  }
+
   return {
     candidates: fundable.sort((a, b) => (b.priority ?? -1) - (a.priority ?? -1)),
     heldCandidates,
+    early,
   };
 }
 
@@ -1157,9 +1416,32 @@ function both<T extends Rankable>(first: Purse<T>, second: Purse<T>): Purse<T> {
   };
 }
 
-function toCommitment(candidate: Candidate, superseded: Commitment | null): Commitment {
+/** A candidate at its bundled price: the saving comes off every instalment
+ * in proportion, so the money still leaves in the years its lead time says. */
+function rebated(c: Candidate, saving: number): Candidate {
+  const cost = c.cost - saving;
+  const factor = c.cost > 0 ? cost / c.cost : 0;
+  const cash = c.cash.map((i) => ({ year: i.year, amount: Math.round(i.amount * factor) }));
+  // Rounding lands on the largest instalment, so the instalments still add up
+  // to the price.
+  const drift = Math.round(cost) - cash.reduce((sum, i) => sum + i.amount, 0);
+  if (drift !== 0 && cash.length > 0) {
+    const largest = cash.reduce((a, b) => (b.amount > a.amount ? b : a));
+    largest.amount += drift;
+  }
+  return { ...c, cost, cash, priority: repriced(c.value, cost) };
+}
+
+function toCommitment(
+  candidate: Candidate,
+  superseded: Commitment | null,
+  corridor?: ScenarioProject["corridor"],
+  deferred?: ScenarioProject["deferred"]
+): Commitment {
   const isBundle = candidate.option.members.length > 1;
-  const shares = isBundle ? splitOptionCost(candidate.option, candidate.ctx) : [Math.round(candidate.cost)];
+  const shares = isBundle
+    ? sharesOf(splitOptionCost(candidate.option, candidate.ctx), candidate.cost)
+    : [Math.round(candidate.cost)];
 
   const project: ScenarioProject = {
     assetId: candidate.assetId,
@@ -1187,6 +1469,8 @@ function toCommitment(candidate: Candidate, superseded: Commitment | null): Comm
     buildYear: candidate.buildYear,
     cash: candidate.cash,
     supersededTreatment: superseded?.project.treatment ?? null,
+    ...(corridor ? { corridor } : {}),
+    ...(deferred ? { deferred } : {}),
   };
 
   return {
@@ -1209,7 +1493,8 @@ function toCommitment(candidate: Candidate, superseded: Commitment | null): Comm
 function traceOf(
   c: Candidate,
   year: number,
-  weights: Parameters<typeof categoryWeight>[0]
+  weights: Parameters<typeof categoryWeight>[0],
+  typeWeights: AssetTypeWeights | undefined
 ): Omit<YearAlternative, "selected" | "reason" | "incremental" | "incrementalOver"> {
   return {
     year,
@@ -1226,6 +1511,7 @@ function traceOf(
     criticality: round1(c.asset.criticalityScore),
     scaleFactor: Math.round(c.asset.scaleFactor * 100) / 100,
     categoryWeight: categoryWeight(weights, c.option.category),
+    assetTypeWeight: assetTypeWeight(typeWeights, c.asset.assetTypeId),
     conditionAfter: round1(c.projectedCondition),
     riskBefore: round1(c.riskNow),
     riskAfter: round1(c.riskAfter),

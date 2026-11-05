@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { NAV_GROUPS } from "@/config/nav";
 import { groupKey } from "@/config/nav-groups";
 import { withAssetWords, type AssetWords, type Branding } from "@/lib/branding";
-import { BrandLogo } from "@/components/layout/brand-logo";
+import { BrandLogo, BrandName } from "@/components/layout/brand-logo";
 
 /**
  * The navigation itself, with no opinion about how it is displayed. The app
@@ -43,7 +43,7 @@ export function SidebarNav({
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <div className="flex h-16 shrink-0 items-center gap-2 border-b border-sidebar-border px-5">
         <BrandLogo logo={branding.logo} className="h-6 w-6 text-sidebar-primary" />
-        <span className="truncate text-lg font-semibold tracking-tight">{branding.productName}</span>
+        <BrandName name={branding.productName} className="truncate text-lg" />
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">

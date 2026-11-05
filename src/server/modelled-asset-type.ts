@@ -17,6 +17,12 @@ export function modelledType(organizationId: string, assetTypeId?: string | null
   return { organizationId, isModelled: true as const, ...(assetTypeId ? { id: assetTypeId } : {}) };
 }
 
+/** Whether anything is modelled yet — false on a new customer's site until an
+ * asset type's modelling is switched on. */
+export async function hasModelledAssetType(organizationId: string): Promise<boolean> {
+  return (await prisma.assetType.count({ where: modelledType(organizationId) })) > 0;
+}
+
 /** The same, for a relation filter where the organization is already fixed
  * on the parent row (an asset's own organizationId, say). */
 export const MODELLED = { isModelled: true } as const;

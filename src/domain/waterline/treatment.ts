@@ -9,6 +9,7 @@
 // Definitions here are the seed values; they are written to Treatment rows so
 // administrators can retune applicability/cost/effects without code changes.
 
+import type { FailureCost } from "./lcca";
 import type { RiskFactorDef } from "./risk";
 import {
   qualifiesUnderRules,
@@ -831,6 +832,8 @@ export type AssetTreatmentContext = {
   conditionIndexShort?: string;
   /** How its type's prices grow with size. Absent or null: they do not. */
   sizeCostScale?: SizeCostScale | null;
+  /** What one failure of its type costs. Absent or null: not costed. */
+  failureCost?: FailureCost | null;
   material: string | null;
   diameterInches: number | null;
   lengthFt: number | null;

@@ -18,7 +18,7 @@ import { effectiveAgeForCondition, evaluateCurve } from "@/domain/waterline/dete
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
 import { loadCombinations } from "@/server/combinations";
-import { getCurvesByAssetType, getRiskFactorsByType, getSizeCostByType } from "@/server/settings";
+import { getCurvesByAssetType, getRiskFactorsByType, getSizeCostByType, getFailureCostByType } from "@/server/settings";
 import { modelledScaleFactors } from "@/server/scale-factors";
 import { NEUTRAL_SCALE_FACTOR } from "@/domain/waterline/scale-factor";
 import { computeCriticalityScore } from "@/domain/waterline/risk";
@@ -43,6 +43,9 @@ import {
 import type { FundingPlan } from "@/domain/waterline/category-funding";
 import { selectForYear, type Rankable } from "@/domain/waterline/selection";
 import { DEFAULT_ASSUMPTIONS, type ScenarioAssumptions } from "@/domain/waterline/scenario";
+import { corridorGroupsOf } from "@/domain/waterline/corridor-bundling";
+import { findNeighbours, pairSaving } from "@/domain/waterline/corridor";
+import { getCorridorConfig, loadCorridorAssets, savingsByPair } from "@/server/corridors";
 import { runSchedule, type ScheduledVisit } from "@/domain/waterline/schedule";
 import {
   loadScenarioRun,
@@ -132,6 +135,7 @@ export async function createWorkPlanFromScenario(
 
   const workPlan = await prisma.workPlan.create({
     data: {
+      organizationId,
       scenarioId,
       name: name?.trim() || `${run.name} — Work Plan`,
       // The span of the money: a row sits in the year it is paid for, which
@@ -151,10 +155,14 @@ export async function createWorkPlanFromScenario(
 
   // One row per treatment, so a funded bundle becomes several rows sharing a
   // bundleId: one visit, one set of effects, the cost divided between them.
+  // Corridor bundles stay together: every row of one carries its group, and
+  // work that joined carries the price it would have alone.
+  const corridorGroups = corridorGroupsOf(years.flatMap((y) => y.selected));
   const items = years.flatMap((year) =>
     year.selected.flatMap((p) => {
       const isBundle = p.bundleName != null;
       const bundleId = isBundle ? `${workPlan.id}:${p.assetId}:${p.buildYear}:${p.treatment}` : null;
+      const group = corridorGroups.get(p);
       return p.members.flatMap((member) => {
         const treatmentId = treatmentIdFor(p.assetId, member.treatment);
         if (!treatmentId) return [];
@@ -186,9 +194,19 @@ export async function createWorkPlanFromScenario(
               // totals are the money that actually leaves each year rather
               // than the whole cost landing in one of them.
               ...(p.cash.length > 1 ? { cash: p.cash } : {}),
+              ...(p.corridor ? { corridor: { ...p.corridor, costApart: costApart(member.cost, p) } } : {}),
+              ...(p.deferred ? { deferred: p.deferred } : {}),
+              ...(group ? { corridorGroup: `${workPlan.id}:${group}` } : {}),
             },
             reasonExplanation: [
               `Funded by the ${run.name} run in ${year.year}${isBundle ? ` as part of ${p.treatment}` : ""}.`,
+              p.corridor
+                ? `Bundled with ${p.corridor.withAssetCode} in one corridor, saving $${p.corridor.saving.toLocaleString("en-US")}` +
+                  (p.corridor.dueYear != null ? `, brought forward from ${p.corridor.dueYear}.` : ".")
+                : "",
+              p.deferred
+                ? `Waited from ${p.deferred.from} for ${p.deferred.withAssetCode}'s work to bundle with it: an estimated $${p.deferred.saving.toLocaleString("en-US")} saving against $${p.deferred.waitingCost.toLocaleString("en-US")} expected failure cost of waiting.`
+                : "",
               p.buildYear !== p.programmedYear
                 ? `Programmed in ${p.programmedYear}, paid for in ${p.fundedYear}, built in ${p.buildYear}.`
                 : "",
@@ -320,6 +338,7 @@ async function buildCandidates(
   const measuresOf = await getMeasureCodes(organizationId);
   const riskFactorsOf = await getRiskFactorsByType(organizationId);
   const sizeCostOf = await getSizeCostByType(organizationId);
+  const failureCostOf = await getFailureCostByType(organizationId);
   for (const asset of assets) {
     const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
     const risk = asset.riskAssessments[0];
@@ -349,6 +368,7 @@ async function buildCandidates(
       assetTypeId: asset.assetTypeId,
       cofFactors: riskFactorsOf(asset.assetTypeId).cof,
       sizeCostScale: sizeCostOf(asset.assetTypeId),
+      failureCost: failureCostOf(asset.assetTypeId),
       criticality: criticalityRating,
       customerType,
       serviceArea: asset.location?.serviceArea ?? null,
@@ -477,6 +497,7 @@ export async function generateWorkPlan(organizationId: string, input: GenerateWo
 
   const workPlan = await prisma.workPlan.create({
     data: {
+      organizationId,
       name: input.name,
       startYear: input.startYear,
       endYear: input.startYear + input.years - 1,
@@ -633,14 +654,15 @@ const workPlanItemInclude = {
 
 /** The plans a scenario may lock: every editable plan, never a scenario
  * run's own programme, which is rewritten each time its scenario runs. */
-export async function lockablePlanChoices() {
-  return (await listWorkPlans())
+export async function lockablePlanChoices(organizationId: string) {
+  return (await listWorkPlans(organizationId))
     .filter((p) => !p.isScenarioMirror)
     .map((p) => ({ id: p.id, name: p.name, startYear: p.startYear, endYear: p.endYear, projectCount: p.itemCount }));
 }
 
-export async function listWorkPlans() {
+export async function listWorkPlans(organizationId: string) {
   const plans = await prisma.workPlan.findMany({
+    where: { organizationId },
     include: {
       items: { select: { id: true, bundleId: true, estimatedCost: true, year: true, status: true } },
       scenario: { select: { name: true } },
@@ -709,6 +731,12 @@ export type WorkPlanYear = {
     reason: string | null;
     fundingSource: string | null;
     status: WorkPlanItemStatus;
+    /** The corridor bundle it is part of, where it is in one. */
+    corridorGroup: string | null;
+    /** Where it joined that bundle: beside what, and for how much less. */
+    corridor: { withAssetId: string; withAssetCode: string; saving: number } | null;
+    /** Work that joined the bundle beside this one, and what each saved. */
+    corridorJoiners: Array<{ assetCode: string; saving: number }>;
   }>;
   totalCost: number;
 };
@@ -729,9 +757,9 @@ function shareOf(
   return cash.map((c, i) => ({ year: c.year, amount: amounts[i] }));
 }
 
-export async function getWorkPlan(id: string) {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id },
+export async function getWorkPlan(organizationId: string, id: string) {
+  const plan = await prisma.workPlan.findFirst({
+    where: { id, organizationId },
     include: { items: { include: workPlanItemInclude, orderBy: { estimatedCost: "desc" } }, scenario: true },
   });
   if (!plan) return null;
@@ -752,6 +780,8 @@ export async function getWorkPlan(id: string) {
       refusedBy?: string | null;
       /** The project's own payment profile, where its cost is spread. */
       cash?: Array<{ year: number; amount: number }>;
+      corridorGroup?: string;
+      corridor?: { withAssetId?: string; withAssetCode?: string; saving?: number; dueYear?: number };
     };
     const entry = byYear.get(item.year) ?? { year: item.year, items: [], totalCost: 0 };
     entry.items.push({
@@ -786,6 +816,20 @@ export async function getWorkPlan(id: string) {
       reason: item.reasonExplanation,
       fundingSource: item.fundingSource,
       status: item.status,
+      /** The corridor bundle it is part of, where it is in one. */
+      corridorGroup: benefit.corridorGroup ?? null,
+      /** Where it joined that bundle: beside what, and for how much less. */
+      corridor: benefit.corridor?.withAssetId
+        ? {
+            withAssetId: benefit.corridor.withAssetId,
+            withAssetCode: benefit.corridor.withAssetCode ?? "",
+            saving: benefit.corridor.saving ?? 0,
+          }
+        : null,
+      /** Work that joined the bundle beside this one, and what it saved —
+       * what moving this alone, or cancelling it, would price on its own
+       * again. Filled in below, once every row is read. */
+      corridorJoiners: [] as Array<{ assetCode: string; saving: number }>,
     });
     // A year's total is the money that actually leaves it. For all but a cost
     // spread over years that is the row's own figure; for those, each year
@@ -798,6 +842,20 @@ export async function getWorkPlan(id: string) {
       byYear.set(instalment.year, paying);
     }
     byYear.set(item.year, entry);
+  }
+
+  // Each piece of work's joiners: rows in its corridor bundle that joined it.
+  // A joiner made of several treatments is one project, so counted once.
+  const all = [...byYear.values()].flatMap((e) => e.items);
+  for (const item of all) {
+    if (!item.corridorGroup) continue;
+    const seen = new Set<string>();
+    for (const other of all) {
+      if (other.corridorGroup !== item.corridorGroup || other.corridor?.withAssetId !== item.assetId) continue;
+      if (seen.has(other.assetCode)) continue;
+      seen.add(other.assetCode);
+      item.corridorJoiners.push({ assetCode: other.assetCode, saving: other.corridor.saving });
+    }
   }
 
   for (const entry of byYear.values()) {
@@ -849,8 +907,8 @@ export async function getWorkPlan(id: string) {
  * a number without a reference.
  */
 export async function runWorkPlan(organizationId: string, workPlanId: string) {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id: workPlanId },
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: workPlanId, organizationId },
     include: {
       items: {
         select: {
@@ -986,6 +1044,7 @@ export async function assetTreatmentContext(
   const measuresOf = await getMeasureCodes(organizationId);
   const riskFactorsOf = await getRiskFactorsByType(organizationId);
   const sizeCostOf = await getSizeCostByType(organizationId);
+  const failureCostOf = await getFailureCostByType(organizationId);
   const m = readMeasures(asset.attributeValues, measuresOf(asset.assetTypeId));
   const risk = asset.riskAssessments[0];
   const pof = risk?.probabilityScore ?? 3;
@@ -1008,6 +1067,7 @@ export async function assetTreatmentContext(
       assetTypeId: asset.assetTypeId,
       cofFactors: riskFactorsOf(asset.assetTypeId).cof,
       sizeCostScale: sizeCostOf(asset.assetTypeId),
+      failureCost: failureCostOf(asset.assetTypeId),
       criticality: m.criticality,
       customerType: m.customerType,
       serviceArea: asset.location?.serviceArea ?? null,
@@ -1136,8 +1196,8 @@ export async function addWorkPlanItem(
   organizationId: string,
   input: { workPlanId: string; assetId: string; treatmentId: string; year: number }
 ): Promise<{ added: PlannedAddition }> {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id: input.workPlanId },
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: input.workPlanId, organizationId },
     select: { id: true, startYear: true, endYear: true, isScenarioMirror: true, name: true },
   });
   if (!plan) throw new Error("That work plan no longer exists");
@@ -1196,9 +1256,9 @@ export async function addWorkPlanItem(
 /** Everything this plan holds for one segment, so a row can be combined with
  * its neighbours — including the ones in other years, which is usually the
  * point: a repair in 2027 and a lining in 2031 become one visit. */
-export async function segmentRowsInPlan(workPlanId: string, assetId: string) {
+export async function segmentRowsInPlan(organizationId: string, workPlanId: string, assetId: string) {
   const rows = await prisma.workPlanItem.findMany({
-    where: { workPlanId, assetId },
+    where: { workPlanId, assetId, workPlan: { organizationId } },
     select: {
       id: true,
       year: true,
@@ -1242,9 +1302,9 @@ export type CombinePreview = {
   refused: string[];
 };
 
-async function planItemsForCombining(workPlanId: string, itemIds: string[]) {
+async function planItemsForCombining(organizationId: string, workPlanId: string, itemIds: string[]) {
   const items = await prisma.workPlanItem.findMany({
-    where: { id: { in: itemIds }, workPlanId },
+    where: { id: { in: itemIds }, workPlanId, workPlan: { organizationId } },
     select: {
       id: true,
       assetId: true,
@@ -1279,7 +1339,7 @@ export async function previewCombine(
   organizationId: string,
   input: { workPlanId: string; itemIds: string[]; year: number }
 ): Promise<CombinePreview> {
-  const { items, assetId } = await planItemsForCombining(input.workPlanId, input.itemIds);
+  const { items, assetId } = await planItemsForCombining(organizationId, input.workPlanId, input.itemIds);
   const [found, library, combinations] = await Promise.all([
     assetTreatmentContext(organizationId, assetId),
     loadTreatmentDefs(organizationId),
@@ -1346,8 +1406,8 @@ export async function combineWorkPlanItems(
   organizationId: string,
   input: { workPlanId: string; itemIds: string[]; year: number }
 ): Promise<CombinePreview> {
-  const plan = await prisma.workPlan.findUnique({
-    where: { id: input.workPlanId },
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: input.workPlanId, organizationId },
     select: { id: true, name: true, startYear: true, endYear: true, isScenarioMirror: true },
   });
   if (!plan) throw new Error("That work plan no longer exists");
@@ -1361,7 +1421,7 @@ export async function combineWorkPlanItems(
   }
 
   const preview = await previewCombine(organizationId, input);
-  const { items } = await planItemsForCombining(input.workPlanId, input.itemIds);
+  const { items } = await planItemsForCombining(organizationId, input.workPlanId, input.itemIds);
   const bundleId = `${plan.id}:${items[0].assetId}:${input.year}:${preview.name}`;
 
   await prisma.$transaction(
@@ -1414,7 +1474,7 @@ export async function combineWorkPlanItems(
  */
 export async function splitWorkPlanVisit(organizationId: string, workPlanId: string, bundleId: string) {
   const items = await prisma.workPlanItem.findMany({
-    where: { workPlanId, bundleId },
+    where: { workPlanId, bundleId, workPlan: { organizationId } },
     select: { id: true, assetId: true, year: true, expectedBenefit: true, treatment: { select: { name: true } } },
   });
   if (items.length === 0) throw new Error("That project no longer exists");
@@ -1456,9 +1516,9 @@ export async function splitWorkPlanVisit(organizationId: string, workPlanId: str
  * one job, so moving, removing or setting the status of one of its treatments
  * without the others would quietly break it apart; Split is how to do that.
  */
-async function projectRows(itemId: string) {
-  const item = await prisma.workPlanItem.findUnique({
-    where: { id: itemId },
+async function projectRows(organizationId: string, itemId: string) {
+  const item = await prisma.workPlanItem.findFirst({
+    where: { id: itemId, workPlan: { organizationId } },
     select: {
       id: true,
       workPlanId: true,
@@ -1472,10 +1532,85 @@ async function projectRows(itemId: string) {
   return { item, where };
 }
 
+/** A row's price outside its corridor bundle: its share of what the project
+ * would have cost on its own. */
+function costApart(share: number, project: { cost: number; corridor?: { saving: number } }): number {
+  if (!project.corridor || project.cost <= 0) return share;
+  return Math.round((share * (project.cost + project.corridor.saving)) / project.cost);
+}
+
+type CorridorRow = {
+  id: string;
+  assetId: string;
+  estimatedCost: number;
+  expectedBenefit: unknown;
+  reasonExplanation: string | null;
+};
+type CorridorNote = {
+  corridorGroup?: string;
+  corridor?: { withAssetId?: string; withAssetCode?: string; saving?: number; costApart?: number };
+};
+
+/**
+ * Corridor bundles a change breaks apart. `leaving` are rows leaving their
+ * bundle — moved alone, cancelled, deferred or removed. Each leaves its
+ * group; one that had joined is priced on its own again; and work that had
+ * joined *it* is priced on its own again too, since what it was bundled with
+ * is no longer beside it. Returns what was repriced, as asset codes.
+ */
+async function leaveCorridor(workPlanId: string, leaving: CorridorRow[], why: string) {
+  const groups = [
+    ...new Set(leaving.map((r) => (r.expectedBenefit as CorridorNote | null)?.corridorGroup).filter((g): g is string => !!g)),
+  ];
+  if (groups.length === 0) return [];
+  const leavingIds = new Set(leaving.map((r) => r.id));
+  const leavingAssets = new Set(leaving.map((r) => r.assetId));
+  const members = await prisma.workPlanItem.findMany({
+    where: { workPlanId, OR: groups.map((g) => ({ expectedBenefit: { path: ["corridorGroup"], equals: g } })) },
+    select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true, asset: { select: { assetCode: true } } },
+  });
+  const repriced = new Set<string>();
+  const updates = members.flatMap((m) => {
+    const note = (m.expectedBenefit ?? {}) as CorridorNote & Record<string, unknown>;
+    const isLeaving = leavingIds.has(m.id);
+    const lostPartner = !!note.corridor?.withAssetId && leavingAssets.has(note.corridor.withAssetId) && !isLeaving;
+    if (!isLeaving && !lostPartner) return [];
+    const reprice = !!note.corridor;
+    const rest = { ...note };
+    delete rest.corridorGroup;
+    if (reprice) delete rest.corridor;
+    if (reprice) repriced.add(m.asset.assetCode);
+    return [
+      prisma.workPlanItem.update({
+        where: { id: m.id },
+        data: {
+          expectedBenefit: rest as object,
+          ...(reprice ? { estimatedCost: note.corridor?.costApart ?? m.estimatedCost } : {}),
+          ...(reprice
+            ? {
+                reasonExplanation: `${m.reasonExplanation ?? ""} Priced on its own again: ${
+                  lostPartner ? `${note.corridor?.withAssetCode}, the work it was bundled with, was ${why}` : `it was ${why}`
+                }, so the corridor saving of $${(note.corridor?.saving ?? 0).toLocaleString("en-US")} no longer applies.`.trim(),
+              }
+            : {}),
+        },
+      }),
+    ];
+  });
+  if (updates.length > 0) await prisma.$transaction(updates);
+  return [...repriced];
+}
+
 /** Take a row — or a whole combined project — out of a plan. The plan is a
- * schedule, and removing from it changes no scenario. */
-export async function removeWorkPlanItem(itemId: string) {
-  const { item, where } = await projectRows(itemId);
+ * schedule, and removing from it changes no scenario. Work bundled with it in
+ * a corridor is priced on its own again. */
+export async function removeWorkPlanItem(organizationId: string, itemId: string) {
+  const { item, where } = await projectRows(organizationId, itemId);
+  const rows = await prisma.workPlanItem.findMany({
+    where,
+    select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true },
+  });
+  await leaveCorridor(item.workPlanId, rows, "removed from the plan");
   await prisma.workPlanItem.deleteMany({ where });
   return item.workPlanId;
 }
@@ -1483,17 +1618,36 @@ export async function removeWorkPlanItem(itemId: string) {
 /** Move a row, or a whole combined project, to a different year (SPEC §17).
  * Year totals are recomputed on read, so the caller sees the budget impact
  * immediately. */
-export async function moveWorkPlanItem(itemId: string, targetYear: number) {
-  const { item, where } = await projectRows(itemId);
-  if (targetYear < item.workPlan.startYear || targetYear > item.workPlan.endYear) {
+export async function moveWorkPlanItem(
+  organizationId: string,
+  itemId: string,
+  targetYear: number,
+  /** Move every project in its corridor bundle with it, keeping their
+   * savings. Otherwise it leaves the bundle, and work bundled with it is
+   * priced on its own again. */
+  withCorridor = false
+) {
+  const { item, where } = await projectRows(organizationId, itemId);
+  if (!Number.isInteger(targetYear) || targetYear < item.workPlan.startYear || targetYear > item.workPlan.endYear) {
     throw new Error(`Year must be between ${item.workPlan.startYear} and ${item.workPlan.endYear}`);
   }
 
   // The whole project shifts together. Moving a renewal's money two years out
   // without moving its construction would say the pipe is laid before it is
   // paid for; the lead time is a fact about delivery, not about the year.
-  const rows = await prisma.workPlanItem.findMany({
+  const own = await prisma.workPlanItem.findMany({
     where,
+    select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true },
+  });
+  const group = (own[0]?.expectedBenefit as CorridorNote | null)?.corridorGroup;
+  if (group && !withCorridor && targetYear !== item.year) {
+    await leaveCorridor(item.workPlanId, own, `moved to ${targetYear}`);
+  }
+  const rows = await prisma.workPlanItem.findMany({
+    where:
+      group && withCorridor
+        ? { workPlanId: item.workPlanId, expectedBenefit: { path: ["corridorGroup"], equals: group } }
+        : where,
     select: { id: true, year: true, programmedYear: true, buildYear: true },
   });
   const shift = targetYear - item.year;
@@ -1512,8 +1666,17 @@ export async function moveWorkPlanItem(itemId: string, targetYear: number) {
   return item.workPlanId;
 }
 
-export async function updateWorkPlanItemStatus(itemId: string, status: WorkPlanItemStatus) {
-  const { item, where } = await projectRows(itemId);
+export async function updateWorkPlanItemStatus(organizationId: string, itemId: string, status: WorkPlanItemStatus) {
+  const { item, where } = await projectRows(organizationId, itemId);
+  // Work that is not going ahead leaves its corridor bundle, and work bundled
+  // with it is priced on its own again.
+  if (status === WorkPlanItemStatus.CANCELLED || status === WorkPlanItemStatus.DEFERRED) {
+    const rows = await prisma.workPlanItem.findMany({
+      where,
+      select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true },
+    });
+    await leaveCorridor(item.workPlanId, rows, status === WorkPlanItemStatus.CANCELLED ? "cancelled" : "deferred");
+  }
   await prisma.workPlanItem.updateMany({ where, data: { status } });
   return item.workPlanId;
 }
@@ -1535,7 +1698,9 @@ function deleteBlocker(lockingScenarios: Array<{ name: string }>) {
   );
 }
 
-export async function deleteWorkPlan(id: string) {
+export async function deleteWorkPlan(organizationId: string, id: string) {
+  const plan = await prisma.workPlan.findFirst({ where: { id, organizationId }, select: { id: true } });
+  if (!plan) throw new Error("That work plan no longer exists");
   const locking = await prisma.scenario.findMany({ where: { lockedWorkPlanId: id }, select: { name: true } });
   const blocker = deleteBlocker(locking);
   if (blocker) throw new Error(blocker);
@@ -1549,9 +1714,9 @@ export async function deleteWorkPlan(id: string) {
  * Delete the plans ticked on the list, with their projects. A plan a scenario
  * locks is kept, and said why, rather than refusing the whole lot.
  */
-export async function deleteWorkPlans(ids: string[]) {
+export async function deleteWorkPlans(organizationId: string, ids: string[]) {
   const plans = await prisma.workPlan.findMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, organizationId },
     select: { id: true, name: true, lockingScenarios: { select: { name: true } } },
   });
   const deleted: string[] = [];
@@ -1587,13 +1752,10 @@ export async function deleteWorkPlans(ids: string[]) {
  * years a utility would take to a board, and the only kind of plan whose Move
  * and Status controls mean anything, because nothing regenerates over them.
  *
- * Not scoped to the organization, because a work plan does not belong to one:
- * the model has no organizationId and `listWorkPlans` above reads them all.
- * Reaching an organization from here would mean joining through the items,
- * which would also mean an empty plan never counted as existing.
+ * Looks only at this organization's plans.
  */
 export async function ensureBaselineWorkPlan(organizationId: string): Promise<boolean> {
-  const existing = await prisma.workPlan.findFirst({ where: { scenarioId: null } });
+  const existing = await prisma.workPlan.findFirst({ where: { scenarioId: null, organizationId } });
   if (existing) return false;
 
   const budget = await prisma.budget.findFirst({ where: { organizationId }, orderBy: { fiscalYear: "desc" } });
@@ -1606,4 +1768,251 @@ export async function ensureBaselineWorkPlan(organizationId: string): Promise<bo
     weights: DEFAULT_WEIGHTS,
   });
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Corridor bundles made by hand
+// ---------------------------------------------------------------------------
+
+/** A project that could join a corridor bundle, and what it would save. */
+export type CorridorOffer = {
+  /** Its first row: actions go through it to the whole project. */
+  itemId: string;
+  assetCode: string;
+  treatment: string;
+  cost: number;
+  saving: number;
+};
+
+export type CorridorBundlePreview = {
+  assetCode: string;
+  year: number;
+  offers: CorridorOffer[];
+  /** Why there is nothing to offer, where there is nothing. */
+  note: string | null;
+};
+
+type PlanProject = {
+  key: string;
+  assetId: string;
+  assetCode: string;
+  rows: Array<{
+    id: string;
+    estimatedCost: number;
+    expectedBenefit: unknown;
+    reasonExplanation: string | null;
+    treatment: string;
+  }>;
+  cost: number;
+};
+
+/** A plan's projects in one year, one entry per project however many rows. */
+async function planProjectsIn(workPlanId: string, year: number): Promise<PlanProject[]> {
+  const items = await prisma.workPlanItem.findMany({
+    where: { workPlanId, year, status: { notIn: [WorkPlanItemStatus.CANCELLED, WorkPlanItemStatus.DEFERRED] } },
+    select: {
+      id: true,
+      assetId: true,
+      bundleId: true,
+      estimatedCost: true,
+      expectedBenefit: true,
+      reasonExplanation: true,
+      asset: { select: { assetCode: true } },
+      treatment: { select: { name: true } },
+    },
+    orderBy: { id: "asc" },
+  });
+  const byKey = new Map<string, PlanProject>();
+  for (const i of items) {
+    const key = i.bundleId ?? i.id;
+    const p = byKey.get(key) ?? { key, assetId: i.assetId, assetCode: i.asset.assetCode, rows: [], cost: 0 };
+    p.rows.push({
+      id: i.id,
+      estimatedCost: i.estimatedCost,
+      expectedBenefit: i.expectedBenefit,
+      reasonExplanation: i.reasonExplanation,
+      treatment: i.treatment.name,
+    });
+    p.cost += i.estimatedCost;
+    byKey.set(key, p);
+  }
+  return [...byKey.values()];
+}
+
+/** What mobilizing for a project's treatments costs on its asset, as the
+ * library prices it: charged once, at the largest of their rates. */
+async function projectMobilization(organizationId: string, assetId: string, treatments: string[]): Promise<number> {
+  const [found, library] = await Promise.all([
+    assetTreatmentContext(organizationId, assetId),
+    loadTreatmentDefs(organizationId),
+  ]);
+  if (!found) return 0;
+  const defs = treatments
+    .map((t) => findTreatment(library, t, found.ctx.assetTypeId))
+    .filter((d): d is NonNullable<typeof d> => !!d);
+  if (defs.length === 0) return 0;
+  return buildOption("corridor", defs.map((d) => d.name).join(" + "), defs, found.ctx)?.mobilization ?? 0;
+}
+
+/**
+ * The projects that could join a project's corridor bundle by hand: work in
+ * the same year, on a neighbouring asset (Settings > Corridor Bundling), not
+ * already in a corridor bundle, and of a pair of asset types that saves
+ * something done together.
+ */
+export async function previewCorridorBundle(
+  organizationId: string,
+  workPlanId: string,
+  itemId: string
+): Promise<CorridorBundlePreview> {
+  const plan = await prisma.workPlan.findFirst({
+    where: { id: workPlanId, organizationId },
+    select: { name: true, isScenarioMirror: true },
+  });
+  if (!plan) throw new Error("That work plan no longer exists");
+  if (plan.isScenarioMirror) {
+    throw new Error(
+      `${plan.name} is a scenario run's own record. Make a plan from the scenario first, then bundle work on that.`
+    );
+  }
+  const { item } = await projectRows(organizationId, itemId);
+  const projects = await planProjectsIn(workPlanId, item.year);
+  const anchor = projects.find((p) => p.rows.some((r) => r.id === itemId));
+  if (!anchor) throw new Error("That project is not scheduled in a year it can be bundled in");
+  const empty = (note: string): CorridorBundlePreview => ({ assetCode: anchor.assetCode, year: item.year, offers: [], note });
+
+  const config = await getCorridorConfig(organizationId);
+  const savings = savingsByPair(config);
+  if (savings.size === 0) {
+    return empty(
+      "No pair of asset types has a saving set yet, so there is nothing to bundle. Set them under Settings › Corridor Bundling."
+    );
+  }
+  const inGroup = (p: PlanProject) => p.rows.some((r) => (r.expectedBenefit as CorridorNote | null)?.corridorGroup);
+  const others = projects.filter((p) => p.key !== anchor.key && p.assetId !== anchor.assetId && !inGroup(p));
+  if (others.length === 0) return empty(`Nothing else in ${item.year} is free to bundle with it.`);
+
+  const assets = await loadCorridorAssets(organizationId, config, [anchor.assetId, ...others.map((p) => p.assetId)]);
+  const withAttribute = new Set(config.types.filter((t) => t.corridorAttribute).map((t) => t.id));
+  const near = findNeighbours(assets, config.distanceMeters, withAttribute).get(anchor.assetId) ?? new Set<string>();
+  const typeOf = new Map(assets.map((a) => [a.id, a.assetTypeId]));
+  const neighbours = others.filter((p) => near.has(p.assetId));
+  if (neighbours.length === 0) {
+    return empty(
+      `No other work in ${item.year} on a neighbouring asset is free to bundle with it: none within ${config.distanceMeters} m or in the same corridor that is not already in a bundle.`
+    );
+  }
+
+  const anchorMobilization = await projectMobilization(
+    organizationId,
+    anchor.assetId,
+    anchor.rows.map((r) => r.treatment)
+  );
+  const offers: CorridorOffer[] = [];
+  for (const p of neighbours) {
+    const pair = pairSaving(savings, typeOf.get(anchor.assetId) ?? "", typeOf.get(p.assetId) ?? "");
+    if (!pair) continue;
+    const mobilization = pair.sharesMobilization
+      ? Math.min(
+          await projectMobilization(organizationId, p.assetId, p.rows.map((r) => r.treatment)),
+          anchorMobilization
+        )
+      : 0;
+    const saving = Math.round(Math.min(p.cost, mobilization + pair.savingPct * Math.max(0, p.cost - mobilization)));
+    if (saving <= 0) continue;
+    offers.push({
+      itemId: p.rows[0].id,
+      assetCode: p.assetCode,
+      treatment: p.rows.map((r) => r.treatment).join(" + "),
+      cost: Math.round(p.cost),
+      saving,
+    });
+  }
+  offers.sort((a, b) => b.saving - a.saving);
+  return {
+    assetCode: anchor.assetCode,
+    year: item.year,
+    offers,
+    note: offers.length === 0 ? "Its neighbours' asset types save nothing done together with it." : null,
+  };
+}
+
+/**
+ * Bundle chosen neighbouring work with a project by hand. The project anchors
+ * the bundle at its own price; each chosen project joins it at its bundled
+ * price, keeping the price it had apart so leaving the bundle restores it.
+ */
+export async function applyCorridorBundle(
+  organizationId: string,
+  workPlanId: string,
+  itemId: string,
+  joinItemIds: string[]
+): Promise<{ assetCode: string; joined: number; saving: number }> {
+  const preview = await previewCorridorBundle(organizationId, workPlanId, itemId);
+  const chosen = preview.offers.filter((o) => joinItemIds.includes(o.itemId));
+  if (chosen.length === 0) throw new Error("Choose at least one project to bundle with it");
+
+  const { item } = await projectRows(organizationId, itemId);
+  const projects = await planProjectsIn(workPlanId, item.year);
+  const anchor = projects.find((p) => p.rows.some((r) => r.id === itemId))!;
+  const existing = anchor.rows.map((r) => (r.expectedBenefit as CorridorNote | null)?.corridorGroup).find(Boolean);
+  const group = existing ?? `${workPlanId}:hand:${item.year}:${anchor.assetId}`;
+
+  const updates = [];
+  if (!existing) {
+    for (const r of anchor.rows) {
+      updates.push(
+        prisma.workPlanItem.update({
+          where: { id: r.id },
+          data: { expectedBenefit: { ...((r.expectedBenefit ?? {}) as object), corridorGroup: group } },
+        })
+      );
+    }
+  }
+  for (const offer of chosen) {
+    const p = projects.find((x) => x.rows[0].id === offer.itemId)!;
+    // The saving comes off the whole project, its treatments sharing it in
+    // proportion to their prices.
+    const target = Math.round(p.cost - offer.saving);
+    const shares = p.rows.map((r) => Math.round((r.estimatedCost * target) / (p.cost || 1)));
+    const drift = target - shares.reduce((a, b) => a + b, 0);
+    if (drift !== 0) shares[shares.indexOf(Math.max(...shares))] += drift;
+    p.rows.forEach((r, index) => {
+      updates.push(
+        prisma.workPlanItem.update({
+          where: { id: r.id },
+          data: {
+            estimatedCost: shares[index],
+            expectedBenefit: {
+              ...((r.expectedBenefit ?? {}) as object),
+              corridorGroup: group,
+              corridor: {
+                withAssetId: anchor.assetId,
+                withAssetCode: anchor.assetCode,
+                saving: offer.saving,
+                costApart: Math.round(r.estimatedCost),
+                byHand: true,
+              },
+            },
+            reasonExplanation:
+              `${r.reasonExplanation ?? ""} Bundled by hand with ${anchor.assetCode} in one corridor in ${item.year}, saving $${offer.saving.toLocaleString("en-US")}.`.trim(),
+          },
+        })
+      );
+    });
+  }
+  await prisma.$transaction(updates);
+  return { assetCode: anchor.assetCode, joined: chosen.length, saving: chosen.reduce((s, o) => s + o.saving, 0) };
+}
+
+/** Take a project out of its corridor bundle by hand: it, and any work that
+ * had joined it, go back to the prices they have apart. */
+export async function unbundleCorridor(organizationId: string, itemId: string) {
+  const { item, where } = await projectRows(organizationId, itemId);
+  const rows = await prisma.workPlanItem.findMany({
+    where,
+    select: { id: true, assetId: true, estimatedCost: true, expectedBenefit: true, reasonExplanation: true },
+  });
+  await leaveCorridor(item.workPlanId, rows, "taken out of its corridor bundle by hand");
+  return item.workPlanId;
 }

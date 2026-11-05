@@ -221,7 +221,7 @@ function explainApiError(e: unknown): string {
     if (e.status && e.status >= 500) {
       return "The Anthropic API is having trouble right now. Try again shortly.";
     }
-    return `The Anthropic API refused that request (${e.status ?? "unknown"}). Everything else in CARNAC is unaffected.`;
+    return `The Anthropic API refused that request (${e.status ?? "unknown"}). Everything else here is unaffected.`;
   }
   return "Could not reach the Anthropic API. Check the connection and try again.";
 }

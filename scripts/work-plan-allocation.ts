@@ -72,7 +72,7 @@ async function main() {
   try {
     await report(org.id, result, { annualBudget, library, combinations, categoryOf });
   } finally {
-    await deleteWorkPlan(result.workPlanId);
+    await deleteWorkPlan(org.id, result.workPlanId);
   }
 }
 

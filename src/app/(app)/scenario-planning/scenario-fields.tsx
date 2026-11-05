@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useAssetWords } from "@/components/layout/asset-words";
 import { Label } from "@/components/ui/label";
 import { useIndexWords } from "@/components/layout/index-words";
-import { AFTER_TARGET, AFTER_TARGET_LABELS, STRATEGIES } from "@/domain/waterline/scenario";
+import { AFTER_TARGET, AFTER_TARGET_LABELS, ASSET_TYPE_WEIGHT_RANGE, STRATEGIES } from "@/domain/waterline/scenario";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -31,10 +32,21 @@ export type ScenarioValues = {
   categoryWeightSetId: string;
   categoryFundingPlanId: string;
   leadTimeSetId: string;
+  budgetPlanId: string;
+  /** "pooled" or "separate": how a scenario over several types spends a
+   * budget that sets money per type. */
+  typeFunding: string;
+  /** "on" when the scenario bundles neighbouring work. */
+  corridorBundling: string;
+  /** "on" when, bundling, work may also wait for a neighbour's bundle. */
+  corridorDeferral: string;
   savedFilterId: string;
   /** The modelled asset types it is narrowed to, sorted and comma-joined so it
    * compares like every other field. Empty is all of them. */
   assetTypeIds: string;
+  /** Each asset type's weight as typed, "id=weight" pairs sorted and
+   * comma-joined. A type with no pair has a weight of 1. */
+  assetTypeWeights: string;
   scenarioSetId: string;
   fundingMode: string;
   /** "on" when a budget scenario shows a condition target; a target run
@@ -62,9 +74,15 @@ export type ScenarioFieldDefaults = {
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
+  budgetPlanId?: string | null;
+  typeFunding?: string;
+  corridorBundling?: boolean;
+  corridorDeferral?: boolean;
   savedFilterId: string | null;
   /** Empty, or absent, is every modelled asset type. */
   assetTypeIds?: string[];
+  /** Absent, or a type left out, is a weight of 1. */
+  assetTypeWeights?: Record<string, number>;
   scenarioSetId: string | null;
   fundingMode: string;
   targetInYears: number;
@@ -91,8 +109,15 @@ export function toValues(d: ScenarioFieldDefaults): ScenarioValues {
     categoryWeightSetId: d.categoryWeightSetId ?? "",
     categoryFundingPlanId: d.categoryFundingPlanId ?? "",
     leadTimeSetId: d.leadTimeSetId ?? "",
+    budgetPlanId: d.budgetPlanId ?? "",
+    typeFunding: d.typeFunding ?? "pooled",
+    corridorBundling: d.corridorBundling ? "on" : "",
+    corridorDeferral: d.corridorDeferral ? "on" : "",
     savedFilterId: d.savedFilterId ?? "",
     assetTypeIds: [...(d.assetTypeIds ?? [])].sort().join(","),
+    assetTypeWeights: joinWeights(
+      Object.fromEntries(Object.entries(d.assetTypeWeights ?? {}).map(([id, w]) => [id, String(w)]))
+    ),
     scenarioSetId: d.scenarioSetId ?? "",
     fundingMode: d.fundingMode,
     hasConditionTarget: d.conditionTarget != null ? "on" : "",
@@ -139,13 +164,32 @@ export type FundingPlanChoice = { id: string; name: string; isDefault: boolean; 
  * set from another. */
 export type LeadTimeChoice = { id: string; name: string; isDefault: boolean; summary: string };
 
+/** The budget plans this scenario can follow. `summary` is the years each
+ * covers. */
+export type BudgetPlanChoice = { id: string; name: string; summary: string };
+
 /** The saved filters a scenario can be limited to. `criteriaCount` is shown
  * because a filter with no criteria matches everything, which is worth knowing
  * before choosing it as a limit. */
 export type FilterChoice = { id: string; name: string; criteriaCount: number };
 
 /** The modelled asset types a scenario can be narrowed to. */
-export type AssetTypeChoice = { id: string; name: string };
+export type AssetTypeChoice = {
+  id: string;
+  name: string;
+  /** What the type's work typically scored in the first year of the last
+   * run, before its weight. Absent before a run, or on a single-type run. */
+  typicalPriority?: number | null;
+};
+
+const formatScore = (n: number) => String(Number(n.toPrecision(4)));
+
+/** A weight, to two significant figures and inside the allowed range. */
+function roundWeight(w: number): number {
+  const { min, max } = ASSET_TYPE_WEIGHT_RANGE;
+  const clamped = Math.min(max, Math.max(min, w));
+  return Number(clamped.toPrecision(2));
+}
 
 /** The work plans whose projects a scenario can lock. Never a scenario run's
  * own programme, which changes every time that scenario runs. */
@@ -175,6 +219,7 @@ export function ScenarioFields({
   categoryWeightSetChoices = [],
   fundingPlanChoices = [],
   leadTimeChoices = [],
+  budgetPlanChoices = [],
   filterChoices = [],
   assetTypeChoices = [],
   lockedPlanChoices = [],
@@ -191,6 +236,7 @@ export function ScenarioFields({
   categoryWeightSetChoices?: CategoryWeightSetChoice[];
   fundingPlanChoices?: FundingPlanChoice[];
   leadTimeChoices?: LeadTimeChoice[];
+  budgetPlanChoices?: BudgetPlanChoice[];
   filterChoices?: FilterChoice[];
   /** Offered only when more than one asset type is modelled. */
   assetTypeChoices?: AssetTypeChoice[];
@@ -208,6 +254,9 @@ export function ScenarioFields({
   // shows its window straight away instead of after the save that commits it.
   const governingSet = scenarioSetChoices.find((s) => s.id === values.scenarioSetId) ?? null;
   const targeting = values.fundingMode === "target";
+  // How many asset types the run covers: every modelled type when none is
+  // ticked off.
+  const coversTypes = values.assetTypeIds ? values.assetTypeIds.split(",").length : assetTypeChoices.length;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -314,6 +363,9 @@ export function ScenarioFields({
           value={values.assetTypeIds}
           changed={!!saved && values.assetTypeIds !== saved.assetTypeIds}
           onChange={(assetTypeIds) => onChange({ assetTypeIds })}
+          weights={values.assetTypeWeights}
+          weightsChanged={!!saved && values.assetTypeWeights !== saved.assetTypeWeights}
+          onWeightsChange={(assetTypeWeights) => onChange({ assetTypeWeights })}
         />
       )}
 
@@ -663,6 +715,108 @@ export function ScenarioFields({
         </div>
       )}
 
+      {/* The money itself, year by year, where the utility has it set out
+          rather than as one figure and a growth rate. A target run solves for
+          its money, so it has nothing to follow. */}
+      {!targeting && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <Label htmlFor={id("budgetPlanId")}>Budget</Label>
+          <select
+            id={id("budgetPlanId")}
+            name="budgetPlanId"
+            value={values.budgetPlanId}
+            onChange={(e) => onChange({ budgetPlanId: e.target.value })}
+            className={mark("budgetPlanId")}
+          >
+            <option value="">The annual budget and growth above</option>
+            {budgetPlanChoices.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} — {p.summary}
+              </option>
+            ))}
+          </select>
+          {values.budgetPlanId && coversTypes > 1 && (
+            <select
+              id={id("typeFunding")}
+              name="typeFunding"
+              aria-label="How the asset types share the budget"
+              value={values.typeFunding}
+              onChange={(e) => onChange({ typeFunding: e.target.value })}
+              className={mark("typeFunding")}
+            >
+              <option value="pooled">Pooled — the asset types share each year&apos;s money</option>
+              <option value="separate">Separate — each asset type spends only its own money in the budget</option>
+            </select>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {values.budgetPlanId && coversTypes > 1 && values.typeFunding === "separate"
+              ? "Each asset type is held to its own amount for each year the budget sets one, and to any category amounts within it — money one type leaves unspent is not used by another. A type the budget sets nothing for that year is held only by the year's total. "
+              : ""}
+            {values.budgetPlanId
+              ? "Each year the budget lists uses its amount instead of the annual budget and growth, and any category amounts it sets are the most that category may take that year. Years it does not list still use the annual budget and growth above."
+              : "Follow a budget set year by year in dollars — the money you actually expect to have, with amounts per category if you break it out that way."}{" "}
+            <Link href="/scenario-planning/budgets" className="font-medium text-primary underline-offset-2 hover:underline">
+              {budgetPlanChoices.length > 0 ? "Edit budgets" : "Set up a budget"}
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {/* Where the work is, beside what it costs: neighbouring work done
+          together for what that saves. A target run solves for its money,
+          and bundling is not yet part of that. */}
+      {!targeting && (
+        <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+          <label
+            className={`flex w-fit items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium ${
+              saved && values.corridorBundling !== saved.corridorBundling ? "border-amber-500" : "border-transparent"
+            }`}
+          >
+            <input
+              type="checkbox"
+              name="corridorBundling"
+              checked={values.corridorBundling === "on"}
+              onChange={(e) => onChange({ corridorBundling: e.target.checked ? "on" : "" })}
+            />
+            Bundle neighbouring work (corridor bundling)
+          </label>
+          <p className="text-xs text-muted-foreground">
+            As the year&apos;s work is bought, each {words.item} given work makes the work on {words.items} beside it
+            cheaper by what doing it together saves, and that work competes for the rest of the year&apos;s money at the
+            lower price. Which{" "}
+            {words.items} are neighbours, and what each pair of asset types saves, are set under{" "}
+            <Link href="/settings/corridor-bundling" className="font-medium text-primary underline-offset-2 hover:underline">
+              Settings &rsaquo; Corridor Bundling
+            </Link>
+            ; a pair with no saving set never bundles. Within the timing window set there, work not due yet can be
+            brought forward to join — judged by what it does now, so it joins only if it is still worth its price.
+          </p>
+          {values.corridorBundling === "on" && (
+            <label
+              className={`ml-6 flex w-fit items-center gap-2 rounded-md border px-3 py-1.5 text-sm ${
+                saved && values.corridorDeferral !== saved.corridorDeferral ? "border-amber-500" : "border-transparent"
+              }`}
+            >
+              <input
+                type="checkbox"
+                name="corridorDeferral"
+                checked={values.corridorDeferral === "on"}
+                onChange={(e) => onChange({ corridorDeferral: e.target.checked ? "on" : "" })}
+              />
+              Also let work wait for a neighbour&apos;s bundle
+            </label>
+          )}
+          {values.corridorBundling === "on" && values.corridorDeferral === "on" && (
+            <p className="ml-6 text-xs text-muted-foreground">
+              Work that isn&apos;t high-risk can be held back, once, for up to the timing window when a neighbour&apos;s
+              work will come due and couldn&apos;t be brought forward now — but only where the bundle is expected to
+              save more than waiting is expected to cost in failures. It is released early if it becomes too risky to
+              wait.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Separate from the category weighting directly above it, and the copy
           has to work to keep them apart: one changes what ranks first, the
           other what the money buys. */}
@@ -768,53 +922,143 @@ export function ScenarioFields({
   );
 }
 
+/** "id=weight" pairs, as the form holds them. */
+function splitWeights(value: string): Record<string, string> {
+  return Object.fromEntries(
+    value
+      .split(",")
+      .filter(Boolean)
+      .map((pair) => {
+        const at = pair.indexOf("=");
+        return [pair.slice(0, at), pair.slice(at + 1)];
+      })
+  );
+}
+
+function joinWeights(weights: Record<string, string>): string {
+  return Object.entries(weights)
+    .filter(([, w]) => w.trim() !== "")
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([id, w]) => `${id}=${w.trim()}`)
+    .join(",");
+}
+
 /**
  * Which modelled asset types the run covers, as a box per type. Every box
  * ticked is stored as no choice at all, so a type modelled later joins the
  * scenario; the last ticked box cannot be unticked, since a run over no asset
  * types has nothing to do.
+ *
+ * With more than one type ticked, each also takes a weight: a multiplier on
+ * the Priority Score of its work, so the run can lean toward one type when
+ * the types compete for the same budget. 1 for every type ranks them evenly.
  */
 function AssetTypeField({
   choices,
   value,
   changed,
   onChange,
+  weights,
+  weightsChanged,
+  onWeightsChange,
 }: {
   choices: AssetTypeChoice[];
   value: string;
   changed: boolean;
   onChange: (value: string) => void;
+  weights: string;
+  weightsChanged: boolean;
+  onWeightsChange: (value: string) => void;
 }) {
   const all = choices.map((c) => c.id);
   const chosen = value ? value.split(",") : all;
+  const typed = splitWeights(weights);
+  const weighs = chosen.length > 1;
   const toggle = (id: string) => {
     const next = chosen.includes(id) ? chosen.filter((c) => c !== id) : [...chosen, id];
     onChange(next.length === all.length ? "" : [...next].sort().join(","));
   };
+  const setWeight = (id: string, w: string) => onWeightsChange(joinWeights({ ...typed, [id]: w }));
+
+  // Weights that would put each ticked type's typical score level with the
+  // highest: offered, never applied on its own.
+  const scored = choices.filter((c) => chosen.includes(c.id) && c.typicalPriority != null && c.typicalPriority > 0);
+  const top = Math.max(...scored.map((c) => c.typicalPriority!));
+  const level =
+    weighs && scored.length > 1
+      ? Object.fromEntries(scored.map((c) => [c.id, roundWeight(top / c.typicalPriority!)]))
+      : null;
   return (
     <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
       <div className="text-sm font-medium">Asset types</div>
       {/* Posted only when narrowed: nothing posted is every modelled type. */}
       {value && chosen.map((id) => <input key={id} type="hidden" name="assetTypeIds" value={id} />)}
-      <div className={`flex flex-wrap gap-x-5 gap-y-2 rounded-md border px-3 py-2 ${changed ? "border-amber-500" : ""}`}>
+      <div
+        className={`flex flex-wrap gap-x-5 gap-y-2 rounded-md border px-3 py-2 ${
+          changed || weightsChanged ? "border-amber-500" : ""
+        }`}
+      >
         {choices.map((c) => {
           const on = chosen.includes(c.id);
           return (
-            <label key={c.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={on}
-                disabled={on && chosen.length === 1}
-                onChange={() => toggle(c.id)}
-              />
-              {c.name}
-            </label>
+            <div key={c.id} className="flex items-center gap-2 text-sm">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  disabled={on && chosen.length === 1}
+                  onChange={() => toggle(c.id)}
+                />
+                {c.name}
+              </label>
+              {weighs && on && (
+                <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                  ×
+                  <input
+                    type="number"
+                    name={`assetTypeWeight.${c.id}`}
+                    aria-label={`${c.name} weight`}
+                    min={ASSET_TYPE_WEIGHT_RANGE.min}
+                    max={ASSET_TYPE_WEIGHT_RANGE.max}
+                    step="any"
+                    value={typed[c.id] ?? "1"}
+                    onChange={(e) => setWeight(c.id, e.target.value)}
+                    className="h-7 w-16 rounded-md border border-input bg-background px-2 text-sm tabular-nums text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  {c.typicalPriority != null && (
+                    <span className="tabular-nums" title="Median Priority Score of its work in the first year of the last run, before its weight">
+                      typical {formatScore(c.typicalPriority)}
+                    </span>
+                  )}
+                </label>
+              )}
+            </div>
           );
         })}
+        {level && (
+          <button
+            type="button"
+            onClick={() =>
+              onWeightsChange(
+                joinWeights({ ...typed, ...Object.fromEntries(Object.entries(level).map(([id, w]) => [id, String(w)])) })
+              )
+            }
+            className="ml-auto text-xs font-medium text-primary underline-offset-2 hover:underline"
+            title={`Sets ${scored.map((c) => `${c.name} ×${level[c.id]}`).join(", ")}`}
+          >
+            Level the types
+          </button>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
         Run this scenario over some of the modelled asset types rather than all of them. Its averages, backlog and
         condition target are then those types&apos; alone.
+        {weighs &&
+          " The number beside each type multiplies the Priority Score of its work: above 1 favours that type when the types compete for the same budget, below 1 holds it back."}
+        {weighs &&
+          (scored.length > 1
+            ? " Types' scores need not be on one scale — a length-based scale factor puts a main's far above a pole's — so each shows what its work typically scored in the last run, before its weight. Level the types sets the weights that bring those level; adjust from there."
+            : " Each type's typical score appears here once the scenario has run.")}
       </p>
     </div>
   );
