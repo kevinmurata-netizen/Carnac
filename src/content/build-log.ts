@@ -29,6 +29,19 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-11-05",
+    title: "Handover notes for a new development team",
+    summary:
+      "Everything needed to keep developing Carnac now lives in the repository itself: how to run, check, ship and deploy it, the rules that keep production safe, and the decisions and history behind the product.",
+    changes: [
+      "AGENTS.md gives a coding agent the day-to-day rules: running locally, the checks before a pull request, migrations on every site, deploying and pruning.",
+      "docs/PROJECT-KNOWLEDGE.md records the sites and accounts, past incidents and the rules they led to, product decisions, and the open items.",
+      "HANDOFF.md walks through moving development to OpenAI's Codex, step by step.",
+      "The README describes Carnac and points to the guides.",
+    ],
+    note: "No migration. Documentation only.",
+  },
+  {
     date: "2026-10-29",
     title: "A sample scenario set for the power starter pack",
     summary:
