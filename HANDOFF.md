@@ -39,13 +39,18 @@ Total time: about 30 minutes.
    git pull
    ```
 
-2. **Decide the two old pull requests** from 14 October, so Codex doesn't
-   inherit half-finished work:
-   - #166 "Sign out deactivated users and refresh role claims"
-   - #167 "Stop pages throwing when a session has ended"
+2. **Delete the stale `.env.production.local`** in the project folder. It was
+   made by `vercel env pull` on 25 September; its database address is only
+   Vercel's `[SENSITIVE]` placeholder, so it makes `npm run build` fail with
+   "Invalid URL" (which Codex's first check in Part 4 runs), and it may hold
+   real keys. Nothing uses it.
 
-   Either close them, or make finishing them Codex's first real task (they are
-   a month behind `main` and will need rebasing).
+   ```powershell
+   Remove-Item .env.production.local
+   ```
+
+   The two old pull requests from 14 October, #166 and #167 (signing out
+   deactivated users), were finished and merged on 5 November.
 
 3. **Optional — Powercore's sample scenario set.** Sign in to
    https://carnac-power.vercel.app as an Administrator, open **Settings › Asset

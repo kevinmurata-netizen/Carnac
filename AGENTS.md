@@ -104,6 +104,10 @@ npx eslint src prisma --max-warnings=0
 npm run build
 ```
 
+If `.env.production.local` exists, `npm run build` fails with "Invalid URL": it
+is a stale `vercel env pull` whose `DATABASE_URL` is a placeholder. Ask the owner
+to delete it rather than deleting it yourself.
+
 `npm run build` needs a reachable database: prerendering queries it, and with
 no database the build fails on `/_not-found` with `[object ErrorEvent]`. Locally that means Docker must be up. Where there is no
 database (a Codex cloud task), run the typecheck and lint, and say in the PR
@@ -181,6 +185,9 @@ arithmetic, raw-query snapshots); read a script's header before running it.
   Settings page, permissions and breadcrumbs). Permission defaults must equal
   what the app did before.
 - Ids may be cuids or UUIDs; accept both anywhere ids are checked.
+- Pages get the signed-in session from `requireSession()` (`src/server/guard.ts`),
+  which sends an ended session to be signed out; never `auth()` with
+  `session!`. Route handlers and server actions call `auth()` and handle null.
 - `AssetLocation.geometry` is a PostGIS column Prisma can't see: write and read
   it with raw SQL (`src/server/geo.ts`).
 
