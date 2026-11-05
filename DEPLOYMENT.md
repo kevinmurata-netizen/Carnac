@@ -424,9 +424,10 @@ anything they had changed.
   request can take a few seconds. Not a fault — worth warning your coworker.
 - **`AUTH_SECRET` must differ from local**, and changing it later signs
   everyone out.
-- **Sessions are JWTs and are not revalidated against the database**, so a role
-  change or a deactivated account only takes effect after that user signs out
-  and back in.
+- **Sessions are JWTs, re-checked against the database at most once a minute
+  per server.** Deactivating or deleting a user signs them out, and a role
+  change reaches them, within a minute. A password reset does not sign anyone
+  out.
 - **Re-seeding invalidates nothing but data** — user ids change, so existing
   sessions break. Rotate passwords again if you re-seed.
 - **The demo data is entirely synthetic** — a fictional utility, fictional

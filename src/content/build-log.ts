@@ -30,6 +30,18 @@ export type BuildEntry = {
 export const ENTRIES: BuildEntry[] = [
   {
     date: "2026-11-05",
+    title: "Handover notes brought up to date",
+    summary:
+      "The handover notes now describe how sessions work since deactivated users are signed out, and warn about a leftover local settings file that stops the app building on the developer's machine.",
+    changes: [
+      "The project notes and the deployment runbook say sessions are re-checked at most once a minute, no longer only at sign-in, and no longer list that work as open.",
+      "The coding-agent instructions say every page gets the signed-in session through the one guard.",
+      "The handover steps say to delete a stale .env.production.local, which makes local builds fail.",
+    ],
+    note: "No migration. Documentation only.",
+  },
+  {
+    date: "2026-11-05",
     title: "Ended sessions leave without an error",
     summary:
       "When a deactivated user's session ended, the page they were opening hit an error before the sign-out redirect took over. Each page now checks for the session itself and goes straight to the sign-in page.",

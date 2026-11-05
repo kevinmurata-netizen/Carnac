@@ -180,6 +180,11 @@ These rules exist because each was broken once.
 - A local backup from 2026-10-16 is `backups/carnac-local-2026-10-16.dump`
   (excluded from git). Restore:
   `docker exec -i carnac-db sh -c 'pg_restore --clean --if-exists -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < backups/carnac-local-2026-10-16.dump`
+- **A stale `.env.production.local`** (from a `vercel env pull` on 25 Sept
+  2026) breaks local `npm run build` with "Invalid URL": `next build` loads it,
+  and its `DATABASE_URL` is Vercel's `[SENSITIVE]` placeholder. `next dev`
+  doesn't read it. Delete it; nothing uses it. Don't recreate it with `vercel
+  env pull` — Vercel never returns secret values.
 - Local databases: `carnac` (dev), `carnac_shadow` (Prisma's shadow). Test with
   throwaway databases (`createdb` in `carnac-db`, `prisma migrate deploy` with
   `DATABASE_URL` pointed there), backing up `.env`/`.env.local` first and
@@ -246,8 +251,20 @@ cards; a card governs its sub-pages). A card without a stored row is
 Administrator-only to write; a page without one follows the older rule that
 everyone except Executive may record field data. **Any change to the defaults
 must keep "default equals what the app did before".** New Settings cards go in
-`src/config/settings-cards.ts`. Administrator is always full access. Sessions are
-JWTs checked only at sign-in (PRs #166 and #167 address that and are still open).
+`src/config/settings-cards.ts`. Administrator is always full access.
+
+### Sessions
+
+Sessions are JWTs, re-checked against the database on every request (#166,
+#167, merged 2026-11-05). `currentAccount()` in `src/lib/account-check.ts`
+caches each answer for 60 seconds per server process, so a deactivated or
+deleted user is signed out, and a role change reaches them, within a minute —
+at once on the server that made the change, since the Administration actions
+call `forgetAccount()`. An ended session goes to `/session-ended`, which clears
+the cookie and lands on `/login?error=SessionEnded`. A password reset does not
+sign anyone out. Pages get the session from `requireSession()` in
+`src/server/guard.ts`, never `auth()` with `session!`; route handlers and server
+actions use `auth()` and handle null themselves.
 
 ### Record ids
 
@@ -280,9 +297,6 @@ regression.
 
 - Load the sample scenario set on Powercore: Settings › Asset Types › Add from a
   starter pack › **Load the sample scenario set** (#191 is deployed).
-- Open PRs #166 (sign out deactivated users, refresh role claims) and #167
-  (stop pages throwing when a session has ended), from 14 October — decide
-  whether to rebase and finish or close.
 - Data Import: fill or check Length from a line's shape.
 - Optional: move the power sample network off McPherson, Kansas.
 - Local clean-up: throwaway database `carnac_settest`, and test waterlines
