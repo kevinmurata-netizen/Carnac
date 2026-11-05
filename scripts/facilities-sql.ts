@@ -80,8 +80,8 @@ for (const type of FACILITY_ASSET_TYPES) {
   write(
     `  VALUES (gen_random_uuid()::text, ${str(type.code)}, ${str(type.name)}, ${str(type.description)}, v_org, now(), now())`
   );
-  write("  ON CONFLICT (code) DO NOTHING;");
-  write(`  SELECT id INTO v_type FROM asset_types WHERE code = ${str(type.code)};`);
+  write('  ON CONFLICT ("organizationId", code) DO NOTHING;');
+  write(`  SELECT id INTO v_type FROM asset_types WHERE code = ${str(type.code)} AND "organizationId" = v_org;`);
   write("");
 
   type.attributes.forEach((attribute, sortOrder) => {

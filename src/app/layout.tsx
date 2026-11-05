@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Orbitron } from "next/font/google";
 import "./globals.css";
 import { getDeploymentBranding } from "@/server/branding";
 import { ThemeScript } from "@/components/layout/theme-script";
@@ -11,6 +11,12 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+/** The product's name only (see BrandName); everything else stays in Geist. */
+const orbitron = Orbitron({
+  variable: "--font-brand",
   subsets: ["latin"],
 });
 
@@ -34,7 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       suppressHydrationWarning
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${orbitron.variable} h-full antialiased`}
     >
       <head>
         <ThemeScript />

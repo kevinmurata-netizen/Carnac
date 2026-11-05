@@ -12,6 +12,8 @@
 // spec asks for it and it is used to escalate *unit costs* when a scenario
 // prices work in a future year.
 
+import type { SizeCostScale } from "./treatment";
+
 export type LccaAssumptions = {
   analysisPeriodYears: number;
   /** Real discount rate, e.g. 0.04 for 4%. */
@@ -68,16 +70,39 @@ export function annualFailureProbability(pof: number): number {
   return a + (b - a) * frac;
 }
 
+/** What one failure of an asset type costs, set per type: the emergency
+ * repair, and the service interruption valued per customer affected. */
+export type FailureCost = { repairCost: number; perCustomer: number };
+
+/** A stored failure cost, or null when it is absent or unreadable. */
+export function parseFailureCost(value: unknown): FailureCost | null {
+  const v = value as { repairCost?: unknown; perCustomer?: unknown } | null;
+  const repairCost = Number(v?.repairCost);
+  const perCustomer = Number(v?.perCustomer ?? 0);
+  return v && Number.isFinite(repairCost) && repairCost >= 0 && Number.isFinite(perCustomer) && perCustomer >= 0
+    ? { repairCost, perCustomer }
+    : null;
+}
+
 /** Cost of a single in-service failure: emergency repair plus the social /
- * service-interruption cost the spec calls "user/consequence cost". */
+ * service-interruption cost the spec calls "user/consequence cost", on the
+ * asset type's own figures. The repair grows with size the way the type's
+ * treatment prices do. A type with no figures costs its failures at nothing. */
 export function failureEventCost(input: {
   diameterInches: number | null;
   customersServed: number | null;
+  sizeCostScale?: SizeCostScale | null;
+  failureCost?: FailureCost | null;
 }): { repairCost: number; consequenceCost: number; total: number } {
-  const diameterFactor = input.diameterInches ? Math.pow(input.diameterInches / 8, 0.7) : 1;
-  const repairCost = Math.round(18000 * diameterFactor);
+  const cost = input.failureCost;
+  if (!cost) return { repairCost: 0, consequenceCost: 0, total: 0 };
+  const scale = input.sizeCostScale;
+  // Unrounded, unlike a price's factor: this is what failures have always
+  // been costed by.
+  const sizeFactor = input.diameterInches && scale && scale.reference > 0 ? Math.pow(input.diameterInches / scale.reference, scale.exponent) : 1;
+  const repairCost = Math.round(cost.repairCost * sizeFactor);
   // Service interruption valued per affected customer, per event.
-  const consequenceCost = Math.round((input.customersServed ?? 0) * 145);
+  const consequenceCost = Math.round((input.customersServed ?? 0) * cost.perCustomer);
   return { repairCost, consequenceCost, total: repairCost + consequenceCost };
 }
 
@@ -152,7 +177,12 @@ const ANNUAL_INSPECTION_COST_PER_ASSET = 900;
 
 export function computeLcca(
   option: LccaOption,
-  asset: { diameterInches: number | null; customersServed: number | null },
+  asset: {
+    diameterInches: number | null;
+    customersServed: number | null;
+    sizeCostScale?: SizeCostScale | null;
+    failureCost?: FailureCost | null;
+  },
   assumptions: LccaAssumptions = DEFAULT_LCCA_ASSUMPTIONS
 ): LccaResult {
   const { analysisPeriodYears: n, discountRate: r } = assumptions;

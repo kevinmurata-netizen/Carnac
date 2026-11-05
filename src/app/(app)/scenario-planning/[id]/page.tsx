@@ -9,6 +9,7 @@ import { listWeightSets } from "@/server/weight-sets";
 import { listCategoryWeightSets, toCategoryChoice } from "@/server/category-weight-sets";
 import { listFundingPlans, describeFundingPlan } from "@/server/category-funding";
 import { listLeadTimeSets } from "@/server/lead-times";
+import { listBudgetPlans, toBudgetPlanChoice } from "@/server/budget-plans";
 import { listSavedFilters } from "@/server/saved-filters";
 import { lockablePlanChoices } from "@/server/workplans";
 import {
@@ -17,7 +18,7 @@ import {
   type ScenarioOptionCatalogue,
 } from "@/server/scenario-options";
 import { listModelledAssetTypes } from "@/server/modelled-asset-type";
-import { getScenarioIndexWords } from "@/server/condition-model";
+import { getIndexWords, getScenarioIndexWords } from "@/server/condition-model";
 import type { IndexWords } from "@/lib/index-words";
 import { withAssetWords, type AssetWords } from "@/lib/branding";
 import { normalizeWeights } from "@/domain/waterline/optimization";
@@ -41,6 +42,7 @@ import type {
   CategoryWeightSetChoice,
   FundingPlanChoice,
   LeadTimeChoice,
+  BudgetPlanChoice,
   FilterChoice,
   AssetTypeChoice,
   LockedPlanChoice,
@@ -77,6 +79,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryWeightSets,
     fundingPlans,
     leadTimeSets,
+    budgetPlans,
     savedFilters,
     lockedPlanChoices,
     catalogue,
@@ -92,8 +95,9 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     listCategoryWeightSets(organizationId),
     listFundingPlans(organizationId),
     listLeadTimeSets(organizationId),
+    listBudgetPlans(organizationId),
     listSavedFilters(organizationId),
-    lockablePlanChoices(),
+    lockablePlanChoices(organizationId),
     getScenarioOptionCatalogue(organizationId, id),
     estimateRunMs(organizationId, id),
     listScenarioSets(organizationId),
@@ -141,6 +145,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     isDefault: l.isDefault,
     summary: l.summary,
   }));
+  const budgetPlanChoices: BudgetPlanChoice[] = budgetPlans.map(toBudgetPlanChoice);
   const filterChoices: FilterChoice[] = savedFilters.map((f) => ({
     id: f.id,
     name: f.name,
@@ -167,8 +172,13 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     categoryWeightSetId: scenario.categoryWeightSetId ?? null,
     categoryFundingPlanId: scenario.categoryFundingPlanId ?? null,
     leadTimeSetId: scenario.leadTimeSetId ?? null,
+    budgetPlanId: scenario.budgetPlanId ?? null,
+    typeFunding: a.typeFunding ?? "pooled",
+    corridorBundling: !!a.corridorBundling,
+    corridorDeferral: !!a.corridorDeferral,
     savedFilterId: scenario.savedFilterId ?? null,
     assetTypeIds: scenario.assetTypeIds,
+    assetTypeWeights: a.assetTypeWeights,
     lockedWorkPlanId: scenario.lockedWorkPlanId ?? null,
     programmedFunding: a.programmedFunding,
     fundingMode: a.fundingMode,
@@ -191,9 +201,26 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
     combinations: catalogue.selectedCombinations,
   };
   const years = scenario.years;
+  // Each asset type the run covered, with its own index's words — the network
+  // figures mix their indexes when there is more than one.
+  const typeIds = [...new Set(years.flatMap((y) => y.byType.map((t) => t.assetTypeId)))];
+  const typeIndex = new Map(
+    await Promise.all(typeIds.map(async (id) => [id, await getIndexWords(organizationId, id)] as const))
+  );
   // Whether the stored run spent anything on locked projects — what decides
   // whether spending is shown in two parts.
   const programmedTotal = years.reduce((sum, y) => sum + y.programmedSpend, 0);
+  // Work that joined a corridor bundle: one row per treatment, so a bundle
+  // visit's rows are counted once.
+  const corridorJoined = [
+    ...new Map(projects.filter((p) => p.corridor).map((p) => [`${p.assetId}:${p.year}`, p])).values(),
+  ];
+  // What each type's work typically scored in the run's first year, beside its
+  // weight on the form: the scale a weight is set against.
+  const typeChoices = assetTypeChoices.map((c) => ({
+    ...c,
+    typicalPriority: years[0]?.byType.find((t) => t.assetTypeId === c.id)?.typicalPriority ?? null,
+  }));
   const hasProgrammed = programmedTotal > 0;
   const first = years[0];
   const last = years[years.length - 1];
@@ -390,7 +417,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
           <div className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             This scenario has not been run yet. Adjust the parameters below and save to run it.
           </div>
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={assetTypeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} budgetPlanChoices={budgetPlanChoices} filterChoices={filterChoices} assetTypeChoices={typeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
         </>
       ) : (
         <>
@@ -487,7 +514,7 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
               answer: what each year costs. */}
           {scenario.target && <TargetSpendCard scenario={scenario} index={index} words={words} />}
 
-          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} filterChoices={filterChoices} assetTypeChoices={assetTypeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
+          <AssumptionsCard scenario={scenario} canEdit={canEdit} criticalityChoices={criticalityChoices} weightSetChoices={weightSetChoices} categoryWeightSetChoices={categoryWeightSetChoices} fundingPlanChoices={fundingPlanChoices} leadTimeChoices={leadTimeChoices} budgetPlanChoices={budgetPlanChoices} filterChoices={filterChoices} assetTypeChoices={typeChoices} lockedPlanChoices={lockedPlanChoices} scenarioSetChoices={scenarioSetChoices} catalogue={catalogue} />
 
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -583,12 +610,22 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
             </Card>
           </div>
 
+          {typeIndex.size > 1 && <ByTypeCard years={years} indexOf={(id) => typeIndex.get(id)} />}
+
           <Card className="mt-4">
             <CardHeader className="flex-row items-center justify-between space-y-0">
-              <CardTitle>
-                Funded Projects{" "}
-                <span className="text-muted-foreground">({formatNumber(projects.length)})</span>
-              </CardTitle>
+              <div>
+                <CardTitle>
+                  Funded Projects{" "}
+                  <span className="text-muted-foreground">({formatNumber(projects.length)})</span>
+                </CardTitle>
+                {corridorJoined.length > 0 && (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Corridor bundling: {formatNumber(corridorJoined.length)} pieces of work joined neighbouring work,
+                    saving {formatCurrency(corridorJoined.reduce((sum, p) => sum + (p.corridor?.saving ?? 0), 0))}.
+                  </p>
+                )}
+              </div>
               {projects.length > 0 && (
                 <ExportButton
                   href={`/scenario-planning/${scenario.id}/export`}
@@ -654,6 +691,24 @@ export default async function ScenarioDetailPage({ params }: { params: Promise<{
                                     title="One visit, funded as a combination. Its cost is divided between the treatments in it, and the condition and risk figures are the visit's."
                                   >
                                     part of {p.bundleName}
+                                  </div>
+                                )}
+                                {p.corridor && (
+                                  <div
+                                    className="text-xs text-muted-foreground"
+                                    title="Done beside neighbouring funded work in the same corridor. Its cost is already the bundled price."
+                                  >
+                                    bundled with {p.corridor.withAssetCode}
+                                    {p.corridor.dueYear != null && `, brought forward from ${p.corridor.dueYear}`}, saving{" "}
+                                    {formatCurrency(p.corridor.saving)}
+                                  </div>
+                                )}
+                                {p.deferred && (
+                                  <div
+                                    className="text-xs text-muted-foreground"
+                                    title="Held back to join a neighbouring asset's work: the bundle was expected to save more than waiting was expected to cost in failures."
+                                  >
+                                    waited from {p.deferred.from} for {p.deferred.withAssetCode}
                                   </div>
                                 )}
                               </TableCell>
@@ -798,6 +853,7 @@ function AssumptionsCard({
   categoryWeightSetChoices,
   fundingPlanChoices,
   leadTimeChoices,
+  budgetPlanChoices,
   filterChoices,
   assetTypeChoices,
   lockedPlanChoices,
@@ -811,6 +867,7 @@ function AssumptionsCard({
   categoryWeightSetChoices: CategoryWeightSetChoice[];
   fundingPlanChoices: FundingPlanChoice[];
   leadTimeChoices: LeadTimeChoice[];
+  budgetPlanChoices: BudgetPlanChoice[];
   filterChoices: FilterChoice[];
   assetTypeChoices: AssetTypeChoice[];
   lockedPlanChoices: LockedPlanChoice[];
@@ -838,6 +895,7 @@ function AssumptionsCard({
             categoryWeightSetChoices={categoryWeightSetChoices}
             fundingPlanChoices={fundingPlanChoices}
             leadTimeChoices={leadTimeChoices}
+            budgetPlanChoices={budgetPlanChoices}
             filterChoices={filterChoices}
             assetTypeChoices={assetTypeChoices}
             lockedPlanChoices={lockedPlanChoices}
@@ -850,6 +908,15 @@ function AssumptionsCard({
         <CardContent className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4 lg:grid-cols-7">
           <Field label="Strategy" value={a.strategy} />
           <Field label="Annual Budget" value={formatCurrency(a.annualBudget, { compact: true })} />
+          {a.corridorBundling && (
+            <Field label="Corridor Bundling" value={a.corridorDeferral ? "On, with deferral" : "On"} />
+          )}
+          {scenario.budgetPlanName && (
+            <Field
+              label="Budget"
+              value={`${scenario.budgetPlanName}${a.typeFunding === "separate" ? " — each asset type from its own money" : ""}`}
+            />
+          )}
           <Field label="Funding Growth" value={`${(a.fundingGrowth * 100).toFixed(1)}%/yr`} />
           <Field label="Discount Rate" value={`${(a.discountRate * 100).toFixed(2)}%`} />
           <Field
@@ -871,6 +938,15 @@ function AssumptionsCard({
           <Field label="Considers" value={describeSelection(catalogue)} />
           {scenario.assetTypeNames.length > 0 && (
             <Field label="Asset Types" value={scenario.assetTypeNames.join(", ")} />
+          )}
+          {a.assetTypeWeights && (
+            <Field
+              label="Asset Type Weights"
+              value={assetTypeChoices
+                .filter((t) => a.assetTypeWeights?.[t.id] != null)
+                .map((t) => `${t.name} ×${a.assetTypeWeights?.[t.id]}`)
+                .join(", ")}
+            />
           )}
         </CardContent>
       )}
@@ -1083,6 +1159,103 @@ function TargetSpendCard({
             </TableBody>
           </Table>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+const TYPE_COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
+
+/**
+ * The run split by asset type. Each type's condition is on its own index, so
+ * the network average in the charts above mixes them; these are the figures
+ * that mean something per type. Shown only when the run covers several.
+ */
+function ByTypeCard({
+  years,
+  indexOf,
+}: {
+  years: ScenarioDetail["years"];
+  indexOf: (assetTypeId: string) => IndexWords | undefined;
+}) {
+  const first = years[0];
+  const last = years[years.length - 1];
+  const types = last.byType;
+  const across = (id: string, pick: (t: ScenarioDetail["years"][number]["byType"][number]) => number) =>
+    years.reduce((sum, y) => sum + (y.byType.find((t) => t.assetTypeId === id) ? pick(y.byType.find((t) => t.assetTypeId === id)!) : 0), 0);
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle>By Asset Type</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Each type&apos;s condition is on its own index, so the network figures above average different scales together.
+          These are each type&apos;s own.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Asset type</TableHead>
+                <TableHead className="text-right">Assets</TableHead>
+                <TableHead className="text-right">
+                  Condition {first.year} → {last.year}
+                </TableHead>
+                <TableHead className="text-right">Work funded</TableHead>
+                <TableHead className="text-right">Backlog at end</TableHead>
+                <TableHead className="text-right">Failure cost</TableHead>
+                <TableHead className="text-right">Typical priority {first.year}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {types.map((t) => {
+                const start = first.byType.find((x) => x.assetTypeId === t.assetTypeId)?.avgCondition;
+                return (
+                  <TableRow key={t.assetTypeId}>
+                    <TableCell className="font-medium">{t.assetTypeName}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatNumber(t.assets)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {indexOf(t.assetTypeId)?.short} {start ?? "—"} → {t.avgCondition}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(across(t.assetTypeId, (x) => x.workFunded), { compact: true })}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(t.backlog, { compact: true })}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(across(t.assetTypeId, (x) => x.failureCost), { compact: true })}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {(() => {
+                        const typical = first.byType.find((x) => x.assetTypeId === t.assetTypeId)?.typicalPriority;
+                        return typical != null ? String(Number(typical.toPrecision(4))) : "—";
+                      })()}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        <SimpleLineChart
+          data={years.map((y) => ({
+            year: y.year,
+            ...Object.fromEntries(y.byType.map((t) => [t.assetTypeId, t.avgCondition])),
+          }))}
+          xKey="year"
+          yDomain={[0, 100]}
+          series={types.map((t, i) => ({
+            key: t.assetTypeId,
+            label: `${t.assetTypeName} (${indexOf(t.assetTypeId)?.short ?? "condition"})`,
+            color: TYPE_COLORS[i % TYPE_COLORS.length],
+          }))}
+        />
+        <p className="text-xs text-muted-foreground">
+          Work funded is the cost of the work chosen for each type over the run; failure cost is the expected cost of
+          failures over the run, on each type&apos;s own failure cost (Settings › Asset Types). Typical priority is
+          the median Priority Score of the type&apos;s work in the first year, before its weight — the scale its
+          weight is set against, since types&apos; scores need not share one.
+        </p>
       </CardContent>
     </Card>
   );

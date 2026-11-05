@@ -35,6 +35,10 @@ const schema = z.object({
   categoryWeightSetId: z.string().optional(),
   categoryFundingPlanId: z.string().optional(),
   leadTimeSetId: z.string().optional(),
+  budgetPlanId: z.string().optional(),
+  typeFunding: z.string().optional(),
+  corridorBundling: z.string().optional(),
+  corridorDeferral: z.string().optional(),
   savedFilterId: z.string().optional(),
   scenarioSetId: z.string().optional(),
   fundingMode: z.string().optional(),
@@ -59,6 +63,23 @@ function parseSelection(formData: FormData) {
   };
 }
 
+/**
+ * Each asset type's weight, off the boxes beside the ticked types. The server
+ * keeps only those for types the scenario covers, and checks their range.
+ */
+function parseTypeWeights(formData: FormData): Record<string, number> {
+  const weights: Record<string, number> = {};
+  for (const [key, raw] of formData.entries()) {
+    if (!key.startsWith("assetTypeWeight.")) continue;
+    const text = String(raw).trim();
+    if (text === "") continue;
+    const weight = Number(text);
+    if (!Number.isFinite(weight)) throw new Error("Enter each asset type weight as a number");
+    weights[key.slice("assetTypeWeight.".length)] = weight;
+  }
+  return weights;
+}
+
 /** Percentages are entered as whole numbers in the form but stored as rates. */
 function parseForm(formData: FormData): {
   name: string;
@@ -69,6 +90,7 @@ function parseForm(formData: FormData): {
   categoryWeightSetId: string | null;
   categoryFundingPlanId: string | null;
   leadTimeSetId: string | null;
+  budgetPlanId: string | null;
   savedFilterId: string | null;
   assetTypeIds: string[];
   scenarioSetId: string | null;
@@ -109,6 +131,9 @@ function parseForm(formData: FormData): {
     // Empty means the organization's default lead times, and no default means
     // everything is decided, paid for and built in the same year.
     leadTimeSetId: d.leadTimeSetId?.trim() || null,
+    // Empty means the annual budget and growth. Only a budget run follows a
+    // plan; a target run solves for its money, so it keeps none.
+    budgetPlanId: fundingMode === "budget" ? d.budgetPlanId?.trim() || null : null,
     // Empty means the whole network, which is what every scenario ran over
     // before a filter could be attached.
     savedFilterId: d.savedFilterId?.trim() || null,
@@ -135,6 +160,17 @@ function parseForm(formData: FormData): {
       targetInYears: Math.max(1, Math.min(d.targetInYears ?? DEFAULT_ASSUMPTIONS.targetInYears, d.analysisPeriodYears)),
       afterTarget: d.afterTarget === "none" ? "none" : "hold",
       programmedFunding: d.programmedFunding === "additional" ? "additional" : "within",
+      assetTypeWeights: parseTypeWeights(formData),
+      // Only with a budget to divide; the server keeps it only for a scenario
+      // over several types.
+      ...(fundingMode === "budget" && d.budgetPlanId?.trim() && d.typeFunding === "separate"
+        ? { typeFunding: "separate" as const }
+        : {}),
+      // Bundling is read in budget years only.
+      ...(fundingMode === "budget" && d.corridorBundling === "on" ? { corridorBundling: true } : {}),
+      ...(fundingMode === "budget" && d.corridorBundling === "on" && d.corridorDeferral === "on"
+        ? { corridorDeferral: true }
+        : {}),
     },
   };
 }

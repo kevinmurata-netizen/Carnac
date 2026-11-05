@@ -1,3 +1,5 @@
+import { NothingModelled } from "@/components/layout/nothing-modelled";
+import { hasModelledAssetType } from "@/server/modelled-asset-type";
 import { auth } from "@/lib/auth";
 import { getRiskSummary, getRiskMatrixAssets, getLatestRiskByAsset } from "@/server/risk";
 import { getRiskBand } from "@/domain/waterline/risk";
@@ -19,6 +21,9 @@ export default async function RiskPage() {
   const organizationId = session!.user.organizationId;
   const words = await getAssetWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/risk", "Risk");
+  if (!(await hasModelledAssetType(organizationId))) {
+    return <NothingModelled title={pageTitle} about="Probability of failure × consequence of failure" />;
+  }
 
   const [summary, matrixAssets, riskByAsset, geojson] = await Promise.all([
     getRiskSummary(organizationId),

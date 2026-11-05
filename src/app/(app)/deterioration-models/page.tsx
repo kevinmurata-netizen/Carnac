@@ -1,3 +1,5 @@
+import { NothingModelled } from "@/components/layout/nothing-modelled";
+import { hasModelledAssetType } from "@/server/modelled-asset-type";
 import { auth } from "@/lib/auth";
 import { requirePage } from "@/server/guard";
 import {
@@ -40,6 +42,9 @@ export default async function DeteriorationModelsPage() {
   const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/deterioration-models", "Deterioration Models");
+  if (!(await hasModelledAssetType(organizationId))) {
+    return <NothingModelled title={pageTitle} about="How the network ages with no intervention" />;
+  }
   const { canWrite: canEdit } = await requirePage("/deterioration-models");
 
   const [forecast, models, condition, configured] = await Promise.all([

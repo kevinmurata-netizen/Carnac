@@ -155,21 +155,33 @@ export type ScoredBenefit<T> = {
  * so it is not a new property — but a benefit score should not be stored and
  * compared against a later run's as though it were absolute.
  */
+/** Each term's lowest and highest value across a pool of options — what
+ * Expected Benefit is normalized against. */
+export type BenefitRanges = Record<BenefitTermKey, { min: number; max: number }>;
+
+export function benefitRanges(items: Array<{ terms: BenefitTerms }>): BenefitRanges | null {
+  if (items.length === 0) return null;
+  return TERM_KEYS.reduce((acc, key) => {
+    const values = items.map((c) => c.terms[key]);
+    acc[key] = { min: Math.min(...values), max: Math.max(...values) };
+    return acc;
+  }, {} as BenefitRanges);
+}
+
 export function scoreBenefits<T>(
   items: Array<{ item: T; terms: BenefitTerms }>,
-  weights: BenefitWeights
+  weights: BenefitWeights,
+  /**
+   * Another pool's ranges to score against, instead of these items' own —
+   * for options that must be measured on a year's scale without changing it.
+   * A term outside the range is held to 0–100.
+   */
+  against?: BenefitRanges | null
 ): Array<ScoredBenefit<T>> {
   const w = normalizeBenefitWeights(weights);
   if (items.length === 0) return [];
 
-  const ranges = TERM_KEYS.reduce(
-    (acc, key) => {
-      const values = items.map((c) => c.terms[key]);
-      acc[key] = { min: Math.min(...values), max: Math.max(...values) };
-      return acc;
-    },
-    {} as Record<BenefitTermKey, { min: number; max: number }>
-  );
+  const ranges = against ?? benefitRanges(items)!;
 
   return items.map(({ item, terms }) => {
     const normalized = {} as BenefitTerms;
@@ -182,7 +194,8 @@ export function scoreBenefits<T>(
       // Every candidate scoring the same on a term means that term carries no
       // information for this decision, so it scores zero for everyone rather
       // than an arbitrary constant.
-      const n = span > 0 ? ((terms[key] - min) / span) * 100 : 0;
+      const raw = span > 0 ? ((terms[key] - min) / span) * 100 : 0;
+      const n = against ? Math.max(0, Math.min(100, raw)) : raw;
       normalized[key] = Math.round(n * 10) / 10;
       const contribution = n * w[key];
       contributions[key] = Math.round(contribution * 10) / 10;
@@ -202,6 +215,9 @@ export type PriorityTerms = {
   scaleFactor: number;
   /** How far the scenario leans toward this kind of work. 1 is neutral. */
   categoryWeight: number;
+  /** How far a scenario over several asset types leans toward this one. 1 is
+   * neutral, and absent is 1: only a cross-asset scenario sets it. */
+  assetTypeWeight?: number;
   /** What the treatment achieves, 0-100. */
   benefit: number;
   /** The option's own price, in dollars. */
@@ -223,9 +239,10 @@ export type PriorityTerms = {
  */
 export function priorityScore(terms: PriorityTerms): number | null {
   const { criticality, scaleFactor, categoryWeight, benefit, totalCost } = terms;
+  const assetTypeWeight = terms.assetTypeWeight ?? 1;
   if (!Number.isFinite(totalCost) || totalCost <= 0) return null;
 
-  const raw = (criticality * scaleFactor * categoryWeight * benefit) / totalCost;
+  const raw = (criticality * scaleFactor * categoryWeight * assetTypeWeight * benefit) / totalCost;
   if (!Number.isFinite(raw)) return null;
   return Math.round(raw * 10000) / 10000;
 }
@@ -239,6 +256,7 @@ export function explainPriority(terms: PriorityTerms, score: number | null): str
     `criticality ${Math.round(terms.criticality * 10) / 10}`,
     `scale ${Math.round(terms.scaleFactor * 100) / 100}`,
     ...(terms.categoryWeight === 1 ? [] : [`category ×${terms.categoryWeight}`]),
+    ...((terms.assetTypeWeight ?? 1) === 1 ? [] : [`asset type ×${terms.assetTypeWeight}`]),
     `benefit ${terms.benefit}`,
   ];
   return `Priority ${score} — ${parts.join(" × ")} ÷ $${Math.round(terms.totalCost).toLocaleString("en-US")}.`;

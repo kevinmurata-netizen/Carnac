@@ -29,6 +29,376 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-11-05",
+    title: "Handover notes for a new development team",
+    summary:
+      "Everything needed to keep developing Carnac now lives in the repository itself: how to run, check, ship and deploy it, the rules that keep production safe, and the decisions and history behind the product.",
+    changes: [
+      "AGENTS.md gives a coding agent the day-to-day rules: running locally, the checks before a pull request, migrations on every site, deploying and pruning.",
+      "docs/PROJECT-KNOWLEDGE.md records the sites and accounts, past incidents and the rules they led to, product decisions, and the open items.",
+      "HANDOFF.md walks through moving development to OpenAI's Codex, step by step.",
+      "The README describes Carnac and points to the guides.",
+    ],
+    note: "No migration. Documentation only.",
+  },
+  {
+    date: "2026-10-29",
+    title: "A sample scenario set for the power starter pack",
+    summary:
+      "The power starter pack's sample data now ends with a scenario set: six ways of funding the sample network over twenty years, made and run so Scenario Planning has something to compare from the start.",
+    changes: [
+      "Sample Distribution Scenarios compares Current Funding ($75,000 a year), Reduced and Increased Funding, Worst Condition First, Corridor Bundling, and Reach Condition 80, which works out what a year it costs to bring average condition to 80 within ten years.",
+      "Its budgets are sized for the sample network, which costs about $4M to replace in full.",
+      "Load sample data adds the set after the network and risk. Where the sample network is already in, Settings › Asset Types › Add from a starter pack offers Load the sample scenario set on its own.",
+      "The set is a Draft starting this year, made through Scenario Planning's own functions, so every scenario can be changed or copied like any other.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-29",
+    title: "Line shapes in Data Import",
+    summary:
+      "Pipes, conductors and other line assets can now be imported along their real route, from an end point or from the line exactly as GIS software exports it, instead of a short stand-in line around one position.",
+    changes: [
+      "Importing a line asset type takes three new optional columns: End Latitude and End Longitude, which draw a straight line from the start, and Shape, which takes the whole line as WKT (LINESTRING) or GeoJSON.",
+      "A row with a Shape needs no Latitude or Longitude; its start and end are read from the line. Rows with only a position are drawn as before.",
+      "A Shape that can't be read — not a line, more than one separate part, a point off the map, or latitude written first — is reported against its row before anything is imported.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-28",
+    title: "Servers beside the databases",
+    summary:
+      "Every site's server now runs in Portland, next to its database in Oregon, instead of Washington, D.C. Each database query no longer crosses the country, so pages answer faster and long jobs such as recomputing risk finish.",
+    changes: [
+      "Vercel runs the app's functions in pdx1 (Portland), the region beside Neon's AWS US West 2 where every site's database lives.",
+      "The new-customer runbook says to create each database in that region.",
+    ],
+    fixes: [
+      "Recomputing risk could stop partway on a hosted site: each batch of assessments is written in one database transaction, and at about 70 ms a query across the country a batch outlasted the transaction's 5-second limit. Loading Powercore's sample data hit this at its last step.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-27",
+    title: "Loading a starter pack's sample network in one go",
+    summary:
+      "Settings › Asset Types › Add from a starter pack now has Load sample data: one button that fills a new site with the pack's made-up network — assets, inspection history and risk — for demonstrations.",
+    changes: [
+      "For power distribution: Ridgeway's 132 poles, 45 transformers and 33 conductor sections, 348 inspections from 2016 to 2025, then risk recomputed. Progress shows file by file.",
+      "Every file goes through Data Import's own validation and import, one request each, just as a utility's own data would.",
+      "Sample data only goes into the pack's types while they have no assets, so it never mixes with a live network.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-27",
+    title: "Pruning old deployments on every site",
+    summary:
+      "`npm run vercel:prune` now clears old deployments from every site at once — Hydrocore and Powercore today — instead of the water site alone.",
+    changes: [
+      "The sites are listed for scripts in scripts/sites.ts, beside the Sites table in DEPLOYMENT.md; a new site is added to both.",
+      "Each site's live deployment is found from its own address, so a rollback on one site is respected there. `--site` limits a run to one site, and one site's trouble is reported without stopping the rest.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-23",
+    title: "The product name as a wordmark",
+    summary:
+      "The product's name — HYDROCORE, POWERCORE — now stands out as a wordmark: Orbitron, in capitals and spaced out, in the sidebar, on the sign-in page and on Settings › Branding.",
+    changes: [
+      "Orbitron is bundled with the app and used for the product's name only; everything else stays as it was.",
+      "The browser tab keeps the name as written, \"Hydrocore | …\".",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-23",
+    title: "Each site's product name and logo, set before it ships",
+    summary:
+      "The product's name and logo — Hydrocore for water, Powercore for power — are now set for each site where it is hosted, before it ships to a customer. A customer's Administrator still sets the tagline and what the assets are called, but no longer the name or logo.",
+    changes: [
+      "Two new site settings in Vercel, PRODUCT_NAME and PRODUCT_LOGO, name the product in the sidebar, the browser tab, the sign-in page and Excel exports. A site without them keeps the name and logo it had.",
+      "Settings › Branding shows the name and logo as set for the site, and no longer offers to change them.",
+      "`npm run org:new` no longer takes --product or --logo; the runbook sets them in Vercel instead.",
+    ],
+    fixes: [
+      "Saving Settings › Branding failed every time with \"Say what one asset is called in a sentence\": the form's in-sentence words were never sent. They are now.",
+    ],
+    note: "No migration. After merging, set PRODUCT_NAME and PRODUCT_LOGO on each Vercel project, Production only, and redeploy.",
+  },
+  {
+    date: "2026-10-21",
+    title: "The new-customer runbook, from setting up Carnac Power",
+    summary:
+      "DEPLOYMENT.md's steps for a new customer site now follow what setting up the second site taught: checking which database a window points at, Production-only settings in Vercel, and the starter pack.",
+    changes: [
+      "Each database step checks the window points at the intended database before anything runs, one window per database.",
+      "Vercel's steps in full: a new sign-in secret, Production-only environment variables, the address checked against NEXTAUTH_URL, and the sign-in page as proof the site reads its own database.",
+      "Setting up a network starts from a starter pack where one fits, and Data Import's sample files are there for demos.",
+      "A list of every site and its database, so that no migration misses one; schema changes now run on each before merging.",
+    ],
+    note: "No migration. Documentation only.",
+  },
+  {
+    date: "2026-10-21",
+    title: "Sample power network, and choosing a file in Data Import",
+    summary:
+      "The power distribution starter pack comes with sample data for trying the app out: a small made-up cooperative's poles, transformers and conductor, with inspection history, loaded through Data Import like anyone's real data.",
+    changes: [
+      "Data Import has a Choose a CSV file button: the file is read into the box, to check or edit before validating.",
+      "For a type from a starter pack, Data Import offers the pack's sample files to load: Ridgeway's three feeders — 132 poles, 45 transformers and 33 conductor sections — then pole inspections from 2016 and 2024, transformer inspections and a line patrol. Each feeder was built in a different era, so the oldest is due for work and the newest is not.",
+      "After adding types from the starter pack, the result says where the sample files are.",
+      "The samples are for demonstrations, not a live setup. They are written by `npm run samples:power` from the pack's own column labels.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-16",
+    title: "A power distribution starter pack",
+    summary:
+      "Settings › Asset Types can now add asset types from a starter pack, each created ready to model. The first pack is power distribution: poles, distribution transformers and overhead conductor.",
+    changes: [
+      "\"Add from a starter pack\" on Settings › Asset Types: pick the types, and each is created with its attributes and measures, inspection form, condition index, deterioration curves by material, treatments with what they do and typical prices, and failure costs — modelled and ready for Data Import.",
+      "Poles: wood, steel, concrete and composite, by height and class; a Pole Condition Index from ground-line strength, pole top, hardware, lean and surface damage; replacement, reinforcement, pole-top rebuild, remedial treatment and inspection.",
+      "Distribution transformers: pole- and pad-mounted, priced by kVA; a Transformer Condition Index from tank, leaks, bushings, loading and enclosure; replacement, refurbishment, repair and inspection.",
+      "Overhead conductor: ACSR, AAC, AAAC and copper segments priced by length; a Conductor Condition Index from stranding, splices, clearance, corrosion and vegetation; reconductoring, splice repair and line patrol.",
+      "Corridor savings between the pack's types — a pole replaced with the conductor on it shares one crew, for instance.",
+      "Every figure is an industry-typical starting point to tune. A type the organization already has is left exactly as it is.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-16",
+    title: "Fixes from a pass through the new screens",
+    summary:
+      "Small fixes found walking through budgets, corridor bundling and the scenario form in the browser.",
+    changes: [
+      "Settings › Corridor Bundling: each asset type's corridor attribute choice stays inside its box at narrower widths, and the save message points to the preview beside the form.",
+      "Budgets: a budget set entirely by asset type opens on the first type with amounts rather than an empty Whole budget tab, and the whole-budget explanation shows only on that tab.",
+      "The scenario form describes corridor bundling as it works: neighbours become cheaper as the year's work is bought, and compete for the rest of its money at that price.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-16",
+    title: "Bundling neighbouring work by hand in a plan",
+    summary:
+      "In a work plan, a project can now be bundled by hand with work on neighbouring assets in the same year, for what doing it together saves — the last part of corridor bundling.",
+    changes: [
+      "A Bundle button beside Combine opens the projects that could join: same year, on a neighbouring asset by Settings › Corridor Bundling, not already in a bundle, and of a pair of asset types that saves something together. Each shows its price before and after.",
+      "The project keeps its price; each one picked joins it at its bundled price — one mobilization at the larger of the two where the pair shares one, and the pair's percentage off the rest — and its explanation says so.",
+      "An Unbundle link on any project in a corridor bundle takes it out: it, and any work that joined it, go back to their own prices.",
+      "Moving, cancelling or removing hand-made bundles works as for bundles from a scenario.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-16",
+    title: "Corridor bundles kept together in work plans",
+    summary:
+      "A work plan made from a scenario that bundles neighbouring work keeps each corridor bundle together, and says what moving, cancelling or removing one of its projects does to the others.",
+    changes: [
+      "Each project in a corridor bundle shows what it joined — \"corridor: with WL-0163, saving $2,729\" — or which work joined it.",
+      "Moving a project takes its whole corridor bundle along by default, keeping the savings. Untick \"with its corridor bundle\" to move it alone: it leaves the bundle, and work that had joined it is priced on its own again. The Move control's tooltip says by how much before you do it.",
+      "Cancelling, deferring or removing a project does the same: work bundled with it goes back to its own price, and each row's explanation says why.",
+      "Fixed: where a combination of treatments joined a corridor bundle, its rows were stored at their full price while the project was bought at the bundled one. The rows now add up to what was paid.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-15",
+    title: "Letting work wait for a neighbour's corridor bundle",
+    summary:
+      "On a scenario that bundles neighbouring work, work can now also be held back — once, for up to the corridor window — to join a neighbour's bundle in a later year, where that is expected to save more than waiting costs. Off unless chosen on the scenario.",
+    changes: [
+      "\"Also let work wait for a neighbour's bundle\" under the scenario's corridor bundling option.",
+      "Only work the year actually funded on its own is considered — not work that anchors or joins a bundle that year, not high-risk work, not work already committed. It waits only for a neighbour coming due within the window that couldn't be brought forward instead, never past the end of the run, and only where the estimated saving beats the failures waiting is expected to cost on the asset's own curve.",
+      "The year is then bought again without it, so its money goes elsewhere. Work that becomes too risky while waiting is released early.",
+      "Both scenario engines. The Alternatives page gives the new reason; Funded Projects, the export and work plans say where work waited and for whom.",
+      "On the sample network it rarely applies: most funded work is high-risk or already anchors a bundle, and bringing neighbours forward usually wins first.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-15",
+    title: "Bringing work forward to join a corridor bundle",
+    summary:
+      "On a scenario that bundles neighbouring work, work that isn't due yet can now be brought forward to join a neighbour's bundle, up to the timing window set under Settings › Corridor Bundling (2 years to start).",
+    changes: [
+      "Each year, assets the strategy will look at within the window — by their own deterioration — have their options scored too, but only ever offered at their bundled price beside funded neighbouring work, never on their own.",
+      "They are judged by what they do now, on the same scale as the year's other options, so work joins only when it is still worth its price that year. Nothing else's score moves.",
+      "Both scenario engines bring work forward; with delivery lead times, only beside work built in the same year.",
+      "Funded Projects, the export and work plans made from the scenario say when work was brought forward, and from which year.",
+    ],
+    note: "No migration. A window of 0 bundles only work due that year, exactly as before.",
+  },
+  {
+    date: "2026-10-15",
+    title: "Corridor bundling within a year",
+    summary:
+      "A budget-constrained scenario can now bundle neighbouring work: as each year's work is bought, an asset that gets work makes its neighbours cheaper — what doing them together saves comes off — so work beside it competes for the rest of the year's money on that price. Off unless chosen on the scenario.",
+    changes: [
+      "\"Bundle neighbouring work\" on the scenario form. Neighbours and what each pair of asset types saves come from Settings › Corridor Bundling; a pair with no saving set never bundles.",
+      "Mobilization is charged once at the larger of the two, so sharing it saves the smaller; the pair's further percentage comes off the rest. Work funded first pays full price; work that joins pays less, and can itself make the next neighbour cheaper, so a bundle can run along a street.",
+      "Both scenario engines bundle. With delivery lead times, only work built in the same year bundles.",
+      "Funded Projects says what joined a bundle, beside which asset and for how much less, with a total for the run; the export gains Bundled With and Corridor Saving columns when anything bundled; work plans made from the scenario carry it in each row's explanation.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-15",
+    title: "Corridor bundling settings",
+    summary:
+      "The first part of corridor bundling: Settings › Corridor Bundling says which assets are neighbours and what doing their work together saves. Scenarios don't bundle yet — this is the configuration they will read, with a preview of what it finds.",
+    changes: [
+      "Neighbours by distance — between the nearest points of two assets' lines or locations, 50 m to start — across any asset types.",
+      "A corridor attribute per asset type, such as the street: where both assets' types record one, the same value makes them neighbours and a different value does not, whatever the distance.",
+      "A savings table for every pair of modelled asset types, a type with itself included: whether the pair shares one mobilization, and a further percentage off each added member. A pair saving nothing never bundles.",
+      "A timing window, 2 years to start, for how far work may later be moved to join a neighbour's bundle.",
+      "A preview of how many assets have neighbours, and the neighbouring pairs by asset type.",
+    ],
+    note: "Migration: 20261015150000_corridor_settings (new corridor_settings and corridor_savings tables, and a nullable asset_types.corridorAttribute).",
+  },
+  {
+    date: "2026-10-15",
+    title: "Budgets by asset type, pooled or separate",
+    summary:
+      "Where several asset types are modelled, a budget can now set each type's own money year by year, with amounts per category within a type. A scenario over several types chooses whether they share the year's money or each spends only its own.",
+    changes: [
+      "The budget editor has a tab per modelled asset type beside the whole budget, each with its own years, totals and category amounts.",
+      "On a scenario over several asset types that follows a budget, choose Pooled (the types share each year's money) or Separate (each type is held to its own amount, and to its category amounts within it). Money one type leaves unspent is not used by another.",
+      "A year with no whole-budget total takes the types' amounts added up, so a budget can be set entirely by type.",
+      "Both scenario engines follow it. An option held back by its type's money says so on the Alternatives page: \"Asset type's budget spent\".",
+    ],
+    note: "No migration: the per-type amounts use the budget lines added last time, and the choice is stored with the scenario's assumptions.",
+  },
+  {
+    date: "2026-10-15",
+    title: "Budgets set year by year",
+    summary:
+      "A scenario can now follow a budget: the money you expect to have, entered year by year in dollars, instead of one annual figure and a growth rate. Optional — a scenario with no budget runs exactly as before.",
+    changes: [
+      "Scenario Planning › Budgets: name a budget and enter each year's total, filled from a starting figure and growth rate if you like and edited year by year from there.",
+      "Break the money out by category if you want: a dollar amount for Repair, Rehabilitate or Renew is the most that kind of work may take that year. Leave the total blank and it is the categories added up.",
+      "On a budget-constrained scenario, choose the budget under Budget. Years it lists use its amounts; years it does not list use the scenario's annual budget and growth. A category funding plan's shares still hold alongside it — the lower limit wins.",
+      "Both scenario engines follow it, with or without delivery lead times. A budget can't be deleted while a scenario follows it.",
+    ],
+    note: "Migration: 20261015140000_budget_plans (new budget_plans and budget_plan_lines tables, and a nullable scenarios.budgetPlanId).",
+  },
+  {
+    date: "2026-10-15",
+    title: "Each type's typical Priority Score, to set its weight against",
+    summary:
+      "Asset types' Priority Scores need not be on one scale: a length-based scale factor puts a water main's in the thousands where a pole's is 1. A scenario over several types now shows what each type's work typically scores, so its weight can be set knowing the gap.",
+    changes: [
+      "Each run records, for every type and year, the median Priority Score of the type's options before its weight.",
+      "On the scenario form, each type's weight box shows its typical score from the first year of the last run, and \"Level the types\" fills in the weights that bring them level — offered, never applied on its own.",
+      "The By Asset Type section gains a Typical priority column for the first year.",
+      "A single-type scenario is unchanged and stores exactly what it did.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-15",
+    title: "Asset type weights on a cross-asset scenario",
+    summary:
+      "A scenario over several asset types can now lean toward one of them. Each type gets a weight that multiplies the Priority Score of its work, beside the category weighting. Every weight starts at 1, so existing scenarios rank exactly as before.",
+    changes: [
+      "With more than one asset type ticked on a scenario, each type has a weight box beside it. Above 1 favours that type when the types compete for the same budget; below 1 holds it back. The range is 0.01 to 100.",
+      "Both scenario engines apply it, and the Alternatives page shows it in the Priority Score breakdown where it is not 1.",
+      "Weights are kept only for types the scenario covers, and a scenario over one type keeps none. Copies and scenario sets carry them with the other assumptions.",
+    ],
+    note: "No migration: the weights are stored with the scenario's assumptions.",
+  },
+  {
+    date: "2026-10-15",
+    title: "A suggested failure cost where a type has none",
+    summary:
+      "A modelled asset type with no failure cost now gets a starting figure to accept or change, worked out from its own treatments and assets. Nothing is applied until someone saves it.",
+    changes: [
+      "The repair is what the type's cheapest Repair treatment costs on a typical asset of the type — the median size and length of its assets — or its replacement where it has no Repair treatment. The interruption is a typical $145 per customer, offered where the type records customers served.",
+      "Settings › Asset Types shows the suggestion under the type's measures, and the measures form has a \"Use suggestion\" button that fills it in, with where it came from.",
+      "The modelling checklist says a starting figure is suggested when the failure cost is missing.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-14",
+    title: "Scenario results for each asset type",
+    summary:
+      "A scenario over several asset types reported one network condition, averaging indexes that measure different things. It now also shows each type on its own: condition on its own index, work funded, backlog and failure cost. A single-type scenario is unchanged.",
+    changes: [
+      "A \"By Asset Type\" section on a scenario covering several types: each type's assets, its condition at the start and end on its own index, the work funded for it, its backlog and its failure cost, with a chart of each type's condition by year.",
+      "Each year's figures are stored per type alongside the totals, for both scenario modes. A run over one type stores exactly what it did.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-14",
+    title: "Each asset type says what a failure costs",
+    summary:
+      "Every failure was costed as a water main's — $18,000 repair scaled by pipe size, plus $145 per customer — whatever the asset was, so a 35 ft pole's failure cost about $55,000 and its life-cycle savings were inflated. Each asset type now sets its own. Water's costs are unchanged.",
+    changes: [
+      "Settings › Asset Types: \"Cost of a failure\" under a type's measures — the repair, and the cost per customer affected. The repair grows with size as the type's treatment prices do. The measures section states the figures.",
+      "Life-cycle costs, recommendations, scenarios and work plans cost each asset's failures on its own type's figures.",
+      "The modelling checklist shows whether a type's failure cost is set; without it, life-cycle savings count no failures avoided.",
+      "The waterline keeps $18,000 and $145.",
+    ],
+    fixes: ["Three build log entries from earlier today were dated tomorrow."],
+    note: "Migration: 20261014140000_failure_cost — adds the setting and fills it with today's figures for every modelled type.",
+  },
+  {
+    date: "2026-10-14",
+    title: "Asset type codes are each organization's own",
+    summary:
+      "An asset type's code was unique across the whole site, so a second organization could not add a POLE type once the first had one. Codes are now unique within each organization.",
+    changes: [
+      "Settings › Asset Types refuses a code only when your own organization already uses it.",
+      "The facility seed and its SQL loader find and add types within their own organization.",
+    ],
+    note: "Migration: 20261015130000_asset_type_code_per_organization — swaps the unique index; no data changes.",
+  },
+  {
+    date: "2026-10-14",
+    title: "The SQL console reads only your organization",
+    summary:
+      "The Administrators' SQL console read the whole database, every organization's rows. Every query now sees only the signed-in organization's, however it is written. Nothing changes for a site with one organization.",
+    changes: [
+      "Each table a query names is answered from that organization's rows — directly, through its asset type or asset, or through the record it belongs to — including tables joined after a comma and a CTE that reuses a table's name.",
+      "A query naming a schema (public., information_schema), a system catalog (pg_…) or a table the console doesn't offer is refused wherever the name appears; previously a table after a comma slipped past the check.",
+      "Queries are still read-only and limited to 500 rows and 8 seconds.",
+    ],
+    note: "No migration.",
+  },
+  {
+    date: "2026-10-14",
+    title: "Work plans belong to their organization",
+    summary:
+      "A work plan carried no organization, so a second organization on the same site saw — and could open, change and delete — the first's plans. Each plan now belongs to one, and every list and action is limited to it. Nothing changes for a site with one organization.",
+    changes: [
+      "The work plan list, a plan's page, running it, adding, combining, splitting, moving and re-statusing its work, importing into it and deleting it all keep to the signed-in organization.",
+      "A scenario can lock only its own organization's plans, and the activity log lists only them.",
+      "Plans made from a scenario run, by Generate, or by an import record their organization.",
+    ],
+    note: "Migration: 20261015120000_work_plan_organization — run it, then merge straight away: until the new code is live, running a scenario or making a plan fails.",
+  },
+  {
+    date: "2026-10-14",
+    title: "Start a new customer from nothing",
+    summary:
+      "A new customer — a power utility, say — can now be given their own site and database starting empty: one command creates their organization, branding and first Administrator, with none of the water demo. Until they model something, the pages built on the models say what to do first instead of failing.",
+    changes: [
+      "npm run org:new creates an organization, its branding (a neutral \"Asset\" platform unless told otherwise) and one Administrator whose password it prints once. It refuses a database that already has an organization unless told --alongside.",
+      "DEPLOYMENT.md has \"A new customer\": a Neon database and Vercel project each, the schema, the first login, and the order to set up their network in.",
+      "The dashboard, Condition, Risk, Deterioration Models and the Condition Index, Risk Models and Metrics settings show \"Nothing is modelled yet\" with the steps to take, and the Settings overview marks those cards \"Not set up\".",
+      "The four system roles are defined once, for the demo seed and new customers alike.",
+    ],
+    note: "No migration. Every migration from now on runs on each customer's database too.",
+  },
+  {
     date: "2026-10-14",
     title: "Deactivated users are signed out",
     summary:

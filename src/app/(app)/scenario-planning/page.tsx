@@ -83,6 +83,9 @@ export default async function ScenarioPlanningPage() {
           action={copyScenarioSetAction}
         />
       )}
+      <Button variant="outline" size="sm" nativeButton={false} render={<Link href="/scenario-planning/budgets" />}>
+        Budgets
+      </Button>
       {newSetButton}
     </div>
   );

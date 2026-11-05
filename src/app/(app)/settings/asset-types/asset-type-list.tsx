@@ -18,6 +18,7 @@ import type { ComponentComposition } from "@/server/component-types";
 import { ComponentsSection } from "./components-section";
 import { MEASURE_ROLES } from "@/lib/measure-roles";
 import type { ReadinessItem } from "@/server/modelling";
+import type { FailureCostSuggestion } from "@/server/failure-cost";
 
 const input =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -91,6 +92,7 @@ export function AssetTypeList({
   onSaveMeasures,
   onSetModelled,
   readiness,
+  failureSuggestions,
   onCreateType,
   onCreateAttribute,
   onSaveAttribute,
@@ -113,6 +115,8 @@ export function AssetTypeList({
   onSetModelled: Action;
   /** Each type's modelling checklist, by type id. */
   readiness: Record<string, ReadinessItem[]>;
+  /** A starting failure cost for each modelled type that has none. */
+  failureSuggestions: Record<string, FailureCostSuggestion>;
   onCreateType: Action;
   onCreateAttribute: Action;
   onSaveAttribute: Action;
@@ -322,7 +326,12 @@ export function AssetTypeList({
             />
 
             {/* Measures ------------------------------------------------ */}
-            <MeasuresSection type={type} canEdit={canEdit} onEdit={() => setEditingMeasures({ type })} />
+            <MeasuresSection
+              type={type}
+              canEdit={canEdit}
+              onEdit={() => setEditingMeasures({ type })}
+              suggestion={failureSuggestions[type.id]}
+            />
 
             {/* Components ---------------------------------------------- */}
             <ComponentsSection
@@ -509,6 +518,7 @@ export function AssetTypeList({
           {editingMeasures && (
             <MeasuresForm
               type={editingMeasures.type}
+              suggestion={failureSuggestions[editingMeasures.type.id]}
               pending={pending}
               onSubmit={(formData) => submit(onSaveMeasures, formData, () => setEditingMeasures(null))}
               onCancel={() => setEditingMeasures(null)}
@@ -885,10 +895,12 @@ function MeasuresSection({
   type,
   canEdit,
   onEdit,
+  suggestion,
 }: {
   type: AssetTypeDetail;
   canEdit: boolean;
   onEdit: () => void;
+  suggestion?: FailureCostSuggestion;
 }) {
   const labelOf = (code: string | undefined) => type.attributes.find((a) => a.code === code)?.label ?? null;
   const setCount = MEASURE_ROLES.filter((r) => labelOf(type.measures[r.key])).length;
@@ -952,19 +964,32 @@ function MeasuresSection({
           </>
         ) : (
           "Treatment prices do not change with size."
-        )}
+        )}{" "}
+        {type.failureCost
+          ? `A failure costs ${money(type.failureCost.repairCost)} to repair${
+              type.sizeCostScale ? `, growing with ${sizeLabel?.toLowerCase() ?? "size"} the same way,` : ""
+            } plus ${money(type.failureCost.perCustomer)} for each customer it affects.`
+          : `Failures are not costed, so life-cycle savings count no failures avoided.${
+              suggestion
+                ? ` Suggested to start from: ${money(suggestion.repairCost)} repair and ${money(suggestion.perCustomer)} per customer — under Edit measures.`
+                : ""
+            }`}
       </p>
     </section>
   );
 }
 
+const money = (n: number) => `$${n.toLocaleString("en-US")}`;
+
 function MeasuresForm({
   type,
+  suggestion,
   pending,
   onSubmit,
   onCancel,
 }: {
   type: AssetTypeDetail;
+  suggestion?: FailureCostSuggestion;
   pending: boolean;
   onSubmit: (formData: FormData) => void;
   onCancel: () => void;
@@ -1000,6 +1025,7 @@ function MeasuresForm({
         })}
       </div>
       <SizeCostFields scale={type.sizeCostScale} />
+      <FailureCostFields cost={type.failureCost} suggestion={suggestion} />
       <div data-dialog-actions className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
@@ -1009,6 +1035,77 @@ function MeasuresForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/** What one failure of this type costs — what life-cycle costs and the
+ * failures a treatment avoids are valued at. */
+function FailureCostFields({
+  cost,
+  suggestion,
+}: {
+  cost: AssetTypeDetail["failureCost"];
+  /** Offered where the type has no failure cost yet; applied only on request. */
+  suggestion?: FailureCostSuggestion;
+}) {
+  const [repair, setRepair] = useState(cost?.repairCost != null ? String(cost.repairCost) : "");
+  const [perCustomer, setPerCustomer] = useState(cost?.perCustomer != null ? String(cost.perCustomer) : "");
+  return (
+    <fieldset className="space-y-2 rounded-md border p-3">
+      <legend className="px-1 text-sm font-medium">Cost of a failure</legend>
+      <p className="text-xs text-muted-foreground">
+        The emergency repair, which grows with size as treatment prices do when that is on, plus the service
+        interruption for each customer affected. Water mains use $18,000 and $145. Leave both blank and failures are
+        not costed.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="failureRepairCost">Repair ($)</Label>
+          <input
+            id="failureRepairCost"
+            name="failureRepairCost"
+            type="number"
+            min={0}
+            step="any"
+            value={repair}
+            onChange={(e) => setRepair(e.target.value)}
+            className={input}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="failurePerCustomer">Per customer affected ($)</Label>
+          <input
+            id="failurePerCustomer"
+            name="failurePerCustomer"
+            type="number"
+            min={0}
+            step="any"
+            value={perCustomer}
+            onChange={(e) => setPerCustomer(e.target.value)}
+            className={input}
+          />
+        </div>
+      </div>
+      {suggestion && !cost && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs">
+          <span className="text-muted-foreground">
+            Suggested: {money(suggestion.repairCost)} repair, {money(suggestion.perCustomer)} per customer.{" "}
+            {suggestion.basis}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setRepair(String(suggestion.repairCost));
+              setPerCustomer(String(suggestion.perCustomer));
+            }}
+          >
+            Use suggestion
+          </Button>
+        </div>
+      )}
+    </fieldset>
   );
 }
 

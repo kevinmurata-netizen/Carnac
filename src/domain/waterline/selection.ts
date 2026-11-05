@@ -1,4 +1,5 @@
-import { categoryLimits, type FundingPlan } from "./category-funding";
+import { yearLimits, type FundingPlan } from "./category-funding";
+import type { TypeLimits } from "./budget-plan";
 import type { TreatmentCategory, TreatmentOption } from "./treatment";
 
 /**
@@ -65,6 +66,9 @@ export const NOT_SELECTED = {
   notEfficient: "Another option gives more for the money",
   budgetSpent: "Year's budget spent",
   categoryFull: "Category budget full",
+  /** Only where a scenario funds its asset types separately: the option's
+   * type, or its category within the type, has spent its own money. */
+  typeFull: "Asset type's budget spent",
   unpriced: "Could not be priced",
   categoryUnfunded: "Category not in the funding plan",
   /** Only with delivery lead times: the money would fall in a year past the
@@ -142,15 +146,17 @@ export function efficientLadder<T extends Rankable>(options: T[]): T[] {
 /** A max-heap of each segment's next step, so the best step on the network is
  * found without rescanning every segment each time one is bought. */
 class StepHeap {
-  private items: Array<{ assetId: string; rung: number; score: number; seq: number }> = [];
+  private items: Array<{ assetId: string; rung: number; score: number; seq: number; version: number }> = [];
   private seq = 0;
 
   get size() {
     return this.items.length;
   }
 
-  push(assetId: string, rung: number, score: number) {
-    this.items.push({ assetId, rung, score, seq: this.seq++ });
+  /** `version` marks which of a segment's ladders the step is on, so a step
+   * left over from a ladder since rebuilt can be told apart and skipped. */
+  push(assetId: string, rung: number, score: number, version = 0) {
+    this.items.push({ assetId, rung, score, seq: this.seq++, version });
     let i = this.items.length - 1;
     while (i > 0) {
       const parent = (i - 1) >> 1;
@@ -215,8 +221,13 @@ export type Purse<T extends Rankable> = {
 
 /** One year's money, spent on one year's work: how every scenario ran before
  * delivery lead times existed. */
-export function yearPurse<T extends Rankable>(budget: number, plan: FundingPlan): Purse<T> {
-  const limits = categoryLimits(plan, budget);
+export function yearPurse<T extends Rankable>(
+  budget: number,
+  plan: FundingPlan,
+  /** A budget plan's dollar ceilings for the year, by category. */
+  ceilings?: Map<TreatmentCategory, number> | null
+): Purse<T> {
+  const limits = yearLimits(plan, budget, ceilings);
   const limitOf = (category: TreatmentCategory) => (limits == null ? budget : (limits.get(category) ?? 0));
   const spentBy = new Map<TreatmentCategory, number>();
   let spent = 0;
@@ -259,9 +270,10 @@ export function yearPurse<T extends Rankable>(budget: number, plan: FundingPlan)
 export function selectForYear<T extends Rankable>(
   candidates: T[],
   budget: number,
-  plan: FundingPlan
+  plan: FundingPlan,
+  ceilings?: Map<TreatmentCategory, number> | null
 ): SelectionResult<T> {
-  return selectAgainst(candidates, yearPurse<T>(budget, plan));
+  return selectAgainst(candidates, yearPurse<T>(budget, plan, ceilings));
 }
 
 /** What a target-constrained year needs to know about the network it is
@@ -314,6 +326,81 @@ export function targetPurse<T extends Rankable>(progress: TargetProgress<T>): Pu
 }
 
 /**
+ * A purse with each asset type held to its own money as well: what a scenario
+ * that funds its types separately spends against.
+ *
+ * Wraps rather than replaces, so the year's total and its category limits —
+ * in one year, or across a ledger of years — are checked exactly as before,
+ * and the type limits on top. `money` says which years an option's cost falls
+ * in, which is one year without lead times and its instalments with them.
+ */
+export function withTypeLimits<T extends Rankable>(
+  purse: Purse<T>,
+  opts: {
+    typeOf: (c: T) => string | null | undefined;
+    money: (c: T) => Array<{ year: number; amount: number }>;
+    limitsIn: (year: number) => TypeLimits | null;
+  }
+): Purse<T> & { snapshot(): () => void } {
+  const spent = new Map<string, number>();
+  /** Every limit an option's money counts against, with how much. */
+  const entries = (c: T, sign: 1 | -1) => {
+    const type = opts.typeOf(c);
+    if (!type) return [];
+    const out: Array<{ key: string; cap: number; amount: number }> = [];
+    for (const { year, amount } of opts.money(c)) {
+      const limits = opts.limitsIn(year);
+      if (!limits) continue;
+      const typeCap = limits.byType.get(type);
+      if (typeCap != null) out.push({ key: `${year}|${type}`, cap: typeCap, amount: sign * amount });
+      const categoryCap = limits.byTypeCategory.get(`${type}|${c.option.category}`);
+      if (categoryCap != null) {
+        out.push({ key: `${year}|${type}|${c.option.category}`, cap: categoryCap, amount: sign * amount });
+      }
+    }
+    return out;
+  };
+
+  return {
+    unfunded(candidate) {
+      const refused = purse.unfunded(candidate);
+      if (refused) return refused;
+      return entries(candidate, 1).some((e) => e.cap <= 0) ? NOT_SELECTED.typeFull : null;
+    },
+    check(next, current) {
+      const refused = purse.check(next, current);
+      if (refused) return refused;
+      const delta = new Map<string, { cap: number; amount: number }>();
+      for (const e of [...entries(next, 1), ...(current ? entries(current, -1) : [])]) {
+        const d = delta.get(e.key);
+        delta.set(e.key, { cap: e.cap, amount: (d?.amount ?? 0) + e.amount });
+      }
+      for (const [key, d] of delta) {
+        if (d.amount > 0 && (spent.get(key) ?? 0) + d.amount > d.cap + 0.01) return NOT_SELECTED.typeFull;
+      }
+      return null;
+    },
+    commit(next, current) {
+      purse.commit(next, current);
+      for (const e of [...entries(next, 1), ...(current ? entries(current, -1) : [])]) {
+        spent.set(e.key, (spent.get(e.key) ?? 0) + e.amount);
+      }
+    },
+    byCategory: () => purse.byCategory(),
+    totalSpent: () => purse.totalSpent(),
+    /** What it has spent so far, and a way back to it. The wrapped purse's
+     * own money is its owner's to restore. */
+    snapshot() {
+      const saved = new Map(spent);
+      return () => {
+        spent.clear();
+        for (const [k, v] of saved) spent.set(k, v);
+      };
+    },
+  };
+}
+
+/**
  * Buys nothing: a year after the target, in a target run set to do nothing
  * from then on. Work a segment already holds stays where it is — with lead
  * times, that is work decided by the target year and still on its way.
@@ -348,7 +435,15 @@ export function selectForTarget<T extends Rankable>(
 export function selectAgainst<T extends Rankable>(
   candidates: T[],
   purse: Purse<T>,
-  held?: Map<string, T>
+  held?: Map<string, T>,
+  /**
+   * Called when a segment is first funded, and may hand back new options for
+   * other segments not yet funded — the same work at another price. Each such
+   * segment's ladder is rebuilt from them and it competes again for what is
+   * left. How corridor bundling makes neighbours of funded work cheaper as
+   * the year is bought; absent, nothing is ever re-priced.
+   */
+  onFunded?: (assetId: string, funded: T) => Map<string, T[]> | null
 ): SelectionResult<T> {
   const outcome = new Map<T, string>();
   const incremental = new Map<T, IncrementalScore<T>>();
@@ -409,9 +504,38 @@ export function selectAgainst<T extends Rankable>(
 
   /** Why a segment stopped climbing, for every rung above where it stopped. */
   const stoppedBy = new Map<string, string>();
+  /** Which ladder each segment is on; bumped when one is rebuilt. */
+  const versions = new Map<string, number>();
+
+  /** A segment's new options, where it has no work yet: a new ladder, scored
+   * afresh, and its first step back in the heap. A segment that had no
+   * options at all this year — work not yet due, offered only to join a
+   * neighbour's — gets its first ladder the same way. */
+  const rebuild = (assetId: string, options: T[]) => {
+    if (level.has(assetId)) return;
+    const usable = options.filter(
+      (o) => o.priority != null && o.cost > 0 && Number.isFinite(o.value) && !purse.unfunded(o)
+    );
+    if (usable.length === 0) return;
+    const ladder = efficientLadder(usable);
+    ladders.set(assetId, ladder);
+    ladder.forEach((rung, i) => {
+      const below = i > 0 ? ladder[i - 1] : null;
+      incremental.set(rung, {
+        score: round4((rung.value - (below?.value ?? 0)) / (rung.cost - (below?.cost ?? 0))),
+        over: below,
+      });
+    });
+    for (const option of usable) if (!ladder.includes(option)) outcome.set(option, NOT_SELECTED.notEfficient);
+    const version = (versions.get(assetId) ?? 0) + 1;
+    versions.set(assetId, version);
+    stoppedBy.delete(assetId);
+    heap.push(assetId, 0, stepScore(assetId, 0), version);
+  };
 
   while (heap.size > 0) {
-    const { assetId, rung } = heap.pop();
+    const { assetId, rung, version } = heap.pop();
+    if ((versions.get(assetId) ?? 0) !== version) continue;
     const ladder = ladders.get(assetId)!;
     const next = ladder[rung];
     const current = rung > 0 ? ladder[rung - 1] : null;
@@ -425,7 +549,10 @@ export function selectAgainst<T extends Rankable>(
     purse.commit(next, current);
     if (!current) firstFunded.push(assetId);
     level.set(assetId, rung);
-    if (rung + 1 < ladder.length) heap.push(assetId, rung + 1, stepScore(assetId, rung + 1));
+    if (rung + 1 < ladder.length) heap.push(assetId, rung + 1, stepScore(assetId, rung + 1), versions.get(assetId) ?? 0);
+    if (!current && onFunded) {
+      for (const [other, options] of onFunded(assetId, next) ?? []) rebuild(other, options);
+    }
   }
 
   const selected: T[] = [];

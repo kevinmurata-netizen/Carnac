@@ -59,7 +59,12 @@ export function buildLccaEvaluator(
   if (plannedReplacementCost == null) return null;
 
   const forcedReplacementCost = Math.round(plannedReplacementCost * EMERGENCY_COST_PREMIUM);
-  const costInputs = { diameterInches: ctx.diameterInches, customersServed: ctx.customersServed };
+  const costInputs = {
+    diameterInches: ctx.diameterInches,
+    customersServed: ctx.customersServed,
+    sizeCostScale: ctx.sizeCostScale,
+    failureCost: ctx.failureCost,
+  };
   const pof = ctx.pof ?? 1;
 
   // The pipe a forced replacement installs is the same pipe a planned one

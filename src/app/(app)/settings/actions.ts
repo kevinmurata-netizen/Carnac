@@ -5,6 +5,7 @@ import { updateBranding } from "@/server/branding";
 import { createMaterialCurve, deleteMaterialCurve } from "@/server/deterioration";
 
 import { revalidatePath } from "next/cache";
+import { applyStarterPack, createSampleScenarioSet, loadSampleFile, runSampleScenarioSet } from "@/server/starter-packs";
 import { AttributeDataType } from "@prisma/client";
 import { requireCardWrite, requireAnyCardWrite } from "@/server/guard";
 import {
@@ -310,11 +311,11 @@ export async function saveBrandingAction(
   try {
     const session = await requireWriteAccess("/settings/branding");
     await updateBranding(session.user.organizationId, {
-      productName: String(formData.get("productName") ?? ""),
       tagline: String(formData.get("tagline") ?? ""),
-      logo: String(formData.get("logo") ?? ""),
       assetSingular: String(formData.get("assetSingular") ?? ""),
       assetPlural: String(formData.get("assetPlural") ?? ""),
+      itemSingular: String(formData.get("itemSingular") ?? ""),
+      itemPlural: String(formData.get("itemPlural") ?? ""),
     });
     // The words and the name appear on nearly every page.
     revalidatePath("/", "layout");
@@ -362,6 +363,8 @@ export async function saveMeasuresAction(
     codes.sizeCost = String(formData.get("sizeCost") ?? "");
     codes.sizeCostReference = String(formData.get("sizeCostReference") ?? "");
     codes.sizeCostExponent = String(formData.get("sizeCostExponent") ?? "");
+    codes.failureRepairCost = String(formData.get("failureRepairCost") ?? "");
+    codes.failurePerCustomer = String(formData.get("failurePerCustomer") ?? "");
     const name = await updateAssetTypeMeasures(session.user.organizationId, String(formData.get("id") ?? ""), codes);
     // Measures feed every forecast, risk score and plan, so everything that
     // shows one is stale.
@@ -369,6 +372,59 @@ export async function saveMeasuresAction(
     return { status: "success", message: `${name}'s measures saved. They apply to the next run, recompute or plan.` };
   } catch (e) {
     return fail(e);
+  }
+}
+
+/** Add asset types from a starter pack. Governed by the Asset Types card:
+ * the treatments, curves and index it creates belong to the types it adds. */
+export async function applyStarterPackAction(input: { packId: string; typeCodes: string[] }) {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    const outcome = await applyStarterPack(session.user.organizationId, input.packId, input.typeCodes);
+    revalidateAll(ASSET_TYPES_CARD);
+    revalidatePath("/", "layout");
+    return { ok: true as const, outcome };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not add from the starter pack" };
+  }
+}
+
+/** One sample file from a starter pack, or — kind "risk", once the files are
+ * in — risk recomputed so the dashboard and risk pages reflect them. */
+export async function loadSampleFileAction(
+  input: { typeCode: string; kind: "assets" | "inspections"; csv: string } | { kind: "risk" }
+) {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    if (input.kind === "risk") {
+      const count = await recomputeRiskForOrganization(session.user.organizationId);
+      for (const path of ["/risk", "/dashboard", "/assets"]) revalidatePath(path);
+      return { ok: true as const, imported: count };
+    }
+    const result = await loadSampleFile(session.user.organizationId, session.user.id!, input);
+    for (const path of ["/assets", "/network", "/dashboard", "/inspections", "/condition", ASSET_TYPES_CARD]) {
+      revalidatePath(path);
+    }
+    return { ok: true as const, imported: result.imported };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not load the sample data" };
+  }
+}
+
+/** A starter pack's sample scenario set: made, then — a second call — run. */
+export async function loadSampleScenarioSetAction(input: { packId: string; step: "create" | "run" }) {
+  try {
+    const session = await requireWriteAccess(ASSET_TYPES_CARD);
+    const organizationId = session.user.organizationId;
+    const count =
+      input.step === "create"
+        ? await createSampleScenarioSet(organizationId, input.packId)
+        : await runSampleScenarioSet(organizationId, input.packId);
+    revalidatePath("/scenario-planning", "layout");
+    revalidatePath(ASSET_TYPES_CARD);
+    return { ok: true as const, imported: count };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not load the sample scenario set" };
   }
 }
 

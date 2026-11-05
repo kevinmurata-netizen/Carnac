@@ -63,6 +63,11 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
     stage: "screened",
     description: `Would neither lift the {item} to the scenario's condition target nor cut its risk by at least ${MIN_RISK_REDUCTION_PCT}%. Scored so you can see its value, but not fundable — otherwise cheap, small improvements get bought on the same {item} year after year.`,
   },
+  [NOT_RANKED.deferred]: {
+    stage: "not-funded",
+    description:
+      "Held back to join a neighbouring {item}'s work in a later year, within the scenario's corridor window: the bundle is expected to save more than waiting is expected to cost in failures. Work is held back once at most, and released early if it becomes too risky to wait.",
+  },
   [NOT_RANKED.belowFloor]: {
     stage: "screened",
     description: `The {item} is below {index} ${MATERIAL_INTERVENTION_CONDITION}, where an option has to cut risk by at least ${MIN_RISK_REDUCTION_PCT}% to be funded. A patch that scores well per dollar but leaves a failing main failing is not bought.`,
@@ -87,7 +92,12 @@ export const OUTCOME_INFO: Record<Reason, OutcomeInfo> = {
   [NOT_SELECTED.categoryFull]: {
     stage: "not-funded",
     description:
-      "The year still had money, but this option's category had used its share under the scenario's funding plan — a limit of the plan, not of the budget.",
+      "The year still had money, but this option's category had reached its limit — its share under the scenario's funding plan, or its amount for the year in the scenario's budget.",
+  },
+  [NOT_SELECTED.typeFull]: {
+    stage: "not-funded",
+    description:
+      "The scenario funds its asset types separately, and this {item}'s type — or this category within the type — had spent its own money for the year in the budget, though the year as a whole may not have.",
   },
   [NOT_SELECTED.unpriced]: {
     stage: "not-funded",

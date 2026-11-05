@@ -1,3 +1,5 @@
+import { NothingModelled } from "@/components/layout/nothing-modelled";
+import { hasModelledAssetType } from "@/server/modelled-asset-type";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getConditionSummary, getWorstConditionAssets } from "@/server/condition";
@@ -21,6 +23,9 @@ export default async function ConditionPage() {
   const words = await getAssetWords(organizationId);
   const index = await getIndexWords(organizationId);
   const pageTitle = await getPageName(organizationId, "/condition", "Condition");
+  if (!(await hasModelledAssetType(organizationId))) {
+    return <NothingModelled title={pageTitle} about="Network-wide condition derived from field inspections" />;
+  }
   const conditionBands = await getConditionBands(organizationId);
 
   const [summary, worst] = await Promise.all([

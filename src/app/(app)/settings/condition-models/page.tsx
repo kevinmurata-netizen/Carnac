@@ -1,3 +1,4 @@
+import { NothingModelled } from "@/components/layout/nothing-modelled";
 import { auth } from "@/lib/auth";
 import { requireCard } from "@/server/guard";
 import { getConditionModelConfig } from "@/server/settings";
@@ -22,6 +23,7 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
 
   // Each modelled asset type has its own condition scale, bands and metrics.
   const { types, selected } = await chooseModelledAssetType(organizationId, requestedType);
+  if (!selected) return <NothingModelled title={pageTitle} about="Metrics derived from condition, risk and the asset's attributes" />;
   const pills = (
     <AssetTypePills types={types} selectedId={selected?.id} href={(id) => `/settings/condition-models?type=${id}`} />
   );

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { AssetStatus, type AttributeDataType } from "@prisma/client";
-import { insertAssetLocation } from "@/server/geo";
+import { insertAssetLocation, insertAssetPathLocation, type LinePath } from "@/server/geo";
 import { wholeAssetConditionModel } from "@/server/components";
 import { parseMeasureCodes } from "@/server/measures";
 import { getCurvesByAssetType } from "@/server/settings";
@@ -16,6 +16,9 @@ import { getCurvesByAssetType } from "@/server/settings";
  * required where the attribute is and checked against its data type. A
  * reservoir imports capacity and overflow elevation; a waterline, material,
  * diameter and length — and no code names either.
+ *
+ * A line type can also be given its shape: an end point, drawn straight from
+ * the start, or the line itself as GIS software exports it.
  */
 
 /** Typical expected life when a row gives none — the same default the app
@@ -44,6 +47,8 @@ export type ImportColumn = {
 export type ImportSpec = {
   assetTypeId: string;
   assetTypeName: string;
+  /** How the type is drawn; a line type also takes its end and its shape. */
+  geometry: string;
   columns: ImportColumn[];
 };
 
@@ -69,6 +74,9 @@ export type ParsedRow = {
   serviceArea: string | null;
   department: string | null;
   expectedLife: number | null;
+  /** A line's vertices, when the row gave its end or its shape; null places
+   * the asset from latitude and longitude alone. */
+  path: LinePath | null;
   values: ParsedValue[];
   /** What the preview table shows, in `previewColumns` order. */
   preview: string[];
@@ -105,13 +113,46 @@ export async function getImportSpec(organizationId: string, assetTypeId: string)
   if (!type) throw new Error("Choose an asset type to import into");
   const conditionModel = await wholeAssetConditionModel(type.id);
   const currentYear = new Date().getFullYear();
+  const isLine = type.geometry === "line";
 
   const columns: ImportColumn[] = [
     { key: "assetCode", label: "Asset ID", required: true, kind: "text", aliases: [], note: "Must be unique — checked against existing assets and the rest of the file." },
     { key: "installationYear", label: "Installation Year", required: true, kind: "integer", min: 1850, max: currentYear, aliases: [], note: `Whole year, 1850 to ${currentYear}.` },
-    { key: "latitude", label: "Latitude", required: true, kind: "number", min: -90, max: 90, aliases: [], note: "Decimal degrees, -90 to 90." },
-    { key: "longitude", label: "Longitude", required: true, kind: "number", min: -180, max: 180, aliases: [], note: "Decimal degrees, -180 to 180." },
+    {
+      key: "latitude",
+      label: "Latitude",
+      required: !isLine,
+      kind: "number",
+      min: -90,
+      max: 90,
+      aliases: [],
+      note: isLine ? "Where the line starts, in decimal degrees, -90 to 90. Required unless the row gives a Shape." : "Decimal degrees, -90 to 90.",
+    },
+    {
+      key: "longitude",
+      label: "Longitude",
+      required: !isLine,
+      kind: "number",
+      min: -180,
+      max: 180,
+      aliases: [],
+      note: isLine ? "Where the line starts, in decimal degrees, -180 to 180. Required unless the row gives a Shape." : "Decimal degrees, -180 to 180.",
+    },
   ];
+  if (isLine) {
+    columns.push(
+      { key: "endLatitude", label: "End Latitude", required: false, kind: "number", min: -90, max: 90, aliases: [], note: "Optional, with End Longitude: where the line ends, drawn straight from its start. Left blank, the line is a short north–south one through its start." },
+      { key: "endLongitude", label: "End Longitude", required: false, kind: "number", min: -180, max: 180, aliases: [], note: "Optional, with End Latitude." },
+      {
+        key: "shape",
+        label: "Shape",
+        required: false,
+        kind: "text",
+        aliases: ["Geometry", "WKT", "GeoJSON"],
+        note: "Optional: the line itself, as WKT — LINESTRING (lng lat, lng lat, …) — or GeoJSON, longitude first as GIS software exports it. Used instead of the position columns when given.",
+      }
+    );
+  }
   for (const d of type.attributeDefinitions) {
     const kind = KIND_OF[d.dataType];
     const options = kind === "enum" ? ((d.config as { options?: string[] } | null)?.options ?? []) : undefined;
@@ -153,11 +194,11 @@ export async function getImportSpec(organizationId: string, assetTypeId: string)
     { key: "department", label: "Department", required: false, kind: "text", aliases: ["Responsible department"], note: "Optional: the department responsible for it." },
     { key: "expectedLife", label: "Expected Life", required: false, kind: "integer", min: 1, max: 500, aliases: [], note: `Optional, in years. Left blank, the service life of its material's curve, or ${DEFAULT_EXPECTED_LIFE} where it has none.` }
   );
-  return { assetTypeId: type.id, assetTypeName: type.name, columns };
+  return { assetTypeId: type.id, assetTypeName: type.name, geometry: type.geometry, columns };
 }
 
 /** The header row a blank import file starts with. */
-export function templateHeader(spec: ImportSpec): string {
+export function templateHeader(spec: Pick<ImportSpec, "columns">): string {
   return spec.columns.map((c) => (/[",]/.test(c.label) ? `"${c.label.replace(/"/g, '""')}"` : c.label)).join(",");
 }
 
@@ -233,6 +274,56 @@ export function parseCell(c: ImportColumn, value: string): { value: string | num
   }
 }
 
+/** Points a Shape may have — far more than any real main or conductor. */
+const MAX_SHAPE_POINTS = 10_000;
+
+/**
+ * A Shape cell read as a line's vertices, or why it can't be. Takes WKT
+ * (LINESTRING, or a MULTILINESTRING of one part) and the GeoJSON of either,
+ * bare or as a Feature — what GIS software exports — longitude first. A third
+ * or fourth coordinate (elevation, measure) is dropped.
+ */
+export function parseLineShape(value: string): { path: LinePath } | { error: string } {
+  let parts: unknown[];
+  if (value.startsWith("{")) {
+    let geometry: { type?: unknown; coordinates?: unknown } | null;
+    try {
+      const json = JSON.parse(value);
+      geometry = json?.type === "Feature" ? json.geometry : json;
+    } catch {
+      return { error: "Shape isn't valid GeoJSON." };
+    }
+    if (geometry?.type === "LineString") parts = [geometry.coordinates];
+    else if (geometry?.type === "MultiLineString" && Array.isArray(geometry.coordinates)) parts = geometry.coordinates;
+    else return { error: `Shape must be a line, not ${typeof geometry?.type === "string" ? `a ${geometry.type}` : "this GeoJSON"}.` };
+  } else {
+    const wkt = /^(MULTI)?LINESTRING\s*(?:ZM|Z|M)?\s*\(([\s\S]*)\)$/i.exec(value);
+    if (!wkt) return { error: "Shape must be a line written as WKT, LINESTRING (…), or as GeoJSON." };
+    const body = wkt[2].trim();
+    const texts = wkt[1] ? body.replace(/^\(|\)$/g, "").split(/\)\s*,\s*\(/) : [body];
+    parts = texts.map((t) => t.split(",").map((pair) => pair.trim().split(/\s+/).map(Number)));
+  }
+  if (parts.length !== 1) return { error: `Shape has ${parts.length} separate parts; give one connected line per row.` };
+  const points = parts[0];
+  if (!Array.isArray(points) || points.length < 2) return { error: "Shape needs at least two points." };
+  if (points.length > MAX_SHAPE_POINTS) return { error: `Shape has ${points.length} points; at most ${MAX_SHAPE_POINTS} are accepted.` };
+  const path: LinePath = [];
+  for (const p of points) {
+    if (!Array.isArray(p) || p.length < 2 || !p.every((n) => typeof n === "number" && Number.isFinite(n))) {
+      return { error: "Shape has a point that isn't a pair of numbers." };
+    }
+    const [lng, lat] = p as number[];
+    if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+      return { error: `Shape has a point off the map (${lng} ${lat}); longitude comes first.` };
+    }
+    path.push([lng, lat]);
+  }
+  if (path.every(([lng, lat]) => lng === path[0][0] && lat === path[0][1])) {
+    return { error: "Shape's points are all the same place." };
+  }
+  return { path };
+}
+
 export async function validateImport(organizationId: string, assetTypeId: string, csv: string): Promise<ValidationReport> {
   const spec = await getImportSpec(organizationId, assetTypeId);
   const errors: RowError[] = [];
@@ -259,7 +350,13 @@ export async function validateImport(organizationId: string, assetTypeId: string
     return -1;
   };
 
-  const missingColumns = spec.columns.filter((c) => c.required && indexOf(c) === -1).map((c) => c.label);
+  // A line type's position can come from its Shape instead, so only a file
+  // with neither is missing it.
+  const shapeColumn = spec.columns.find((c) => c.key === "shape");
+  const hasShape = shapeColumn != null && indexOf(shapeColumn) !== -1;
+  const missingColumns = spec.columns
+    .filter((c) => indexOf(c) === -1 && (c.required || (shapeColumn != null && !hasShape && (c.key === "latitude" || c.key === "longitude"))))
+    .map((c) => c.label);
   const known = new Set(spec.columns.flatMap((c) => [c.label, ...c.aliases].map(normalizeHeader)));
   const unknownColumns = rawHeaders.filter((h) => !known.has(normalizeHeader(h)));
 
@@ -313,8 +410,38 @@ export async function validateImport(organizationId: string, assetTypeId: string
       fail(idColumn, `Asset ID "${assetCode}" is duplicated in this file.`);
     }
     const installationYear = read(column("installationYear")!) as number | null;
-    const latitude = read(column("latitude")!) as number | null;
-    const longitude = read(column("longitude")!) as number | null;
+    const latitudeColumn = column("latitude")!;
+    let latitude = read(latitudeColumn) as number | null;
+    let longitude = read(column("longitude")!) as number | null;
+
+    // A line type's shape: the Shape column's line, or a straight one to its
+    // end. Neither leaves path null, and the line is drawn from its start.
+    let path: LinePath | null = null;
+    if (shapeColumn) {
+      const shape = raw(shapeColumn);
+      if (shape !== "") {
+        const parsed = parseLineShape(shape);
+        if ("error" in parsed) fail(shapeColumn, parsed.error);
+        else {
+          path = parsed.path;
+          [longitude, latitude] = path[0];
+        }
+      } else {
+        if (raw(latitudeColumn) === "" || raw(column("longitude")!) === "") {
+          fail(latitudeColumn, "Latitude and Longitude are required unless the row gives a Shape.");
+        }
+        const endLatitudeColumn = column("endLatitude")!;
+        const endLongitudeColumn = column("endLongitude")!;
+        const endLatitude = read(endLatitudeColumn) as number | null;
+        const endLongitude = read(endLongitudeColumn) as number | null;
+        if ((raw(endLatitudeColumn) === "") !== (raw(endLongitudeColumn) === "")) {
+          fail(endLatitudeColumn, "End Latitude and End Longitude go together: give both or neither.");
+        } else if (latitude != null && longitude != null && endLatitude != null && endLongitude != null) {
+          if (endLatitude === latitude && endLongitude === longitude) fail(endLatitudeColumn, "The end is the same place as the start.");
+          else path = [[longitude, latitude], [endLongitude, endLatitude]];
+        }
+      }
+    }
     const condition = column("condition") ? (read(column("condition")!) as number | null) : null;
     const serviceArea = read(column("serviceArea")!) as string | null;
     const department = read(column("department")!) as string | null;
@@ -349,6 +476,7 @@ export async function validateImport(organizationId: string, assetTypeId: string
       serviceArea,
       department,
       expectedLife,
+      path,
       values,
       preview: [
         assetCode!,
@@ -416,16 +544,21 @@ export async function commitImport(organizationId: string, assetTypeId: string, 
       },
     });
 
-    // Imported rows give a single position, drawn as the type is: a point,
-    // or a short line as long as the asset where its type measures length.
-    const length = (lengthCode && row.values.find((v) => v.code === lengthCode)?.numberValue) || null;
-    await insertAssetLocation(
-      asset.id,
-      assetType.geometry,
-      { lat: row.latitude, lng: row.longitude },
-      length,
-      { serviceArea: row.serviceArea }
-    );
+    // A line given its end or its shape is drawn along it. Otherwise the row
+    // gives a single position, drawn as the type is: a point, or a short line
+    // as long as the asset where its type measures length.
+    if (row.path) {
+      await insertAssetPathLocation(asset.id, row.path, { serviceArea: row.serviceArea });
+    } else {
+      const length = (lengthCode && row.values.find((v) => v.code === lengthCode)?.numberValue) || null;
+      await insertAssetLocation(
+        asset.id,
+        assetType.geometry,
+        { lat: row.latitude, lng: row.longitude },
+        length,
+        { serviceArea: row.serviceArea }
+      );
+    }
 
     if (row.condition != null && conditionModel) {
       await prisma.conditionMeasurement.create({

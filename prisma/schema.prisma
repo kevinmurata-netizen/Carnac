@@ -31,6 +31,7 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   users            User[]
+  workPlans        WorkPlan[]
   assetTypes       AssetType[]
   assets           Asset[]
   componentTypes   ComponentType[]
@@ -121,7 +122,7 @@ model RolePermission {
 
 model AssetType {
   id          String  @id @default(cuid())
-  code        String  @unique // e.g. "WATERLINE"
+  code        String // e.g. "WATERLINE" — unique within its organization
   name        String // e.g. "Waterline"
   description String?
 
@@ -146,6 +147,17 @@ model AssetType {
   /// {"reference": 8, "exponent": 0.7} prices at (size / reference) ^ exponent
   /// times the rate. Null: size does not move price.
   sizeCostScale Json?
+
+  /// What one failure costs: {"repairCost": 18000, "perCustomer": 145}. The
+  /// repair grows with size by sizeCostScale, as treatment prices do. Null:
+  /// failures are not costed, so life-cycle savings count no failures avoided.
+  failureCost Json?
+
+  /// The attribute that names the corridor an asset of this type sits in — a
+  /// street, say. Where two assets' types both name one, it decides whether
+  /// they are neighbours for corridor bundling, in place of distance. Null:
+  /// distance alone decides.
+  corridorAttribute String?
 
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id])
@@ -172,7 +184,11 @@ model AssetType {
   updatedAt DateTime @updatedAt
 
   scenarios ScenarioAssetType[]
+  budgetLines BudgetPlanLine[]
+  corridorSavingsA CorridorSaving[] @relation("CorridorSavingA")
+  corridorSavingsB CorridorSaving[] @relation("CorridorSavingB")
 
+  @@unique([organizationId, code])
   @@map("asset_types")
 }
 
@@ -1270,6 +1286,88 @@ model CategoryFundingPlan {
   @@map("category_funding_plans")
 }
 
+/// How an organization finds corridors for bundling work on neighbouring
+/// assets. One row per organization; none means the defaults below.
+model CorridorSettings {
+  id             String @id @default(cuid())
+  organizationId String @unique
+  /// How close two assets must be to be neighbours, in metres, measured
+  /// between the nearest points of their lines or locations.
+  distanceMeters Float  @default(50)
+  /// How many years work may be brought forward or deferred to join a
+  /// neighbour's bundle.
+  windowYears    Int    @default(2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("corridor_settings")
+}
+
+/// What doing two asset types' work together in one corridor saves. One row
+/// per pair, the pair's ids in sorted order so (A, B) and (B, A) are one row;
+/// a type paired with itself is its own row. No row: no saving.
+model CorridorSaving {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  assetTypeAId       String
+  assetTypeA         AssetType @relation("CorridorSavingA", fields: [assetTypeAId], references: [id], onDelete: Cascade)
+  assetTypeBId       String
+  assetTypeB         AssetType @relation("CorridorSavingB", fields: [assetTypeBId], references: [id], onDelete: Cascade)
+  /// Whether the two share one mobilization: charged once for the bundle.
+  sharesMobilization Boolean   @default(false)
+  /// A further share off each added member's cost, 0 to 0.5 — shared traffic
+  /// control, one reinstatement.
+  savingPct          Float     @default(0)
+
+  @@unique([assetTypeAId, assetTypeBId])
+  @@index([organizationId])
+  @@map("corridor_savings")
+}
+
+/// The money a utility expects to have, set year by year in dollars rather
+/// than as one figure and a growth rate. Optional: a scenario follows one only
+/// when it chooses to.
+model BudgetPlan {
+  id             String  @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  lines BudgetPlanLine[]
+
+  scenarios Scenario[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("budget_plans")
+}
+
+/// One amount in a budget, for one year.
+///
+/// With neither an asset type nor a category it is the year's total. With a
+/// category it is the most that category may take that year; with an asset
+/// type, the most that type may take; with both, the most that category may
+/// take within that type. A year the budget does not list falls back to the
+/// scenario's own annual budget and growth.
+model BudgetPlanLine {
+  id           String     @id @default(cuid())
+  budgetPlanId String
+  budgetPlan   BudgetPlan @relation(fields: [budgetPlanId], references: [id], onDelete: Cascade)
+  year         Int
+  assetTypeId  String?
+  assetType    AssetType? @relation(fields: [assetTypeId], references: [id], onDelete: Cascade)
+  /// A TreatmentCategory, or null for every category.
+  category     String?
+  amount       Float
+
+  @@index([budgetPlanId, year])
+  @@index([assetTypeId])
+  @@map("budget_plan_lines")
+}
+
 /// One category's turn: how much of the year it may take, and when it takes it.
 ///
 /// Rows rather than columns on the plan, because the order is a decision
@@ -1419,6 +1517,12 @@ model Scenario {
   /// ranked list, which is what allocation did before order existed.
   categoryFundingPlanId String?
   categoryFundingPlan   CategoryFundingPlan? @relation(fields: [categoryFundingPlanId], references: [id], onDelete: SetNull)
+
+  /// The money set year by year, where the scenario follows a budget rather
+  /// than its annual budget and growth. Null is the annual budget and growth,
+  /// which is how every scenario ran before budgets existed.
+  budgetPlanId String?
+  budgetPlan   BudgetPlan? @relation(fields: [budgetPlanId], references: [id], onDelete: SetNull)
 
   /// Whether this scenario considers only the treatments and combinations it
   /// names, rather than the whole library.
@@ -1579,6 +1683,12 @@ model ScenarioResult {
 
 model WorkPlan {
   id         String    @id @default(cuid())
+
+  /// Whose plan it is. Every list and lookup is scoped by it: a plan made
+  /// without a scenario reaches its organization no other way.
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
   scenarioId String?
   scenario   Scenario? @relation("ScenarioWorkPlans", fields: [scenarioId], references: [id])
   name       String
@@ -1626,6 +1736,7 @@ model WorkPlan {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([organizationId])
   @@map("work_plans")
 }
 

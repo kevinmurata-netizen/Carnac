@@ -18,7 +18,7 @@ import { curveFor } from "@/domain/waterline/deterioration";
 import { effectiveAgeForCondition } from "@/domain/waterline/deterioration";
 import { ageInYears } from "@/lib/format";
 import { loadTreatmentDefs } from "@/server/treatment-config";
-import { getCurvesByAssetType, getSizeCostByType } from "@/server/settings";
+import { getCurvesByAssetType, getFailureCostByType, getSizeCostByType } from "@/server/settings";
 
 export type AssetLcca = {
   assumptions: LccaAssumptions;
@@ -76,12 +76,13 @@ export async function getAssetLcca(
     expectedUsefulLife: asset.expectedUsefulLife ?? 75,
     assetTypeId: asset.assetTypeId,
     sizeCostScale: (await getSizeCostByType(organizationId))(asset.assetTypeId),
+    failureCost: (await getFailureCostByType(organizationId))(asset.assetTypeId),
     criticality: m.criticality,
     serviceArea: asset.location?.serviceArea ?? null,
     pressureZone: asset.location?.pressureZone ?? null,
   };
 
-  const assetCostInputs = { diameterInches, customersServed };
+  const assetCostInputs = { diameterInches, customersServed, sizeCostScale: ctx.sizeCostScale, failureCost: ctx.failureCost };
   const library = await loadTreatmentDefs(organizationId);
 
   // How long before this asset is exhausted if nothing resets its condition.

@@ -20,6 +20,9 @@ import {
   segmentRowsInPlan,
   previewCombine,
   combineWorkPlanItems,
+  previewCorridorBundle,
+  applyCorridorBundle,
+  unbundleCorridor,
   splitWorkPlanVisit,
 } from "@/server/workplans";
 import {
@@ -147,8 +150,8 @@ export async function addWorkPlanItemAction(input: {
 
 /** The other work this plan holds on the same segment, for the combine picker. */
 export async function segmentRowsAction(workPlanId: string, assetId: string) {
-  await requireEditor();
-  return segmentRowsInPlan(workPlanId, assetId);
+  const session = await requireEditor();
+  return segmentRowsInPlan(session.user.organizationId, workPlanId, assetId);
 }
 
 export async function previewCombineAction(input: { workPlanId: string; itemIds: string[]; year: number }) {
@@ -265,38 +268,80 @@ export async function splitVisitAction(formData: FormData) {
 }
 
 export async function removeItemAction(formData: FormData) {
-  await requireEditor();
+  const session = await requireEditor();
   const itemId = String(formData.get("itemId") ?? "");
   if (!itemId) throw new Error("Item is required");
-  const workPlanId = await removeWorkPlanItem(itemId);
+  const workPlanId = await removeWorkPlanItem(session.user.organizationId, itemId);
+  revalidatePath(`/work-plan/${workPlanId}`);
+}
+
+export async function previewCorridorBundleAction(input: { workPlanId: string; itemId: string }) {
+  const session = await requireEditor();
+  try {
+    return {
+      ok: true as const,
+      preview: await previewCorridorBundle(session.user.organizationId, input.workPlanId, input.itemId),
+    };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not look for neighbouring work" };
+  }
+}
+
+export async function applyCorridorBundleAction(input: { workPlanId: string; itemId: string; joinItemIds: string[] }) {
+  const session = await requireEditor();
+  try {
+    const done = await applyCorridorBundle(
+      session.user.organizationId,
+      input.workPlanId,
+      input.itemId,
+      input.joinItemIds
+    );
+    revalidatePath(`/work-plan/${input.workPlanId}`);
+    return {
+      ok: true as const,
+      message: `${done.joined} project${done.joined === 1 ? "" : "s"} bundled with ${done.assetCode}, saving $${done.saving.toLocaleString("en-US")}.`,
+    };
+  } catch (e) {
+    return { ok: false as const, message: e instanceof Error ? e.message : "Could not bundle that work" };
+  }
+}
+
+export async function unbundleCorridorAction(formData: FormData) {
+  const session = await requireEditor();
+  const itemId = String(formData.get("itemId") ?? "");
+  if (!itemId) throw new Error("Item is required");
+  const workPlanId = await unbundleCorridor(session.user.organizationId, itemId);
   revalidatePath(`/work-plan/${workPlanId}`);
 }
 
 export async function moveItemAction(formData: FormData) {
-  await requireEditor();
+  const session = await requireEditor();
   const itemId = String(formData.get("itemId") ?? "");
   const targetYear = Number(formData.get("targetYear"));
   if (!itemId || !Number.isFinite(targetYear)) throw new Error("Item and target year are required");
 
-  const workPlanId = await moveWorkPlanItem(itemId, targetYear);
+  // Ticked, the move takes its whole corridor bundle along and keeps the
+  // savings; unticked, it leaves the bundle.
+  const withCorridor = String(formData.get("withCorridor") ?? "") === "on";
+  const workPlanId = await moveWorkPlanItem(session.user.organizationId, itemId, targetYear, withCorridor);
   revalidatePath(`/work-plan/${workPlanId}`);
 }
 
 export async function updateStatusAction(formData: FormData) {
-  await requireEditor();
+  const session = await requireEditor();
   const itemId = String(formData.get("itemId") ?? "");
   const status = String(formData.get("status") ?? "");
   if (!itemId || !(status in WorkPlanItemStatus)) throw new Error("Item and a valid status are required");
 
-  const workPlanId = await updateWorkPlanItemStatus(itemId, status as WorkPlanItemStatus);
+  const workPlanId = await updateWorkPlanItemStatus(session.user.organizationId, itemId, status as WorkPlanItemStatus);
   revalidatePath(`/work-plan/${workPlanId}`);
 }
 
 export async function deleteWorkPlanAction(formData: FormData) {
-  await requireEditor();
+  const session = await requireEditor();
   const id = String(formData.get("workPlanId") ?? "");
   if (!id) throw new Error("Work plan id is required");
-  await deleteWorkPlan(id);
+  await deleteWorkPlan(session.user.organizationId, id);
   redirect("/work-plan");
 }
 
@@ -307,11 +352,11 @@ export type BulkDeleteState = { status: "idle" | "success" | "error"; message: s
  * the lot. */
 export async function deleteWorkPlansAction(_prev: BulkDeleteState, formData: FormData): Promise<BulkDeleteState> {
   try {
-    await requireEditor();
+    const session = await requireEditor();
     const ids = formData.getAll("id").map(String).filter(Boolean);
     if (ids.length === 0) return { status: "error", message: "No work plans were selected." };
 
-    const { deleted, kept } = await deleteWorkPlans(ids);
+    const { deleted, kept } = await deleteWorkPlans(session.user.organizationId, ids);
     revalidatePath("/work-plan");
     revalidatePath("/scenario-planning", "layout");
 

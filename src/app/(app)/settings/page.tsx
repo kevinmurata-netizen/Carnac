@@ -67,8 +67,9 @@ export default async function SettingsPage({
     rollup,
   ] = await Promise.all([
     getConfigSummary(organizationId),
-    getConditionModelConfig(organizationId),
-    getRiskModelConfig(organizationId),
+    // Absent on a new customer's site until something is modelled.
+    getConditionModelConfig(organizationId).catch(() => null),
+    getRiskModelConfig(organizationId).catch(() => null),
     listDeteriorationModels(organizationId),
     listRenameablePages(organizationId),
     getPageName(organizationId, "/settings", "Settings"),
@@ -131,7 +132,9 @@ export default async function SettingsPage({
     )} inspection questions`,
     import: "Load inventory from CSV",
     "condition-index": `${config.conditionModels[0]?.name ?? "Condition index"} — components and weights`,
-    "condition-models": `Scale ${conditionModel.scaleMin}–${conditionModel.scaleMax} · ${conditionModel.bands.length} bands`,
+    "condition-models": conditionModel
+      ? `Scale ${conditionModel.scaleMin}–${conditionModel.scaleMax} · ${conditionModel.bands.length} bands`
+      : "Not set up — nothing is modelled yet",
     treatments: `${formatNumber(config.treatments.length)} treatments in the library`,
     "treatment-effects":
       effects.length === 0
@@ -151,9 +154,9 @@ export default async function SettingsPage({
         ? "None active — every asset scales at 1"
         : `${[...new Set(liveScaleFactors)].join(" · ")} — active`,
     "deterioration-models": `${activeCurves} of ${deterioration.length} active`,
-    "risk-models": `${Object.keys(riskModel.pof).length} probability · ${
-      Object.keys(riskModel.cof).length
-    } consequence factors`,
+    "risk-models": riskModel
+      ? `${Object.keys(riskModel.pof).length} probability · ${Object.keys(riskModel.cof).length} consequence factors`
+      : "Not set up — nothing is modelled yet",
     rollup: (() => {
       const byDefault = rollup.strategies.find((s) => s.isDefault)?.name ?? "No default";
       const overrides = rollup.assetTypes.filter((t) => t.overrideId != null).length;
@@ -216,7 +219,7 @@ export default async function SettingsPage({
             summary={summaries[card.key] ?? ""}
             detail={withAssetWords(card.detail, words)}
             readOnly={!permissions.canWrite(resourceKey("card", card.href))}
-            swatches={card.key === "condition-models" ? conditionModel.bands.map((b) => b.color) : undefined}
+            swatches={card.key === "condition-models" ? conditionModel?.bands.map((b) => b.color) : undefined}
           />
         ))}
       </div>
