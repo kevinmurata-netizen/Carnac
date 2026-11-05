@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
+import { forgetAccount } from "@/lib/account-check";
 import {
   allResourceKeys,
   createRole,
@@ -39,6 +40,9 @@ async function requireRoleAdmin() {
  * role can no longer open. */
 function revalidateEverything() {
   revalidatePath("/", "layout");
+  // Sessions carry the role's name, so a rename reaches everyone holding it on
+  // their next request instead of when the account cache next expires.
+  forgetAccount();
 }
 
 export async function saveRolePermissionsAction(
