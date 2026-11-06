@@ -48,6 +48,7 @@ import {
   benefitCof,
   optionTerms,
   priorityScore,
+  type PriorityTerms,
   benefitRanges,
   scoreBenefits,
   DEFAULT_BENEFIT_WEIGHTS,
@@ -336,6 +337,7 @@ export type ScenarioProject = {
   /** What it scored, so a work plan built from this run can explain each row
    * without scoring anything a second time. */
   priority: number | null;
+  priorityTerms?: PriorityTerms;
   /** What the step up to it added per extra dollar, and over which option —
    * null for an option that was the first step on its segment. */
   incremental: number | null;
@@ -1539,6 +1541,14 @@ export function runScenario(
         riskBefore: Math.round(candidate.riskNow * 10) / 10,
         riskAfter: Math.round(candidate.riskAfter * 10) / 10,
         priority: candidate.priority,
+        priorityTerms: {
+          criticality: candidate.asset.criticalityScore,
+          scaleFactor: candidate.asset.scaleFactor,
+          categoryWeight: categoryWeight(categoryWeights, candidate.option.category),
+          assetTypeWeight: assetTypeWeight(assumptions.assetTypeWeights, candidate.asset.assetTypeId),
+          benefit: candidate.benefit,
+          totalCost: candidate.cost,
+        },
         incremental: outcome.incremental.get(candidate)?.score ?? null,
         incrementalOver: outcome.incremental.get(candidate)?.over?.option.label ?? null,
         criticality: round1(candidate.asset.criticalityScore),

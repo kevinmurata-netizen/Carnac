@@ -849,9 +849,14 @@ function walk(
       const commitment = toCommitment(
         candidate,
         previous ?? null,
+        categoryWeight(categoryWeights, candidate.option.category),
+        assetTypeWeight(assumptions.assetTypeWeights, candidate.asset.assetTypeId),
         join ? corridorOf(join, state).corridor : undefined,
         deferredOf(assetId)
       );
+      const step = outcome.incremental.get(candidate);
+      commitment.project.incremental = step?.score ?? null;
+      commitment.project.incrementalOver = step?.over?.option.label ?? null;
       commitments.set(assetId, commitment);
       decided.push(commitment);
       programmed.push(commitment.project);
@@ -1435,6 +1440,8 @@ function rebated(c: Candidate, saving: number): Candidate {
 function toCommitment(
   candidate: Candidate,
   superseded: Commitment | null,
+  categoryMultiplier: number,
+  typeMultiplier: number,
   corridor?: ScenarioProject["corridor"],
   deferred?: ScenarioProject["deferred"]
 ): Commitment {
@@ -1456,6 +1463,14 @@ function toCommitment(
     riskBefore: round1(candidate.riskNow),
     riskAfter: round1(candidate.riskAfter),
     priority: candidate.priority,
+    priorityTerms: {
+      criticality: candidate.asset.criticalityScore,
+      scaleFactor: candidate.asset.scaleFactor,
+      categoryWeight: categoryMultiplier,
+      assetTypeWeight: typeMultiplier,
+      benefit: candidate.benefit,
+      totalCost: candidate.cost,
+    },
     incremental: null,
     incrementalOver: null,
     criticality: round1(candidate.asset.criticalityScore),
