@@ -26,7 +26,7 @@ export default async function ReportsPage() {
     <div>
       <PageHeader
         title={pageTitle}
-        description="Every report exports to CSV; each is a declared column set over live data, so PDF and Excel can be added without rewriting the reports"
+        description="Review scenario outcomes and explore live inventory, condition, planning and financial reports."
       />
 
       {CATEGORY_ORDER.map((category) => {
@@ -47,6 +47,16 @@ export default async function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {category === "Planning" && (
+                    <TableRow>
+                      <TableCell>
+                        <div className="font-medium">Scenario Run Summary</div>
+                        <div className="text-xs text-muted-foreground">Forecasts, funded projects and the factors behind their priority scores.</div>
+                      </TableCell>
+                      <TableCell>—</TableCell>
+                      <TableCell><Link href="/reports/scenario-run" className="text-sm text-primary hover:underline">Open report</Link></TableCell>
+                    </TableRow>
+                  )}
                   {reports.map((r) => (
                     <TableRow key={r.id}>
                       <TableCell>

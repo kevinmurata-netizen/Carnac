@@ -29,6 +29,16 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-11-06",
+    title: "Scenario Run Summary report",
+    summary: "Reports now shows what a scenario funded, how the network is forecast to change, and how funded projects scored.",
+    changes: [
+      "Choose a scenario to see spending, condition, backlog and expected failures over time.",
+      "Review top-ranked projects and browse the full funded program. New runs save the score and its inputs for each ranked project.",
+    ],
+    note: "No migration. Older runs show their saved program and outcomes. Run the scenario again to capture project scores.",
+  },
+  {
     date: "2026-11-05",
     title: "Handover notes brought up to date",
     summary:

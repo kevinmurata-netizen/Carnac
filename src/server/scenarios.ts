@@ -965,6 +965,14 @@ async function persistScenarioProgram(
               // much less. Absent on everything else.
               ...(p.corridor ? { corridor: p.corridor } : {}),
               ...(p.deferred ? { deferred: p.deferred } : {}),
+              ...(p.priorityTerms ? {
+                ranking: {
+                  score: p.priority,
+                  terms: p.priorityTerms,
+                  incremental: p.incremental,
+                  incrementalOver: p.incrementalOver,
+                },
+              } : {}),
             },
             reasonExplanation: p.locked
               ? `Locked from ${lockedPlanName ?? "the locked work plan"}` +

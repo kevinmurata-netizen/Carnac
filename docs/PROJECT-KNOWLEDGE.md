@@ -293,6 +293,8 @@ regression.
 
 ---
 
+Reports › Scenario Run Summary reads the latest saved results and the funded program for a selected scenario. New runs save their project ranking factors in the funded program's existing JSON field. Older results can be viewed as saved, with score details available after a new run.
+
 ## 7. Open items at handoff (2026-11-05)
 
 - Load the sample scenario set on Powercore: Settings › Asset Types › Add from a
