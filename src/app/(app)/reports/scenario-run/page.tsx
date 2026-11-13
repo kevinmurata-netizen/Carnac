@@ -10,15 +10,20 @@ import { requireSession } from "@/server/guard";
 import { getScenarioReportProjects } from "@/server/scenario-report";
 import { getScenario, listScenarios } from "@/server/scenarios";
 
+import { PrintReportButton } from "./print-report-button";
+import { PrintForecast } from "./print-forecast";
+import "./print.css";
+
 const number = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 6 });
 
 export default async function ScenarioRunReport({
   searchParams,
 }: {
-  searchParams: Promise<{ scenario?: string | string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { user: { organizationId } } = await requireSession();
-  const { scenario: requested } = await searchParams;
+  const query = await searchParams;
+  const requested = query.scenario;
   const choices = (await listScenarios(organizationId))
     .filter((scenario) => scenario.hasResults)
     .sort((a, b) => (b.lastRunAt?.getTime() ?? 0) - (a.lastRunAt?.getTime() ?? 0));
@@ -37,19 +42,45 @@ export default async function ScenarioRunReport({
   const chartData = scenario?.years.map(({ year, spend, budget, avgCondition, backlog, expectedFailures }) => ({
     year, spend, budget, avgCondition, backlog, expectedFailures,
   })) ?? [];
-  const selectedProjects = projects.filter((project) => !project.locked);
+  const years = [...new Set(projects.map((project) => String(project.year)))].sort();
+  const treatments = [...new Set(projects.map((project) => project.name))].sort();
+  const year = typeof query.year === "string" && years.includes(query.year) ? query.year : "";
+  const treatment = typeof query.treatment === "string" && treatments.includes(query.treatment) ? query.treatment : "";
+  const funding = query.funding === "selected" || query.funding === "locked" ? query.funding : "";
+  const search = typeof query.search === "string" ? query.search.trim() : "";
+  const scoreText = typeof query.minScore === "string" ? query.minScore.trim() : "";
+  const minScore = scoreText !== "" && Number.isFinite(Number(scoreText)) && Number(scoreText) >= 0
+    ? Number(scoreText) : null;
+  const filteredProjects = projects.filter((project) =>
+    (!year || String(project.year) === year) &&
+    (!treatment || project.name === treatment) &&
+    (!funding || project.locked === (funding === "locked")) &&
+    (!search || `${project.assetCode} ${project.name} ${project.reason ?? ""}`.toLowerCase().includes(search.toLowerCase())) &&
+    (minScore === null || (!project.locked && project.ranking?.score != null && project.ranking.score >= minScore))
+  );
+  const filterSummary = [
+    year && `Paid in ${year}`,
+    treatment,
+    funding === "locked" ? "Locked projects" : funding === "selected" ? "Selected projects" : "",
+    search && `Search “${search}”`,
+    minScore !== null && `Priority Score at least ${minScore}`,
+  ].filter(Boolean).join(" · ");
+  const selectedProjects = filteredProjects.filter((project) => !project.locked);
   const ranked = selectedProjects.filter((project) => project.ranking?.score != null);
   const topProjects = (ranked.length > 0 ? ranked : [...selectedProjects].sort((a, b) => b.cost - a.cost)).slice(0, 5);
 
   return (
-    <div className="space-y-4">
+    <div className="scenario-run-report space-y-4">
       <PageHeader
         title="Scenario Run Summary"
         description="Review the latest saved run for a scenario, including its forecast and funded program."
-        actions={<Link href="/reports" className="text-sm text-primary hover:underline">All reports</Link>}
+        actions={<div className="report-controls flex flex-wrap items-center gap-3">
+          <Link href="/reports" className="text-sm text-primary hover:underline">All reports</Link>
+          {scenario && first && last && <PrintReportButton />}
+        </div>}
       />
       {choices.length > 0 && (
-        <form action="/reports/scenario-run" method="get" className="flex flex-wrap items-end gap-3">
+        <form action="/reports/scenario-run" method="get" className="report-controls flex flex-wrap items-end gap-3">
           <label className="grid gap-1 text-sm font-medium">
             Scenario
             <select name="scenario" defaultValue={selected?.id} className="h-9 max-w-full rounded-md border bg-background px-3">
@@ -70,11 +101,12 @@ export default async function ScenarioRunReport({
             <p className="text-sm text-muted-foreground">
               {first.year}–{last.year}
               {scenario.lastRunAt && ` · Saved ${formatDateTime(scenario.lastRunAt)}`}
-              {" · "}
-              <Link href={`/scenario-planning/${scenario.id}`} className="text-primary hover:underline">Open scenario</Link>
+              <span className="report-controls"> · </span>
+              <Link href={`/scenario-planning/${scenario.id}`} className="report-controls text-primary hover:underline">Open scenario</Link>
             </p>
           </div>
-          <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <p className="text-sm text-muted-foreground">Summary totals and forecasts cover the whole scenario run. Project filters apply to the project lists below.</p>
+          <dl className="report-kpis grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {[
               ["Total spend", formatCurrency(scenario.totalSpend ?? 0)],
               ["Funded projects", formatNumber(projects.length)],
@@ -88,7 +120,7 @@ export default async function ScenarioRunReport({
               </div>
             ))}
           </dl>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="report-forecasts grid gap-4 lg:grid-cols-2">
             <Forecast title="Annual spending" data={chartData} series={[
               { key: "spend", label: "Spend", color: "var(--color-chart-1)" },
               ...(!scenario.target ? [{ key: "budget", label: "Budget", color: "var(--color-chart-3)", dashed: true }] : []),
@@ -104,18 +136,53 @@ export default async function ScenarioRunReport({
             ]} />
           </div>
           <Card>
+            <CardHeader><CardTitle>Projects included in this report</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <form key={JSON.stringify([scenario.id, year, treatment, funding, search, minScore])}
+                action="/reports/scenario-run" method="get" className="report-controls flex flex-wrap items-end gap-3">
+                <input type="hidden" name="scenario" value={scenario.id} />
+                <ProjectFilter label="Paid year" name="year" value={year} options={years} />
+                <ProjectFilter label="Treatment / combination" name="treatment" value={treatment} options={treatments} />
+                <label className="grid gap-1 text-sm font-medium">
+                  Funding
+                  <select name="funding" defaultValue={funding} className="h-9 rounded-md border bg-background px-3">
+                    <option value="">All projects</option>
+                    <option value="selected">Selected by run</option>
+                    <option value="locked">Locked from plan</option>
+                  </select>
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Search projects
+                  <input name="search" defaultValue={search} placeholder="Asset, project or reason" className="h-9 rounded-md border bg-background px-3" />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Minimum Priority Score
+                  <input name="minScore" type="number" min="0" step="any" defaultValue={minScore ?? ""} className="h-9 w-40 rounded-md border bg-background px-3" />
+                </label>
+                <Button type="submit">Apply filters</Button>
+                <Link href={`/reports/scenario-run?scenario=${scenario.id}`} className="text-sm text-primary hover:underline">Reset filters</Link>
+              </form>
+              <p className="text-sm">
+                Showing {formatNumber(filteredProjects.length)} of {formatNumber(projects.length)} projects
+                {" · "}Included project cost {formatCurrency(filteredProjects.reduce((sum, project) => sum + project.cost, 0))}
+              </p>
+              <p className="text-sm text-muted-foreground">{filterSummary || "All funded projects included."}</p>
+              {minScore !== null && <p className="text-sm text-muted-foreground">The minimum score includes projects with a saved ranking score. Locked projects and projects with unavailable scores are excluded.</p>}
+            </CardContent>
+          </Card>
+          <Card>
             <CardHeader>
               <CardTitle>Top selected projects</CardTitle>
               <p className="text-sm text-muted-foreground">
                 {ranked.length > 0
-                  ? "Up to five projects ranked by saved Priority Score."
-                  : "Up to five projects by cost when saved scores are unavailable."}
+                  ? "Up to five matching projects ranked by saved Priority Score."
+                  : "Up to five matching projects by cost when saved scores are unavailable."}
                 {" "}The run allocates funding based on what each option adds over a cheaper choice, within its funding and delivery rules.
               </p>
             </CardHeader>
             <CardContent>
               {topProjects.length === 0 ? (
-                <p className="text-sm text-muted-foreground">This run has no projects selected through ranking.</p>
+                <p className="text-sm text-muted-foreground">No selected projects match the project filters.</p>
               ) : (
                 <ol className="divide-y">
                   {topProjects.map((project) => (
@@ -133,19 +200,19 @@ export default async function ScenarioRunReport({
               )}
             </CardContent>
           </Card>
-          <Card>
+          <Card className="report-projects">
             <CardHeader>
-              <CardTitle>Full funded program</CardTitle>
+              <CardTitle>Funded projects included in report</CardTitle>
               <p className="text-sm text-muted-foreground">
                 Priority Score = criticality × scale × category weight × asset type weight × expected benefit ÷ scoring cost.
                 {" "}Locked work enters the program through the locked plan. Older runs can show saved projects but require a new run to capture scores.
               </p>
-              <Link href={`/scenario-planning/${scenario.id}/alternatives`} className="text-sm text-primary hover:underline">
+              <Link href={`/scenario-planning/${scenario.id}/alternatives`} className="report-controls text-sm text-primary hover:underline">
                 Explore funded and unfunded alternatives using current settings
               </Link>
             </CardHeader>
             <CardContent>
-              {projects.length === 0 ? <p className="text-sm text-muted-foreground">No funded projects were saved for this run.</p> : (
+              {filteredProjects.length === 0 ? <p className="text-sm text-muted-foreground">No projects match the project filters.</p> : (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -155,7 +222,7 @@ export default async function ScenarioRunReport({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {projects.map((project) => {
+                    {filteredProjects.map((project) => {
                       const terms = project.ranking?.terms;
                       return (
                         <TableRow key={project.id}>
@@ -196,8 +263,26 @@ function Forecast({ title, data, series, domain }: {
     <Card>
       <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent>
-        <SimpleLineChart data={data} xKey="year" series={series.map((line) => ({ ...line, showDots: data.length === 1 }))} yDomain={domain} />
+        <PrintForecast title={title} data={data} series={series} domain={domain} />
+        <div className="report-screen-chart"><SimpleLineChart data={data} xKey="year" series={series.map((line) => ({ ...line, showDots: data.length === 1 }))} yDomain={domain} /></div>
       </CardContent>
     </Card>
+  );
+}
+
+function ProjectFilter({ label, name, value, options }: {
+  label: string;
+  name: string;
+  value: string;
+  options: string[];
+}) {
+  return (
+    <label className="grid gap-1 text-sm font-medium">
+      {label}
+      <select name={name} defaultValue={value} className="h-9 max-w-72 rounded-md border bg-background px-3">
+        <option value="">All</option>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
   );
 }

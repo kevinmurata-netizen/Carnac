@@ -29,6 +29,13 @@ export type BuildEntry = {
 
 export const ENTRIES: BuildEntry[] = [
   {
+    date: "2026-11-13",
+    title: "Print and share scenario reports",
+    summary: "Scenario Run Summary can now be printed or saved as a PDF for managers and administration teams.",
+    changes: ["A Print / Save as PDF action opens the browser print dialog.", "The printed report includes forecasts, top projects and the full funded program, with repeating table headings and readable score factors.", "Filter project lists by paid year, treatment or combination, funding, search text and minimum Priority Score. The printed report records the active filters, project count and included cost."],
+    note: "No migration.",
+  },
+  {
     date: "2026-11-06",
     title: "Scenario Run Summary report",
     summary: "Reports now shows what a scenario funded, how the network is forecast to change, and how funded projects scored.",
