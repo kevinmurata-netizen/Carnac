@@ -103,7 +103,7 @@ export function AppShell({
   // of the window. Under min-h-screen the page itself scrolled and main's
   // overflow rule never took effect, leaving sticky nothing to hold on to.
   return (
-    <div className="flex h-screen w-full overflow-hidden">
+    <div data-app-shell className="flex h-screen w-full overflow-hidden">
       {/* Wide screens: an in-flow column that can be collapsed away. */}
       {sidebarOpen && (
         <aside className="hidden w-64 shrink-0 md:block">
@@ -142,7 +142,7 @@ export function AppShell({
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div data-app-content className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-card px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
             {/* Two buttons rather than one that branches on matchMedia: the

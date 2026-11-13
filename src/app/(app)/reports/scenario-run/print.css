@@ -1,0 +1,67 @@
+/* Scope shell changes to this report so other pages keep their usual layout. */
+@media print {
+  @page scenario-report { size: landscape; margin: 12mm; }
+
+  body:has(.scenario-run-report) {
+    --background: #fff;
+    --foreground: #111;
+    --card: #fff;
+    --card-foreground: #111;
+    --muted-foreground: #444;
+    --border: #ccc;
+    color: #111;
+    background: #fff;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body:has(.scenario-run-report) [data-app-shell],
+  body:has(.scenario-run-report) [data-app-content],
+  body:has(.scenario-run-report) main {
+    display: block;
+    height: auto;
+    overflow: visible;
+    padding: 0;
+    margin: 0;
+    background: #fff;
+  }
+
+  body:has(.scenario-run-report) [data-app-shell] > aside,
+  body:has(.scenario-run-report) [data-app-shell] > .fixed,
+  body:has(.scenario-run-report) [data-app-content] > header,
+  .scenario-run-report .report-controls,
+  .scenario-run-report .report-screen-chart {
+    display: none !important;
+  }
+
+  .scenario-run-report { page: scenario-report; font-size: 10pt; }
+  .scenario-run-report .report-print-chart { display: block; }
+  .scenario-run-report .report-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .scenario-run-report .report-forecasts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scenario-run-report [data-slot="card"] { box-shadow: none; gap: 10px; padding-block: 12px; }
+  .scenario-run-report .report-forecasts [data-slot="card"],
+  .scenario-run-report .report-kpis,
+  .scenario-run-report li { break-inside: avoid; }
+  .scenario-run-report .report-projects { break-before: page; display: block; }
+  .scenario-run-report .report-projects [data-slot="card-content"] { padding: 0; }
+  .scenario-run-report [data-slot="table-container"] { overflow: visible; }
+  .scenario-run-report table { table-layout: fixed; font-size: 8pt; }
+  .scenario-run-report thead { display: table-header-group; }
+  .scenario-run-report tr { break-inside: avoid; }
+  .scenario-run-report th,
+  .scenario-run-report td {
+    min-width: 0;
+    height: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    padding: 6px;
+    vertical-align: top;
+  }
+  .scenario-run-report th:nth-child(6),
+  .scenario-run-report td:nth-child(6) { width: 22%; }
+  .scenario-run-report th:nth-child(7),
+  .scenario-run-report td:nth-child(7) { width: 26%; }
+  .scenario-run-report h1,
+  .scenario-run-report h2,
+  .scenario-run-report [data-slot="card-header"] { break-after: avoid; }
+}

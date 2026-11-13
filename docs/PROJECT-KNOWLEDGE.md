@@ -293,6 +293,8 @@ regression.
 
 ---
 
+Reports › Scenario Run Summary offers Print / Save as PDF through the browser print dialog, with a landscape layout, fixed SVG forecasts and a paginated full program. Project filters (paid year, treatment or combination, funding, search and minimum score) apply to both project lists and print output. Forecasts and summary KPIs cover the whole run; the filtered project count and cost are reported separately.
+
 Reports › Scenario Run Summary reads the latest saved results and the funded program for a selected scenario. New runs save their project ranking factors in the funded program's existing JSON field. Older results can be viewed as saved, with score details available after a new run.
 
 ## 7. Open items at handoff (2026-11-05)
